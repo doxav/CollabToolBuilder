@@ -1,0 +1,20 @@
+langchain
+javascript
+setuptools
+openai
+#chardet
+#cchardet
+tiktoken
+requests
+setuptools
+psutil
+httpx
+elasticsearch
+wikipedia-api
+arxiv
+pyparsing
+scikit-image
+#sklearn # la dépendance est scikit-learn. J'ai commenté car pas utilisé apparemment.
+bs4
+config
+gradio==3.48.0

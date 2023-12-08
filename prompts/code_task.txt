@@ -1,0 +1,7 @@
+Write a Python function to accomplish the following TASK DEFINITION.
+If several tasks are defined (e.g. Task 1, Task 2...), choose only one task to code, reason and choose the task you have the most confidence to fully implement with success.
+This function should be modular and reusable, embed all required packages imports inside function, no code should be outside functions, avoid any recursion and infinit loop.
+Function should return all information produced in string or json format, the success of this TASK will be evaluated on this output so ensure this output is well aligned with the expected task output.
+End your code with 1 liner code calling the function to execute the task and affect it to the 'result' variable - e.g. result = your_main_function(....).
+Code should be fully functional, do not include placeholders or pass or similar.
+If this is not the first attempt to generate this code I will provide after TASK DEFINITION some important additional information on "PREVIOUS CODE ATTEMPT" that you must analyze it and not repeat the error from previous attempt 

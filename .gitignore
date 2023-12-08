@@ -1,0 +1,7 @@
+__pycache__
+__pycache__/*
+.langchain_caching.db
+venv/
+prompts/*.txt.*
+temp/
+config.py
