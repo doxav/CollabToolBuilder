@@ -115,6 +115,12 @@ def _visual_input(initial_string=""):
 def load_prompt(prompt_name, package_path="."):
     return load_text(f"{package_path}/prompts/{prompt_name}.txt")
 
+def list_prompt_variants(prompt_name, package_path="."):
+    base_name = prompt_name.split("@")[0]
+    pattern = f"{package_path}/prompts/{base_name}@*.txt"
+    variants = [filename[len(package_path)+9:-4] for filename in glob.glob(pattern)]
+    return [base_name] + variants  # Include base prompt in the list
+
 def save_prompt(prompt_name, text, package_path="."):
     prompt_file_path_name = f"{package_path}/prompts/{prompt_name}.txt"
 
@@ -126,6 +132,31 @@ def save_prompt(prompt_name, text, package_path="."):
 
     print(f"Saving new prompt file {prompt_file_path_name}")
 
+    return dump_text(text, prompt_file_path_name)
+
+def save_prompt_with_tag(prompt_name, text, new_tag, package_path="."):
+    # Extract base prompt name and current tag
+    parts = prompt_name.split("@")
+    base_name = parts[0]
+    current_tag = "@".join(parts[1:]) if len(parts) > 1 else ""
+
+    # Determine the file name to save
+    if new_tag:
+        if current_tag:
+            prompt_name = prompt_name.replace(f"@{current_tag}", f"@{new_tag}")
+        else:
+            prompt_name = f"{prompt_name}@{new_tag}"
+    prompt_file_path_name = f"{package_path}/prompts/{prompt_name}.txt"
+
+    # Backup existing file
+    if f_exists(prompt_file_path_name):
+        moved_file_path_name = prompt_file_path_name + datetime.now().strftime(".%Y-%m-%d_%H-%M-%S")
+        print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}")
+        f_move(prompt_file_path_name, moved_file_path_name)
+
+    print(f"Saving new prompt file {prompt_file_path_name}")
+
+    # Save the file
     return dump_text(text, prompt_file_path_name)
 
 class UnifiedVectorDB:
@@ -294,7 +325,7 @@ class HumanLLMMonitor:
             print(f"\033[{self.print_color}m***** {self.agent_name}->{function_name}  BEFORE *****\nSYSTEM PROMPT:\n{messages[0].content}\n\nUSER MESSAGE:\n{messages[1].content}\n***** {self.agent_name}->{function_name} BEFORE *****\033[0m")
             if not self._max_tokens_ok(messages[0].content+"\n"+messages[1].content):
                 print("WARNING!!!! Max tokens exceeded, you should refactor user message or system prompt!")
-            print("A. Modify agent's system prompt (role & global context, constraints, examples).")
+            print("A. Modify agent's 'role' / 'system prompt' (role, global context, constraints, examples).")
             print("B. Add instruction or information to agent.")
             print("C. Skip agent/inference and manually set agent's output.")
             print("D. Log comments.")
@@ -314,6 +345,25 @@ class HumanLLMMonitor:
             
             elif action == "A":
                 start_time, action = time.time(), "A"
+                new_template = None
+
+                # List existing prompt variants including the base prompt
+                prompt_variants = list_prompt_variants(self.system_prompt)
+                print("Found the following prompt options:")
+                for i, variant in enumerate(prompt_variants):
+                    print(f"{i+1}. {variant}")
+                print(f"{len(prompt_variants) + 1}. Ask to generate a new variant of the current system prompt")
+
+                variant_choice = input("Select a number to modify a prompt or create a new variant (or press Enter to continue with the current selection): ")
+                if variant_choice.isdigit() and 0 < int(variant_choice) <= len(prompt_variants) + 1:
+                    if int(variant_choice) == len(prompt_variants) + 1:
+                        # Process to create a new variant
+                        comments = input("Provide critic or feedback for the current prompt: ")
+                        refine_prompt = _visual_input(f"Current system prompt:<<< {load_prompt(self.system_prompt)} >>>\n\nFeedback or critic: {comments}")
+                        llm_output = self.llm_function([SystemMessage(content=load_prompt("improve_prompt_from_answer_critic")), HumanMessage(content=refine_prompt)])
+                        new_template = llm_output.content
+                    else:
+                        self.system_prompt = prompt_variants[int(variant_choice) - 1]
 
                 if input("Would you like first to get suggestions for a better prompt? (y/n): ").upper() == "Y":
                     if self.premium_llm_function:
@@ -321,12 +371,19 @@ class HumanLLMMonitor:
                     else:
                         llm_output = self.llm_function([SystemMessage(content=load_prompt("system_prompt_refiner")), HumanMessage(content=f"PROMPT TO GET SUGGESTIONS FOR IMPROVEMENT:\n{load_prompt(self.system_prompt)}")])
                     print(f"***** PROMPT SUGGESTIONS *****\n\033[33m{llm_output.content}\033[0m\n*************")
-                new_template = _visual_input(load_prompt(self.system_prompt))
+
+                new_template = _visual_input(load_prompt(self.system_prompt) if new_template is None else new_template)
                 print(f"***** NEW PROMPT TEMPLATE:\n{new_template}\n*************")
                 # Confirm that the user wants to modify the template
                 confirm = input("Do you want to replace current prompt file template with your input? (y/n): ").upper()
+                # Save prompt with tag options
                 if confirm == "Y":
-                    save_prompt(self.system_prompt, new_template)
+                    tag_option = input("Enter a tag for saving the prompt (leave blank for no tag, or 'same' to keep the current tag): ")
+                    if tag_option.lower() == "same":
+                        save_prompt_with_tag(self.system_prompt, new_template, "")
+                    else:
+                        save_prompt_with_tag(self.system_prompt, new_template, tag_option)
+
                     if callable_system_message:
                         messages[0] = callable_system_message()
                     else:
@@ -418,8 +475,8 @@ class HumanLLMMonitor:
         while self.skip_rounds == 0:
             print(f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m")
             print("A. Manually set/modify the answer/output (I don't want to try to improve agent's system prompt).") # je voudrais le corriger uniquement pour demander une suggestion d'amélioration du prompt (d'un autre côté, je peux aussi le faire dans le menu précédent)
-            print("B. Critic this answer to get an improved answer.")
-            print("C. Find a better Prompt by providing critic and/or ideal answer.")
+            print("B. Critic this answer/output to get an improved answer/output.")
+            print("C. Find a better Prompt by providing critic and ideal answer.")
             print("D. Evaluate & comment answer (Score between 0(worst)-1(top), and explain) to improve future results by using scored/commented examples.")
             print("E. Go back BEFORE inference to improve system prompt or add information to user message.")
             print("G. Skip human actions for N rounds.")
@@ -450,11 +507,24 @@ class HumanLLMMonitor:
 
             elif action == "C":
                 start_time, action = time.time(), "C"
-                comments = input("Provide critic: ")
+                comments = input("First enter your critic here (then modify answer to get ideal answer): ")
                 ideal_answer = _visual_input(inference_result_msg.content)
-                refine_prompt = f"Current system prompt:<<< {load_prompt(self.system_prompt)} >>>\n\nAnswer obtained:{inference_result_msg.content}\n\nAnswer critic:{comments}\n\nIdeal Answer:{ideal_answer}"
-                llm_output = self.llm_function([SystemMessage(content=load_prompt("improve_prompt_from_answer_critic")), HumanMessage(content=refine_prompt)])
-                print(f"***** RECOMMENDATION *****\n\033[33m{llm_output.content}\033[0m\n******* GO BACK TO MENU BEFORE INFERENCE TO MODIFY PROMPT IF YOU WANT ******")
+                refine_prompt = f"Current system prompt:<<< {load_prompt(self.system_prompt)} >>>\n\nPrompt's answer:<<< {inference_result_msg.content} >>>\n\nPrompt's answer critic:{comments}\n\nPrompt's ideal Answer:<<< {ideal_answer} >>>"
+                print(f"***** PROMPT FOR IMPROVEMENT *****\n{refine_prompt}")
+                llm_output = self.premium_llm([SystemMessage(content=load_prompt("improve_prompt_from_answer_critic")), HumanMessage(content=refine_prompt)])
+                print(f"***** RECOMMENDATION OPEN FOR EDITION *****\n")
+                new_template = _visual_input(llm_output.content)
+                print(f"***** NEW PROMPT TEMPLATE:\n{new_template}\n*************")
+                # Confirm that the user wants to modify the template
+                confirm = input("Do you want to replace current prompt file template with your input? (y/n): ").upper()
+                # Save prompt with tag options
+                if confirm == "Y":
+                    tag_option = input("Enter a tag for saving the prompt (leave blank for no tag, or 'same' to keep the current tag): ")
+                    if tag_option.lower() == "same":
+                        save_prompt_with_tag(self.system_prompt, new_template, "")
+                    else:
+                        save_prompt_with_tag(self.system_prompt, new_template, tag_option)
+
                 self.after_inference_option_times[action] += (time.time() - start_time)
                 self.after_inference_option_counts[action] += 1
 
