@@ -19,6 +19,7 @@ import tempfile
 from datetime import datetime
 from socket import gethostname
 import logging
+from config import PickleCacheActivated
 
 
 f_ext = os.path.splitext

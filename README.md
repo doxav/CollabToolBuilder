@@ -41,7 +41,7 @@ python learn.py
 1. control what will be sent to the agent Before () \
 > A. Modify agent's system prompt (role & global context, constraints, examples). \
 > B. Add instruction or information to agent. \
-> C. Skip agent/inference and manually set output. \
+> C. Skip and set LLM output from recent outputs or manually define it. \
 > D. Log comments. \
 > E. See all previous results for this agent. \
 > F. See previous MODIFIED/SCORED/COMMENTED results for this agent. \
@@ -53,7 +53,7 @@ python learn.py
 > A. Manually set the answer/OUTPUT (I don't want to try to improve agent's system prompt). \
 > B. Criticize this answer to get an improved answer. \
 > C. Find a better Prompt by providing critic and/or ideal answer. \
-> D. Evaluate & comment answer (Score between 0(worst)-1(top), and explain) to improve future results by using scored/commented examples. \
+> D. ANNOTATE: evaluate & comment answer (Score between 0(worst)-1(top), and explain) to improve future results by using scored/commented examples. \
 > E. Go back BEFORE inference to improve system prompt or add information to user message. \
 > G. Skip human actions for N rounds. \
 > H. Exit program. \

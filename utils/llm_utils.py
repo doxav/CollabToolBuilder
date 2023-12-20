@@ -16,16 +16,12 @@ from datetime import datetime
 from utils.file_utils import *
 
 from langchain.vectorstores import Chroma, ElasticsearchStore
-from config import OPENAI_API_KEY
+from config import OPENAI_API_KEY, PickleCacheActivated
 import os
 import openai
 
 openai.api_key = OPENAI_API_KEY
 os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
-
-# declaire global env PickleCacheActivated
-PickleCacheActivated = True
-
 
 def is_vscode_installed():
     try:
@@ -222,7 +218,7 @@ class UnifiedVectorDB:
             return self.db.similarity_search_with_score(query, k=(k if k <= 50 else 50)) # k seems to crash when > 50
 
     # query( query_embeddings, query_texts, n_results, where, where_document, include)
-    def query(self, query_text="", k=1, metadata_filter=None, metadata_filter_OR=False, custom_filter_chrome=None, custom_filter_es=None):
+    def query(self, query_text="", k=1, metadata_filter=None, metadata_filter_OR=False, custom_filter_chrome=None, custom_filter_es=None, sort_order=None):
         if UnifiedVectorDB.db_type == 'chroma':
             if metadata_filter and custom_filter_chrome is None:
                 # filter on AND conditions: "filter":{'$and': [{'user_id': {'$eq': user_id}}, {'category_id': {'$eq': cat_id}}]}})
@@ -234,6 +230,8 @@ class UnifiedVectorDB:
                     sign = '$eq' if isinstance(value, str) else '$in'
                     filter_chroma.append({key: {sign: value}})
                 filter_chroma = {('$or' if metadata_filter_OR else '$and'): filter_chroma}
+                if sort_order == 'asc' or sort_order == 'desc': # incompatible with knn search, so we rewrite query just keeping filters and sort
+                    print("WARNING: sort not implemented for Chroma DB")
             return self.db.query(query_text, k=k, filter=filter_chroma)
         elif UnifiedVectorDB.db_type == 'elasticsearch':
             if metadata_filter and custom_filter_es is None:
@@ -242,7 +240,12 @@ class UnifiedVectorDB:
                     custom_filter_es.append({"match":{f"metadata.{key}":value}})
                 if metadata_filter_OR:
                     custom_filter_es = {"bool":{"should":custom_filter_es}}
-            return self.db.similarity_search(query_text, k=(k if k <= 50 else 50), filter=custom_filter_es) # k seems to crash when > 50
+            if sort_order == 'asc' or sort_order == 'desc': # incompatible with knn search, so we rewrite query just keeping filters and sort
+                def custom_query(query_body: dict, query: str):
+                    return {"query": {"bool":{"must":custom_filter_es}}, "sort":[{"metadata.time": {"order": sort_order}}]} # removed: , "size": k
+                return self.db.similarity_search(query_text, k=(k if k <= 50 else 50), custom_query=custom_query) # k seems to crash when > 50
+            else:
+                return self.db.similarity_search(query_text, k=(k if k <= 50 else 50), filter=custom_filter_es) # k seems to crash when > 50
             # filter on AND conditions: filter=[{"match":{"metadata.function_name":function_name}}, {"match":{"metadata.agent_name":agent_name}}]
 
     def count(self):
@@ -317,6 +320,16 @@ class HumanLLMMonitor:
         else:
             return True
 
+    def _get_log_entries(self, agent_name, function_name, max_entries=20):
+        HumanLLMMonitor._check_and_init_vector_db()
+        result = HumanLLMMonitor.common_vectordb.query(
+            query_text="*", 
+            metadata_filter={"function_name": function_name, "agent_name": agent_name},
+            k=max_entries,
+            sort_order="desc"  # Sort time from most recent to oldest
+        )
+        return result
+
     def _before_inference(self, messages, function_calling, callable_system_message=None):
         comments = None
         initial_user_message = messages[1].content
@@ -327,8 +340,8 @@ class HumanLLMMonitor:
                 print("WARNING!!!! Max tokens exceeded, you should refactor user message or system prompt!")
             print("A. Modify agent's 'role' / 'system prompt' (role, global context, constraints, examples).")
             print("B. Add instruction or information to agent.")
-            print("C. Skip agent/inference and manually set agent's output.")
-            print("D. Log comments.")
+            print("C. Skip and set LLM output from recent outputs or manually define it.")
+            print("D. Log comments (not used by the model, just for information).")
             print("E. See all previous results for this agent.")
             print("F. See previous MODIFIED/SCORED/COMMENTED results for this agent.")
             print("G. Skip human actions for N rounds.")
@@ -352,7 +365,7 @@ class HumanLLMMonitor:
                 print("Found the following prompt options:")
                 for i, variant in enumerate(prompt_variants):
                     print(f"{i+1}. {variant}")
-                print(f"{len(prompt_variants) + 1}. Ask to generate a new variant of the current system prompt")
+                print(f"{len(prompt_variants) + 1}. Ask LLM to generate a new variant of the current system prompt given my instructions")
 
                 variant_choice = input("Select a number to modify a prompt or create a new variant (or press Enter to continue with the current selection): ")
                 if variant_choice.isdigit() and 0 < int(variant_choice) <= len(prompt_variants) + 1:
@@ -405,8 +418,22 @@ class HumanLLMMonitor:
 
             elif action == "C":
                 start_time, action = time.time(), "C"
-                print("Enter LLM ANSWER/OUTPUT:\n")
-                llm_output = _visual_input("")
+
+                log_entries = self._get_log_entries(self.agent_name, function_name)
+                for idx, entry in enumerate(log_entries, start=1):
+                    content = json.loads(entry.page_content)
+                    text = content['output_llm_raw'].replace('\n', '\\')
+                    date = entry.metadata['time'].split('.')[0]
+                    print(f"\033[94m{idx}.\033[0m {text[:100]}....{text[-100:]} #{entry.metadata['function_name']} @{date}")  # Display a snippet of each entry
+
+                try: selected_index = int(input("Select the log entry number to load or 0/enter to manually enter LLM output: ")) - 1
+                except: selected_index = -1
+                if selected_index < 0 or selected_index >= len(log_entries):
+                    llm_output = _visual_input("Enter LLM ANSWER/OUTPUT:\n")
+                else:
+                    selected_log_entry = json.loads(log_entries[selected_index].page_content)
+                    llm_output = selected_log_entry['output_llm_raw']
+
                 self.before_inference_option_times[action] += (time.time() - start_time)
                 self.before_inference_option_counts[action] += 1
 
@@ -619,7 +646,6 @@ class HumanLLMMonitor:
                    skipped_inference=False, input_comments=None, output_comments=None, output_llm_raw=None,
                    output_modified=False, inference_time=None, message_tokens=None, score=None, use_premium_llm=False, call_duration=None, skip_rounds=None):
         entry = {
-            "time": datetime.now().isoformat(),
             "input_contents": input_contents,
             "output_contents": output_contents,
             "output_llm_raw": output_llm_raw,
@@ -644,6 +670,7 @@ class HumanLLMMonitor:
 
         # Log entry into the common vector database with tags
         tags = {
+            "time": datetime.now().isoformat(),
             "host": HumanLLMMonitor.get_host_id(),
             "step_id": HumanLLMMonitor.step_id,
             "input_modified": input_modified,

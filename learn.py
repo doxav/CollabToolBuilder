@@ -148,7 +148,7 @@ class CodingAgent():
         self.human_llm_code_task = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm)
         self.envs = envs
 
-    def process_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None):
+    def process_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None):
         import ast, time, re
         error = None
         while retry > 0:
@@ -158,9 +158,21 @@ class CodingAgent():
                     code_pattern = re.compile(r"```python(.*?)```", re.DOTALL)
                     code = "\n".join(code_pattern.findall(message))
                     
+                    tests_pattern = re.compile(r'\n#\s+[Dd]ocument #[a-z0-9-]+\s+usage test[^\n]*\n([^\n]+)')
+                    tests = tests_pattern.findall(message)
+                    # search also into the task definition
+                    if task_definition is not None:
+                        tests += tests_pattern.findall(task_definition)
+
                     parsed = ast.parse(code)
                     functions = []
                     imports = []
+                    # add to imports python text content of files located in the primitives directory which is located in the subdirectory of this file
+                    for root, dirs, files in os.walk(os.path.join(os.path.dirname(__file__), "primitives")):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            with open(file_path, "r") as f:
+                                imports.append(f.read())
                     
                     if len(code) == 0 or len(list(parsed.body)) == 0:
                         return False, f"Error parsing action response (No Code found): {parsed.body}"
@@ -194,8 +206,6 @@ class CodingAgent():
                     program_code = "\n".join(imports) + "\n"
                     program_code += "\n\n".join(function["body"] for function in functions)
 
-                    tests_pattern = re.compile(r'\n#? ?[Dd]ocument #\d+\s*usage test[^\n]*\n([^\n]+)')
-                    tests = tests_pattern.findall(message)
                     for test in tests:
                         try:
                             parsed_test = ast.parse(test)
@@ -227,7 +237,7 @@ class CodingAgent():
             user_message=f"TASK DEFINITION: {refined_task}"
             user_message+=f"\n\nCURRENT STATE OF THE ENVIRONMENT USED TO TEST TASK:\n"+'\n'.join([env.get_state(extended=True) for env in self.envs])
         code = self.human_llm_code_task.CallHumanLLM(system_prompt_template=self.problem_prompts_subdir+"code_task", user_message=user_message, return_message_content_only=False)
-        code_parsing_success, parsed_code = self.process_ai_generated_code(code.content)
+        code_parsing_success, parsed_code = self.process_ai_generated_code(code.content, task_definition=refined_task)
         print(f"************ Code parsed result************\n{parsed_code}\n************************".replace("\\n", "\n"))
         if code_parsing_success:
             if parsed_code["tests"]:
@@ -267,9 +277,12 @@ class ValidationAgent():
         self.human_llm_validate_code = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm)
         self.envs = envs
 
-    def validate_code(self, code: str, no_runtime_error:bool, exec_result:str, task:str=None) -> str:
+    def validate_code(self, code: str, no_runtime_error:bool, exec_result:str, task:str=None, human_evaluation_required=False) -> str:
         runtime_errors = f'\033[32mno runtime errors at execution - code returned:\n{exec_result}\n\033[0m' if no_runtime_error else f'\033[31mruntime errors at execution - error:{exec_result}\033[0m'
-        human_evaluation = input(f"\n\n*******************\n{code}\n************\nCODE ABOVE EXECUTED with result: {runtime_errors}\n****\System may not efficiently evaluate what is produced by the code, please add your evaluation of the result (or hit enter): ")
+        if human_evaluation_required:
+            human_evaluation = input(f"\n\n*******************\n{code}\n************\nCODE ABOVE EXECUTED with result: {runtime_errors}\n****\System may not efficiently evaluate what is produced by the code, please add your evaluation of the result (or hit enter): ")
+        else:
+            human_evaluation = ""
         runtime_errors = 'no runtime errors at execution' if no_runtime_error else 'runtime errors at execution' # just to avoid to break colors inside HumanLLMMonitor
         envs_status = '\n'.join([env.get_state(extended=True) for env in self.envs])
 
@@ -383,12 +396,12 @@ class CapitalizationAgent:
             print(f"{id}: function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}")
         include_code = input(f"When adding the functions description in successful tasks, do you want to also include the code (it may overflow the maximum prompt length but can also guide generation) ? (yes/no): ").strip().lower() in ["yes", "y"]
         # Second step: ask the user to select the functions to load
-        selected_functions = input(f"Please select the functions to load (separated by comma, or just hit enter to load all): ").strip().replace(" ","").split(",")
+        selected_functions = input(f"Please select the functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
         id = 0
         # load into self.tasks_repository
         for result in results_success_db:
             id += 1
-            if selected_functions and (str(id) not in selected_functions) and (selected_functions != [""]):
+            if selected_functions and (str(id) not in selected_functions) and (selected_functions != ["all"]):
                 continue
             # Extract the page_content field from the Document object
             page_content = result.page_content
@@ -413,12 +426,12 @@ class CapitalizationAgent:
             task_data = json.loads(page_content)
             print(f"{id}: failed function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}")
         # Second step: ask the user to select the functions to load
-        selected_functions = input(f"Please select the functions to load (separated by comma, or just hit enter to load all): ").strip().replace(" ","").split(",")
+        selected_functions = input(f"Please select the functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
         id = 0
         # load into self.tasks_repository
         for result in results_failed_db:
             id += 1
-            if selected_functions and (str(id) not in selected_functions) and (selected_functions != [""]):
+            if selected_functions and (str(id) not in selected_functions) and (selected_functions != ["all"]):
                 continue
             # Extract the page_content field from the Document object
             page_content = result.page_content
@@ -439,7 +452,9 @@ def orchestrate_agents():
     # menu to choose the problem prompts subdirectory
     # get the list of subdirectories in the problem prompts directory
     problem_prompts_subdirs = [name for name in os.listdir("prompts") if os.path.isdir(os.path.join("prompts", name))]
-    problem_prompts_subdir = input(f"Please choose the problem prompts subdirectory in {problem_prompts_subdirs} (Minecraft is not currently maintained): ").strip()
+    default_subdir = ''
+    choice = input("Enter a number for subdirectory (leave empty for default):\n"+"\n".join(f"{i}. {subdir}" for i, subdir in enumerate(problem_prompts_subdirs, 1))+"\n").strip()
+    problem_prompts_subdir = problem_prompts_subdirs[int(choice) - 1] if choice.isdigit() and 1 <= int(choice) <= len(problem_prompts_subdirs) else default_subdir
 
     # problem_prompts_subdir string contains CPS in, env_type = "techsynthesis"
     if "CPS" in problem_prompts_subdir:
@@ -479,7 +494,7 @@ def orchestrate_agents():
         task = agent_taskreco.identify_best_task()
         print("Identified Task: "+task.content.replace("\\n", "\n"))
         # refined_task = human_task_refinement_loop(agent_refiner, task)
-        task_description = sanitized_task_name(task.content)
+        task_description = task.content
         parsed_code, validation = coding_and_validation_loop(agent_coding, agent_validation, task_description, max_attempts, extra_manual_validation_to_capitalize)
         if validation == "success":
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
@@ -490,7 +505,8 @@ def orchestrate_agents():
                 agent_taskreco.update_failed_tasks(agent_capitalize.failed_tasks_repository)
         answer = input("Do you want to reset the environment for searching a new task (Y/YES) or search a new task by keeping what has been created by this task (N/NO/Enter) ? or just exit (E/EXIT) ?").strip().upper()
         continue_identifying_tasks = False if answer in ["E", "EXIT"] else True
-        if answer in ["Y", "YES"]: envs.reset()
+        if answer.upper() in ["Y", "YES"]:
+            [env.reset() for env in envs]
 
 def human_task_refinement_loop(agent_refiner, task):
     human_in_loop = True

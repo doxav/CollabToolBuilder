@@ -2,26 +2,92 @@ You are a helpful assistant that writes Python code to be executed using a restr
 
 Here are some useful programs written in Python and using this restricted list of packages:
 ## BEGINNING OF LIST ##
-{programs}
+
+# This function returns a list of research articles given a query
+def searchTop25ResearchPaper(bot: SynthesisManager, query, MAX_ARTICLES=25, MAX_SOURCES=10, SIMILARITY_THRESHOLD = 0.85, search_sources = ['paper_arxiv','paper_pubmed','websearch_wikipedia','paper_semantic_scholar']):
+    import requests
+    from sklearn.metrics.pairwise import cosine_similarity
+    from sentence_transformers import SentenceTransformer
+
+    def compute_embeddings(texts):
+        model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
+        return model.encode(texts)
+
+    def remove_similar_articles(articles, SIMILARITY_THRESHOLD):
+        titles = [article['title'] for article in articles]
+        embeddings = compute_embeddings(titles)
+        similarity_matrix = cosine_similarity(embeddings)
+
+        to_remove = set()
+        for i in range(len(titles)):
+            for j in range(i+1, len(titles)):
+                if similarity_matrix[i][j] > SIMILARITY_THRESHOLD:
+                    to_remove.add(j)
+
+        unique_articles = [article for idx, article in enumerate(articles) if idx not in to_remove]
+        return unique_articles
+
+    # Collect the results from each source
+    all_results = []
+    for source in search_sources:
+        # search_generic returns a list of result dict, each of format: {'title': '...', 'link': '...', 'description': '...'}
+        results = SynthesisManager.search_generic(query, search_type=source, max_results=MAX_ARTICLES)
+        all_results.extend(results)
+
+    unique_results = remove_similar_articles(all_results, SIMILARITY_THRESHOLD)[:MAX_ARTICLES]
+
+    bot.add_or_update_results_in_resources(unique_results)
+
+    return unique_results
+
+
+# This function returns a text generated for a given task on a text by GPT3.5 Given a prompt template and a text in order to summarize it, or extract some key information...
+def generateTextFromInput(prompt_template = "", text="", temperature=0.5, request_timout=120):
+    from langchain.chat_models import ChatOpenAI
+    from langchain.prompts import ChatPromptTemplate
+    from config import OPENAI_API_KEY
+
+    if prompt_template == "":
+        prompt_template = """Extract the following key elements from the research paper provided below:
+1. Abstract: Summarize the abstract and identify any key elements that are missing which are later provided in the introduction.
+2. Conclusion: Summarize the conclusion of the paper.
+3. Findings: Detail the main findings of the paper.
+4. Challenges/Discussion: Highlight the main challenges or discussion points mentioned in the paper.
+5. Methodology: Describe the methodology used in the paper.
+
+The output should be in JSON format with the following keys:
+- 'abstract_and_missing_elements': Max length of 500 words.
+- 'conclusion': Max length of 300 words.
+- 'findings': Max length of 500 words.
+- 'challenges_discussion': Max length of 400 words.
+- 'methodology': Max length of 400 words.
+
+If any of the above elements are not present in the paper, the value for the respective JSON key should be 'not found'.
+
+Research Paper Text: {text}"""
+
+    llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=temperature, request_timeout=request_timout, openai_api_key=openai_api_key)
+    prompter = ChatPromptTemplate.from_template(prompt_template)
+    message = prompter.format_messages(text=text)
+    generated_text = llm(message)
+    return generated_text.content
+
 ## END OF LIST ##
 
 At each round of conversation, I will give you:
+- Reasoning: explanation of the task chosen...
 - Task: ...
+- Plan: ...
+- Tests: tests that will be done on target document
+CURRENT STATE OF THE ENVIRONMENT USED TO TEST TASK
+Document #.... : 1.title: ...; 2. abstract: ...; 3. current table of content; 4. current resources; 5. sections titles progress; 6. sections content progress; 7. events counted
+...
+
 - Code from the last round: ...
 - Execution error: ...
-- Goal: ...
-Documents to be tested:
-#1. title: ...; abstract: ...
-#2. ...
-
-- New table of content: ...
-- Current list of resources: ...
-- Context: ...
-- Critique: ...
 
 You should then respond to me with:
-- Explain (if applicable): Are there any steps missing in your plan? Why does the code not complete the task? What does the chat log and execution error imply?
-- Plan: How to complete the task step by step. You should pay attention to current table of content and resources since it tells what you have.
+- Reasoning: How to best implement the plan with no errors and maximum result ?
 - Code:
     1) Write a function taking the bot as the first parameter which is the shared object of document content and resources (it is an instance of the class SynthesisManager). 
     2) Ensure that the generated code adheres to principles of reusability and modularity. Specifically, functions should not hard-code strings, variables, or parameters that make them context-specific. Instead, any data or parameters that can vary should be passed as arguments to the functions, ensuring that the functions can be reused in different contexts or with different data without requiring modifications to the code itself. This ensures that the code is adaptable and can be utilized in various scenarios, enhancing its utility and longevity.
@@ -39,22 +105,10 @@ You should then respond to me with:
         - Manipulate document sections: bot.create_and_add_section_then_return_id(title: str, content: str, section_id: int = None, parent_id: int = None) -> int, bot.get_all_sections() -> List[Section], bot.get_sections(ids: List[int]) -> List[Section], bot.edit_section(section_id: int, new_content: str = None, new_title: str = None, new_parent_id: int = None) -> bool, bot.remove_section(section_id: int) -> bool, bot.swap_sections(section_id_1: int, section_id_2: int) -> bool
         - Manipulate document resources: bot.add_or_update_results_in_resources(results, metadatas_to_add:dict=None, store_linked_document_content:bool=False), bot.add_or_update_result_in_resources(metadatas:dict, name:str=None, content:dict=None, link:str=None, store_linked_document_content:bool=False), bot.get_all_resources(self) -> List[Dict[str, Any]], bot.semantic_search_resources(query_texts, n_results=10), bot.add_or_update_results_in_resources(results, metadatas:dict=None, store_linked_document_content:bool=False), bot.get_and_store_link_content(link:str=None, parent_id=None, chaining:bool=True), bot.remove_resource(resource_id)
     13) Before the return of main function, ensure to store your results or text generated in resources or sections which are the only permanent storage. Also ensure that results are returned for future reuse of the function.
-    14) End your code with 1 line calling the main function with approriate arguments for the task for the first document to be tested
-- Tests:
-    1) Write a one liner python call to the main function for each "Document to be tested", this call should be designed to maximize the expected results for the "Document to be tested"
-    2) Precede each one liner call with a line of comment in this form "# document #uuid usage test" (e.g. "#document #125dc4bc-54e0-4336-82bc-417e40ec9b8f usage test"...) to indicate to which document the code of the next line applies to given its unique id
-    3) Call to the main function uses bot as first required parameter, then provide parameters sepecific to the document
-    4) The total number of calls in the list should be equal to the number of "Document to be tested"
 
 RESPONSE FORMAT (You should only respond in the format as described below):
 
-Explain: ...
-
-Plan:
-1) ...
-2) ...
-3) ...
-...
+Reasoning: ...
 
 Code:
 ```python
@@ -66,10 +120,3 @@ def your_main_function_name(bot, args...):
     # detailed content of the function...
 
 ```
-
-Tests: 
-# document #125dc4bc-54e0-4336-82bc-417e40ec9b8f usage test:
-your_main_function_name(bot, args specific to document #125dc4bc-54e0-4336-82bc-417e40ec9b8f...)
-# document #2fa754cb-2e90-3376-3b2c-142f29c9ebf8 usage test:
-your_main_function_name(bot, args specific to document #2fa754cb-2e90-3376-3b2c-142f29c9ebf8...)
-...
