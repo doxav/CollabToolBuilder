@@ -158,7 +158,7 @@ class CodingAgent():
                     code_pattern = re.compile(r"```python(.*?)```", re.DOTALL)
                     code = "\n".join(code_pattern.findall(message))
                     
-                    tests_pattern = re.compile(r'\n#\s+[Dd]ocument #[a-z0-9-]+\s+usage test[^\n]*\n([^\n]+)')
+                    tests_pattern = re.compile(r'\n#\s+[Dd]ocument #([a-z0-9-]+)\s+usage test[^\n]*\n([^\n]+)')
                     tests = tests_pattern.findall(message)
                     # search also into the task definition
                     if task_definition is not None:
@@ -167,12 +167,6 @@ class CodingAgent():
                     parsed = ast.parse(code)
                     functions = []
                     imports = []
-                    # add to imports python text content of files located in the primitives directory which is located in the subdirectory of this file
-                    for root, dirs, files in os.walk(os.path.join(os.path.dirname(__file__), "primitives")):
-                        for file in files:
-                            file_path = os.path.join(root, file)
-                            with open(file_path, "r") as f:
-                                imports.append(f.read())
                     
                     if len(code) == 0 or len(list(parsed.body)) == 0:
                         return False, f"Error parsing action response (No Code found): {parsed.body}"
@@ -206,7 +200,7 @@ class CodingAgent():
                     program_code = "\n".join(imports) + "\n"
                     program_code += "\n\n".join(function["body"] for function in functions)
 
-                    for test in tests:
+                    for doc_id, test in tests:
                         try:
                             parsed_test = ast.parse(test)
                         except Exception as e:
@@ -240,21 +234,34 @@ class CodingAgent():
         code_parsing_success, parsed_code = self.process_ai_generated_code(code.content, task_definition=refined_task)
         print(f"************ Code parsed result************\n{parsed_code}\n************************".replace("\\n", "\n"))
         if code_parsing_success:
-            if parsed_code["tests"]:
-                print("CODE TEST NOT IMPLEMENTED YET - RUNNING ALL TESTS IN THE CODE IN ONE PASS")
-                code_to_run = parsed_code["program_code"] + "\n" + parsed_code["runnable_code"] + "\n" + "\n".join(parsed_code["tests"])
+            primitives = []
+            # add to imports python text content of files located in the primitives directory which is located in the subdirectory of this file
+            for root, dirs, files in os.walk(os.path.join(os.path.dirname(__file__), "primitives")):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    with open(file_path, "r") as f:
+                        primitives.append(f.read())
+            if parsed_code["tests"]: # does not run "runnable_code"
                 if reset_unique_ids is None:
                     reset_unique_ids = [env.backup_state() for env in self.envs]
                 else:
                     [env.restore_state(reset_unique_ids[id]) for id, env in enumerate(self.envs)]
                 no_runtime_errors, exec_results = [], []
                 for env in self.envs:
-                    no_runtime_error, exec_result = env.step(code_to_run)
+                    # Find the test that matches this environment's doc_id
+                    matching_tests = [test for doc_id, test in parsed_code["tests"] if doc_id == env.id]
+                    if len(matching_tests) == 0:
+                        no_runtime_error, exec_result = False, f"Error: no test found for doc_id {env.id}"
+                    else:
+                        code_to_run = "\n".join(primitives) + "\n" + parsed_code["program_code"]
+                        for test in matching_tests:
+                            code_to_run += "\n" + test
+                        no_runtime_error, exec_result = env.step(code_to_run)
                     no_runtime_errors.append(no_runtime_error)
                     exec_results.append(exec_result)
                 return parsed_code, all(no_runtime_errors), exec_results, reset_unique_ids
             else:
-                code_to_run = parsed_code["program_code"] + "\n" + parsed_code["runnable_code"]
+                code_to_run = "\n".join(primitives) + "\n" + parsed_code["program_code"] + "\n" + parsed_code["runnable_code"]
                 if reset_unique_ids is None:
                     reset_unique_ids = [env.backup_state() for env in self.envs]
                 else:
@@ -290,7 +297,7 @@ class ValidationAgent():
             f"Code: {code}\n\n"+\
             f"Code execution returned: {runtime_errors}\n\n"+\
             f"Execution result returned by exec command of code provided: {exec_result}\n\n"+\
-            f"Human evaluation of the result: {human_evaluation}\n\n"+\
+            (f"Human evaluation of the result: {human_evaluation}\n\n" if human_evaluation != "" else "") +\
             f"New environment status of examples on which the task has been tested on: {envs_status}\n"
 
         code_validation = self.human_llm_validate_code.CallHumanLLM(system_prompt_template="validate_code", user_message=user_message, return_message_content_only=False) 
@@ -460,16 +467,18 @@ def orchestrate_agents():
     if "CPS" in problem_prompts_subdir:
         env_type = "techsynthesis"  # Ou "minecraft", ou autre pour l'environnement par défaut
         extra_manual_validation_to_capitalize = False
-        documents=[{ 'title':"Complex QA and language models hybrid architectures, Survey",
+        documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
+                    'title':"Complex QA and language models hybrid architectures, Survey",
                 'context':"This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
                 'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"},
-                { 'title':"Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
+                { 'id':"42252c6c-12f3-4edf-9045-8acd69bc3356",
+                 'title':"Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
                 'context':"This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
                 'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
         envs = []
         for doc in documents:
             env = EnvironmentManager(env_type).get_environment()
-            env.title, env.abstract, env.synthesis_manager.target_file_path = doc['title'], doc['context'], doc['target_file_path']
+            env.title, env.abstract, env.synthesis_manager.target_file_path, env.id = doc['title'], doc['context'], doc['target_file_path'], doc['id']
             envs.append(env)
 
     else:

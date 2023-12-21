@@ -15,7 +15,7 @@ You must follow the criteria below:
 4) Task should be novel compared to learnt and failed tasks.
 5) You should then propose a plan to achieve this task by breaking it down as a tree-structure. The plan tree should be exactly of depth 2. You should index the two levels like ’1.’, ’1.1.’, ’1.2.’, ’2.’, ’2.1.’, etc. The sub-tasks at the bottom level should use basic commands or learnt tasks and logic that could be easily converted to python code.
 6) Tasks provided should not be specific to examples so the reasoning can mention examples but proposed task and plan should not mention any information related to examples
-7) After proposing the task, you should provide a test of the main function corresponding to this task:
+7) After proposing the task, you should provide a test of the function corresponding to this task:
     a) Write a one liner python call to the main function for each "Document to be tested", this call should be designed to maximize the expected results for the "Document to be tested"
     b) Precede each one liner call with a line of comment in this form "# document #uuid usage test" (e.g. "#document #125dc4bc-54e0-4336-82bc-417e40ec9b8f usage test"...) to indicate to which document the code of the next line applies to given its unique id
     c) Call to the main function uses bot as first required parameter, then provide parameters sepecific to the document for this function
@@ -39,8 +39,8 @@ RESPONSE FORMAT:
 4. Tests:
 ```python
 # document #125dc4bc-54e0-4336-82bc-417e40ec9b8f usage test:
-your_main_function_name(bot, keyword arguments with value specific to document #125dc4bc-54e0-4336-82bc-417e40ec9b8f for the given task...)
+task_function_name(bot, keyword arguments with value specific to document #125dc4bc-54e0-4336-82bc-417e40ec9b8f for the given task...)
 # document #2fa754cb-2e90-3376-3b2c-142f29c9ebf8 usage test:
-your_main_function_name(bot, keyword arguments with value specific to document #2fa754cb-2e90-3376-3b2c-142f29c9ebf8 for the given task...)
+task_function_name(bot, keyword arguments with value specific to document #2fa754cb-2e90-3376-3b2c-142f29c9ebf8 for the given task...)
 ...
 ```

@@ -14,6 +14,7 @@ import tkinter as tk
 from tkinter import simpledialog, scrolledtext
 from datetime import datetime
 from utils.file_utils import *
+import concurrent.futures
 
 from langchain.vectorstores import Chroma, ElasticsearchStore
 from config import OPENAI_API_KEY, PickleCacheActivated
@@ -301,6 +302,7 @@ class HumanLLMMonitor:
         self.comments = []
         self.skip_rounds = HumanLLMMonitor.default_skip_rounds
         self.log_data = []
+        self.num_parallel_inferences = 1
         self.llm_max_context_size = model_max_context_size
         self.model_name = model_name or "gpt-3.5-turbo"
         self.premium_model_name = model_name or "gpt-4-turbo"
@@ -347,6 +349,7 @@ class HumanLLMMonitor:
             print("G. Skip human actions for N rounds.")
             print("H. Exit program.")
             print(f"I. Activate/de-activate function calling to allow model request external knowledge - current status: {function_calling}")
+            print(f"J. Change num of parallel inferences - Current value={self.num_parallel_inferences}")
             if self.premium_llm_function: print("P. Proceed to inference using a PREMIUM LLM.")
             action = input("Choose an action (or directly hit Enter to proceed to inference - we are \033[32mPRE/BEFORE\033[0m llm inference):").upper()
 
@@ -422,7 +425,7 @@ class HumanLLMMonitor:
                 log_entries = self._get_log_entries(self.agent_name, function_name)
                 for idx, entry in enumerate(log_entries, start=1):
                     content = json.loads(entry.page_content)
-                    text = content['output_llm_raw'].replace('\n', '\\')
+                    text = content['output_contents']['content'].replace('\n', '\\')
                     date = entry.metadata['time'].split('.')[0]
                     print(f"\033[94m{idx}.\033[0m {text[:100]}....{text[-100:]} #{entry.metadata['function_name']} @{date}")  # Display a snippet of each entry
 
@@ -432,7 +435,7 @@ class HumanLLMMonitor:
                     llm_output = _visual_input("Enter LLM ANSWER/OUTPUT:\n")
                 else:
                     selected_log_entry = json.loads(log_entries[selected_index].page_content)
-                    llm_output = selected_log_entry['output_llm_raw']
+                    llm_output = selected_log_entry['output_contents']['content']
 
                 self.before_inference_option_times[action] += (time.time() - start_time)
                 self.before_inference_option_counts[action] += 1
@@ -484,6 +487,10 @@ class HumanLLMMonitor:
             elif action == "I":
                 function_calling = not function_calling
                 print(f"function_calling is now {function_calling}")
+
+            elif action == "J":
+                try: self.num_parallel_inferences = int(input("Enter new value for num_parallel_inferences: "))
+                except: self.num_parallel_inferences = 1
 
             proceed = input("Proceed to inference (y/n) ?" + (" You can hit 'p' to proceed using a premium llm." if self.premium_llm_function else "")).lower()
             if proceed == "y" or proceed == "":
@@ -661,7 +668,8 @@ class HumanLLMMonitor:
             "after_inference_option_counts": self.after_inference_option_counts,
             "call_duration": call_duration
         }
-        print(f"Human modifications ? input_modified:{input_modified}, output_modified:{output_modified}\nlog entry: {entry}")
+        #print(f"Human modifications ? input_modified:{input_modified}, output_modified:{output_modified}\nlog entry: {entry}")
+
         # Serialize the entry as a JSON string
         serialized_entry = json.dumps(entry, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
         
@@ -692,7 +700,15 @@ class HumanLLMMonitor:
             metadatas=[tags]
         )
 
-    def CallHumanLLM(self, original_input_messages=None, llm_function=None, premium_llm_function=None, callable_system_message=None, system_prompt_template=None, user_message=None, return_message_content_only=True, function_calling=False):
+    def CallHumanLLM(self, original_input_messages=None, llm_function=None, premium_llm_function=None, callable_system_message=None, system_prompt_template=None, user_message=None, return_message_content_only=True, function_calling=False, temperature=0.5, timeout_seconds=90):
+        # Define a helper function to perform the LLM calls for parallel inference.
+        def perform_llm_call(input_msg, use_premium, func_calling, temperature):
+            if use_premium:
+                func = premium_llm_function if not func_calling else HumanLLMMonitor.call_llm_function_with_function_call
+            else:
+                func = llm_function if not func_calling else HumanLLMMonitor.call_llm_function_with_function_call
+            return func(input_msg, temperature=temperature)  # Assuming the function accepts a temperature parameter.
+        
         print(f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[1].function} calling HumanLLMMonitor****\033[0m")
         if system_prompt_template: self.system_prompt = system_prompt_template
         if llm_function is None: llm_function = self.llm
@@ -717,10 +733,32 @@ class HumanLLMMonitor:
             
             start_time = datetime.now()
             if llm_input_messages and not skip_inference:
-                if use_premium_llm:
-                    llm_output = premium_llm_function(llm_input_messages) if not function_calling else HumanLLMMonitor.call_llm_function_with_function_call(premium_llm_function, messages=llm_input_messages)
+                # Use concurrent futures to parallelize the LLM calls.
+                outputs = []
+                with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_parallel_inferences) as executor:
+                    futures = [executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling, temperature) for _ in range(self.num_parallel_inferences)]
+                    for future in futures:
+                        try:
+                            llm_response = future.result(timeout=timeout_seconds)
+                            outputs.append(llm_response)
+                            print(f'\033[**** New inference result recieved and added to outputs as #{len(outputs)}\033[0m:\n{llm_response.content}\n\033[END OF #{len(outputs)}****\033[0m')
+                        except concurrent.futures.TimeoutError:
+                            print('A task ran longer than the allotted timeout and was cancelled.')
+                        except Exception as exc:
+                            print(f'Generated an exception: {exc}')
+                    # Wait for all the futures to complete before continuing.
+                    concurrent.futures.wait(futures)
+                if len(outputs) == 0:
+                    print(f'**** No inference result recieved, set output to None')
+                    llm_output = None
+                elif len(outputs) == 1:
+                    print(f'**** One inference result recieved, set output to it')
+                    llm_output = outputs[0]
                 else:
-                    llm_output = llm_function(llm_input_messages) if not function_calling else HumanLLMMonitor.call_llm_function_with_function_call(llm_function, messages=llm_input_messages)
+                    # Ask user to select output from the parallel inferences.
+                    selected_output = int(input(f'Multiple outputs, select the output id number to use (1-{len(outputs)}): '))
+                    # if id is not between 1 and len(outputs), then set to 1 and print error
+                    llm_output = outputs[selected_output - 1] if 0 < selected_output <= len(outputs) else outputs[0]
             else:  # Skip the LLM inference.
                 llm_output = AIMessage(content=skip_inference)
             end_time = datetime.now()

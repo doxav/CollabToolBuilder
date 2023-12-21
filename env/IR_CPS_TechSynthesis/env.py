@@ -1263,9 +1263,10 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
                  embedding_model_name: str = "text-embedding-ada-002",
                  openai_api_key: str = None,
                  target_file_path: str = None,
+                 id: str = None,
                  ):
         super().__init__()
-        self.id = str(uuid.uuid4())
+        self.id = str(uuid.uuid4()) if id is None else id
         if CPS_env_type != "techsynthesis":
             raise ValueError("problem_type must be techsynthesis")
         self.target_file_path = target_file_path
