@@ -2,6 +2,7 @@ import inspect
 import json
 import pickle
 import os
+import re
 import urllib.request
 import subprocess
 import hashlib
@@ -425,7 +426,7 @@ class HumanLLMMonitor:
                 log_entries = self._get_log_entries(self.agent_name, function_name)
                 for idx, entry in enumerate(log_entries, start=1):
                     content = json.loads(entry.page_content)
-                    text = content['output_contents']['content'].replace('\n', '\\')
+                    text = (content['output_contents'][0] if isinstance(content['output_contents'], list) else content['output_contents'])['content'].replace('\n', '\\')
                     date = entry.metadata['time'].split('.')[0]
                     print(f"\033[94m{idx}.\033[0m {text[:100]}....{text[-100:]} #{entry.metadata['function_name']} @{date}")  # Display a snippet of each entry
 
@@ -435,7 +436,7 @@ class HumanLLMMonitor:
                     llm_output = _visual_input("Enter LLM ANSWER/OUTPUT:\n")
                 else:
                     selected_log_entry = json.loads(log_entries[selected_index].page_content)
-                    llm_output = selected_log_entry['output_contents']['content']
+                    llm_output = (selected_log_entry['output_contents'][0] if isinstance(selected_log_entry['output_contents'], list) else selected_log_entry['output_contents'])['content']
 
                 self.before_inference_option_times[action] += (time.time() - start_time)
                 self.before_inference_option_counts[action] += 1
@@ -741,7 +742,7 @@ class HumanLLMMonitor:
                         try:
                             llm_response = future.result(timeout=timeout_seconds)
                             outputs.append(llm_response)
-                            print(f'\033[**** New inference result recieved and added to outputs as #{len(outputs)}\033[0m:\n{llm_response.content}\n\033[END OF #{len(outputs)}****\033[0m')
+                            print(f'\033[0m**** New inference result recieved and added to outputs as #{len(outputs)}\033[0m:\n{llm_response.content}\n\033[9mEND OF #{len(outputs)}****\033[0m')
                         except concurrent.futures.TimeoutError:
                             print('A task ran longer than the allotted timeout and was cancelled.')
                         except Exception as exc:
@@ -750,24 +751,46 @@ class HumanLLMMonitor:
                     concurrent.futures.wait(futures)
                 if len(outputs) == 0:
                     print(f'**** No inference result recieved, set output to None')
-                    llm_output = None
+                    llm_outputs = None
                 elif len(outputs) == 1:
                     print(f'**** One inference result recieved, set output to it')
-                    llm_output = outputs[0]
+                    llm_outputs = outputs
                 else:
+                    print(f'**** {len(outputs)} inference results received')
                     # Ask user to select output from the parallel inferences.
-                    selected_output = int(input(f'Multiple outputs, select the output id number to use (1-{len(outputs)}): '))
-                    # if id is not between 1 and len(outputs), then set to 1 and print error
-                    llm_output = outputs[selected_output - 1] if 0 < selected_output <= len(outputs) else outputs[0]
+                    if self.skip_rounds > 0:
+                        selected_output = ""
+                    else:
+                        selected_output = input(f'Select the output id number to keep (1-{len(outputs)}), or comma separated list of outputs, or hit Enter to keep all of them: ')
+                    # selected_output could be a comma separated list of output ids, or a single output id, or empty, process it
+                    if selected_output != "":
+                        # remove any charactere that is not a digit or a comma
+                        selected_output = re.sub(r"[^0-9,]", "", selected_output)
+                        selected_output = [int(x) for x in selected_output.strip().split(",")]
+                        llm_outputs = [outputs[i-1] for i in selected_output]
+                        #if len(llm_output) == 1: llm_output = llm_output[0]
+                    else:
+                        llm_outputs = outputs
             else:  # Skip the LLM inference.
-                llm_output = AIMessage(content=skip_inference)
+                llm_outputs = [AIMessage(content=skip_inference)]
             end_time = datetime.now()
-            raw_llm_output = llm_output.content+"" if llm_output else ""
+            raw_llm_outputs = [(output.content if output else None) for output in llm_outputs] if isinstance(llm_outputs, list) else None
 
-            # Post-inference human intervention
-            output_messages, output_comments, score = self._after_inference(llm_output)
-            if output_messages != -1: break
-            else: original_input_messages[0].content, original_input_messages[1].content = input_contents_str0, input_contents_str1
+            output_messages, output_comments, score = [], [], []
+            if len(llm_outputs) > 1:
+                print("**** Multiple LLM ANSWERS > we will process POST INFERENCE for each ****")
+            for llm_output in llm_outputs:
+                print(f"\033[POST INFERENCE for #{llm_outputs.index(llm_output)+1}****\033[0m")
+                # Post-inference human intervention
+                output_messages_instance, output_comments_instance, score_instance = self._after_inference(llm_output)
+                output_messages.append(output_messages_instance)
+                output_comments.append(output_comments_instance)
+                score.append(score_instance)
+            # test if any of output_messages instance != -1, break if True
+            if any([output_messages_instance != -1 for output_messages_instance in output_messages]):
+                break                
+            else:
+                original_input_messages[0].content, original_input_messages[1].content = input_contents_str0, input_contents_str1
 
         # Get the calling function's name using inspect
         caller_function_name = inspect.stack()[1].function
@@ -786,9 +809,10 @@ class HumanLLMMonitor:
             skip_rounds=self.skip_rounds,
             input_comments=input_comments,
             output_comments=output_comments,
-            output_llm_raw=raw_llm_output,
-            output_modified=(output_messages.content != raw_llm_output), 
-            score=score,
+            output_llm_raw=raw_llm_outputs,
+            # test if any  output_modified=(output_messages.content != raw_llm_output), 
+            output_modified=any(output_message.content != raw for output_message, raw in zip(output_messages, raw_llm_outputs)),
+            score=score, 
             message_tokens=None,
             use_premium_llm=use_premium_llm,
             call_duration=call_duration

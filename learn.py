@@ -98,6 +98,10 @@ class Environment:
         # convert the dictionary into a string useful for comparison and analysis by language models
         state_text = "Files directory content: "+(json.dumps(state) if state.keys().__len__() > 0 else "empty")
         return state_text
+    
+    def get_score(self):
+        # return the score of the current state
+        return None
 
 class EnvironmentManager:
     def __init__(self, env_type="default"):
@@ -140,13 +144,15 @@ class TaskIdentificationAgent():
 
 # Agent 2: Code Task
 class CodingAgent():
-    def __init__(self, llm, envs: [Environment], premium_llm=None, problem_prompts_subdir=None):
+    def __init__(self, llm, envs: [Environment], premium_llm=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks"):
         #super().__init__(llm)
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         self.llm = llm
         self.premium_llm = premium_llm
         self.human_llm_code_task = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm)
         self.envs = envs
+        self.db_successful_tasks = UnifiedVectorDB( collection_name=db_collection_success, embedding_function=HumanLLMMonitor.common_vectordb_embedding_function, persist_directory=HumanLLMMonitor.common_vectordb_persist_directory+db_collection_success)
+        self.db_failed_tasks = UnifiedVectorDB( collection_name=db_collection_failed, embedding_function=HumanLLMMonitor.common_vectordb_embedding_function, persist_directory=HumanLLMMonitor.common_vectordb_persist_directory+db_collection_failed)
 
     def process_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None):
         import ast, time, re
@@ -225,55 +231,64 @@ class CodingAgent():
 
         return False, f"Error parsing action response (before program execution): {error}"
 
-    def code_task_and_run_test(self, refined_task: str, previous_error: str=None, previous_code: str=None, reset_unique_ids: str=None) -> str:
-        if previous_error: user_message=f"TASK DEFINITION: {refined_task}\n\nPREVIOUS CODE ATTEMPT:\nERROR: {previous_error.content}\n\nCODE: {previous_code}"
-        else:
-            user_message=f"TASK DEFINITION: {refined_task}"
-            user_message+=f"\n\nCURRENT STATE OF THE ENVIRONMENT USED TO TEST TASK:\n"+'\n'.join([env.get_state(extended=True) for env in self.envs])
-        code = self.human_llm_code_task.CallHumanLLM(system_prompt_template=self.problem_prompts_subdir+"code_task", user_message=user_message, return_message_content_only=False)
-        code_parsing_success, parsed_code = self.process_ai_generated_code(code.content, task_definition=refined_task)
-        print(f"************ Code parsed result************\n{parsed_code}\n************************".replace("\\n", "\n"))
-        if code_parsing_success:
-            primitives = []
-            # add to imports python text content of files located in the primitives directory which is located in the subdirectory of this file
-            for root, dirs, files in os.walk(os.path.join(os.path.dirname(__file__), "primitives")):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    with open(file_path, "r") as f:
-                        primitives.append(f.read())
-            if parsed_code["tests"]: # does not run "runnable_code"
+    def get_primitives(self):
+        primitives = []
+        # add to imports python text content of files located in the primitives directory which is located in the subdirectory of this file
+        for root, dirs, files in os.walk(os.path.join(os.path.dirname(__file__), "primitives")):
+            for file in files:
+                file_path = os.path.join(root, file)
+                with open(file_path, "r") as f:
+                    primitives.append(f.read())
+        return primitives
+
+    def code_task_and_run_test(self, refined_task: str, previous_errors=None, previous_scores=None, previous_codes=None, reset_unique_ids: str=None) -> str:
+        primitives = self.get_primitives()
+        user_message=f"TASK DEFINITION: {refined_task}"
+        user_message+=f"\n\nCURRENT STATE OF THE ENVIRONMENT USED TO TEST TASK:\n"+'\n'.join([env.get_state(extended=True) for env in self.envs])
+        if len(primitives) > 0:
+            user_message+=f"\n\nCODE PRIMITIVES RE-USABLE OR FOR DEMONTRATION PURPOSE:\n"+'\n'.join(primitives)
+        # TODO: include best code from successful tasks from CapitalizationAgent self.db_successful_tasks and self.db_failed_tasks
+        print("\033[91mTODO: add support to include best code from successful tasks from CapitalizationAgent self.db_successful_tasks and self.db_failed_tasks\033[0m")
+        if previous_errors:
+            user_message+=f"\n\nPREVIOUS ATTEMPTS TO CODE THE TASK: [[[\n"
+            for previous_error, previous_score, previous_code in zip(previous_errors, previous_scores, previous_codes):
+                user_message+=f"\n\n<<\nERROR OR FEEDBACK: {previous_error.content}" + (f"\n\nSCORE: {previous_score}" if previous_score else "") + f"\n\nCODE: {previous_code}\n>>"
+            user_message+=f"\n]]]"
+        codes = self.human_llm_code_task.CallHumanLLM(system_prompt_template=self.problem_prompts_subdir+"code_task", user_message=user_message, return_message_content_only=False)
+        results = []
+        for code in codes:
+            code_parsing_success, parsed_code = self.process_ai_generated_code(code.content, task_definition=refined_task)
+            print(f"************ Code parsed result************\n{parsed_code}\n************************".replace("\\n", "\n"))
+            if code_parsing_success:
+                # Backup or restore the state before running tests or runnable code
                 if reset_unique_ids is None:
                     reset_unique_ids = [env.backup_state() for env in self.envs]
                 else:
                     [env.restore_state(reset_unique_ids[id]) for id, env in enumerate(self.envs)]
+                # Initialize variables for runtime errors and execution results
                 no_runtime_errors, exec_results = [], []
+                # Common code part to be executed in all cases
+                common_code = "\n".join(primitives) + "\n" + parsed_code["program_code"]
+                # insert content of config.py into the code to ensure that the OPENAI_API_KEY is set
+                with open("config.py", "r") as f: common_code = f.read() + "\n" + common_code
+                # Run the code in each environment
                 for env in self.envs:
-                    # Find the test that matches this environment's doc_id
-                    matching_tests = [test for doc_id, test in parsed_code["tests"] if doc_id == env.id]
-                    if len(matching_tests) == 0:
-                        no_runtime_error, exec_result = False, f"Error: no test found for doc_id {env.id}"
+                    # Determine tests to run or set default runnable code
+                    matching_tests = [test for doc_id, test in parsed_code["tests"] if doc_id == env.id] if parsed_code["tests"] else [parsed_code['runnable_code']]
+                    if not matching_tests:
+                        no_runtime_error, exec_result = False, f"Error: no test found for given id {env.id}" if parsed_code["tests"] else f"Error: no runnable code found nor tests"
                     else:
-                        code_to_run = "\n".join(primitives) + "\n" + parsed_code["program_code"]
-                        for test in matching_tests:
-                            code_to_run += "\n" + test
+                        # Concatenate common code with tests or runnable code
+                        code_to_run = common_code + "\n" + "\n".join(matching_tests)
                         no_runtime_error, exec_result = env.step(code_to_run)
+                    # Append the results for each environment
                     no_runtime_errors.append(no_runtime_error)
                     exec_results.append(exec_result)
-                return parsed_code, all(no_runtime_errors), exec_results, reset_unique_ids
+                # Return combined results
+                results.append((parsed_code, all(no_runtime_errors), exec_results, reset_unique_ids, [env.get_score() for env in self.envs]))
             else:
-                code_to_run = "\n".join(primitives) + "\n" + parsed_code["program_code"] + "\n" + parsed_code["runnable_code"]
-                if reset_unique_ids is None:
-                    reset_unique_ids = [env.backup_state() for env in self.envs]
-                else:
-                    [env.restore_state(reset_unique_ids[id]) for id, env in enumerate(self.envs)]
-                no_runtime_errors, exec_results = [], []
-                for env in self.envs:
-                    no_runtime_error, exec_result = env.step(code_to_run)
-                    no_runtime_errors.append(no_runtime_error)
-                    exec_results.append(exec_result)
-                return parsed_code, all(no_runtime_errors), exec_results, reset_unique_ids
-        else:
-            return code, False, parsed_code, None
+                results.append((code, False, parsed_code, None, None))
+        return results
 
 # Agent 3: Code Validation
 class ValidationAgent():
@@ -501,6 +516,9 @@ def orchestrate_agents():
     while continue_identifying_tasks:
         HumanLLMMonitor.step_id = str(uuid.uuid4())
         task = agent_taskreco.identify_best_task()
+        if len(task) > 0:
+            print('Multiple tasks selection not yet supported. Selecting the first one.')
+        task = task[0]
         print("Identified Task: "+task.content.replace("\\n", "\n"))
         # refined_task = human_task_refinement_loop(agent_refiner, task)
         task_description = task.content
@@ -532,29 +550,59 @@ def get_success_value_in_text(text):
         return success_value.lower() in ['true', 'yes', 'y', '1']
     return False
 
-def coding_and_validation_loop(agent_coding, agent_validation, task_description, max_attempts, extra_manual_validation_to_capitalize=True):
-    previous_error, previous_code, reset_unique_ids = None, None, None
+def coding_and_validation_loop(agent_coding, agent_validation, task_description, max_attempts, extra_manual_validation_to_capitalize=True, continue_even_if_successful=False):
+    previous_errors, previous_codes, previous_scores, reset_unique_ids = [], [], [], None
+    successful_codes = []  # To store successful codes
+
     for attempt in range(max_attempts):
-        parsed_code, no_runtime_error, exec_result, reset_unique_ids = agent_coding.code_task_and_run_test(task_description, previous_error, previous_code, reset_unique_ids)
-        print(f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{parsed_code['program_code']}\n".replace("\\n", "\n"))
-        validation_agent_feedback = agent_validation.validate_code(parsed_code["program_code"], no_runtime_error, exec_result, task=task_description)
-        afb = validation_agent_feedback.content.replace('\\n', '\n')
-        print("#"*20+f"\nAgent validation feedback: {afb}")
+        results = agent_coding.code_task_and_run_test(task_description, previous_errors, previous_scores, previous_codes, reset_unique_ids)
 
-        if extra_manual_validation_to_capitalize:
-            validation = input("#"*20+f"\nADD THIS FUNCTION TO LIBRARY ? Please enter 'yes' if this a success and you want to add this function to library, 'no' if this failed: ").lower()
-        else:
-            validation = get_success_value_in_text(afb)
+        # First part: Process all codes and collect results
+        for index, (parsed_code, no_runtime_error, exec_result, new_reset_unique_ids, score) in enumerate(results):
+            print(f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace("\\n", "\n"))
+            validation_agent_feedback = agent_validation.validate_code(parsed_code["program_code"], no_runtime_error, exec_result, task=task_description)
+            print("Agent validation 'feedback' currently only support 1 feedback")
+            validation_agent_feedback = validation_agent_feedback[0]
+            afb = validation_agent_feedback.content.replace('\\n', '\n')
+            print("#"*20 + f"\nAgent validation feedback: {afb}")
 
-        if validation in ["yes","y", True]:
-            print(f"Code validated successfully.")
-            return parsed_code, "success"
-        else:
-            print(f"Validation Error: {validation_agent_feedback}")
-            previous_error, previous_code = validation_agent_feedback, parsed_code["program_code"]
+            if extra_manual_validation_to_capitalize:
+                validated = (input("#"*20+f"\nADD THIS FUNCTION TO LIBRARY ? Please enter 'yes' if this a success and you want to add this function to library, 'no' if this failed: ").lower() in ["yes", "y", True])
+            else:
+                validated = get_success_value_in_text(afb) in ["yes", "y", True]
+            if validated:
+                successful_codes.append((parsed_code, validation_agent_feedback, new_reset_unique_ids, score))
+
+            # Update previous errors and codes lists
+            if index < len(previous_errors):
+                previous_errors[index] = validation_agent_feedback
+                previous_scores[index] = score
+                previous_codes[index] = parsed_code["program_code"]
+            else:
+                previous_errors.append(validation_agent_feedback)
+                previous_scores.append(score)
+                previous_codes.append(parsed_code["program_code"])
+
+        reset_unique_ids = new_reset_unique_ids  # Update reset_unique_ids for the next iteration
+
         if attempt == max_attempts - 1:
             print("Max attempts reached. Trying a new task.")
-    return parsed_code, "failed"
+
+    # Second part: If there are successful codes, ask user to select one
+    if successful_codes and (not continue_even_if_successful or attempt >= max_attempts - 1):
+        for i, (parsed_code, feedback, new_reset_unique_ids, score) in enumerate(successful_codes):
+            print(f"\033[91mOption {i+1}:\033[0m\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {score}\033[0m\n")
+
+        selection = input("Several codes were successful. Please enter the number of the code you want to add to the library: ").strip()
+        if selection.isdigit() and 0 < int(selection) <= len(successful_codes):
+            selected_index = int(selection) - 1
+            print("Code validated successfully.")
+            selected_code, _, selected_reset_unique_ids = successful_codes[selected_index]
+            return selected_code, "success"
+        else:
+            print("Invalid selection or no selection made. Exiting without adding any code.")
+
+    return None, "failed"  # If no successful code was selected, return failure
 
 def sanitized_task_name(task):
     # Implement task name sanitization logic

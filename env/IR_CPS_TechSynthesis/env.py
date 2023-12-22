@@ -1284,6 +1284,10 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         self.has_reset_once = False
         self.state = None  # Placeholder: initial state of the environment
 
+    def get_score(self):
+        distance = self.synthesis_manager.get_distance_to_targetJSON()
+        return {'sections titles progress': distance['plan_titles_embedding_similarity'], 'sections content progress': distance['plan_contents_embedding_similarity']}
+
     def reset(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         self.has_reset_once = True
         super().reset()

@@ -5,3 +5,4 @@ venv/
 prompts/*.txt.*
 temp/
 config.py
+primitives/config.py
