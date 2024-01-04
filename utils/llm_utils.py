@@ -703,12 +703,20 @@ class HumanLLMMonitor:
 
     def CallHumanLLM(self, original_input_messages=None, llm_function=None, premium_llm_function=None, callable_system_message=None, system_prompt_template=None, user_message=None, return_message_content_only=True, function_calling=False, temperature=0.5, timeout_seconds=90):
         # Define a helper function to perform the LLM calls for parallel inference.
-        def perform_llm_call(input_msg, use_premium, func_calling, temperature):
+        def perform_llm_call(input_msg, use_premium, func_calling, temperature, stream=True):
             if use_premium:
                 func = premium_llm_function if not func_calling else HumanLLMMonitor.call_llm_function_with_function_call
             else:
                 func = llm_function if not func_calling else HumanLLMMonitor.call_llm_function_with_function_call
-            return func(input_msg, temperature=temperature)  # Assuming the function accepts a temperature parameter.
+
+            if stream:
+                final_output = ""  # Initialize an empty string to hold the full response
+                for chunk in func.stream(input_msg, temperature=temperature):  # Ensure 'llm' is correctly initialized with temperature
+                    print(chunk.content, end="", flush=True)
+                    final_output += chunk.content  # Concatenate each chunk to build the full response
+                return AIMessage(content=final_output) # Return the concatenated full respons
+            else:
+                return func(input_msg, temperature=temperature)
         
         print(f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[1].function} calling HumanLLMMonitor****\033[0m")
         if system_prompt_template: self.system_prompt = system_prompt_template
