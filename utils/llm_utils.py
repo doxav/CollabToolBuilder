@@ -862,16 +862,16 @@ class HumanLLMMonitor:
                     smart_print(f"\033[31mMULTI-INFERENCE OUTPUT #{counter} > \033[0m", self.agent_name, "POST INFERENCE", append=True)
                 # Post-inference human intervention
                 output_messages_instance, output_comments_instance, score_instance = self._after_inference(llm_output, output_id=counter, outputs_count=len(llm_outputs))
+                output_messages.append(output_messages_instance)
                 if output_messages_instance == -1:
                     break
-                output_messages.append(output_messages_instance)
                 output_comments.append(output_comments_instance)
                 score.append(score_instance)
             # test if any of output_messages instance != -1, break if True
-            if all([output_messages_instance != -1 for output_messages_instance in output_messages]):
-                break                
-            else:
+            if any([output_messages_instance == -1 for output_messages_instance in output_messages]):
                 original_input_messages[0].content, original_input_messages[1].content = input_contents_str0, input_contents_str1
+            else:
+                break                
 
         # Get the calling function's name using inspect
         caller_function_name = inspect.stack()[1].function
