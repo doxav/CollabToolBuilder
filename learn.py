@@ -329,6 +329,22 @@ class CodingAgent():
         #     for future in as_completed(futures):
         #         results.append(future.result())
 
+        # test if more than one code is returned
+        if len(results) > 1:
+            # display the list of results with success, exception and code
+            results_list = ""
+            for id, result in enumerate(results):
+                # parsed_code, all(no_runtime_errors), exec_results, reset_unique_ids, [env.get_score() for env in self.envs], [env.get_state(extended=True) for env in self.envs]
+                if result[1]:
+                    results_list += f"{id}. SUCCESS / SCORE: {result[4]} / CODE: {result[0]['program_code'][:100]}\n"
+                else:
+                    results_list += f"{id}. \033[31mFAILED\033[0m / SCORE: {result[4]} / EXCEPTION: {result[2][0][:100]} / CODE: {result[0]['program_code'][:100]}\n"
+
+            # ask the user to select the code to keep
+            selected_code = input(f"{results_list}CODE SELECTION Please select the code to keep (separated by comma, or just hit enter to keep ALL): ").strip().replace(" ","").lower().split(",")
+            id = 0
+            # keep only the selected code
+            results = [result for id, result in enumerate(results) if selected_code and (str(id) in selected_code or selected_code == [""])]
         return results
 
 # Agent 3: Code Validation
@@ -562,9 +578,21 @@ def orchestrate_agents():
     while continue_identifying_tasks:
         HumanLLMMonitor.step_id = str(uuid.uuid4())
         task = agent_taskreco.identify_best_task()
-        if len(task) > 0:
-            smart_print('Multiple tasks selection not yet supported. Selecting the first one.', "orchestrate_agents", "orchestrate_agents WARNING")
-        task = task[0]
+        if len(task) > 1:
+            # list all tasks with their index and the 200 first characters of their content
+            task_list = "Multiple task output, only one allowed - PLEASE SELECT:\n"
+            for i, t in enumerate(task):
+                task_list += f"\033[31m{i}\033[0m: {t.content[:200]}\n"
+            smart_print(task_list, "orchestrate_agents", "orchestrate_agents SELECTION")
+            # get input from user with the index of the task to select, manage exceptions
+            while True:
+                try:
+                    task = task[int(input("Enter the index of the task to select: "))]
+                    break
+                except Exception as e:
+                    print(f"Error: {e}\n\nEnter a valid index")
+        else:
+            task = task[0]
         smart_print("Identified Task: "+task.content.replace("\\n", "\n"), "orchestrate_agents", "orchestrate_agents RESULT")
         # refined_task = human_task_refinement_loop(agent_refiner, task)
         task_description = task.content

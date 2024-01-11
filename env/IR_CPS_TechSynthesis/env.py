@@ -1218,8 +1218,9 @@ class SynthesisManager:
         resources_status = []
         content_info = {}
         for resource in self.document.resources:
-            for key, value in resource['document']['content'].items():
-                content_info[f"len(content['{key}'])"] = len(str(value))
+            if resource['document']['content']:
+                for key, value in resource['document']['content'].items():
+                    content_info[f"len(content['{key}'])"] = len(str(value))
             
             status_data = [
                 resource['id'],

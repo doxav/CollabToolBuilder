@@ -482,7 +482,7 @@ class HumanLLMMonitor:
                 log_entries, list_output = self._get_log_entries(self.agent_name, function_name), ""
                 for idx, entry in enumerate(log_entries, start=1):
                     content = json.loads(entry.page_content)
-                    text = (content['output_contents'][0] if isinstance(content['output_contents'], list) else content['output_contents'])['content'].replace('\n', '\\')
+                    text = (content['output_contents'][0]['content'].replace('\n', '\\') if content['output_contents'] else "") if isinstance(content['output_contents'], list) else content['output_contents']['content'].replace('\n', '\\')
                     date = entry.metadata['time'].split('.')[0]
                     list_output += (f"\033[94m{idx}.\033[0m {text[:100]}....{text[-100:]} #{entry.metadata['function_name']} @{date}\n")  # Display a snippet of each entry
                 smart_print(list_output, self.agent_name, "LOG ENTRIES LIST")
@@ -855,23 +855,24 @@ class HumanLLMMonitor:
             raw_llm_outputs = [(output.content if output else None) for output in llm_outputs] if isinstance(llm_outputs, list) else None
 
             output_messages, output_comments, score = [], [], []
-            if len(llm_outputs) > 1:
-                smart_print("**** Multiple LLM ANSWERS > we will process POST INFERENCE for each ****", self.agent_name, "Multiple LLM ANSWERS", append=True)
-            for counter, llm_output in enumerate(llm_outputs, start=1):
+            if llm_outputs:
                 if len(llm_outputs) > 1:
-                    smart_print(f"\033[31mMULTI-INFERENCE OUTPUT #{counter} > \033[0m", self.agent_name, "POST INFERENCE", append=True)
-                # Post-inference human intervention
-                output_messages_instance, output_comments_instance, score_instance = self._after_inference(llm_output, output_id=counter, outputs_count=len(llm_outputs))
-                output_messages.append(output_messages_instance)
-                if output_messages_instance == -1:
-                    break
-                output_comments.append(output_comments_instance)
-                score.append(score_instance)
-            # test if any of output_messages instance != -1, break if True
-            if any([output_messages_instance == -1 for output_messages_instance in output_messages]):
-                original_input_messages[0].content, original_input_messages[1].content = input_contents_str0, input_contents_str1
-            else:
-                break                
+                    smart_print("**** Multiple LLM ANSWERS > we will process POST INFERENCE for each ****", self.agent_name, "Multiple LLM ANSWERS", append=True)
+                for counter, llm_output in enumerate(llm_outputs, start=1):
+                    if len(llm_outputs) > 1:
+                        smart_print(f"\033[31mMULTI-INFERENCE OUTPUT #{counter} > \033[0m", self.agent_name, "POST INFERENCE", append=True)
+                    # Post-inference human intervention
+                    output_messages_instance, output_comments_instance, score_instance = self._after_inference(llm_output, output_id=counter, outputs_count=len(llm_outputs))
+                    output_messages.append(output_messages_instance)
+                    if output_messages_instance == -1:
+                        break
+                    output_comments.append(output_comments_instance)
+                    score.append(score_instance)
+                # test if any of output_messages instance != -1, break if True
+                if any([output_messages_instance == -1 for output_messages_instance in output_messages]):
+                    original_input_messages[0].content, original_input_messages[1].content = input_contents_str0, input_contents_str1
+                else:
+                    break                
 
         # Get the calling function's name using inspect
         caller_function_name = inspect.stack()[1].function
