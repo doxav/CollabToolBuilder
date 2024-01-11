@@ -1225,7 +1225,7 @@ class SynthesisManager:
                 resource['id'],
                 resource['metadatas'].get('search', 'unknown'),
                 resource['document']['name'],
-                len(resource['document']['link']),
+                len(resource['document']['link']) if (resource['document']['link'] and isinstance(resource['document']['link'], (list, tuple, np.ndarray))) else 0,
                 *content_info.values()
             ]
             if compact_string_format:

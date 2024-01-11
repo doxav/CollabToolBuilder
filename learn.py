@@ -6,8 +6,10 @@ import json
 from typing import Dict, Optional
 from langchain.chat_models import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
-from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, load_prompt, save_prompt, _visual_input, is_vscode_installed
+from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, load_prompt, save_prompt, _visual_input, is_vscode_installed, smart_print, smart_input
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import copy
 from config import *
 import os
 import uuid
@@ -118,12 +120,13 @@ class EnvironmentManager:
 # Agent 1: Task Identification
 class TaskIdentificationAgent():
     def __init__(self, llm, envs: [Environment], premium_llm=None, problem_prompts_subdir=None):
+        self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         self.llm = llm
         self.premium_llm = premium_llm
         self.learnt_tasks: Dict[str, str] = {}
         self.failed_tasks: Dict[str, str] = {}
-        self.human_llm_identify_best_task = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm)
+        self.human_llm_identify_best_task = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm, premium_llm_by_default=True)
         self.envs = envs
 
     def update_learnt_tasks(self, tasks: Dict[str, str]) -> None:
@@ -146,10 +149,11 @@ class TaskIdentificationAgent():
 class CodingAgent():
     def __init__(self, llm, envs: [Environment], premium_llm=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks"):
         #super().__init__(llm)
+        self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         self.llm = llm
         self.premium_llm = premium_llm
-        self.human_llm_code_task = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm)
+        self.human_llm_code_task = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm, premium_llm_by_default=True, num_parallel_inferences=4)
         self.envs = envs
         self.db_successful_tasks = UnifiedVectorDB( collection_name=db_collection_success, embedding_function=HumanLLMMonitor.common_vectordb_embedding_function, persist_directory=HumanLLMMonitor.common_vectordb_persist_directory+db_collection_success)
         self.db_failed_tasks = UnifiedVectorDB( collection_name=db_collection_failed, embedding_function=HumanLLMMonitor.common_vectordb_embedding_function, persist_directory=HumanLLMMonitor.common_vectordb_persist_directory+db_collection_failed)
@@ -195,7 +199,7 @@ class CodingAgent():
                         elif isinstance(node, ast.ImportFrom) or isinstance(node, ast.Import):
                             node_type = "ImportFrom"
                             imports.append(ast.get_source_segment(code, node))
-                            print("ImportFrom node: IMPORT SHOULD BE DONE INSIDE FUNCTIONS !!!")
+                            smart_print("ImportFrom node: IMPORT SHOULD BE DONE INSIDE FUNCTIONS !!!", self.name, "process_ai_generated_code SystemMessage")
                         else:
                             raise ValueError(f"Unsupported node type: {type(node)} - content:  {ast.get_source_segment(code, node)}")  # TODO: check if await is needed
                     
@@ -248,29 +252,30 @@ class CodingAgent():
         if len(primitives) > 0:
             user_message+=f"\n\nCODE PRIMITIVES RE-USABLE OR FOR DEMONTRATION PURPOSE:\n"+'\n'.join(primitives)
         # TODO: include best code from successful tasks from CapitalizationAgent self.db_successful_tasks and self.db_failed_tasks
-        print("\033[91mTODO: add support to include best code from successful tasks from CapitalizationAgent self.db_successful_tasks and self.db_failed_tasks\033[0m")
+        smart_print("\033[91mTODO: add support to include best code from successful tasks from CapitalizationAgent self.db_successful_tasks and self.db_failed_tasks\033[0m", self.name, "code_task_and_run_test SystemMessage")
         if previous_errors:
             user_message+=f"\n\nPREVIOUS ATTEMPTS TO CODE THE TASK: [[[\n"
             for previous_error, previous_score, previous_code in zip(previous_errors, previous_scores, previous_codes):
                 user_message+=f"\n\n<<\nERROR OR FEEDBACK: {previous_error.content}" + (f"\n\nSCORE: {previous_score}" if previous_score else "") + f"\n\nCODE: {previous_code}\n>>"
             user_message+=f"\n]]]"
-        codes = self.human_llm_code_task.CallHumanLLM(system_prompt_template=self.problem_prompts_subdir+"code_task", user_message=user_message, return_message_content_only=False)
+        codes = self.human_llm_code_task.CallHumanLLM(system_prompt_template=self.problem_prompts_subdir+"code_task", user_message=user_message, return_message_content_only=False, stream_output=False)
         results = []
+        if reset_unique_ids is None:
+            reset_unique_ids = [env.backup_state() for env in self.envs]
+        # else:
+        #     [env.restore_state(reset_unique_ids[id]) for id, env in enumerate(self.envs)]
         for code in codes:
             code_parsing_success, parsed_code = self.process_ai_generated_code(code.content, task_definition=refined_task)
-            print(f"************ Code parsed result************\n{parsed_code}\n************************".replace("\\n", "\n"))
+            smart_print(f"************ Code parsed result************\n{parsed_code}\n************************".replace("\\n", "\n"), self.name, "code_task_and_run_test RESULT")
             if code_parsing_success:
-                # Backup or restore the state before running tests or runnable code
-                if reset_unique_ids is None:
-                    reset_unique_ids = [env.backup_state() for env in self.envs]
-                else:
-                    [env.restore_state(reset_unique_ids[id]) for id, env in enumerate(self.envs)]
+                # Set initial state before running tests or runnable code
+                [env.restore_state(reset_unique_ids[id]) for id, env in enumerate(self.envs)]
                 # Initialize variables for runtime errors and execution results
                 no_runtime_errors, exec_results = [], []
-                # Common code part to be executed in all cases
-                common_code = "\n".join(primitives) + "\n" + parsed_code["program_code"]
                 # insert content of config.py into the code to ensure that the OPENAI_API_KEY is set
-                with open("config.py", "r") as f: common_code = f.read() + "\n" + common_code
+                with open("config.py", "r") as f: common_code = f.read() + "\n"
+                # Common code part to be executed in all cases
+                common_code += "\n".join(primitives) + "\n"
                 # Run the code in each environment
                 for env in self.envs:
                     # Determine tests to run or set default runnable code
@@ -278,41 +283,79 @@ class CodingAgent():
                     if not matching_tests:
                         no_runtime_error, exec_result = False, f"Error: no test found for given id {env.id}" if parsed_code["tests"] else f"Error: no runnable code found nor tests"
                     else:
-                        # Concatenate common code with tests or runnable code
-                        code_to_run = common_code + "\n" + "\n".join(matching_tests)
+                        # Concatenate common code with program and tests or runnable code
+                        code_to_run = common_code + parsed_code["program_code"] + "\n" + "\n".join(matching_tests)
                         no_runtime_error, exec_result = env.step(code_to_run)
+                        while not no_runtime_error and self.human_llm_code_task.skip_rounds <= 0:
+                            smart_print("\033[31mCODE ERROR\033[0m: "+exec_result, self.name, "code_task_and_run_test SystemMessage")
+                            if (input("Do you want to edit the code to fix the error (it may occure for each test of this code) ? (yes/no): ").strip().lower() not in ("yes", "y", "")):
+                                break
+                            edited_code = _visual_input(parsed_code["program_code"], filetype="py")
+                            code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
+                            no_runtime_error, exec_result = env.step(code_to_run)
+                            # Update parsed_code if re-run is successful
+                            if no_runtime_error:
+                                parsed_code["program_code"] = edited_code
                     # Append the results for each environment
                     no_runtime_errors.append(no_runtime_error)
                     exec_results.append(exec_result)
                 # Return combined results
-                results.append((parsed_code, all(no_runtime_errors), exec_results, reset_unique_ids, [env.get_score() for env in self.envs]))
+                results.append((parsed_code, all(no_runtime_errors), exec_results, reset_unique_ids, [env.get_score() for env in self.envs], [env.get_state(extended=True) for env in self.envs]))
             else:
-                results.append((code, False, parsed_code, None, None))
+                results.append((code, False, parsed_code, None, None, None))
+        # def process_code(code, original_envs):
+        #     code_parsing_success, parsed_code = self.process_ai_generated_code(code.content, refined_task)
+        #     if not code_parsing_success:
+        #         return (code, False, parsed_code, None, None)
+
+        #     common_code = "\n".join(primitives) + "\n" + parsed_code["program_code"]
+        #     with open("config.py", "r") as f:
+        #         common_code = f.read() + "\n" + common_code
+
+        #     results = []
+        #     for env in original_envs:
+        #         # Create a deep copy of the environment for isolated execution
+        #         env_copy = copy.deepcopy(env)
+        #         no_runtime_error, exec_result = self.run_code_in_env(env_copy, common_code, parsed_code)
+        #         results.append((no_runtime_error, exec_result))
+
+        #     no_runtime_errors, exec_results = zip(*results)
+        #     return (parsed_code, all(no_runtime_errors), exec_results, [env_copy.get_score() for env_copy in results])
+
+        # # Parallel execution of codes with separate environments
+        # results = []
+        # with ThreadPoolExecutor(max_workers=len(codes)) as executor:
+        #     futures = [executor.submit(process_code, code, self.envs) for code in codes]
+        #     for future in as_completed(futures):
+        #         results.append(future.result())
+
         return results
 
 # Agent 3: Code Validation
 class ValidationAgent():
     def __init__(self, llm, envs: [Environment], premium_llm=None):
         #super().__init__(llm)
+        self.name = self.__class__.__name__
         self.llm = llm
         self.premium_llm = premium_llm
-        self.human_llm_validate_code = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm)
+        self.human_llm_validate_code = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm, premium_llm_by_default=False)
         self.envs = envs
 
-    def validate_code(self, code: str, no_runtime_error:bool, exec_result:str, task:str=None, human_evaluation_required=False) -> str:
+    def validate_code(self, code: str, no_runtime_error:bool, exec_result:str, task:str=None, human_evaluation_required=False, scores=None, env_states=None) -> str:
         runtime_errors = f'\033[32mno runtime errors at execution - code returned:\n{exec_result}\n\033[0m' if no_runtime_error else f'\033[31mruntime errors at execution - error:{exec_result}\033[0m'
         if human_evaluation_required:
             human_evaluation = input(f"\n\n*******************\n{code}\n************\nCODE ABOVE EXECUTED with result: {runtime_errors}\n****\System may not efficiently evaluate what is produced by the code, please add your evaluation of the result (or hit enter): ")
         else:
             human_evaluation = ""
         runtime_errors = 'no runtime errors at execution' if no_runtime_error else 'runtime errors at execution' # just to avoid to break colors inside HumanLLMMonitor
-        envs_status = '\n'.join([env.get_state(extended=True) for env in self.envs])
+        envs_status = '\n'.join(env_states)
 
         user_message = f"Task: {task}\n\n"+\
             f"Code: {code}\n\n"+\
             f"Code execution returned: {runtime_errors}\n\n"+\
             f"Execution result returned by exec command of code provided: {exec_result}\n\n"+\
             (f"Human evaluation of the result: {human_evaluation}\n\n" if human_evaluation != "" else "") +\
+            f"Performance scores: {scores}\n" +\
             f"New environment status of examples on which the task has been tested on: {envs_status}\n"
 
         code_validation = self.human_llm_validate_code.CallHumanLLM(system_prompt_template="validate_code", user_message=user_message, return_message_content_only=False) 
@@ -321,11 +364,12 @@ class ValidationAgent():
 # Agent 4: Code Capitalization
 class CapitalizationAgent:
     def __init__(self, llm, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", db_embedding_function=None, db_perist_directory=None, premium_llm=None):
+        self.name = self.__class__.__name__
         self.tasks_repository: Dict[str, str] = {}
         self.failed_tasks_repository: Dict[str, str] = {}
         self.llm = llm
         self.premium_llm = premium_llm
-        self.human_llm_generate_function_description = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm)
+        self.human_llm_generate_function_description = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm, premium_llm_by_default=False)
         self.db_successful_tasks = UnifiedVectorDB(
             collection_name=db_collection_success,
             embedding_function=db_embedding_function if db_embedding_function else HumanLLMMonitor.common_vectordb_embedding_function,
@@ -341,13 +385,13 @@ class CapitalizationAgent:
         tool_description = str(self.generate_tool_description(parsed_code["main_function_name"], parsed_code["program_code"]))
         self.tasks_repository[parsed_code["main_function_name"]] = [tool_description, parsed_code["program_code"]]
         # print last added task
-        print(f"************ Last added task ************\n{parsed_code['main_function_name']}\n************************".replace("\\n", "\n"))
+        smart_print(f"************ Last added task ************\n{parsed_code['main_function_name']}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
 
         # save function program_code in a file under the functions directory and add to the function signature the generated dosctring
         function_file_path = os.path.join("functions", parsed_code["main_function_name"]+".py")
         # check if the function file already exists, if yes, ask the user a new name
         if os.path.exists(function_file_path):
-            print(f"Function file {function_file_path} already exists, please provide a new name for the function.")
+            smart_print(f"Function file {function_file_path} already exists, please provide a new name for the function.", self.name, "capitalize_successful_tasks WARNING")
             function_file_path = os.path.join("functions", input("New function name: ")+".py")
         with open(function_file_path, "w") as function_file:
              # use regex to extract the docstring from tool_description
@@ -358,7 +402,7 @@ class CapitalizationAgent:
             function_file.write(parsed_code["program_code"])
 
         if is_vscode_installed():
-            print("Please modify the file opened in vscode if necessary, and save it (Ctrl + W) when you are ok to continue")
+            smart_print("Please modify the file opened in vscode if necessary, and save it (Ctrl + W) when you are ok to continue", self.name, "capitalize_successful_tasks INSTRUCTIONS")
             subprocess.run(["code", "--wait", function_file_path])
 
         serialized_entry = json.dumps({
@@ -382,7 +426,7 @@ class CapitalizationAgent:
         task_description_refined = _visual_input(task_description)
         self.failed_tasks_repository[main_function_name] = task_description_refined
         # print last added task
-        print(f"************ Last added task ************\n{main_function_name}\n************************".replace("\\n", "\n"))
+        smart_print(f"************ Last added failed task ************\n{main_function_name}\n************************".replace("\\n", "\n"), self.name, "capitalize_failed_tasks CAPITALIZE FAIL")
 
         serialized_entry = json.dumps({
             "time": datetime.datetime.now().isoformat(),
@@ -404,9 +448,9 @@ class CapitalizationAgent:
         return tool_description
     
     def retrieve_saved_tasks_in_db(self, query="", max_db_results=20):
-        print(f"************ Retrieving successful tasks from database - LIST:")
+        smart_print(f"************ Retrieving successful tasks from database - LIST:", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
         # Retrieve tasks from the common vector database
-        results_success_db = self.db_successful_tasks.query(query_text="", k=max_db_results)
+        results_success_db = self.db_successful_tasks.query(query_text="*", k=max_db_results)
         # First step: display all the retrieved functions with time and host
         id = 0
         for result in results_success_db:
@@ -415,10 +459,10 @@ class CapitalizationAgent:
             page_content = result.page_content
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
-            print(f"{id}: function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}")
-        include_code = input(f"When adding the functions description in successful tasks, do you want to also include the code (it may overflow the maximum prompt length but can also guide generation) ? (yes/no): ").strip().lower() in ["yes", "y"]
+            smart_print(f"{id}: function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+        include_code = input(f"CONFIG When adding the functions description in successful tasks, do you want to also include the code (it may overflow the maximum prompt length but can also guide generation) ? (yes/no): ").strip().lower() in ["yes", "y"]
         # Second step: ask the user to select the functions to load
-        selected_functions = input(f"Please select the functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
+        selected_functions = input(f"CONFIG Please select the functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
         id = 0
         # load into self.tasks_repository
         for result in results_success_db:
@@ -430,14 +474,14 @@ class CapitalizationAgent:
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
             if task_data["main_function_name"] in self.tasks_repository:
-                print(f"> function/task {task_data['main_function_name']} already loaded. When there are duplicates select your prefered. Skipping...")
+                smart_print(f"> function/task {task_data['main_function_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
                 continue
             self.tasks_repository[task_data["main_function_name"]] = [task_data["tool_description"]] if not include_code else [task_data["tool_description"], task_data["program_code"]]
-            print(f"> function/task {task_data['main_function_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.")
+            smart_print(f"> function/task {task_data['main_function_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
 
-        print(f"************ Retrieving failed tasks from database - LIST:")
+        smart_print(f"************ Retrieving failed tasks from database - LIST:", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
         # Retrieve failed tasks from the common vector database
-        results_failed_db = self.db_failed_tasks.query(query_text="", k=max_db_results)
+        results_failed_db = self.db_failed_tasks.query(query_text="*", k=max_db_results)
         # First step: display all the retrieved functions with time and host
         id = 0
         for result in results_failed_db:
@@ -446,9 +490,9 @@ class CapitalizationAgent:
             page_content = result.page_content
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
-            print(f"{id}: failed function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}")
+            smart_print(f"{id}: failed function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
         # Second step: ask the user to select the functions to load
-        selected_functions = input(f"Please select the functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
+        selected_functions = input(f"CONFIG Please select the functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
         id = 0
         # load into self.tasks_repository
         for result in results_failed_db:
@@ -460,10 +504,10 @@ class CapitalizationAgent:
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
             if task_data["main_function_name"] in self.failed_tasks_repository:
-                print(f"> failed function/task {task_data['main_function_name']} already loaded. When there are duplicates select your prefered. Skipping...")
+                smart_print(f"> failed function/task {task_data['main_function_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
                 continue
             self.failed_tasks_repository[task_data["main_function_name"]] = task_data["task_description_refined"]
-            print(f"> failed function/task {task_data['main_function_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.")
+            smart_print(f"> failed function/task {task_data['main_function_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
 
 # Main orchestration functionality
 def orchestrate_agents():
@@ -474,8 +518,10 @@ def orchestrate_agents():
     # menu to choose the problem prompts subdirectory
     # get the list of subdirectories in the problem prompts directory
     problem_prompts_subdirs = [name for name in os.listdir("prompts") if os.path.isdir(os.path.join("prompts", name))]
-    default_subdir = ''
-    choice = input("Enter a number for subdirectory (leave empty for default):\n"+"\n".join(f"{i}. {subdir}" for i, subdir in enumerate(problem_prompts_subdirs, 1))+"\n").strip()
+    # get first element of problem_prompts_subdirs if not empty, else set it to empty string
+    default_subdir = problem_prompts_subdirs[0] if problem_prompts_subdirs else ""
+    choice = smart_input("CONFIG Enter a number for subdirectory (leave empty for default): "+"; ".join(f"{i}. {subdir}" for i, subdir in enumerate(problem_prompts_subdirs, 1))+" ?", "CONFIG")
+    # if choise is empty or not a number or not in the range of the list of subdirectories, set it to 1
     problem_prompts_subdir = problem_prompts_subdirs[int(choice) - 1] if choice.isdigit() and 1 <= int(choice) <= len(problem_prompts_subdirs) else default_subdir
 
     # problem_prompts_subdir string contains CPS in, env_type = "techsynthesis"
@@ -517,9 +563,9 @@ def orchestrate_agents():
         HumanLLMMonitor.step_id = str(uuid.uuid4())
         task = agent_taskreco.identify_best_task()
         if len(task) > 0:
-            print('Multiple tasks selection not yet supported. Selecting the first one.')
+            smart_print('Multiple tasks selection not yet supported. Selecting the first one.', "orchestrate_agents", "orchestrate_agents WARNING")
         task = task[0]
-        print("Identified Task: "+task.content.replace("\\n", "\n"))
+        smart_print("Identified Task: "+task.content.replace("\\n", "\n"), "orchestrate_agents", "orchestrate_agents RESULT")
         # refined_task = human_task_refinement_loop(agent_refiner, task)
         task_description = task.content
         parsed_code, validation = coding_and_validation_loop(agent_coding, agent_validation, task_description, max_attempts, extra_manual_validation_to_capitalize)
@@ -539,7 +585,7 @@ def human_task_refinement_loop(agent_refiner, task):
     human_in_loop = True
     while human_in_loop:
         refined_task = agent_refiner.refine_task(task)
-        print(f"Refined Task: {refined_task}".replace("\\n", "\n"))
+        smart_print(f"Refined Task: {refined_task}".replace("\\n", "\n"), "human_task_refinement_loop", "human_task_refinement_loop RESULT")
         human_in_loop = input("Is the task refinement adequate? (yes/no): ").strip().lower() != "yes"
     return refined_task
 
@@ -556,51 +602,52 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
 
     for attempt in range(max_attempts):
         results = agent_coding.code_task_and_run_test(task_description, previous_errors, previous_scores, previous_codes, reset_unique_ids)
+        previous_errors, previous_codes, previous_scores, reset_unique_ids = [], [], [], None #TEST reset
 
         # First part: Process all codes and collect results
-        for index, (parsed_code, no_runtime_error, exec_result, new_reset_unique_ids, score) in enumerate(results):
-            print(f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace("\\n", "\n"))
-            validation_agent_feedback = agent_validation.validate_code(parsed_code["program_code"], no_runtime_error, exec_result, task=task_description)
-            print("Agent validation 'feedback' currently only support 1 feedback")
+        for index, (parsed_code, no_runtime_error, exec_result, new_reset_unique_ids, scores, env_states) in enumerate(results):
+            smart_print(f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace("\\n", "\n"), None, "coding_and_validation_loop RESULT")
+            validation_agent_feedback = agent_validation.validate_code(parsed_code["program_code"], no_runtime_error, exec_result, task=task_description, scores=scores, env_states=env_states)
+            smart_print("Agent validation 'feedback' currently only support 1 feedback", None, "coding_and_validation_loop WARNING")
             validation_agent_feedback = validation_agent_feedback[0]
             afb = validation_agent_feedback.content.replace('\\n', '\n')
-            print("#"*20 + f"\nAgent validation feedback: {afb}")
+            smart_print("#"*20 + f"\nAgent validation feedback: {afb}", None, "coding_and_validation_loop RESULT")
 
             if extra_manual_validation_to_capitalize:
                 validated = (input("#"*20+f"\nADD THIS FUNCTION TO LIBRARY ? Please enter 'yes' if this a success and you want to add this function to library, 'no' if this failed: ").lower() in ["yes", "y", True])
             else:
                 validated = get_success_value_in_text(afb) in ["yes", "y", True]
             if validated:
-                successful_codes.append((parsed_code, validation_agent_feedback, new_reset_unique_ids, score))
+                successful_codes.append((parsed_code, validation_agent_feedback, new_reset_unique_ids, scores))
 
             # Update previous errors and codes lists
             if index < len(previous_errors):
                 previous_errors[index] = validation_agent_feedback
-                previous_scores[index] = score
+                previous_scores[index] = scores
                 previous_codes[index] = parsed_code["program_code"]
             else:
                 previous_errors.append(validation_agent_feedback)
-                previous_scores.append(score)
+                previous_scores.append(scores)
                 previous_codes.append(parsed_code["program_code"])
 
         reset_unique_ids = new_reset_unique_ids  # Update reset_unique_ids for the next iteration
 
         if attempt == max_attempts - 1:
-            print("Max attempts reached. Trying a new task.")
+            smart_print("Max attempts reached. Trying a new task.", None, "coding_and_validation_loop WARNING")
 
     # Second part: If there are successful codes, ask user to select one
     if successful_codes and (not continue_even_if_successful or attempt >= max_attempts - 1):
-        for i, (parsed_code, feedback, new_reset_unique_ids, score) in enumerate(successful_codes):
-            print(f"\033[91mOption {i+1}:\033[0m\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {score}\033[0m\n")
+        for i, (parsed_code, feedback, new_reset_unique_ids, scores) in enumerate(successful_codes):
+            smart_print(f"\033[91mOption {i+1}:\033[0m\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {scores}\033[0m\n", None, "coding_and_validation_loop RESULT")
 
         selection = input("Several codes were successful. Please enter the number of the code you want to add to the library: ").strip()
         if selection.isdigit() and 0 < int(selection) <= len(successful_codes):
             selected_index = int(selection) - 1
-            print("Code validated successfully.")
+            smart_print("Code validated successfully.", None, "coding_and_validation_loop RESULT")
             selected_code, _, selected_reset_unique_ids = successful_codes[selected_index]
             return selected_code, "success"
         else:
-            print("Invalid selection or no selection made. Exiting without adding any code.")
+            smart_print("Invalid selection or no selection made. Exiting without adding any code.", None, "coding_and_validation_loop WARNING")
 
     return None, "failed"  # If no successful code was selected, return failure
 
