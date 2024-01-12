@@ -264,8 +264,13 @@ class CodingAgent():
             reset_unique_ids = [env.backup_state() for env in self.envs]
         # else:
         #     [env.restore_state(reset_unique_ids[id]) for id, env in enumerate(self.envs)]
+        processed_codes = set()
         for code in codes:
             code_parsing_success, parsed_code = self.process_ai_generated_code(code.content, task_definition=refined_task)
+            if parsed_code["program_code"] in processed_codes:
+                continue  # Skip the current iteration if this program code has already been processed to avoid duplicates
+            else:
+                processed_codes.add(parsed_code["program_code"])
             smart_print(f"************ Code parsed result************\n{parsed_code}\n************************".replace("\\n", "\n"), self.name, "code_task_and_run_test RESULT")
             if code_parsing_success:
                 # Set initial state before running tests or runnable code
