@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.10.1
@@ -10,7 +10,8 @@ services:
       - discovery.type=single-node
       - "ES_JAVA_OPTS=-Xms4g -Xmx4g"
       - "http.cors.enabled=true"
-      - "http.cors.allow-origin=\"*\""
+      - 'http.cors.allow-origin="*"'
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
     ports:
       - "9200:9200"
     networks:
@@ -32,4 +33,3 @@ services:
 networks:
   elasticnet:
     driver: bridge
-

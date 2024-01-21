@@ -9,13 +9,15 @@ def generateTextFromInput(prompt_template = "", text="", temperature=0.5, reques
 
     if prompt_template == "":
         prompt_template = """Extract the following key elements from the research paper provided below:
-1. Abstract: Summarize the abstract and identify any key elements that are missing which are later provided in the introduction.
-2. Conclusion: Summarize the conclusion of the paper.
-3. Findings: Detail the main findings of the paper.
-4. Challenges/Discussion: Highlight the main challenges or discussion points mentioned in the paper.
-5. Methodology: Describe the methodology used in the paper.
+1. Research Aim/Objective: Summarize the main aim or objective of the research.
+2. Abstract: Summarize the abstract and identify any key elements that are missing which are later provided in the introduction.
+3. Conclusion: Summarize the conclusion of the paper.yes
+4. Findings: Detail the main findings of the paper.
+5. Challenges/Discussion: Highlight the main challenges or discussion points mentioned in the paper.
+6. Methodology: Describe the methodology used in the paper.
 
 The output should be in JSON format with the following keys (if any of the below elements are not present in the paper, the value for the respective JSON key should be 'not found'):
+- 'research_aim_objective': Max length of 300 words.
 - 'abstract_and_missing_elements': Max length of 500 words.
 - 'conclusion': Max length of 300 words.
 - 'findings': Max length of 500 words.

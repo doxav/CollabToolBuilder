@@ -10,17 +10,11 @@ setuptools
 psutil
 httpx
 elasticsearch
-transformers
 wikipedia-api
 arxiv
 pyparsing
-spacy
 scikit-image
-#sklearn # la dépendance est scikit-learn. J'ai commenté car pas utilisé apparemment.
+scikit-learn # la dépendance est scikit-learn. J'ai commenté car pas utilisé apparemment.
 bs4
 config
 gradio==3.48.0
-ipywidgets
-IPython
-ipykernel
-
