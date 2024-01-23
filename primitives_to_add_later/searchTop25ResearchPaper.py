@@ -2,7 +2,7 @@ from env.IR_CPS_TechSynthesis.env import SynthesisManager, Section
 
 # This is the main function that will be called by the CPS
 # It will return a list of articles given a query
-def searchTop25ResearchPaper(bot: SynthesisManager, query, MAX_ARTICLES=25, MAX_SOURCES=10, SIMILARITY_THRESHOLD = 0.85, search_sources = ['paper_arxiv','paper_pubmed', 'websearch_wikipedia','paper_semantic_scholar']):
+def searchTop25ResearchPaper(bot: SynthesisManager, query, MAX_ARTICLES=25, MAX_SOURCES=10, SIMILARITY_THRESHOLD = 0.85, search_sources = ['paper_arxiv', 'websearch_wikipedia','paper_semantic_scholar']):
     import requests
     from sklearn.metrics.pairwise import cosine_similarity
     from sentence_transformers import SentenceTransformer

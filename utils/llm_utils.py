@@ -343,7 +343,7 @@ class HumanLLMMonitor:
     common_vectordb_collection_name="human_llm_monitor_logs"
     common_vectordb_persist_directory="human_llm_monitor_vectordb"
 
-    def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_name=None, model_max_context_size=8000, llm=None, premium_llm=None, premium_model_name=None, premium_llm_by_default=False, num_parallel_inferences=1):
+    def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_name=None, model_max_context_size=16000, llm=None, premium_llm=None, premium_model_name=None, premium_llm_by_default=False, num_parallel_inferences=1):
         self.system_prompt = system_prompt
         self.llm = llm if llm else None
         self.premium_llm = premium_llm if premium_llm else None

@@ -700,7 +700,7 @@ class SynthesisManager:
 
         if results is None or len(results) == 0: # Google API search
             # Check google_api_key and google_cse_id are set as a global variable in the script
-            from voyager.utils.private_keys import google_api_key, google_cse_id
+            from config import google_api_key, google_cse_id
             if not google_api_key or not google_cse_id:
                 raise ValueError('Please set google_api_key and google_cse_id as global variables in the script.')
 

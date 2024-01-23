@@ -266,48 +266,52 @@ class CodingAgent():
         #     [env.restore_state(reset_unique_ids[id]) for id, env in enumerate(self.envs)]
         processed_codes = set()
         for code in codes:
-            code_parsing_success, parsed_code = self.process_ai_generated_code(code.content, task_definition=refined_task)
-            if parsed_code["program_code"] in processed_codes:
-                continue  # Skip the current iteration if this program code has already been processed to avoid duplicates
-            else:
-                processed_codes.add(parsed_code["program_code"])
-            smart_print(f"************ Code parsed result************\n{parsed_code}\n************************".replace("\\n", "\n"), self.name, "code_task_and_run_test RESULT")
-            if code_parsing_success:
-                # Set initial state before running tests or runnable code
-                [env.restore_state(reset_unique_ids[id]) for id, env in enumerate(self.envs)]
-                # Initialize variables for runtime errors and execution results
-                no_runtime_errors, exec_results = [], []
-                # insert content of config.py into the code to ensure that the OPENAI_API_KEY is set
-                with open("config.py", "r") as f: common_code = f.read() + "\n"
-                # Common code part to be executed in all cases
-                common_code += "\n".join(primitives) + "\n"
-                # Run the code in each environment
-                for env in self.envs:
-                    # Determine tests to run or set default runnable code
-                    matching_tests = [test for doc_id, test in parsed_code["tests"] if doc_id == env.id] if parsed_code["tests"] else [parsed_code['runnable_code']]
-                    if not matching_tests:
-                        no_runtime_error, exec_result = False, f"Error: no test found for given id {env.id}" if parsed_code["tests"] else f"Error: no runnable code found nor tests"
-                    else:
-                        # Concatenate common code with program and tests or runnable code
-                        code_to_run = common_code + parsed_code["program_code"] + "\n" + "\n".join(matching_tests)
-                        no_runtime_error, exec_result = env.step(code_to_run)
-                        while not no_runtime_error and self.human_llm_code_task.skip_rounds <= 0:
-                            smart_print("\033[31mCODE ERROR\033[0m: "+exec_result, self.name, "code_task_and_run_test SystemMessage")
-                            if (input("Do you want to edit the code to fix the error (it may occure for each test of this code) ? (yes/no): ").strip().lower() not in ("yes", "y", "")):
-                                break
-                            edited_code = _visual_input(parsed_code["program_code"], filetype="py")
-                            code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
+            try:
+                code_parsing_success, parsed_code = self.process_ai_generated_code(code.content, task_definition=refined_task)
+                if parsed_code["program_code"] in processed_codes:
+                    continue  # Skip the current iteration if this program code has already been processed to avoid duplicates
+                else:
+                    processed_codes.add(parsed_code["program_code"])
+                smart_print(f"************ Code parsed result************\n{parsed_code}\n************************".replace("\\n", "\n"), self.name, "code_task_and_run_test RESULT")
+                if code_parsing_success:
+                    # Set initial state before running tests or runnable code
+                    [env.restore_state(reset_unique_ids[id]) for id, env in enumerate(self.envs)]
+                    # Initialize variables for runtime errors and execution results
+                    no_runtime_errors, exec_results = [], []
+                    # insert content of config.py into the code to ensure that the OPENAI_API_KEY is set
+                    with open("config.py", "r") as f: common_code = f.read() + "\n"
+                    # Common code part to be executed in all cases
+                    common_code += "\n".join(primitives) + "\n"
+                    # Run the code in each environment
+                    for env in self.envs:
+                        # Determine tests to run or set default runnable code
+                        matching_tests = [test for doc_id, test in parsed_code["tests"] if doc_id == env.id] if parsed_code["tests"] else [parsed_code['runnable_code']]
+                        if not matching_tests:
+                            no_runtime_error, exec_result = False, f"Error: no test found for given id {env.id}" if parsed_code["tests"] else f"Error: no runnable code found nor tests"
+                        else:
+                            # Concatenate common code with program and tests or runnable code
+                            code_to_run = common_code + parsed_code["program_code"] + "\n" + "\n".join(matching_tests)
                             no_runtime_error, exec_result = env.step(code_to_run)
-                            # Update parsed_code if re-run is successful
-                            if no_runtime_error:
-                                parsed_code["program_code"] = edited_code
-                    # Append the results for each environment
-                    no_runtime_errors.append(no_runtime_error)
-                    exec_results.append(exec_result)
-                # Return combined results
-                results.append((parsed_code, all(no_runtime_errors), exec_results, reset_unique_ids, [env.get_score() for env in self.envs], [env.get_state(extended=True) for env in self.envs]))
-            else:
-                results.append((code, False, parsed_code, None, None, None))
+                            while not no_runtime_error and self.human_llm_code_task.skip_rounds <= 0:
+                                smart_print("\033[31mCODE ERROR\033[0m: "+exec_result, self.name, "code_task_and_run_test SystemMessage")
+                                if (input("Do you want to edit the code to fix the error (it may occure for each test of this code) ? (yes/no): ").strip().lower() not in ("yes", "y")):
+                                    break
+                                edited_code = _visual_input(parsed_code["program_code"], filetype="py")
+                                code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
+                                smart_print("\033[31mTESTING NEW CODE\033[0m", self.name, "code_task_and_run_test SystemMessage")
+                                no_runtime_error, exec_result = env.step(code_to_run)
+                                # Update parsed_code if re-run is successful
+                                if no_runtime_error:
+                                    parsed_code["program_code"] = edited_code
+                        # Append the results for each environment
+                        no_runtime_errors.append(no_runtime_error)
+                        exec_results.append(exec_result)
+                    # Return combined results
+                    results.append((parsed_code, all(no_runtime_errors), exec_results, reset_unique_ids, [env.get_score() for env in self.envs], [env.get_state(extended=True) for env in self.envs]))
+                else:
+                    results.append((code, False, parsed_code, None, None, None))
+            except Exception as e:
+                print(f"Skipping 1 code attempt - Error: {e} Traceback: {traceback.format_exc()}")
         # def process_code(code, original_envs):
         #     code_parsing_success, parsed_code = self.process_ai_generated_code(code.content, refined_task)
         #     if not code_parsing_success:

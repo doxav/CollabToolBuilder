@@ -11,6 +11,7 @@ psutil
 httpx
 elasticsearch
 transformers
+torch
 wikipedia-api
 arxiv
 pyparsing
