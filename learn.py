@@ -153,7 +153,7 @@ class CodingAgent():
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         self.llm = llm
         self.premium_llm = premium_llm
-        self.human_llm_code_task = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm, premium_llm_by_default=True, num_parallel_inferences=4)
+        self.human_llm_code_task = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm, premium_llm_by_default=True, num_parallel_inferences=1)
         self.envs = envs
         self.db_successful_tasks = UnifiedVectorDB( collection_name=db_collection_success, embedding_function=HumanLLMMonitor.common_vectordb_embedding_function, persist_directory=HumanLLMMonitor.common_vectordb_persist_directory+db_collection_success)
         self.db_failed_tasks = UnifiedVectorDB( collection_name=db_collection_failed, embedding_function=HumanLLMMonitor.common_vectordb_embedding_function, persist_directory=HumanLLMMonitor.common_vectordb_persist_directory+db_collection_failed)
@@ -544,7 +544,6 @@ def orchestrate_agents():
     choice = smart_input("CONFIG Enter a number for subdirectory (leave empty for default): "+"; ".join(f"{i}. {subdir}" for i, subdir in enumerate(problem_prompts_subdirs, 1))+" ?", "CONFIG")
     # if choise is empty or not a number or not in the range of the list of subdirectories, set it to 1
     problem_prompts_subdir = problem_prompts_subdirs[int(choice) - 1] if choice.isdigit() and 1 <= int(choice) <= len(problem_prompts_subdirs) else default_subdir
-
     # problem_prompts_subdir string contains CPS in, env_type = "techsynthesis"
     if "CPS" in problem_prompts_subdir:
         env_type = "techsynthesis"  # Ou "minecraft", ou autre pour l'environnement par défaut

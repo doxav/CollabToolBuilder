@@ -11,6 +11,7 @@ psutil
 httpx
 elasticsearch
 wikipedia-api
+spacy
 arxiv
 pyparsing
 scikit-image

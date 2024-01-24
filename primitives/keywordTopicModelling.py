@@ -59,6 +59,6 @@ def keyword_topic_modeler(bot: SynthesisManager, documents, num_topics=5):
     topics = extract_topics(lda, vectorizer)
     
     # # Update results in resources
-    # bot.add_or_update_results_in_resources(topics)
+    bot.add_or_update_results_in_resources(topics)
 
     return topics
