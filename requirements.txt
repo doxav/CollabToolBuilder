@@ -24,4 +24,5 @@ gradio==3.48.0
 ipywidgets
 IPython
 ipykernel
-
+neo4j
+langchain_community
