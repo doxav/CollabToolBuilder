@@ -1,12 +1,13 @@
 from env.IR_CPS_TechSynthesis.env import SynthesisManager
 
-def generate_outline(bot: SynthesisManager, title, abstract, temperature=0.7):
+def generate_outline(bot: SynthesisManager, temperature=0.7):
     from langchain.chat_models import ChatOpenAI
     from langchain.prompts import ChatPromptTemplate
     from config import OPENAI_API_KEY
     import re
 
-    
+    title = bot.document.title
+    abstract = bot.document.context
     llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=temperature, openai_api_key=OPENAI_API_KEY)
     prompt_template = """Generate LaTeX code for a 15-page research survey document with bibliography. 
     The title of the research survey is "{title}," and the abstract is "{abstract}." 

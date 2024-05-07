@@ -106,10 +106,11 @@ class Environment:
         return None
 
 class EnvironmentManager:
-    def __init__(self, env_type="default"):
+    def __init__(self, env_type="default", **kwargs):
         if env_type == "techsynthesis":
             from env.IR_CPS_TechSynthesis.env import VoyagerEnvIR_CPS_TechSynthesis
-            self.env = VoyagerEnvIR_CPS_TechSynthesis()
+            # pass to VoyagerEnvIR_CPS_TechSynthesis all the args from the EnvironmentManager
+            self.env = VoyagerEnvIR_CPS_TechSynthesis(**kwargs)
         else:
             self.env = Environment()
         self.env.reset()
@@ -294,9 +295,16 @@ class CodingAgent():
                             no_runtime_error, exec_result = env.step(code_to_run)
                             while not no_runtime_error and self.human_llm_code_task.skip_rounds <= 0:
                                 smart_print("\033[31mCODE ERROR\033[0m: "+exec_result, self.name, "code_task_and_run_test SystemMessage")
-                                if (input("Do you want to edit the code to fix the error (it may occure for each test of this code) ? (yes/no): ").strip().lower() not in ("yes", "y")):
+                                decision = input("Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ").strip().lower()
+                                if decision in ("no", "n", ""):
                                     break
-                                edited_code = _visual_input(parsed_code["program_code"], filetype="py")
+                                elif decision == "a":
+                                    # do not use HumanLLMMonitor because no template is available for this specific case
+                                    smart_print("\033[31mTRYING TO AUTOFIX ERROR\033[0m")
+                                    message_content = f"ERROR MESSAGE:[[{exec_result}]]\nCODE:[[{parsed_code['program_code']}]]"
+                                    edited_code = self.premium_llm([SystemMessage(content=load_prompt("code_fixer")), HumanMessage(content=message_content)]).content
+                                else:
+                                    edited_code = _visual_input(parsed_code["program_code"], filetype="py")
                                 code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
                                 smart_print("\033[31mTESTING NEW CODE\033[0m", self.name, "code_task_and_run_test SystemMessage")
                                 no_runtime_error, exec_result = env.step(code_to_run)
@@ -551,6 +559,7 @@ def orchestrate_agents():
 
     # problem_prompts_subdir string contains CPS in, env_type = "techsynthesis"
     if "CPS" in problem_prompts_subdir:
+        #from env.IR_CPS_TechSynthesis.env import VoyagerEnvIR_CPS_TechSynthesis
         env_type = "techsynthesis"  # Ou "minecraft", ou autre pour l'environnement par défaut
         extra_manual_validation_to_capitalize = False
         documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
@@ -563,8 +572,10 @@ def orchestrate_agents():
                 'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
         envs = []
         for doc in documents:
-            env = EnvironmentManager(env_type).get_environment()
-            env.title, env.abstract, env.synthesis_manager.target_file_path, env.id = doc['title'], doc['context'], doc['target_file_path'], doc['id']
+            #env = EnvironmentManager(env_type).get_environment()
+            #env.title, env.abstract, env.context, env.synthesis_manager.target_file_path, env.id = doc['title'], doc['context'], doc['context'], doc['target_file_path'], doc['id']
+            env = EnvironmentManager(env_type, title=doc['title'], context=doc['context'], target_file_path=doc['target_file_path'], id=doc['id']).get_environment()
+            #env = VoyagerEnvIR_CPS_TechSynthesis()
             envs.append(env)
 
     else:

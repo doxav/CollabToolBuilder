@@ -1315,17 +1315,17 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         if not self.has_reset_once:
             print("Environment has not been reset yet - resetting now !")
             self.reset()
-        return super().step(action_code=code, context={'bot': self.synthesis_manager, 'results': None, 'SynthesisManager': SynthesisManager, 'DocumentStructure': DocumentStructure, 'Section': Section, 'Document': Document})
+        return super().step(action_code=code, context={'problem': self.synthesis_manager, 'results': None, 'SynthesisManager': SynthesisManager, 'DocumentStructure': DocumentStructure, 'Section': Section, 'Document': Document})
 
     def get_state(self, extended: bool = False):
         #TODO: move to self.document.get_state() ?
         table_of_content = self.synthesis_manager.get_plan_status(compact_string_format=True)
         resources_observation = self.synthesis_manager.get_resources_status(compact_string_format=True)
         document_state = f"<<< Document #{self.id} properties:\n"
-        document_state += f"1. title: {self.title}\n"
-        document_state += f"2. abstract: {self.abstract}\n"
-        document_state += f"3. current table of content: {table_of_content if len(table_of_content) > 0 else 'Empty'}\n"
-        document_state += f"4. current resources: {resources_observation if len(resources_observation) > 0 else 'Empty'}\n"
+        #document_state += f"1. title: {self.title}\n"
+        #document_state += f"2. abstract: {self.abstract}\n"
+        document_state += f"> Current table of content: {table_of_content if len(table_of_content) > 0 else 'Empty'}\n"
+        document_state += f"> Current resources: {resources_observation if len(resources_observation) > 0 else 'Empty'}\n"
         if extended:
             distance_to_targetJSON = self.synthesis_manager.get_distance_to_targetJSON()
             events_action_counts = self.synthesis_manager.get_count_method_calls()
