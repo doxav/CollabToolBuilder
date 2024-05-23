@@ -9,7 +9,8 @@ import hashlib
 import time
 import tkinter
 import json
-from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.embeddings import OpenAIEmbeddings, HuggingFaceEmbeddings
+
 from langchain.schema import AIMessage, HumanMessage, SystemMessage, FunctionMessage
 import tkinter as tk
 from tkinter import simpledialog, scrolledtext
@@ -227,7 +228,7 @@ class UnifiedVectorDB:
         else:
             raise ValueError(f"Unsupported DB type: {UnifiedVectorDB.db_type}")
 
-    def __init__(self, collection_name, embedding_function, persist_directory):
+    def __init__(self, collection_name, embedding_function, persist_directory, reset_db_indices=False):
         UnifiedVectorDB.check_db()
         self.collection_name = collection_name.lower()
         self.embedding_function = embedding_function
@@ -249,6 +250,8 @@ class UnifiedVectorDB:
             )
             self._collection = self.db
             embedding_size=len(embedding_function.embed_query(""))
+            if reset_db_indices:
+                self.db.client.indices.delete(index=self.collection_name, ignore=[400, 404]) # TODO: set it as a parameter to reset when changing embeddings
             self.db._create_index_if_not_exists(index_name=self.collection_name, dims_length=embedding_size)
         else:
             raise ValueError(f"Unsupported DB type: {UnifiedVectorDB.db_type}")
@@ -328,234 +331,8 @@ class UnifiedVectorDB:
             time.sleep(2)
 
 
-from neo4j import GraphDatabase
-import numpy as np, json, uuid
+    # TODO: start by replacing UnifiedVectorDB by neo4j improving the ChatGPT generated code below, then validate the learn.py process works properly
 
-class UnifiedVectorDB:
-    def __init__(self, collection_name, embedding_function, neo4j_uri, neo4j_user, neo4j_password):
-        self.collection_name = collection_name
-        self.embedding_function = embedding_function
-        self.driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
-        self.ensure_schema()
-
-    def ensure_schema(self):
-        with self.driver.session() as session:
-            session.run(f"""
-                CREATE CONSTRAINT IF NOT EXISTS ON (n:{self.collection_name}) ASSERT n.id IS UNIQUE
-            """)
-
-    def add_texts(self, texts, ids=None, metadatas=None):
-        with self.driver.session() as session:
-            for index, text in enumerate(texts):
-                text_id = ids[index] if ids else str(uuid.uuid4())
-                metadata = metadatas[index] if metadatas else {}
-                embedding = self.embedding_function.embed_query(text)
-                metadata_str = json.dumps(metadata)
-
-                session.run(f"""
-                    MERGE (n:{self.collection_name} {{id: $text_id}})
-                    SET n.text = $text,
-                        n.embedding = $embedding,
-                        n.metadata = $metadata_str
-                """, {
-                    'text_id': text_id,
-                    'text': text,
-                    'embedding': embedding.tolist(),  # Convert numpy array to list for JSON
-                    'metadata_str': metadata_str
-                })
-
-    def similarity_search_with_score(self, query, k=1):
-        query_embedding = self.embedding_function.embed_query(query)
-        results = []
-
-        with self.driver.session() as session:
-            records = session.run(f"""
-                MATCH (n:{self.collection_name})
-                WITH n, gds.similarity.cosine(n.embedding, $query_embedding) AS score
-                ORDER BY score DESC
-                LIMIT $k
-                RETURN n.text AS text, n.metadata AS metadata, score
-            """, {
-                'query_embedding': query_embedding.tolist(),
-                'k': k
-            })
-
-            for record in records:
-                results.append((record['text'], record['score']))
-
-        return results
-
-    def query(self, query_text="", k=1, metadata_filter=None):
-        cypher_filter = []
-        params = {}
-
-        if metadata_filter:
-            for key, value in metadata_filter.items():
-                cypher_filter.append(f"n.metadata CONTAINS '${key}'")
-                params[key] = value
-
-        cypher_query = f"""
-            MATCH (n:{self.collection_name})
-            WHERE {' AND '.join(cypher_filter)} if cypher_filter else "1=1"
-            RETURN n.text AS text
-            LIMIT $k
-        """
-
-        params.update({'k': k})
-        results = []
-
-        with self.driver.session() as session:
-            records = session.run(cypher_query, params)
-            results = [record['text'] for record in records]
-
-        return results
-
-    def delete(self, ids):
-        with self.driver.session() as session:
-            for text_id in ids:
-                session.run(f"""
-                    MATCH (n:{self.collection_name} {{id: $text_id}})
-                    DETACH DELETE n
-                """, {'text_id': text_id})
-
-    def persist(self):
-        pass
-
-    def clear(self):
-        with self.driver.session() as session:
-            session.run(f"""
-                MATCH (n:{self.collection_name})
-                DETACH DELETE n
-            """)
-
-
-import os
-import json
-from neo4j import GraphDatabase
-from langchain_community.graphs import Neo4jGraph
-
-class UnifiedVectorDBNeo4J:
-    def __init__(self, collection_name, embedding_function, persist_directory):
-        self.collection_name = collection_name.lower()
-        self.embedding_function = embedding_function
-        self.persist_directory = persist_directory
-        self.uri = os.getenv('NEO4J_URI', 'bolt://localhost:7687')
-        self.username = os.getenv('NEO4J_USERNAME', 'neo4j')
-        self.password = os.getenv('NEO4J_PASSWORD', 'password')
-        self.database = os.getenv('NEO4J_DATABASE', 'neo4j')
-        self.kg = Neo4jGraph(
-            url=self.uri, username=self.username, password=self.password, database=self.database
-        )
-        self.create_index()
-
-    def create_index(self):
-        query = f"""
-            CREATE CONSTRAINT IF NOT EXISTS UNIQUE_{self.collection_name}_text
-            FOR (t:{self.collection_name}) REQUIRE t.text IS UNIQUE
-        """
-        self.kg.query(query)
-
-        query = f"""
-            CREATE INDEX IF NOT EXISTS {self.collection_name}_embeddings
-            FOR (t:{self.collection_name}) ON t.embedding
-        """
-        self.kg.query(query)
-
-    def add_texts(self, texts, metadatas, ids=None):
-        records = []
-        for text, metadata in zip(texts, metadatas):
-            embedding = self.embedding_function(text)
-            record = {
-                'text': text,
-                'metadata': json.dumps(metadata),
-                'embedding': embedding.tolist()
-            }
-            records.append(record)
-
-        query = f"""
-            UNWIND $records AS record
-            MERGE (t:{self.collection_name} {{text: record.text}})
-            ON CREATE SET t.metadata = record.metadata, t.embedding = record.embedding
-            """
-        params = {'records': records}
-        if ids:
-            query += f"""
-            SET t.id = $ids[position()]
-            """
-            params['ids'] = ids
-
-        self.kg.query(query, params=params)
-
-    def delete(self, ids):
-        query = f"""
-            MATCH (t:{self.collection_name})
-            WHERE t.id IN $ids
-            DETACH DELETE t
-            """
-        self.kg.query(query, params={'ids': ids})
-
-    def similarity_search_with_score(self, query, k=1):
-        query_embedding = self.embedding_function(query)
-        query = f"""
-            MATCH (t:{self.collection_name})
-            WHERE t.embedding IS NOT NULL
-            WITH t, distance(t.embedding, $query_embedding) AS dist
-            ORDER BY dist ASC
-            RETURN t.text AS text, t.metadata AS metadata, dist AS distance
-            LIMIT $k
-        """
-        params = {'query_embedding': query_embedding, 'k': k}
-        result = self.kg.query(query, params=params)
-        return result
-
-    def query(self, query_text="", k=1, metadata_filter=None, metadata_filter_OR=False, sort_order=None):
-        if metadata_filter:
-            filters = [f"t.metadata.{key} = {value}" for key, value in metadata_filter.items()]
-            if metadata_filter_OR:
-                filters = " OR ".join(filters)
-            else:
-                filters = " AND ".join(filters)
-            query = f"""
-                MATCH (t:{self.collection_name})
-                WHERE {filters}
-                RETURN t.text AS text, t.metadata AS metadata
-                LIMIT $k
-            """
-            params = {'k': k}
-        else:
-            query = f"""
-                MATCH (t:{self.collection_name})
-                RETURN t.text AS text, t.metadata AS metadata
-                LIMIT $k
-            """
-            params = {'k': k}
-
-        if sort_order:
-            query += f" ORDER BY t.metadata.{sort_order}"
-            if sort_order.endswith('desc'):
-                query += ' DESC'
-
-        result = self.kg.query(query, params=params)
-        return result
-
-    def count(self):
-        query = f"""
-            MATCH (t:{self.collection_name})
-            RETURN count(t) AS count
-        """
-        result = self.kg.query(query)
-        return result[0]['count']
-
-    def persist(self):
-        pass
-
-    def clear(self):
-        query = f"""
-            MATCH (t:{self.collection_name})
-            DETACH DELETE t
-        """
-        self.kg.query(query)
-        
 # Example usage
 # db = UnifiedVectorDB("documents", embedding_function, "bolt://localhost:7687", "neo4j", "password")
 # db.add_texts(["This is a test document"], ids=["doc1"], metadatas=[{"author": "Alice"}])
@@ -573,9 +350,36 @@ class HumanLLMMonitor:
     step_id = 0
     function_list = None
     common_vectordb = None
-    common_vectordb_embedding_function=OpenAIEmbeddings()
+    common_vectordb_embedding_function=OpenAIEmbeddings() #HuggingFaceEmbeddings(model_name="intfloat/e5-base-v2", encode_kwargs={"normalize_embeddings": True}) # TODO: set as a parameter
+
     common_vectordb_collection_name="human_llm_monitor_logs"
     common_vectordb_persist_directory="human_llm_monitor_vectordb"
+
+    # static method to change common_vectordb_embedding_function which can be either OpenAIEmbeddings or HuggingFaceEmbeddings
+    @staticmethod
+    def set_common_vectordb_embedding_function(embedding_function):
+        # if embedding_function is a string, then create the corresponding embedding function
+        if isinstance(embedding_function, str):
+            if embedding_function in ["OpenAIEmbeddings", "text-embedding-ada-002"]:
+                HumanLLMMonitor.common_vectordb_embedding_function = OpenAIEmbeddings()
+            elif embedding_function == "HuggingFaceEmbeddings":
+                HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(model_name="intfloat/e5-base-v2", encode_kwargs={"normalize_embeddings": True})
+            else:
+                HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(model_name=embedding_function, encode_kwargs={"normalize_embeddings": True})
+        else:
+            HumanLLMMonitor.common_vectordb_embedding_function = embedding_function
+
+    @staticmethod
+    def _check_and_init_vector_db(embedding_function = None, reset_db_indices=False):
+        if embedding_function:
+            HumanLLMMonitor.set_common_vectordb_embedding_function(embedding_function)
+        if HumanLLMMonitor.common_vectordb is None:
+            HumanLLMMonitor.common_vectordb = UnifiedVectorDB(
+                collection_name=HumanLLMMonitor.common_vectordb_collection_name,
+                embedding_function=HumanLLMMonitor.common_vectordb_embedding_function,
+                persist_directory=HumanLLMMonitor.common_vectordb_persist_directory,
+                reset_db_indices=reset_db_indices
+            )
 
     def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_name=None, model_max_context_size=16000, llm=None, premium_llm=None, premium_model_name=None, premium_llm_by_default=False, num_parallel_inferences=1):
         self.system_prompt = system_prompt
@@ -890,15 +694,6 @@ class HumanLLMMonitor:
             smart_print(f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[2].function} LLM ANSWER content****\n{inference_result_msg.content}\n*****************\033[0m", self.agent_name, "LLM ANSWER content")
             self.skip_rounds -= 1
         return inference_result_msg, comments, score
-
-    @staticmethod
-    def _check_and_init_vector_db():
-        if HumanLLMMonitor.common_vectordb is None:
-            HumanLLMMonitor.common_vectordb = UnifiedVectorDB(
-                collection_name=HumanLLMMonitor.common_vectordb_collection_name,
-                embedding_function=HumanLLMMonitor.common_vectordb_embedding_function,  # Replace with your actual embedding function
-                persist_directory=HumanLLMMonitor.common_vectordb_persist_directory    # Replace with your actual persist directory path
-            )
 
     # staticmethod get my host ID
     @staticmethod

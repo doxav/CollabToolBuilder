@@ -73,7 +73,7 @@ class DocumentStructure:
                  initial_goal: str,
                  refined_goals: List[str] = None,
                  embedding_model_name: str = "intfloat/e5-base-v2", # text-embedding-ada-002, intfloat/e5-base-v2
-                 embedding_model_query_prefix: str = '', # e.g. "query: " for intfloat/e5-base-v2
+                 embedding_model_query_prefix: str = '', # e.g. "query: " for intfloat/e5-base-v2 should improve for QA but we are in estimating straight semantic similarity
                  title: str = None,
                  context: str = None,
                  ): 
@@ -973,7 +973,7 @@ class SynthesisManager:
     # search into resources stored in self.document.resources_vectordb and self.document.resources, return a list of resources
     @method_call_counter
     def semantic_search_resources(self, query_embeddings = None, query_texts = None, n_results = 10, where = None, where_document = None, include = ["metadatas", "documents", "distances"]):
-        result = self.document.resources_vectordb.similarity_search( query_embeddings, k=n_results)
+        result = self.document.resources_vectordb.similarity_search_with_score( query_embeddings, k=n_results)
 
     @method_call_counter
     def get_all_resources(self) -> List[Dict[str, Any]]:
@@ -1261,7 +1261,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
                  CPS_env_type="techsynthesis",
                  title: str = "",
                  context: str = None,
-                 embedding_model_name: str = "text-embedding-ada-002",
+                 embedding_model_name: str = "intfloat/e5-base-v2", # text-embedding-ada-002, intfloat/e5-base-v2
                  openai_api_key: str = None,
                  target_file_path: str = None,
                  id: str = None,

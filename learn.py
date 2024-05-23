@@ -27,6 +27,11 @@ os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
 UnifiedVectorDB.db_type = "elasticsearch" # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
 
+embedding_function="text-embedding-ada-002" # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
+reset_db_indices=True # Set to True after changing embeddings
+
+HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices) 
+
 class Environment:
     def __init__(self, temp_root_dir: str=None, data_dir: str="data"):
         self.temp_root_dir = temp_root_dir if temp_root_dir else os.path.join(os.getcwd(), "temp")
@@ -156,8 +161,8 @@ class CodingAgent():
         self.premium_llm = premium_llm
         self.human_llm_code_task = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm, premium_llm_by_default=True, num_parallel_inferences=4)
         self.envs = envs
-        self.db_successful_tasks = UnifiedVectorDB( collection_name=db_collection_success, embedding_function=HumanLLMMonitor.common_vectordb_embedding_function, persist_directory=HumanLLMMonitor.common_vectordb_persist_directory+db_collection_success)
-        self.db_failed_tasks = UnifiedVectorDB( collection_name=db_collection_failed, embedding_function=HumanLLMMonitor.common_vectordb_embedding_function, persist_directory=HumanLLMMonitor.common_vectordb_persist_directory+db_collection_failed)
+        self.db_successful_tasks = UnifiedVectorDB( collection_name=db_collection_success, embedding_function=HumanLLMMonitor.common_vectordb_embedding_function, persist_directory=HumanLLMMonitor.common_vectordb_persist_directory+db_collection_success, reset_db_indices=reset_db_indices)
+        self.db_failed_tasks = UnifiedVectorDB( collection_name=db_collection_failed, embedding_function=HumanLLMMonitor.common_vectordb_embedding_function, persist_directory=HumanLLMMonitor.common_vectordb_persist_directory+db_collection_failed, reset_db_indices=reset_db_indices)
 
     def process_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None):
         import ast, time, re
