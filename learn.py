@@ -125,14 +125,15 @@ class EnvironmentManager:
 
 # Agent 1: Task Identification
 class TaskIdentificationAgent():
-    def __init__(self, llm, envs: [Environment], premium_llm=None, problem_prompts_subdir=None):
+    def __init__(self, llm, envs: [Environment], premium_llm=None, problem_prompts_subdir=None, premium_llm_by_default=True, skip_rounds=0):
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         self.llm = llm
         self.premium_llm = premium_llm
         self.learnt_tasks: Dict[str, str] = {}
         self.failed_tasks: Dict[str, str] = {}
-        self.human_llm_identify_best_task = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm, premium_llm_by_default=True)
+        self.human_llm_identify_best_task = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm, premium_llm_by_default=premium_llm_by_default)
+        self.human_llm_identify_best_task.skip_rounds = skip_rounds
         self.envs = envs
 
     def update_learnt_tasks(self, tasks: Dict[str, str]) -> None:
@@ -145,21 +146,24 @@ class TaskIdentificationAgent():
         learnt_tasks = format(json.dumps(self.learnt_tasks))
         failed_tasks = format(json.dumps(self.failed_tasks))
         envs_status = '\n'.join([env.get_state() for env in self.envs])
-        user_message = f"- Already developed tasks: {learnt_tasks if learnt_tasks and learnt_tasks!='{}' else 'None'}\n"+\
-            f"- Already failed tasks (too hard): {failed_tasks if failed_tasks and failed_tasks!='{}' else 'None'}\n"+\
-            f"- Current status of examples on which the task will be tested on: {envs_status}\n"
+
+        user_message =  f"- Already developed tasks: {learnt_tasks if learnt_tasks and learnt_tasks!='{}' else 'None'}\n"+\
+                        f"- Already failed tasks (too hard): {failed_tasks if failed_tasks and failed_tasks!='{}' else 'None'}\n"+\
+                        f"- Current status of examples on which the task will be tested on: {envs_status}\n"
+
         task = self.human_llm_identify_best_task.CallHumanLLM(system_prompt_template=self.problem_prompts_subdir+"identify_best_task", user_message=user_message, return_message_content_only=False)
         return task
 
 # Agent 2: Code Task
 class CodingAgent():
-    def __init__(self, llm, envs: [Environment], premium_llm=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks"):
+    def __init__(self, llm, envs: [Environment], premium_llm=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0):
         #super().__init__(llm)
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         self.llm = llm
         self.premium_llm = premium_llm
         self.human_llm_code_task = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm, premium_llm_by_default=True, num_parallel_inferences=4)
+        self.human_llm_code_task.skip_rounds = skip_rounds
         self.envs = envs
         self.db_successful_tasks = UnifiedVectorDB( collection_name=db_collection_success, embedding_function=HumanLLMMonitor.common_vectordb_embedding_function, persist_directory=HumanLLMMonitor.common_vectordb_persist_directory+db_collection_success, reset_db_indices=reset_db_indices)
         self.db_failed_tasks = UnifiedVectorDB( collection_name=db_collection_failed, embedding_function=HumanLLMMonitor.common_vectordb_embedding_function, persist_directory=HumanLLMMonitor.common_vectordb_persist_directory+db_collection_failed, reset_db_indices=reset_db_indices)
@@ -264,6 +268,7 @@ class CodingAgent():
             for previous_error, previous_score, previous_code in zip(previous_errors, previous_scores, previous_codes):
                 user_message+=f"\n\n<<\nERROR OR FEEDBACK: {previous_error.content}" + (f"\n\nSCORE: {previous_score}" if previous_score else "") + f"\n\nCODE: {previous_code}\n>>"
             user_message+=f"\n]]]"
+        current_skip_rounds = self.human_llm_code_task.skip_rounds # save the initial value to align it for code validation
         codes = self.human_llm_code_task.CallHumanLLM(system_prompt_template=self.problem_prompts_subdir+"code_task", user_message=user_message, return_message_content_only=False, stream_output=False)
         results = []
         if reset_unique_ids is None:
@@ -298,7 +303,7 @@ class CodingAgent():
                             # Concatenate common code with program and tests or runnable code
                             code_to_run = common_code + parsed_code["program_code"] + "\n" + "\n".join(matching_tests)
                             no_runtime_error, exec_result = env.step(code_to_run)
-                            while not no_runtime_error and self.human_llm_code_task.skip_rounds <= 0:
+                            while not no_runtime_error and current_skip_rounds <= 0:
                                 smart_print("\033[31mCODE ERROR\033[0m: "+exec_result, self.name, "code_task_and_run_test SystemMessage")
                                 decision = input("Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ").strip().lower()
                                 if decision in ("no", "n", ""):
@@ -325,31 +330,6 @@ class CodingAgent():
                     results.append((code, False, parsed_code, None, None, None))
             except Exception as e:
                 print(f"Skipping 1 code attempt - Error: {e} Traceback: {traceback.format_exc()}")
-        # def process_code(code, original_envs):
-        #     code_parsing_success, parsed_code = self.process_ai_generated_code(code.content, refined_task)
-        #     if not code_parsing_success:
-        #         return (code, False, parsed_code, None, None)
-
-        #     common_code = "\n".join(primitives) + "\n" + parsed_code["program_code"]
-        #     with open("config.py", "r") as f:
-        #         common_code = f.read() + "\n" + common_code
-
-        #     results = []
-        #     for env in original_envs:
-        #         # Create a deep copy of the environment for isolated execution
-        #         env_copy = copy.deepcopy(env)
-        #         no_runtime_error, exec_result = self.run_code_in_env(env_copy, common_code, parsed_code)
-        #         results.append((no_runtime_error, exec_result))
-
-        #     no_runtime_errors, exec_results = zip(*results)
-        #     return (parsed_code, all(no_runtime_errors), exec_results, [env_copy.get_score() for env_copy in results])
-
-        # # Parallel execution of codes with separate environments
-        # results = []
-        # with ThreadPoolExecutor(max_workers=len(codes)) as executor:
-        #     futures = [executor.submit(process_code, code, self.envs) for code in codes]
-        #     for future in as_completed(futures):
-        #         results.append(future.result())
 
         # test if more than one code is returned
         if len(results) > 1:
@@ -363,7 +343,10 @@ class CodingAgent():
                     results_list += f"{id}. \033[31mFAILED\033[0m / SCORE: {result[4]} / EXCEPTION: {result[2][0][:100]} / CODE: {result[0]['program_code'][:100]}\n"
 
             # ask the user to select the code to keep
-            selected_code = input(f"{results_list}CODE SELECTION Please select the code to keep (separated by comma, or just hit enter to keep ALL): ").strip().replace(" ","").lower().split(",")
+            if current_skip_rounds <= 0:
+                selected_code = input(f"{results_list}CODE SELECTION Please select the code to keep (separated by comma, or just hit enter to keep ALL): ").strip().replace(" ","").lower().split(",")
+            else:
+                selected_code = [""] # keep all if skip_rounds is not 0
             id = 0
             # keep only the selected code
             results = [result for id, result in enumerate(results) if selected_code and (str(id) in selected_code or selected_code == [""])]
@@ -371,12 +354,13 @@ class CodingAgent():
 
 # Agent 3: Code Validation
 class ValidationAgent():
-    def __init__(self, llm, envs: [Environment], premium_llm=None):
+    def __init__(self, llm, envs: [Environment], premium_llm=None, skip_rounds=0):
         #super().__init__(llm)
         self.name = self.__class__.__name__
         self.llm = llm
         self.premium_llm = premium_llm
         self.human_llm_validate_code = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm, premium_llm_by_default=False)
+        self.human_llm_validate_code.skip_rounds = skip_rounds
         self.envs = envs
 
     def validate_code(self, code: str, no_runtime_error:bool, exec_result:str, task:str=None, human_evaluation_required=False, scores=None, env_states=None) -> str:
@@ -401,13 +385,14 @@ class ValidationAgent():
 
 # Agent 4: Code Capitalization
 class CapitalizationAgent:
-    def __init__(self, llm, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", db_embedding_function=None, db_perist_directory=None, premium_llm=None):
+    def __init__(self, llm, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", db_embedding_function=None, db_perist_directory=None, premium_llm=None, skip_rounds=0):
         self.name = self.__class__.__name__
         self.tasks_repository: Dict[str, str] = {}
         self.failed_tasks_repository: Dict[str, str] = {}
         self.llm = llm
         self.premium_llm = premium_llm
         self.human_llm_generate_function_description = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm, premium_llm_by_default=False)
+        self.human_llm_generate_function_description.skip_rounds = skip_rounds
         self.db_successful_tasks = UnifiedVectorDB(
             collection_name=db_collection_success,
             embedding_function=db_embedding_function if db_embedding_function else HumanLLMMonitor.common_vectordb_embedding_function,
@@ -485,7 +470,7 @@ class CapitalizationAgent:
         tool_description = self.human_llm_generate_function_description.CallHumanLLM(system_prompt_template="generate_function_description", user_message=user_message, return_message_content_only=True) 
         return tool_description
     
-    def retrieve_saved_tasks_in_db(self, query="", max_db_results=20):
+    def retrieve_saved_tasks_in_db(self, query="", max_db_results=20, include_code=None, selected_successful_functions=None, selected_failed_functions=None):
         smart_print(f"************ Retrieving successful tasks from database - LIST:", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
         # Retrieve tasks from the common vector database
         results_success_db = self.db_successful_tasks.query(query_text="*", k=max_db_results)
@@ -498,14 +483,16 @@ class CapitalizationAgent:
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
             smart_print(f"{id}: function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-        include_code = input(f"CONFIG When adding the functions description in successful tasks, do you want to also include the code (it may overflow the maximum prompt length but can also guide generation) ? (yes/no): ").strip().lower() in ["yes", "y"]
+        if include_code is None:
+            include_code = input(f"CONFIG When adding the functions description in successful tasks, do you want to also include the code (it may overflow the maximum prompt length but can also guide generation) ? (yes/no): ").strip().lower() in ["yes", "y"]
         # Second step: ask the user to select the functions to load
-        selected_functions = input(f"CONFIG Please select the functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
+        if selected_successful_functions is None:
+            selected_successful_functions = input(f"CONFIG Please select the successful functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
         id = 0
         # load into self.tasks_repository
         for result in results_success_db:
             id += 1
-            if selected_functions and (str(id) not in selected_functions) and (selected_functions != ["all"]):
+            if selected_successful_functions and (str(id) not in selected_successful_functions) and (selected_successful_functions != ["all"]):
                 continue
             # Extract the page_content field from the Document object
             page_content = result.page_content
@@ -530,12 +517,13 @@ class CapitalizationAgent:
             task_data = json.loads(page_content)
             smart_print(f"{id}: failed function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
         # Second step: ask the user to select the functions to load
-        selected_functions = input(f"CONFIG Please select the functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
+        if selected_failed_functions is None:
+            selected_failed_functions = input(f"CONFIG Please select the failed functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
         id = 0
         # load into self.tasks_repository
         for result in results_failed_db:
             id += 1
-            if selected_functions and (str(id) not in selected_functions) and (selected_functions != ["all"]):
+            if selected_failed_functions and (str(id) not in selected_failed_functions) and (selected_failed_functions != ["all"]):
                 continue
             # Extract the page_content field from the Document object
             page_content = result.page_content
@@ -547,62 +535,39 @@ class CapitalizationAgent:
             self.failed_tasks_repository[task_data["main_function_name"]] = task_data["task_description_refined"]
             smart_print(f"> failed function/task {task_data['main_function_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
 
-# Main orchestration functionality
-def orchestrate_agents():
-    # Initialize the Langchain llm
-    default_llm = ChatOpenAI(model_name="gpt-3.5-turbo-1106") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
-    premium_llm = ChatOpenAI(model_name="gpt-4-1106-preview") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
+# Main learning loop orchestration functions
+def run_4agents_learning_loop(default_llm, premium_llm, test_environments=None, manual_validation_to_capitalize=True, problem_prompts_subdir=None, max_coding_attempts=4, include_code=None, selected_successful_functions=None, selected_failed_functions=None, agtask_premium_llm_by_default=True, agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0, agcapitalize_skip_rounds=0):
+    if problem_prompts_subdir is None:
+        # menu to choose the problem prompts subdirectory
+        # get the list of subdirectories in the problem prompts directory
+        problem_prompts_subdirs = [name for name in os.listdir("prompts") if os.path.isdir(os.path.join("prompts", name))]
+        # get first element of problem_prompts_subdirs if not empty, else set it to empty string
+        default_subdir = problem_prompts_subdirs[0] if problem_prompts_subdirs else ""
+        choice = smart_input("CONFIG Enter a number for subdirectory (leave empty for default): "+"; ".join(f"{i}. {subdir}" for i, subdir in enumerate(problem_prompts_subdirs, 1))+" ?", "CONFIG")
+        # if choise is empty or not a number or not in the range of the list of subdirectories, set it to 1
+        problem_prompts_subdir = problem_prompts_subdirs[int(choice) - 1] if choice.isdigit() and 1 <= int(choice) <= len(problem_prompts_subdirs) else default_subdir
 
-    # menu to choose the problem prompts subdirectory
-    # get the list of subdirectories in the problem prompts directory
-    problem_prompts_subdirs = [name for name in os.listdir("prompts") if os.path.isdir(os.path.join("prompts", name))]
-    # get first element of problem_prompts_subdirs if not empty, else set it to empty string
-    default_subdir = problem_prompts_subdirs[0] if problem_prompts_subdirs else ""
-    choice = smart_input("CONFIG Enter a number for subdirectory (leave empty for default): "+"; ".join(f"{i}. {subdir}" for i, subdir in enumerate(problem_prompts_subdirs, 1))+" ?", "CONFIG")
-    # if choise is empty or not a number or not in the range of the list of subdirectories, set it to 1
-    problem_prompts_subdir = problem_prompts_subdirs[int(choice) - 1] if choice.isdigit() and 1 <= int(choice) <= len(problem_prompts_subdirs) else default_subdir
-
-    # problem_prompts_subdir string contains CPS in, env_type = "techsynthesis"
-    if "CPS" in problem_prompts_subdir:
-        #from env.IR_CPS_TechSynthesis.env import VoyagerEnvIR_CPS_TechSynthesis
-        env_type = "techsynthesis"  # Ou "minecraft", ou autre pour l'environnement par défaut
-        extra_manual_validation_to_capitalize = False
-        documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
-                    'title':"Complex QA and language models hybrid architectures, Survey",
-                'context':"This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
-                'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"},
-                { 'id':"42252c6c-12f3-4edf-9045-8acd69bc3356",
-                 'title':"Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
-                'context':"This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
-                'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
-        envs = []
-        for doc in documents:
-            #env = EnvironmentManager(env_type).get_environment()
-            #env.title, env.abstract, env.context, env.synthesis_manager.target_file_path, env.id = doc['title'], doc['context'], doc['context'], doc['target_file_path'], doc['id']
-            env = EnvironmentManager(env_type, title=doc['title'], context=doc['context'], target_file_path=doc['target_file_path'], id=doc['id']).get_environment()
-            #env = VoyagerEnvIR_CPS_TechSynthesis()
-            envs.append(env)
-
-    else:
+    if test_environments is None:
         env_type = "default"
-        extra_manual_validation_to_capitalize = True
         manager = EnvironmentManager(env_type)
-        envs = [manager.get_environment()]
+        test_environments = [manager.get_environment()]
 
-    agent_taskreco = TaskIdentificationAgent(default_llm, envs, premium_llm=premium_llm, problem_prompts_subdir=problem_prompts_subdir)
-    agent_coding = CodingAgent(default_llm, envs, premium_llm=premium_llm, problem_prompts_subdir=problem_prompts_subdir)
-    agent_validation = ValidationAgent(default_llm, envs, premium_llm=premium_llm)
-    agent_capitalize = CapitalizationAgent(default_llm, premium_llm=premium_llm)
-    agent_capitalize.retrieve_saved_tasks_in_db()
+    agent_taskreco = TaskIdentificationAgent(default_llm, test_environments, premium_llm=premium_llm, problem_prompts_subdir=problem_prompts_subdir, premium_llm_by_default=agtask_premium_llm_by_default, skip_rounds=agtask_skip_rounds)
+    agent_coding = CodingAgent(default_llm, test_environments, premium_llm=premium_llm, problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds)
+    agent_validation = ValidationAgent(default_llm, test_environments, premium_llm=premium_llm, skip_rounds=agvalidation_skip_rounds)
+    agent_capitalize = CapitalizationAgent(default_llm, premium_llm=premium_llm, skip_rounds=agcapitalize_skip_rounds)
+
+    agent_capitalize.retrieve_saved_tasks_in_db(include_code=include_code, selected_successful_functions=selected_successful_functions, selected_failed_functions=selected_failed_functions)
     agent_taskreco.update_learnt_tasks(agent_capitalize.tasks_repository)
     agent_taskreco.update_failed_tasks(agent_capitalize.failed_tasks_repository)
-    max_attempts = 4
+
     continue_identifying_tasks = True
 
     # Gllobal learn loop
     while continue_identifying_tasks:
         HumanLLMMonitor.step_id = str(uuid.uuid4())
         task = agent_taskreco.identify_best_task()
+        # Handle multiple-tasks case
         if len(task) > 1:
             # list all tasks with their index and the 200 first characters of their content
             task_list = "Multiple task output, only one allowed - PLEASE SELECT:\n"
@@ -619,9 +584,9 @@ def orchestrate_agents():
         else:
             task = task[0]
         smart_print("Identified Task: "+task.content.replace("\\n", "\n"), "orchestrate_agents", "orchestrate_agents RESULT")
-        # refined_task = human_task_refinement_loop(agent_refiner, task)
         task_description = task.content
-        parsed_code, validation = coding_and_validation_loop(agent_coding, agent_validation, task_description, max_attempts, extra_manual_validation_to_capitalize)
+
+        parsed_code, validation = coding_and_validation_loop(agent_coding, agent_validation, task_description, max_coding_attempts, manual_validation_to_capitalize)
         if validation == "success":
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
             agent_taskreco.update_learnt_tasks(agent_capitalize.tasks_repository)
@@ -632,15 +597,7 @@ def orchestrate_agents():
         answer = input("Do you want to reset the environment for searching a new task (Y/YES) or search a new task by keeping what has been created by this task (N/NO/Enter) ? or just exit (E/EXIT) ?").strip().upper()
         continue_identifying_tasks = False if answer in ["E", "EXIT"] else True
         if answer.upper() in ["Y", "YES"]:
-            [env.reset() for env in envs]
-
-def human_task_refinement_loop(agent_refiner, task):
-    human_in_loop = True
-    while human_in_loop:
-        refined_task = agent_refiner.refine_task(task)
-        smart_print(f"Refined Task: {refined_task}".replace("\\n", "\n"), "human_task_refinement_loop", "human_task_refinement_loop RESULT")
-        human_in_loop = input("Is the task refinement adequate? (yes/no): ").strip().lower() != "yes"
-    return refined_task
+            [env.reset() for env in test_environments]
 
 def get_success_value_in_text(text):
     match = re.search(r"Success['\"]?\s*[:=][:=]?\s*(['\"]?)(True|False|Yes|No|y|n|0|1)\1", text, re.IGNORECASE)
@@ -658,7 +615,9 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
         previous_errors, previous_codes, previous_scores, reset_unique_ids = [], [], [], None #TEST reset
 
         # First part: Process all codes and collect results
+        current_skip_rounds = agent_validation.human_llm_validate_code.skip_rounds
         for index, (parsed_code, no_runtime_error, exec_result, new_reset_unique_ids, scores, env_states) in enumerate(results):
+            agent_validation.human_llm_validate_code.skip_rounds = current_skip_rounds # to prevent skip_rounds decreased multiple times by multiple calls of HumanLLMMonitor
             smart_print(f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace("\\n", "\n"), None, "coding_and_validation_loop RESULT")
             validation_agent_feedback = agent_validation.validate_code(parsed_code["program_code"], no_runtime_error, exec_result, task=task_description, scores=scores, env_states=env_states)
             smart_print("Agent validation 'feedback' currently only support 1 feedback", None, "coding_and_validation_loop WARNING")
@@ -709,4 +668,36 @@ def sanitized_task_name(task):
     return task
 
 if __name__ == "__main__":
-    orchestrate_agents()
+    # Initialize the default and premium LLMs
+    default_llm = ChatOpenAI(model_name="gpt-3.5-turbo-1106") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
+    premium_llm = ChatOpenAI(model_name="gpt-4o") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
+
+    # Set the documents to test/validate as a list of environments
+    documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
+                'title':"Complex QA and language models hybrid architectures, Survey",
+            'context':"This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
+            'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"},
+            { 'id':"42252c6c-12f3-4edf-9045-8acd69bc3356",
+                'title':"Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
+            'context':"This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
+            'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
+    envs = []
+    for doc in documents:
+        env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'], target_file_path=doc['target_file_path'], id=doc['id']).get_environment()
+        envs.append(env)
+
+    # Run the learning loop
+    run_4agents_learning_loop(default_llm=default_llm, 
+                              premium_llm=premium_llm, 
+                              test_environments=envs, 
+                              manual_validation_to_capitalize=False, 
+                              problem_prompts_subdir='IR_CPS_TechSynthesis', 
+                              max_coding_attempts=4, 
+                              include_code=False, 
+                              selected_successful_functions=[], 
+                              selected_failed_functions=[], 
+                              agtask_premium_llm_by_default=False, 
+                              agtask_skip_rounds=1, 
+                              agcoding_skip_rounds=1,
+                              agvalidation_skip_rounds=1,
+                              agcapitalize_skip_rounds=1)

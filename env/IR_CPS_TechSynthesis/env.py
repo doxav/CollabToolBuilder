@@ -65,14 +65,14 @@ class Document:
     context_embedding: List[float] = field(default_factory=list)  # TODO: check if we need to store the embedding of the context because, differently to sections content, it is not used in comparison to target because it is an input
     sections_list: List[Any] = field(default_factory=list)  
     sections_list_embedding: List[float] = field(default_factory=list)
-    embedding_model_name: str = "intfloat/e5-base-v2" # e.g. "text-embedding-ada-002" for OpenAI ada-002, "intfloat/e5-base-v2" for HuggingFace e5-base-v2, ...
+    embedding_model_name: str = "text-embedding-ada-002" # e.g. "text-embedding-ada-002" for OpenAI ada-002, "intfloat/e5-base-v2" for HuggingFace e5-base-v2, ...
 
 class DocumentStructure:
     def __init__(self,
                  synthesis_type: str,
                  initial_goal: str,
                  refined_goals: List[str] = None,
-                 embedding_model_name: str = "intfloat/e5-base-v2", # text-embedding-ada-002, intfloat/e5-base-v2
+                 embedding_model_name: str = "text-embedding-ada-002", # text-embedding-ada-002, intfloat/e5-base-v2
                  embedding_model_query_prefix: str = '', # e.g. "query: " for intfloat/e5-base-v2 should improve for QA but we are in estimating straight semantic similarity
                  title: str = None,
                  context: str = None,
@@ -1261,7 +1261,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
                  CPS_env_type="techsynthesis",
                  title: str = "",
                  context: str = None,
-                 embedding_model_name: str = "intfloat/e5-base-v2", # text-embedding-ada-002, intfloat/e5-base-v2
+                 embedding_model_name: str = "text-embedding-ada-002", # text-embedding-ada-002, intfloat/e5-base-v2
                  openai_api_key: str = None,
                  target_file_path: str = None,
                  id: str = None,

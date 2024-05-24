@@ -433,7 +433,7 @@ class HumanLLMMonitor:
             menu = f"\033[{self.print_color}m***** {self.agent_name}->{function_name}  BEFORE *****\nSYSTEM PROMPT:\n{messages[0].content}\n\nUSER MESSAGE:\n{messages[1].content}\n***** {self.agent_name}->{function_name} BEFORE *****\033[0m\n"
             if not self._max_tokens_ok(messages[0].content+"\n"+messages[1].content):
                 menu += ("WARNING!!!! Max tokens exceeded, you should refactor user message or system prompt!\n")
-            menu += ("A. Modify agent's 'role' / 'system prompt' (role, global context, constraints, examples).\n")
+            menu += ("A. Modify agent's 'system prompt' (role, global context, constraints, examples).\n")
             menu += ("B. Add instruction or information to agent.\n")
             menu += ("C. Skip and set LLM output from recent outputs or manually define it.\n")
             menu += ("D. Log comments (not used by the model, just for information).\n")
@@ -865,9 +865,9 @@ class HumanLLMMonitor:
                 else:
                     smart_print(f'**** {len(outputs)} inference results received - You will be requested to select which ones to keep', self.agent_name, "MULTIPLE inferences recieved")
                     # Ask user to select output from the parallel inferences.
-                    if self.skip_rounds > 0:
-                        selected_output = ""
-                    else:
+                    # if self.skip_rounds > 0:
+                    #     selected_output = ""
+                    # else:
                     #     selected_output = input(f'Select the output id number to keep (1-{len(outputs)}), or comma separated list of outputs, or hit Enter to keep all of them: ')
                     # # selected_output could be a comma separated list of output ids, or a single output id, or empty, process it
                     # if selected_output != "":
@@ -877,7 +877,8 @@ class HumanLLMMonitor:
                     #     llm_outputs = [outputs[i-1] for i in selected_output]
                     #     #if len(llm_output) == 1: llm_output = llm_output[0]
                     # else:
-                        llm_outputs = outputs
+                        # llm_outputs = outputs
+                    llm_outputs = outputs
             else:  # Skip the LLM inference.
                 llm_outputs = [AIMessage(content=skip_inference)]
             end_time = datetime.now()
@@ -887,8 +888,10 @@ class HumanLLMMonitor:
             if llm_outputs:
                 if len(llm_outputs) > 1:
                     smart_print("**** Multiple LLM ANSWERS > we will process POST INFERENCE for each ****", self.agent_name, "Multiple LLM ANSWERS", append=True)
+                    init_skip_rounds = self.skip_rounds # save the current skip_rounds value because multiple outputs decrease skip rounds for each parallel output
                 for counter, llm_output in enumerate(llm_outputs, start=1):
                     if len(llm_outputs) > 1:
+                        self.skip_rounds = init_skip_rounds
                         smart_print(f"\033[31mMULTI-INFERENCE OUTPUT #{counter} > \033[0m", self.agent_name, "POST INFERENCE", append=True)
                     # Post-inference human intervention
                     output_messages_instance, output_comments_instance, score_instance = self._after_inference(llm_output, output_id=counter, outputs_count=len(llm_outputs))
