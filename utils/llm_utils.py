@@ -931,6 +931,6 @@ class HumanLLMMonitor:
             use_premium_llm=use_premium_llm,
             call_duration=call_duration
         )
-        return output_messages.content if return_message_content_only else output_messages
+        return [message.content for message in output_messages] if return_message_content_only else output_messages
 
  

@@ -17,9 +17,9 @@ You should then respond to me with:
 - Reasoning: How to best implement the plan with no errors and maximum performance towards the goal ?
 - Code:
     1) Write a function taking the bot as the first parameter which is the shared object of document content and resources (it is an instance of the class SynthesisManager). 
-    2) Ensure that the generated code adheres to principles of reusability and modularity. Specifically, functions should not hard-code strings, variables, or parameters that make them context-specific. Instead, any data or parameters that can vary should be passed as arguments to the functions, ensuring that the functions can be reused in different contexts or with different data without requiring modifications to the code itself. This ensures that the code is adaptable and can be utilized in various scenarios, enhancing its utility and longevity.
+    2) Ensure that the generated code adheres to principles of reusability and modularity. Specifically, functions should not hard-code strings, variables, or parameters that make them context-specific. Instead, any data or parameters of helpers functions that can vary should be passed as arguments to the functions, ensuring that the functions can be reused in different contexts or with different data without requiring modifications to the code itself. This ensures that the code is adaptable and can be utilized in various scenarios, enhancing its utility and longevity.
     3) Call existing functions as much as possible.
-    4) Your function will be reused for building more complex functions. Therefore, you should make it generic and reusable. Avoid to include specific query or information in the function instead of using it as an argument
+    4) Your function will be reused for building more complex functions. Therefore, you should make it generic and reusable. Avoid to include specific query or information in the function instead of using it as an argument.
     5) Anything defined outside a function will be ignored, define all your variables and classes inside your functions.
     6) Ensure that your code is fully executable, it is not a skeleton and does not contain placeholders, unimplemented sections, or comments indicating future work (e.g., TODO, pass, "....", etc.). All functions and logic must be complete and runnable to facilitate immediate use and testing.
     7) Do not write infinite loops or recursive functions.
@@ -43,7 +43,9 @@ Code:
 # detailed content of the function...
 
 # main function after the helper functions
-def your_main_function_name(bot, args...):
+def your_main_function_name(bot):
+    title = bot.document.title
+    abstract = bot.document.context
     # detailed content of the function...
 
 ```

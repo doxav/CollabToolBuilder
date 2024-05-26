@@ -319,8 +319,8 @@ class CodingAgent():
                                 smart_print("\033[31mTESTING NEW CODE\033[0m", self.name, "code_task_and_run_test SystemMessage")
                                 no_runtime_error, exec_result = env.step(code_to_run)
                                 # Update parsed_code if re-run is successful
-                                if no_runtime_error:
-                                    parsed_code["program_code"] = edited_code
+                                # if no_runtime_error:
+                                parsed_code["program_code"] = edited_code
                         # Append the results for each environment
                         no_runtime_errors.append(no_runtime_error)
                         exec_results.append(exec_result)
@@ -336,7 +336,7 @@ class CodingAgent():
             # display the list of results with success, exception and code
             results_list = ""
             for id, result in enumerate(results):
-                # parsed_code, all(no_runtime_errors), exec_results, reset_unique_ids, [env.get_score() for env in self.envs], [env.get_state(extended=True) for env in self.envs]
+                # parsed_code, all(no_runtime_errors), exec_results, reset_unique_ids, [env.get_score() for env in self.envs], [env.get_state(extended=True) for env in self.envs]ys
                 if result[1]:
                     results_list += f"{id}. SUCCESS / SCORE: {result[4]} / CODE: {result[0]['program_code'][:100]}\n"
                 else:
@@ -606,7 +606,37 @@ def get_success_value_in_text(text):
         return success_value.lower() in ['true', 'yes', 'y', '1']
     return False
 
-def coding_and_validation_loop(agent_coding, agent_validation, task_description, max_attempts, extra_manual_validation_to_capitalize=True, continue_even_if_successful=False):
+def get_highest_score_index(score_array, mode='total'):
+    """
+    Returns the index of the sublist with the highest total or average score.
+
+    Parameters:
+    score_array (list): List of lists of dictionaries with score values.
+    mode (str): 'total' to consider total score, 'average' to consider average score. Default is 'total'.
+
+    Returns:
+    int: Index of the sublist with the highest score.
+    """
+    highest_index = -1
+    highest_score = float('-inf')
+
+    for i, score_sublist in enumerate(score_array):
+        # Calculate the total or average score for the entire sublist
+        if mode == 'total':
+            current_score = sum(sum(scores.values()) for scores in score_sublist)
+        elif mode == 'average':
+            total_values = sum(len(scores) for scores in score_sublist)
+            current_score = sum(sum(scores.values()) for scores in score_sublist) / total_values
+        else:
+            raise ValueError("Invalid mode. Use 'total' or 'average'.")
+
+        if current_score > highest_score:
+            highest_score = current_score
+            highest_index = i
+
+    return highest_index
+
+def coding_and_validation_loop(agent_coding, agent_validation, task_description, max_attempts, extra_manual_validation_to_capitalize=True, continue_even_if_successful=True):
     previous_errors, previous_codes, previous_scores, reset_unique_ids = [], [], [], None
     successful_codes = []  # To store successful codes
 
@@ -644,22 +674,33 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
 
         reset_unique_ids = new_reset_unique_ids  # Update reset_unique_ids for the next iteration
 
+        if successful_codes and not continue_even_if_successful:
+            break
+
         if attempt == max_attempts - 1:
             smart_print("Max attempts reached. Trying a new task.", None, "coding_and_validation_loop WARNING")
 
     # Second part: If there are successful codes, ask user to select one
     if successful_codes and (not continue_even_if_successful or attempt >= max_attempts - 1):
-        for i, (parsed_code, feedback, new_reset_unique_ids, scores) in enumerate(successful_codes):
-            smart_print(f"\033[91mOption {i+1}:\033[0m\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {scores}\033[0m\n", None, "coding_and_validation_loop RESULT")
-
-        selection = input("Several codes were successful. Please enter the number of the code you want to add to the library: ").strip()
-        if selection.isdigit() and 0 < int(selection) <= len(successful_codes):
-            selected_index = int(selection) - 1
-            smart_print("Code validated successfully.", None, "coding_and_validation_loop RESULT")
-            selected_code, _, selected_reset_unique_ids = successful_codes[selected_index]
+        if len(successful_codes)==1:
+            selected_code, _, selected_reset_unique_ids, scores = successful_codes[0]
             return selected_code, "success"
-        else:
-            smart_print("Invalid selection or no selection made. Exiting without adding any code.", None, "coding_and_validation_loop WARNING")
+        if current_skip_rounds <= 0:
+            for i, (parsed_code, feedback, new_reset_unique_ids, scores) in enumerate(successful_codes):
+                smart_print(f"\033[91mOption {i+1}:\033[0m\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {scores}\033[0m\n", None, "coding_and_validation_loop RESULT")
+
+            selection = input("Several codes were successful. Please enter the number of the code you want to add to the library: ").strip()
+            if selection.isdigit() and 0 < int(selection) <= len(successful_codes):
+                selected_index = int(selection) - 1
+                smart_print("Code validated successfully.", None, "coding_and_validation_loop RESULT")
+                selected_code, _, selected_reset_unique_ids, scores = successful_codes[selected_index]
+                return selected_code, "success"
+            else:
+                smart_print("Invalid selection or no selection made. Exiting without adding any code.", None, "coding_and_validation_loop WARNING")
+        else: # if in automatic mode, select the code with the highest score
+            highest_score_index = get_highest_score_index([scores for _, _, _, scores in successful_codes], mode='total')
+            selected_code, _, selected_reset_unique_ids, scores = successful_codes[highest_score_index]
+            return selected_code, "success"
 
     return None, "failed"  # If no successful code was selected, return failure
 
@@ -698,6 +739,6 @@ if __name__ == "__main__":
                               selected_failed_functions=[], 
                               agtask_premium_llm_by_default=False, 
                               agtask_skip_rounds=1, 
-                              agcoding_skip_rounds=1,
-                              agvalidation_skip_rounds=1,
-                              agcapitalize_skip_rounds=1)
+                              agcoding_skip_rounds=4,
+                              agvalidation_skip_rounds=4,
+                              agcapitalize_skip_rounds=0)
