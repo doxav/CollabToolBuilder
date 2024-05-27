@@ -28,7 +28,7 @@ UnifiedVectorDB.db_type = "elasticsearch" # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
 
 embedding_function="text-embedding-ada-002" # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
-reset_db_indices=True # Set to True after changing embeddings
+reset_db_indices=False # Set to True after changing embeddings
 
 HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices) 
 
@@ -738,7 +738,7 @@ if __name__ == "__main__":
                               selected_successful_functions=[], 
                               selected_failed_functions=[], 
                               agtask_premium_llm_by_default=False, 
-                              agtask_skip_rounds=1, 
-                              agcoding_skip_rounds=4,
-                              agvalidation_skip_rounds=4,
-                              agcapitalize_skip_rounds=0)
+                              agtask_skip_rounds=0, # Auto-test: 1 
+                              agcoding_skip_rounds=0, # Auto-test: 4
+                              agvalidation_skip_rounds=0, # Auto-test: 4
+                              agcapitalize_skip_rounds=0) # Auto-test: 0

@@ -517,18 +517,22 @@ class HumanLLMMonitor:
             elif action == "C":
                 start_time, action = time.time(), "C"
 
-                log_entries, list_output = self._get_log_entries(self.agent_name, function_name), ""
-                for idx, entry in enumerate(log_entries, start=1):
-                    content = json.loads(entry.page_content)
-                    text = (content['output_contents'][0]['content'].replace('\n', '\\') if content['output_contents'] else "") if isinstance(content['output_contents'], list) else content['output_contents']['content'].replace('\n', '\\')
-                    date = entry.metadata['time'].split('.')[0]
-                    list_output += (f"\033[94m{idx}.\033[0m {text[:100]}....{text[-100:]} #{entry.metadata['function_name']} @{date}\n")  # Display a snippet of each entry
-                smart_print(list_output, self.agent_name, "LOG ENTRIES LIST")
+                if HumanLLMMonitor.common_vectordb.count() > 0:
+                    log_entries, list_output = self._get_log_entries(self.agent_name, function_name), ""
+                    for idx, entry in enumerate(log_entries, start=1):
+                        content = json.loads(entry.page_content)
+                        text = (content['output_contents'][0]['content'].replace('\n', '\\') if content['output_contents'] else "") if isinstance(content['output_contents'], list) else content['output_contents']['content'].replace('\n', '\\')
+                        date = entry.metadata['time'].split('.')[0]
+                        list_output += (f"\033[94m{idx}.\033[0m {text[:100]}....{text[-100:]} #{entry.metadata['function_name']} @{date}\n")  # Display a snippet of each entry
+                    smart_print(list_output, self.agent_name, "LOG ENTRIES LIST")
 
-                try: selected_index = int(input("Select the log entry number to load or 0/enter to manually enter LLM output: ")) - 1
-                except: selected_index = -1
+                    try: selected_index = int(input("Select the log entry number to load or 0/enter to manually enter LLM output: ")) - 1
+                    except: selected_index = -1
+                else:
+                    selected_index = -1
+
                 if selected_index < 0 or selected_index >= len(log_entries):
-                    llm_output = _visual_input("Enter LLM ANSWER/OUTPUT:\n")
+                    llm_output = _visual_input("{replace with expected ANSWER/OUTPUT}")
                 else:
                     selected_log_entry = json.loads(log_entries[selected_index].page_content)
                     llm_output = (selected_log_entry['output_contents'][0] if isinstance(selected_log_entry['output_contents'], list) else selected_log_entry['output_contents'])['content']
