@@ -4,10 +4,7 @@ import traceback
 import openai
 import json
 from typing import Dict, Optional
-from langchain.chat_models import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
 from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, load_prompt, save_prompt, _visual_input, is_vscode_installed, smart_print, smart_input
-from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import copy
 from config import *
@@ -16,6 +13,18 @@ import uuid
 import re
 import shutil
 import hashlib
+
+from langchain_core.runnables import Runnable, RunnablePassthrough
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+#from langchain.schema import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages.human import HumanMessage
+from langchain_core.messages.ai import AIMessage
+from langchain_core.messages.system import SystemMessage
+from langchain_core.messages.function import FunctionMessage
+
+from langchain_openai import ChatOpenAI # from langchain.chat_models import ChatOpenAI
+#from langchain.chat_models import ChatOpenAI
 
 from langchain.globals import set_llm_cache
 from langchain.cache import SQLiteCache
@@ -708,9 +717,63 @@ def sanitized_task_name(task):
     # Implement task name sanitization logic
     return task
 
+class PrintPromptRunnable(Runnable):
+    def invoke(self, input_msg, config):
+        print(f"PrintPromptRunnable type of input_msg: {type(input_msg)}")
+        # Extract and format the prompt
+        formatted_prompt = format_prompt(input_msg if isinstance(input_msg, list) else input_msg.messages)
+        # Print the prompt in RED
+        print("\033[31m" + formatted_prompt + "\033[0m")
+        return input_msg
+
+class ExtractMessage(Runnable):
+    def invoke(self, input_msg, config):
+        return "\n".join(getattr(message, 'content', message) for message in getattr(input_msg, 'messages', input_msg))
+    
+def format_prompt(messages):
+    prompt_str = ""
+    for message in messages:
+        if isinstance(message, SystemMessage):
+            prompt_str += "System: " + message.content + "\n"
+        elif isinstance(message, HumanMessage):
+            prompt_str += "Human: " + message.content + "\n"
+        elif isinstance(message, AIMessage):
+            prompt_str += "AI: " + message.content + "\n"
+        else:
+            prompt_str += f"Type {type(message)}: " + str(message.content) + "\n"
+    return prompt_str
+    
+def create_MapReduce_chain(num_models=3, map_model_name="gpt-3.5-turbo-1106", reduce_model_name="gpt-3.5-turbo-1106", map_temperature=0.7, reduce_temperature=0.7):
+    # Initialize the OpenAI models
+    models = [ChatOpenAI(model_name=map_model_name, temperature=map_temperature) for _ in range(num_models)]
+    final_model = ChatOpenAI(model_name=reduce_model_name, temperature=reduce_temperature)
+
+    # Define the chain using LCEL
+    response_keys = [f"response_{i+1}" for i in range(num_models)]
+    multi_reponse = {key: model for key, model in zip(response_keys, models)}
+    multi_reponse["cleaned_input"] = ExtractMessage()
+
+    final_prompt_template_str = (
+        "Given the following responses below and the initial question below, provide an optimal response to the question mixing best elements of each and following the same answer output structure:\n\n"
+        "Initial question:\n{cleaned_input}\n\n" +
+        "\n\n".join([f"Response {i+1}:\n{{{response_keys[i]}}}" for i in range(num_models)]) +  # Access content directly
+        "\n\nOptimal Response:\n"
+    )
+
+    # Insert the PrintPromptRunnable just to print the prompt for control
+    print_prompt_runnable = PrintPromptRunnable()
+
+    # Print in RED the final prompt template: print("\033[31m"+final_prompt_template_str+"\033[0m")
+    final_prompt_template = ChatPromptTemplate.from_template(final_prompt_template_str)
+
+    chain = multi_reponse | final_prompt_template | print_prompt_runnable | final_model # No ERROR but bad output: "I'm sorry, but I cannot fulfill this request" or "I'm sorry, but I cannot fulfill this request as it is too complex for me to process." or "I'm sorry, but I cannot fulfill this request as it involves creating a Python function and providing a specific response format." or "I'm sorry, but I cannot fulfill this request as it requires a level of understanding and reasoning that is beyond my current capabilities."
+
+    return chain
+
 if __name__ == "__main__":
     # Initialize the default and premium LLMs
-    default_llm = ChatOpenAI(model_name="gpt-3.5-turbo-1106") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
+    #default_llm = ChatOpenAI(model_name="gpt-3.5-turbo-1106") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
+    default_llm = create_MapReduce_chain(num_models=3)
     premium_llm = ChatOpenAI(model_name="gpt-4o") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
 
     # Set the documents to test/validate as a list of environments

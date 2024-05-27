@@ -9,9 +9,14 @@ import hashlib
 import time
 import tkinter
 import json
-from langchain.embeddings import OpenAIEmbeddings, HuggingFaceEmbeddings
 
-from langchain.schema import AIMessage, HumanMessage, SystemMessage, FunctionMessage
+from langchain.embeddings import OpenAIEmbeddings, HuggingFaceEmbeddings
+#from langchain.schema import AIMessage, HumanMessage, SystemMessage, FunctionMessage
+from langchain_core.messages.human import HumanMessage
+from langchain_core.messages.ai import AIMessage
+from langchain_core.messages.system import SystemMessage
+from langchain_core.messages.function import FunctionMessage
+
 import tkinter as tk
 from tkinter import simpledialog, scrolledtext
 from datetime import datetime
@@ -814,7 +819,7 @@ class HumanLLMMonitor:
                     start_color, end_color = ["\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m", "\033[97m"][color_id % 7], "\033[0m"
                 final_output = ""  # Initialize an empty string to hold the full response
                 smart_print("", self.agent_name, "Inference streaming output")
-                for chunk in func.stream(input_msg, temperature=temperature):  # Ensure 'llm' is correctly initialized with temperature
+                for chunk in func.stream(input_msg): #, temperature=temperature):  # Ensure 'llm' is correctly initialized with temperature
                     smart_print(start_color+chunk.content+end_color, self.agent_name, "Inference streaming output", append=True)
                     final_output += chunk.content  # Concatenate each chunk to build the full response
                 return AIMessage(content=final_output) # Return the concatenated full respons
