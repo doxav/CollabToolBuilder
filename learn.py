@@ -134,14 +134,14 @@ class EnvironmentManager:
 
 # Agent 1: Task Identification
 class TaskIdentificationAgent():
-    def __init__(self, llm, envs: [Environment], premium_llm=None, problem_prompts_subdir=None, premium_llm_by_default=True, skip_rounds=0):
+    def __init__(self, default_llm_key, envs: [Environment], premium_llm_key=None, problem_prompts_subdir=None, premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None):
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
-        self.llm = llm
-        self.premium_llm = premium_llm
+        self.default_llm = llmORchains_list[default_llm_key]
+        self.premium_llm = llmORchains_list[premium_llm_key]
         self.learnt_tasks: Dict[str, str] = {}
         self.failed_tasks: Dict[str, str] = {}
-        self.human_llm_identify_best_task = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm, premium_llm_by_default=premium_llm_by_default)
+        self.human_llm_identify_best_task = HumanLLMMonitor(llm=self.default_llm, premium_llm=self.premium_llm, premium_llm_by_default=premium_llm_by_default, llmORchains_list=llmORchains_list)
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         self.envs = envs
 
@@ -165,13 +165,13 @@ class TaskIdentificationAgent():
 
 # Agent 2: Code Task
 class CodingAgent():
-    def __init__(self, llm, envs: [Environment], premium_llm=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0):
+    def __init__(self, default_llm_key, envs: [Environment], premium_llm_key=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0, llmORchains_list=None):
         #super().__init__(llm)
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
-        self.llm = llm
-        self.premium_llm = premium_llm
-        self.human_llm_code_task = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm, premium_llm_by_default=True, num_parallel_inferences=4)
+        self.default_llm = llmORchains_list[default_llm_key]
+        self.premium_llm = llmORchains_list[premium_llm_key]
+        self.human_llm_code_task = HumanLLMMonitor(llm=self.default_llm, premium_llm=self.premium_llm, premium_llm_by_default=True, num_parallel_inferences=4, llmORchains_list=llmORchains_list)
         self.human_llm_code_task.skip_rounds = skip_rounds
         self.envs = envs
         self.db_successful_tasks = UnifiedVectorDB( collection_name=db_collection_success, embedding_function=HumanLLMMonitor.common_vectordb_embedding_function, persist_directory=HumanLLMMonitor.common_vectordb_persist_directory+db_collection_success, reset_db_indices=reset_db_indices)
@@ -363,12 +363,12 @@ class CodingAgent():
 
 # Agent 3: Code Validation
 class ValidationAgent():
-    def __init__(self, llm, envs: [Environment], premium_llm=None, skip_rounds=0):
+    def __init__(self, default_llm_key, envs: [Environment], premium_llm_key=None, skip_rounds=0, llmORchains_list=None):
         #super().__init__(llm)
         self.name = self.__class__.__name__
-        self.llm = llm
-        self.premium_llm = premium_llm
-        self.human_llm_validate_code = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm, premium_llm_by_default=False)
+        self.default_llm = llmORchains_list[default_llm_key]
+        self.premium_llm = llmORchains_list[premium_llm_key]
+        self.human_llm_validate_code = HumanLLMMonitor(llm=self.default_llm, premium_llm=self.premium_llm, premium_llm_by_default=False, llmORchains_list=llmORchains_list)
         self.human_llm_validate_code.skip_rounds = skip_rounds
         self.envs = envs
 
@@ -394,13 +394,13 @@ class ValidationAgent():
 
 # Agent 4: Code Capitalization
 class CapitalizationAgent:
-    def __init__(self, llm, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", db_embedding_function=None, db_perist_directory=None, premium_llm=None, skip_rounds=0):
+    def __init__(self, default_llm_key, premium_llm_key=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", db_embedding_function=None, db_perist_directory=None, skip_rounds=0, llmORchains_list=None):
         self.name = self.__class__.__name__
         self.tasks_repository: Dict[str, str] = {}
         self.failed_tasks_repository: Dict[str, str] = {}
-        self.llm = llm
-        self.premium_llm = premium_llm
-        self.human_llm_generate_function_description = HumanLLMMonitor(llm=self.llm, premium_llm=self.premium_llm, premium_llm_by_default=False)
+        self.default_llm = llmORchains_list[default_llm_key]
+        self.premium_llm = llmORchains_list[premium_llm_key]
+        self.human_llm_generate_function_description = HumanLLMMonitor(llm=self.default_llm, premium_llm=self.premium_llm, premium_llm_by_default=False, llmORchains_list=llmORchains_list)
         self.human_llm_generate_function_description.skip_rounds = skip_rounds
         self.db_successful_tasks = UnifiedVectorDB(
             collection_name=db_collection_success,
@@ -545,7 +545,7 @@ class CapitalizationAgent:
             smart_print(f"> failed function/task {task_data['main_function_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
 
 # Main learning loop orchestration functions
-def run_4agents_learning_loop(default_llm, premium_llm, test_environments=None, manual_validation_to_capitalize=True, problem_prompts_subdir=None, max_coding_attempts=4, include_code=None, selected_successful_functions=None, selected_failed_functions=None, agtask_premium_llm_by_default=True, agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0, agcapitalize_skip_rounds=0):
+def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environments=None, manual_validation_to_capitalize=True, problem_prompts_subdir=None, max_coding_attempts=4, include_code=None, selected_successful_functions=None, selected_failed_functions=None, agtask_premium_llm_by_default=True, agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0, agcapitalize_skip_rounds=0, llmORchains_list=None):
     if problem_prompts_subdir is None:
         # menu to choose the problem prompts subdirectory
         # get the list of subdirectories in the problem prompts directory
@@ -561,10 +561,10 @@ def run_4agents_learning_loop(default_llm, premium_llm, test_environments=None, 
         manager = EnvironmentManager(env_type)
         test_environments = [manager.get_environment()]
 
-    agent_taskreco = TaskIdentificationAgent(default_llm, test_environments, premium_llm=premium_llm, problem_prompts_subdir=problem_prompts_subdir, premium_llm_by_default=agtask_premium_llm_by_default, skip_rounds=agtask_skip_rounds)
-    agent_coding = CodingAgent(default_llm, test_environments, premium_llm=premium_llm, problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds)
-    agent_validation = ValidationAgent(default_llm, test_environments, premium_llm=premium_llm, skip_rounds=agvalidation_skip_rounds)
-    agent_capitalize = CapitalizationAgent(default_llm, premium_llm=premium_llm, skip_rounds=agcapitalize_skip_rounds)
+    agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_key=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, premium_llm_by_default=agtask_premium_llm_by_default, skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list)
+    agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_key=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds, llmORchains_list=llmORchains_list)
+    agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_key=premium_llm_key, skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list)
+    agent_capitalize = CapitalizationAgent(default_llm_key, premium_llm_key=premium_llm_key, skip_rounds=agcapitalize_skip_rounds, llmORchains_list=llmORchains_list)
 
     agent_capitalize.retrieve_saved_tasks_in_db(include_code=include_code, selected_successful_functions=selected_successful_functions, selected_failed_functions=selected_failed_functions)
     agent_taskreco.update_learnt_tasks(agent_capitalize.tasks_repository)
@@ -743,7 +743,7 @@ def format_prompt(messages):
             prompt_str += f"Type {type(message)}: " + str(message.content) + "\n"
     return prompt_str
     
-def create_MapReduce_chain(num_models=3, map_model_name="gpt-3.5-turbo-1106", reduce_model_name="gpt-3.5-turbo-1106", map_temperature=0.7, reduce_temperature=0.7):
+def create_Nmajority_chain(num_models=3, map_model_name="gpt-3.5-turbo-1106", reduce_model_name="gpt-3.5-turbo-1106", map_temperature=0.7, reduce_temperature=0.7):
     # Initialize the OpenAI models
     models = [ChatOpenAI(model_name=map_model_name, temperature=map_temperature) for _ in range(num_models)]
     final_model = ChatOpenAI(model_name=reduce_model_name, temperature=reduce_temperature)
@@ -773,8 +773,14 @@ def create_MapReduce_chain(num_models=3, map_model_name="gpt-3.5-turbo-1106", re
 if __name__ == "__main__":
     # Initialize the default and premium LLMs
     #default_llm = ChatOpenAI(model_name="gpt-3.5-turbo-1106") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
-    default_llm = create_MapReduce_chain(num_models=3)
-    premium_llm = ChatOpenAI(model_name="gpt-4o") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
+    #default_llm = create_Nmajority_chain(num_models=3)
+    #premium_llm = ChatOpenAI(model_name="gpt-4o") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
+    llmORchains_list = {
+        "default_llm": ChatOpenAI(model_name="gpt-3.5-turbo-1106"),
+        "premium_llm": ChatOpenAI(model_name="gpt-4o"),
+        "3_majority_chain": create_Nmajority_chain(num_models=3),
+        "10_majority_chain": create_Nmajority_chain(num_models=10)
+    }
 
     # Set the documents to test/validate as a list of environments
     documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
@@ -791,8 +797,9 @@ if __name__ == "__main__":
         envs.append(env)
 
     # Run the learning loop
-    run_4agents_learning_loop(default_llm=default_llm, 
-                              premium_llm=premium_llm, 
+    run_4agents_learning_loop(default_llm_key="default_llm", 
+                              premium_llm_key="premium_llm",
+                              llmORchains_list=llmORchains_list,
                               test_environments=envs, 
                               manual_validation_to_capitalize=False, 
                               problem_prompts_subdir='IR_CPS_TechSynthesis', 
