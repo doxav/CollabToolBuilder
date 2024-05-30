@@ -71,7 +71,7 @@ def smart_input(message: str, agent_name = None, message_type = None):
     else:
         IN_NOTEBOOK = globals()['IN_NOTEBOOK']
 
-    if False and IN_NOTEBOOK and agent_name:
+    if False and IN_NOTEBOOK and agent_name: # Currently DE-ACTIVATED
         # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
         if 'AgentDisplayManager' not in globals():
             try:
@@ -722,7 +722,8 @@ class HumanLLMMonitor:
 
             # Count time spent and occurrences waiting and in each option
             if action:
-                if action not in self.after_inference_option_times:
+                # if action is set and not exist yet, also check if this is 1 single letter
+                if action and (action not in self.after_inference_option_times) and action.isalpha() and len(action) == 1:
                     self.after_inference_option_times[action] = 0
                     self.after_inference_option_counts[action] = 0
                 self.after_inference_option_times[action] += (time.time() - start_time)
@@ -839,6 +840,16 @@ class HumanLLMMonitor:
             "commented": (input_comments is not None or output_comments is not None),
             "scored": (score is not None),
         }
+        # add to tags every key of self.before_inference_option_times with count and time, if count > 0
+        for key in self.before_inference_option_times:
+            if self.before_inference_option_counts[key] > 0:
+                tags[f"b{key}_time"] = self.before_inference_option_times[key]
+                tags[f"b{key}_count"] = self.before_inference_option_counts[key]
+        # add to tags every key of self.after_inference_option_times with count and time, if count > 0
+        for key in self.after_inference_option_times:
+            if self.after_inference_option_counts[key] > 0:
+                tags[f"a{key}_time"] = self.after_inference_option_times[key]
+                tags[f"a{key}_count"] = self.after_inference_option_counts[key]
 
         HumanLLMMonitor._check_and_init_vector_db()
 
