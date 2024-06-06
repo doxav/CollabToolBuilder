@@ -1,0 +1,10 @@
+# collaboration_config.yaml
+projects:
+  project1:
+    members:
+      - user1
+      - user2
+  project2:
+    members:
+      - user3
+      - user4
