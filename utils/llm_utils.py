@@ -402,7 +402,7 @@ class HumanLLMMonitor:
             print(f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}")
             return False
 
-    def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None,  model_max_context_size=16000, llm=None, premium_llm=None, premium_llm_by_default=False, num_parallel_inferences=1, llmORchains_list=None):
+    def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None,  model_max_context_size=16000, llm=None, premium_llm=None, premium_llm_by_default=False, num_parallel_inferences=1, llmORchains_list=None, synthesize_mode=False):
         if llmORchains_list is None: raise ValueError("llmORchains_list must be provided")
         self.llmORchains_list = llmORchains_list
         self.system_prompt = system_prompt
@@ -420,6 +420,7 @@ class HumanLLMMonitor:
         self.num_parallel_inferences = num_parallel_inferences
         self.llm_max_context_size = model_max_context_size
         self.premium_llm_by_default = premium_llm_by_default
+        self.synthesize_mode = synthesize_mode  # NEW
 
     def get_caller_class_name(self):
         # Returns the name of the class that called the current function
@@ -446,6 +447,16 @@ class HumanLLMMonitor:
         )
         return result
 
+    def synthesize_responses(self, responses, use_default_llm):
+        system = """You have been provided with a set of responses from various open-source models to the latest user query. Your task is to synthesize these responses into a single, high-quality response while keeping the same output format structure. It is crucial to first critically evaluate the information provided in these responses, recognizing that some of it may be biased or incorrect. Your response should not simply replicate the given answers but should offer a refined, accurate, and comprehensive reply to the instruction with the same format output. Ensure your response is well-structured, coherent, and adheres to the highest standards of accuracy and reliability."""
+        messages = [SystemMessage(content=system), HumanMessage(content="\n".join(responses))]
+        formatted_responses = "\n\n".join([f"RESPONSE {i+1}: [[\n{response}\n]]" for i, response in enumerate(responses)])  # NEW/UPDATED
+        messages = [SystemMessage(content=system), HumanMessage(content=formatted_responses)]  # NEW/UPDATED
+        if use_default_llm:
+            return self.default_llm(messages)
+        else:
+            return self.premium_llm(messages)
+    
     def _before_inference(self, messages, default_llm_function, premium_llm_function, function_calling, callable_system_message=None, use_premium_llm=None):
         comments = None
         initial_user_message = messages[1].content
@@ -468,7 +479,7 @@ class HumanLLMMonitor:
             menu += ("H. Change default LLM.\n")
             menu += ("I. Change premium LLM.\n")
             #menu += (f"I. Activate/de-activate function calling to allow model request external knowledge - current status: {function_calling}\n")
-            menu += (f"J. Change num of parallel inferences - Current value={self.num_parallel_inferences}\n")
+            menu += (f"J. Change num of parallel inferences - Current value={self.num_parallel_inferences}, Synthesize mode=\033[32m{'ON' if self.synthesize_mode else 'OFF'}\033[0m\n")  # UPDATED
             menu += ("K. Exit program.\n")
             menu += (f"P. Proceed to inference using a PREMIUM LLM - Current value={use_premium_llm}\n")
 
@@ -612,9 +623,14 @@ class HumanLLMMonitor:
                 else:
                     exit()
             
-            elif action == "J": # Change num of parallel inferences
+            elif action == "J": # Change num of parallel inferences and synthesize mode
                 try: self.num_parallel_inferences = int(input("Enter new value for num_parallel_inferences: "))
                 except: self.num_parallel_inferences = 1
+                synthesize_mode_input = input("Turn synthesis mode on/off (1 for ON, 0 for OFF): ").strip() #NEW
+                if synthesize_mode_input in ["0", "1"]: #NEW
+                    self.synthesize_mode = synthesize_mode_input == "1" #NEW
+                else: #NEW
+                    print("Invalid input. Synthesize mode remains unchanged.")
 
             # Count time spent and occurrences waiting and in each option
             if action:
@@ -926,8 +942,13 @@ class HumanLLMMonitor:
                     # smart_print(f'**** One inference result recieved, set output to it', self.agent_name, "ONE inference recieved")
                     llm_outputs = outputs
                 else:
-                    smart_print(f'**** {len(outputs)} inference results received - You will be requested to select which ones to keep', self.agent_name, "MULTIPLE inferences recieved")
-                    llm_outputs = outputs
+                    if self.synthesize_mode and len(outputs) > 1: #NEW/UPDATED: TODO: allow to exclude code synthesis with (self.synthesize_mode or (self.skip_rounds > 0 and self.agent_name == "Coder")) 
+                        synthesized_response = self.synthesize_responses([output.content for output in outputs], use_default_llm) #NEW
+                        llm_outputs = [AIMessage(content=synthesized_response.content)] #NEW
+                        smart_print(f'**** {len(outputs)} inference results received, THEN SYNTHETISED to 1', self.agent_name, "MULTIPLE to 1 SYNTHESIS (similar to Mixture of Agents)") #NEW
+                    else: #UPDATED
+                        smart_print(f'**** {len(outputs)} inference results received - You will be requested to select which ones to keep', self.agent_name, "MULTIPLE inferences received")
+                        llm_outputs = outputs
             else:  # Skip the LLM inference.
                 llm_outputs = [AIMessage(content=skip_inference)]
             end_time = datetime.now()
