@@ -815,7 +815,7 @@ class HumanLLMMonitor:
 
     def _log_entry(self, function_name, input_contents, output_contents, input_modified=False,
                    skipped_inference=False, input_comments=None, output_comments=None, output_llm_raw=None,
-                   output_modified=False, inference_time=None, message_tokens=None, score=None, use_premium_llm=False, call_duration=None, skip_rounds=None):
+                   output_modified=False, inference_time=None, message_tokens=None, score=None, use_premium_llm=False, call_duration=None, skip_rounds=None, synthesize_mode=False):
         entry = {
             "input_contents": input_contents,
             "output_contents": output_contents,
@@ -830,7 +830,8 @@ class HumanLLMMonitor:
             "before_inference_option_counts": self.before_inference_option_counts,
             "after_inference_option_times": self.after_inference_option_times,
             "after_inference_option_counts": self.after_inference_option_counts,
-            "call_duration": call_duration
+            "call_duration": call_duration,
+            "synthesize_mode": synthesize_mode
         }
         #print(f"Human modifications ? input_modified:{input_modified}, output_modified:{output_modified}\nlog entry: {entry}")
 
@@ -998,7 +999,8 @@ class HumanLLMMonitor:
             score=score, 
             message_tokens=None,
             use_premium_llm=use_premium_llm,
-            call_duration=call_duration
+            call_duration=call_duration,
+            synthesize_mode=self.synthesize_mode
         )
 
         return [message.content for message in output_messages] if return_message_content_only else output_messages
