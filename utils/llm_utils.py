@@ -34,21 +34,10 @@ import openai
 openai.api_key = OPENAI_API_KEY
 os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
 
-# Initialiser les clés dans st.session_state si elles n'existent pas
-def initialize_session_state():
-    if 'input_counter' not in st.session_state:
-        st.session_state['input_counter'] = 0
-    if 'messages' not in st.session_state:
-        st.session_state['messages'] = ""
-    if 'output_container' not in st.session_state:
-        st.session_state['output_container'] = st.empty()
-    if 'awaiting_input' not in st.session_state:
-        st.session_state['awaiting_input'] = False
-    if 'output_key' not in st.session_state:
-        st.session_state['output_key'] = 0
+ON_INPUT = False
 
 def smart_print(message: str, agent_name=None, message_type=None, append=False):
-    global IN_STREAMLIT
+    global IN_STREAMLIT, AgentDisplayManager
     if 'IN_NOTEBOOK' not in globals():
         try:  # test if IN_NOTEBOOK
             from IPython import get_ipython
@@ -59,28 +48,19 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False):
     else:
         IN_NOTEBOOK = globals()['IN_NOTEBOOK']
 
-    initialize_session_state()
     if 'IN_STREAMLIT' not in globals():
         globals()['IN_STREAMLIT'] = True
     if IN_STREAMLIT:
         if append:
-            st.session_state['messages'] += message + "\n"
+            # Write in "data.txt" file
+            with open("data.txt", "a") as file:
+                file.write(message + "\n")
         else:
-            st.session_state['messages'] = message + "\n"
-        st.session_state['output_key'] += 1
-        st.session_state['output_container'].text_area(
-            "Output",
-            st.session_state['messages'],
-            height=400,
-            key=f"output_{st.session_state['output_key']}"
-        )
-    else:
-        if append:
-            print(message, end="", flush=True)
-        else:
-            print(message)
+            # Write in "data.txt" file
+            with open("data.txt", "w") as file:
+                file.write(message + "\n")
 
-    if IN_NOTEBOOK and agent_name:
+    elif IN_NOTEBOOK and agent_name:
         # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
         if 'AgentDisplayManager' not in globals():
             try:
@@ -99,7 +79,6 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False):
         else:
             print(message)
 
-
 def smart_input(message: str, agent_name=None, message_type=None):
     if 'IN_NOTEBOOK' not in globals():
         try:  # test if IN_NOTEBOOK
@@ -111,35 +90,28 @@ def smart_input(message: str, agent_name=None, message_type=None):
     else:
         IN_NOTEBOOK = globals()['IN_NOTEBOOK']
 
-    initialize_session_state()
     if 'IN_STREAMLIT' not in globals():
         globals()['IN_STREAMLIT'] = True
     if IN_STREAMLIT:
-        if not st.session_state['awaiting_input']:
-            st.session_state['input_counter'] += 1
-            st.session_state['awaiting_input'] = True
-
-        input_key = f"input_{st.session_state['input_counter']}"
-        input_value = st.text_input(message, key=input_key)
-        submit_key = f"submit_{input_key}"
-
-        if st.button("Submit", key=submit_key):
-            st.session_state[input_key] = input_value
-            st.session_state['awaiting_input'] = False
-            st.experimental_rerun()
-        st.session_state['output_key'] += 1
-        # Assurez-vous que la boîte de sortie est toujours visible
-        st.session_state['output_container'].text_area(
-            "Output",
-            st.session_state['messages'],
-            height=400,
-            key=f"output_{st.session_state['output_key']}"
-        )
-
-        if not st.session_state['awaiting_input']:
-            return st.session_state[input_key]
-        else:
-            st.stop()
+        global ON_INPUT
+        ON_INPUT = True
+        # Write message in "input_data.txt" file
+        with open("input_data.txt", "w") as file:
+            file.write(message)
+        time.sleep(1)
+        smart_print(message, append=True)
+       # Wait and return changed value from "input_data.txt" file
+        while True:
+            time.sleep(1)
+            with open("input_data.txt", "r") as file:
+                line = file.read()
+                print("line = ", line)
+                print("message = ", message)
+                if line != message:
+                    # Return last line of "input_data.txt" file
+                    match = re.match(r'^\s*(\w+|\d+)', line)
+                    first_word_or_number = match.group(1)
+                    return first_word_or_number
 
     elif IN_NOTEBOOK and agent_name:  # Currently DE-ACTIVATED
         # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
@@ -260,10 +232,10 @@ def save_prompt(prompt_name, text, package_path="."):
     # if prompt_file_path_name exists, move existing file to prompt_file_path_name.timestamp (timestamp = datetime.now().isoformat())
     if f_exists(prompt_file_path_name):
         moved_file_path_name = prompt_file_path_name + datetime.now().strftime(".%H-%M-%S_%m-%d-%y")
-        print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}")
+        smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}")
         f_move(prompt_file_path_name, moved_file_path_name)
 
-    print(f"Saving new prompt file {prompt_file_path_name}")
+    smart_print(f"Saving new prompt file {prompt_file_path_name}")
 
     return dump_text(text, prompt_file_path_name)
 
@@ -285,10 +257,10 @@ def save_prompt_with_tag(prompt_name, text, new_tag, package_path="."):
     # Backup existing file
     if f_exists(prompt_file_path_name):
         moved_file_path_name = prompt_file_path_name + datetime.now().strftime(".%Y-%m-%d_%H-%M-%S")
-        print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}")
+        smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}")
         f_move(prompt_file_path_name, moved_file_path_name)
 
-    print(f"Saving new prompt file {prompt_file_path_name}")
+    smart_print(f"Saving new prompt file {prompt_file_path_name}")
 
     # Save the file
     return dump_text(text, prompt_file_path_name)
@@ -304,11 +276,11 @@ class UnifiedVectorDB:
             try:
                 urllib.request.urlopen(UnifiedVectorDB.es_url, timeout=1)
             except urllib.error.URLError as e:
-                print(
+                smart_print(
                     f"Error: {e.reason} - {e}\nUnifiedVectorDB.es_url: {UnifiedVectorDB.es_url}\nPlease check if elasticsearch is running and reachable at the specified URL\nplease set UnifiedVectorDB.es_url = 'http://x.x.x.x:9200' in your config.py or search where it is set in your code.")
                 exit(1)
         elif UnifiedVectorDB.db_type == 'chroma':
-            print("Chroma DB check is not yet implemented")
+            smart_print("Chroma DB check is not yet implemented")
         else:
             raise ValueError(f"Unsupported DB type: {UnifiedVectorDB.db_type}")
 
@@ -375,7 +347,7 @@ class UnifiedVectorDB:
                     filter_chroma.append({key: {sign: value}})
                 filter_chroma = {('$or' if metadata_filter_OR else '$and'): filter_chroma}
                 if sort_order == 'asc' or sort_order == 'desc':  # incompatible with knn search, so we rewrite query just keeping filters and sort
-                    print("WARNING: sort not implemented for Chroma DB")
+                    smart_print("WARNING: sort not implemented for Chroma DB")
             return self.db.query(query_text, k=k, filter=filter_chroma)
         elif UnifiedVectorDB.db_type == 'elasticsearch':
             if metadata_filter and custom_filter_es is None:
@@ -416,7 +388,7 @@ class UnifiedVectorDB:
         if UnifiedVectorDB.db_type == 'elasticsearch':
             # empty the index self.collection_name
             response = self.db.client.delete_by_query(index=self.collection_name, body={"query": {"match_all": {}}})
-            print(f"Deleted {response['deleted']} documents from index {self.collection_name}")
+            smart_print(f"Deleted {response['deleted']} documents from index {self.collection_name}")
             # sleep 2 seconds to let the index be updated
             time.sleep(2)
 
@@ -432,7 +404,7 @@ def search_for_external_knwoledge(description, url):
     """
     Search for documentation on Internet or ask Human
     """
-    print(f"search_for_external_knwoledge: description={description}, url={url}")
+    smart_print(f"search_for_external_knwoledge: description={description}, url={url}")
     return _visual_input(f"search_for_external_knwoledge: description={description}, url={url}")
 
 
@@ -479,7 +451,7 @@ class HumanLLMMonitor:
             self.default_llm = self.llmORchains_list[llm_name]
             return True
         else:
-            print(f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}")
+            smart_print(f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}")
             return False
 
     def set_premium_llm(self, llm_name):
@@ -487,7 +459,7 @@ class HumanLLMMonitor:
             self.premium_llm = self.llmORchains_list[llm_name]
             return True
         else:
-            print(f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}")
+            smart_print(f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}")
             return False
 
     def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_max_context_size=16000, llm=None,
@@ -523,7 +495,7 @@ class HumanLLMMonitor:
         token_length = len(encoding.encode(content))
 
         if token_length > self.llm_max_context_size:
-            print(
+            smart_print(
                 f"\033[31mCANNOT SEND MESSAGE TO LLM:\n{content}\n\nToo many tokens in human message for LLM ({token_length}). Fallback to manual feedback.\033[0m")
             return False
         else:
@@ -585,12 +557,12 @@ class HumanLLMMonitor:
                     f"{len(prompt_variants) + 1}. Ask LLM to generate a new variant of the current system prompt given my instructions\n")
                 smart_print(output, self.agent_name, "PROMPT OPTIONS")
 
-                variant_choice = input(
+                variant_choice = smart_input(
                     "Select a number to modify a prompt or create a new variant (or press Enter to continue with the current selection): ")
                 if variant_choice.isdigit() and 0 < int(variant_choice) <= len(prompt_variants) + 1:
                     if int(variant_choice) == len(prompt_variants) + 1:
                         # Process to create a new variant
-                        comments = input("Provide critic or feedback for the current prompt: ")
+                        comments = smart_input("Provide critic or feedback for the current prompt: ")
                         refine_prompt = _visual_input(
                             f"Current system prompt:<<< {load_prompt(self.system_prompt)} >>>\n\nFeedback or critic: {comments}")
                         forced_llm_output = default_llm_function(
@@ -600,7 +572,7 @@ class HumanLLMMonitor:
                     else:
                         self.system_prompt = prompt_variants[int(variant_choice) - 1]
 
-                if input("Would you like first to get suggestions for a better prompt? (y/n): ").upper() == "Y":
+                if smart_input("Would you like first to get suggestions for a better prompt? (y/n): ").upper() == "Y":
                     if use_premium_llm:
                         forced_llm_output = premium_llm_function(
                             [SystemMessage(content=load_prompt("system_prompt_refiner")), HumanMessage(
@@ -617,10 +589,10 @@ class HumanLLMMonitor:
                 smart_print(f"***** NEW PROMPT TEMPLATE:\n{new_template}\n*************", self.agent_name,
                             "NEW PROMPT TEMPLATE")
                 # Confirm that the user wants to modify the template
-                confirm = input("Do you want to replace current prompt file template with your input? (y/n): ").upper()
+                confirm = smart_input("Do you want to replace current prompt file template with your input? (y/n): ").upper()
                 # Save prompt with tag options
                 if confirm == "Y":
-                    tag_option = input(
+                    tag_option = smart_input(
                         "Enter a tag for saving the prompt (leave blank for no tag, or 'same' to keep the current tag): ")
                     if tag_option.lower() == "same":
                         save_prompt_with_tag(self.system_prompt, new_template, "")
@@ -634,7 +606,7 @@ class HumanLLMMonitor:
 
             elif action == "B":  # Add instruction or information to agent
                 new_message = initial_user_message + "\n" + _visual_input(" ")
-                confirm = input(
+                confirm = smart_input(
                     f"***** NEW USER MESSAGE:\n{new_message}\n*************\nAre you sure you want to modify it? (y/n): ").upper()
                 if confirm == "Y":
                     messages[1].content = new_message
@@ -654,7 +626,7 @@ class HumanLLMMonitor:
 
                     try:
                         selected_index = int(
-                            input("Select the log entry number to load or 0/enter to manually enter LLM output: ")) - 1
+                            smart_input("Select the log entry number to load or 0/enter to manually enter LLM output: ")) - 1
                     except:
                         selected_index = -1
                 else:
@@ -670,7 +642,7 @@ class HumanLLMMonitor:
                             'output_contents'])['content']
 
             elif action == "D":  # Log comments
-                comments = input("Enter your comment on the prompt: ")
+                comments = smart_input("Enter your comment on the prompt: ")
 
             elif action == "E":  # See all previous results - list results from  HumanLLMMonitor.common_vectordb filtered by agent_name and function_name
                 HumanLLMMonitor._check_and_init_vector_db()
@@ -684,7 +656,7 @@ class HumanLLMMonitor:
 
             elif action == "F":  # See previous MODIFIED/SCORED/COMMENTED results - list results from  HumanLLMMonitor.common_vectordb filtered by agent_name and function_name, filtered on comments
                 HumanLLMMonitor._check_and_init_vector_db()
-                confirm = input(
+                confirm = smart_input(
                     "Do you want see:\n(A) all MODIFIED/SCORED/COMMENTED results.\n(B) INPUT modified only.\n(C) OUTPUT modified only.\n(D) SCORED only.\n(E) COMMENTED only.\nSelect your letter for choice or hit enter for all: ").upper()
                 result = []
                 if confirm in ["A", "", "B"]:
@@ -715,14 +687,14 @@ class HumanLLMMonitor:
                 _visual_input(visual_result, filetype="json")
 
             elif action == "G":  # Skip human actions for N rounds
-                rounds = int(input("Skip for how many rounds? "))
+                rounds = int(smart_input("Skip for how many rounds? "))
                 self.skip_rounds = rounds
 
             elif action == "H":  # Change default LLM
                 llm_keys = list(self.llmORchains_list.keys())
-                for i, key in enumerate(llm_keys): print(f"{i}. {key}")
+                for i, key in enumerate(llm_keys): smart_print(f"{i}. {key}")
                 while True:
-                    new_llm_index = int(input(f"Enter the number of the new default LLM (0-{len(llm_keys) - 1}): "))
+                    new_llm_index = int(smart_input(f"Enter the number of the new default LLM (0-{len(llm_keys) - 1}): "))
                     if 0 <= new_llm_index < len(llm_keys):
                         new_llm_name = llm_keys[new_llm_index]
                         if self.set_default_llm(new_llm_name): break
@@ -731,9 +703,9 @@ class HumanLLMMonitor:
 
             elif action == "I":  # Change premium LLM
                 llm_keys = list(self.llmORchains_list.keys())
-                for i, key in enumerate(llm_keys): print(f"{i}. {key}")
+                for i, key in enumerate(llm_keys): smart_print(f"{i}. {key}")
                 while True:
-                    new_llm_index = int(input(f"Enter the number of the new premium LLM (0-{len(llm_keys) - 1}): "))
+                    new_llm_index = int(smart_input(f"Enter the number of the new premium LLM (0-{len(llm_keys) - 1}): "))
                     if 0 <= new_llm_index < len(llm_keys):
                         new_llm_name = llm_keys[new_llm_index]
                         if self.set_premium_llm(new_llm_name): break
@@ -753,7 +725,7 @@ class HumanLLMMonitor:
 
             elif action == "J":  # Change num of parallel inferences
                 try:
-                    self.num_parallel_inferences = int(input("Enter new value for num_parallel_inferences: "))
+                    self.num_parallel_inferences = int(smart_input("Enter new value for num_parallel_inferences: "))
                 except:
                     self.num_parallel_inferences = 1
 
@@ -775,13 +747,13 @@ class HumanLLMMonitor:
                 if action == "P": use_premium_llm = True
                 break
             else:
-                proceed = input(
+                proceed = smart_input(
                     "Proceed to inference (y/n) ? You can also hit 'p' to proceed using a premium llm.").lower()
                 if proceed in ["y", "p", ""]:
                     if proceed == "p": use_premium_llm = True
                     break
 
-        print(
+        smart_print(
             f"Time spent in each option and occurrences: {self.before_inference_option_times} - {self.before_inference_option_counts}")
 
         return messages, comments, forced_llm_output, use_premium_llm, default_llm_function, premium_llm_function, function_calling
@@ -825,18 +797,18 @@ class HumanLLMMonitor:
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
                 while True:
-                    comments = input("Provide critic/feedback/request: ")
+                    comments = smart_input("Provide critic/feedback/request: ")
                     refine_prompt = f"Refine the answer: {inference_result_msg.content}.\n*******************\nHuman provided feedback: {comments}"
                     llm_output = premium_llm_function(
                         [SystemMessage(content="You are a helpful assistant"), HumanMessage(content=refine_prompt)])
                     smart_print(f"***** REFINED ANSWER:\n\033[33m{llm_output.content}\033[0m\n".replace("\\n", "\n"),
                                 self.agent_name, "REFINED ANSWER")
-                    if input("Is the task refinement adequate? (yes/no): ").strip().lower() in ["yes", "y"]:
+                    if smart_input("Is the task refinement adequate? (yes/no): ").strip().lower() in ["yes", "y"]:
                         inference_result_msg.content = llm_output.content
                         break
 
             elif action == "C":  # Find a better Prompt by providing critic and ideal answer
-                comments = input("First enter your critic here (then modify answer to get ideal answer): ")
+                comments = smart_input("First enter your critic here (then modify answer to get ideal answer): ")
                 ideal_answer = _visual_input(inference_result_msg.content)
                 refine_prompt = f"Current system prompt:<<< {load_prompt(self.system_prompt)} >>>\n\nPrompt's answer:<<< {inference_result_msg.content} >>>\n\nPrompt's answer critic:{comments}\n\nPrompt's ideal Answer:<<< {ideal_answer} >>>"
                 smart_print(f"***** PROMPT FOR IMPROVEMENT *****\n{refine_prompt}", self.agent_name,
@@ -850,10 +822,10 @@ class HumanLLMMonitor:
                 smart_print(f"***** NEW PROMPT TEMPLATE:\n{new_template}\n*************", self.agent_name,
                             "NEW PROMPT TEMPLATE")
                 # Confirm that the user wants to modify the template
-                confirm = input("Do you want to replace current prompt file template with your input? (y/n): ").upper()
+                confirm = smart_input("Do you want to replace current prompt file template with your input? (y/n): ").upper()
                 # Save prompt with tag options
                 if confirm == "Y":
-                    tag_option = input(
+                    tag_option = smart_input(
                         "Enter a tag for saving the prompt (leave blank for no tag, or 'same' to keep the current tag): ")
                     if tag_option.lower() == "same":
                         save_prompt_with_tag(self.system_prompt, new_template, "")
@@ -862,7 +834,7 @@ class HumanLLMMonitor:
 
             elif action == "D":  # Evaluate & comment answer to re-use in prompts or later analysis
                 while True:
-                    score = float(input(
+                    score = float(smart_input(
                         "Give a note for the result between 0.0 (worst) and 1.0 (top), or 0 for bad, 1 for good: "))
                     # if score is not between 0 and 1, then set to None and print error
                     if score < 0 or score > 1:
@@ -870,13 +842,13 @@ class HumanLLMMonitor:
                         print(f"\033[31mInvalid score: {score}\033[0m")
                     else:
                         break
-                comments = input("Comment on the result: ")
+                comments = smart_input("Comment on the result: ")
 
             elif action == "E":  # Go back BEFORE inference to improve system prompt or add information to user message
                 inference_result_msg = -1  # break is set after action time measurement
 
             elif action == "G":  # Skip human actions for N rounds
-                rounds = int(input("Skip for how many rounds? "))
+                rounds = int(smart_input("Skip for how many rounds? "))
                 self.skip_rounds = rounds
 
             elif action == "H":  # Exit program
@@ -900,7 +872,7 @@ class HumanLLMMonitor:
             if action in [None, "",
                           "E"]: break  # E: Go back BEFORE inference to improve system prompt or add information to user message
 
-            proceed = input("Continue 'y' (or 'n' to go back to menu) ? ").lower()
+            proceed = smart_input("Continue 'y' (or 'n' to go back to menu) ? ").lower()
             if proceed in ["y", ""]:
                 break
 
@@ -910,7 +882,7 @@ class HumanLLMMonitor:
                 self.agent_name, "LLM ANSWER content")
             self.skip_rounds -= 1
         else:
-            print(
+            smart_print(
                 f"Time spent in each option and occurrences: {self.after_inference_option_times} - {self.after_inference_option_counts}")
 
         return inference_result_msg, comments, score
@@ -962,7 +934,7 @@ class HumanLLMMonitor:
                     # Call the function with the provided arguments
                     result = globals()[function_name](**function_args)
                 else:
-                    result = input(f"Uknown function: {function_name} -- please provide result manually:\n")
+                    result = smart_input(f"Uknown function: {function_name} -- please provide result manually:\n")
                 messages.append(FunctionMessage(content=result, name=function_name, arguments=function_args_str))
 
         return output
