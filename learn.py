@@ -650,26 +650,29 @@ def get_highest_score_index(score_array, mode='total'):
 def coding_and_validation_loop(agent_coding, agent_validation, task_description, max_attempts, extra_manual_validation_to_capitalize=True, continue_even_if_successful=True):
     previous_errors, previous_codes, previous_scores, reset_unique_ids = [], [], [], None
     successful_codes = []  # To store successful codes
+
     for attempt in range(max_attempts):
         results = agent_coding.code_task_and_run_test(task_description, previous_errors, previous_scores, previous_codes, reset_unique_ids)
         previous_errors, previous_codes, previous_scores, reset_unique_ids = [], [], [], None #TEST reset
-        new_reset_unique_ids = None  # Initialize here to avoid UnboundLocalError
+
         # First part: Process all codes and collect results
         current_skip_rounds = agent_validation.human_llm_validate_code.skip_rounds
         for index, (parsed_code, no_runtime_error, exec_result, new_reset_unique_ids, scores, env_states) in enumerate(results):
             agent_validation.human_llm_validate_code.skip_rounds = current_skip_rounds # to prevent skip_rounds decreased multiple times by multiple calls of HumanLLMMonitor
-            smart_print(f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace("\\n", "\n"), 'coding_agent', "coding_and_validation_loop RESULT")
+            smart_print(f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace("\\n", "\n"), None, "coding_and_validation_loop RESULT")
             validation_agent_feedback = agent_validation.validate_code(parsed_code["program_code"], no_runtime_error, exec_result, task=task_description, scores=scores, env_states=env_states)
-            smart_print("Agent validation 'feedback' currently only support 1 feedback", 'coding_agent', "coding_and_validation_loop WARNING")
+            smart_print("Agent validation 'feedback' currently only support 1 feedback", None, "coding_and_validation_loop WARNING")
             validation_agent_feedback = validation_agent_feedback[0]
             afb = validation_agent_feedback.content.replace('\\n', '\n')
-            smart_print("#"*20 + f"\nAgent validation feedback: {afb}", 'coding_agent', "coding_and_validation_loop RESULT")
+            smart_print("#"*20 + f"\nAgent validation feedback: {afb}", None, "coding_and_validation_loop RESULT")
+
             if extra_manual_validation_to_capitalize:
                 validated = (input("#"*20+f"\nADD THIS FUNCTION TO LIBRARY ? Please enter 'yes' if this a success and you want to add this function to library, 'no' if this failed: ").lower() in ["yes", "y", True])
             else:
                 validated = get_success_value_in_text(afb) in ["yes", "y", True]
             if validated:
                 successful_codes.append((parsed_code, validation_agent_feedback, new_reset_unique_ids, scores))
+
             # Update previous errors and codes lists
             if index < len(previous_errors):
                 previous_errors[index] = validation_agent_feedback
@@ -679,11 +682,15 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
                 previous_errors.append(validation_agent_feedback)
                 previous_scores.append(scores)
                 previous_codes.append(parsed_code["program_code"])
+
         reset_unique_ids = new_reset_unique_ids  # Update reset_unique_ids for the next iteration
+
         if successful_codes and not continue_even_if_successful:
             break
+
         if attempt == max_attempts - 1:
-            smart_print("Max attempts reached. Trying a new task.", 'coding_agent', "coding_and_validation_loop WARNING")
+            smart_print("Max attempts reached. Trying a new task.", None, "coding_and_validation_loop WARNING")
+
     # Second part: If there are successful codes, ask user to select one
     if successful_codes and (not continue_even_if_successful or attempt >= max_attempts - 1):
         if len(successful_codes)==1:
@@ -691,11 +698,12 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
             return selected_code, "success"
         if current_skip_rounds <= 0:
             for i, (parsed_code, feedback, new_reset_unique_ids, scores) in enumerate(successful_codes):
-                smart_print(f"\033[91mOption {i+1}:\033[0m\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {scores}\033[0m\n", 'coding_agent', "coding_and_validation_loop RESULT")
+                smart_print(f"\033[91mOption {i+1}:\033[0m\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {scores}\033[0m\n", None, "coding_and_validation_loop RESULT")
+
             selection = smart_input("Several codes were successful. Please enter the number of the code you want to add to the library: ").strip()
             if selection.isdigit() and 0 < int(selection) <= len(successful_codes):
                 selected_index = int(selection) - 1
-                smart_print("Code validated successfully.", 'coding_agent', "coding_and_validation_loop RESULT")
+                smart_print("Code validated successfully.", None, "coding_and_validation_loop RESULT")
                 selected_code, _, selected_reset_unique_ids, scores = successful_codes[selected_index]
                 return selected_code, "success"
             else:
@@ -704,8 +712,8 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
             highest_score_index = get_highest_score_index([scores for _, _, _, scores in successful_codes], mode='total')
             selected_code, _, selected_reset_unique_ids, scores = successful_codes[highest_score_index]
             return selected_code, "success"
-    return None, "failed"  # If no successful code was selected, return failure
 
+    return None, "failed"  # If no successful code was selected, return failure
 
 def sanitized_task_name(task):
     # Implement task name sanitization logic
@@ -763,21 +771,6 @@ def create_Nmajority_chain(num_models=3, map_model_name="gpt-3.5-turbo-1106", re
     chain = multi_reponse | final_prompt_template | print_prompt_runnable | final_model # No ERROR but bad output: "I'm sorry, but I cannot fulfill this request" or "I'm sorry, but I cannot fulfill this request as it is too complex for me to process." or "I'm sorry, but I cannot fulfill this request as it involves creating a Python function and providing a specific response format." or "I'm sorry, but I cannot fulfill this request as it requires a level of understanding and reasoning that is beyond my current capabilities."
 
     return chain
-
-# async def send_via_websocket(message):
-#     uri = "ws://localhost:8765"
-#     async with websockets.connect(uri) as websocket:
-#         await websocket.send(message)
-
-# def smart_print(message: str, agent_name=None, message_type=None, append=False):
-#     formatted_message = f"[{agent_name}] {message_type}: {message}" if agent_name else message
-#     asyncio.run(send_via_websocket(formatted_message))
-
-# def smart_input(message: str, agent_name=None, message_type=None):
-#     formatted_message = f"[{agent_name}] {message_type}: {message}" if agent_name else message
-#     asyncio.run(send_via_websocket(formatted_message))
-#     return "mocked input"
-
 
 if __name__ == "__main__":
     # Initialize the default and premium LLMs
