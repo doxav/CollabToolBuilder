@@ -36,8 +36,10 @@ os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
 
 ON_INPUT = False
 
+AGENT = ''
+
 def smart_print(message: str, agent_name=None, message_type=None, append=False):
-    global IN_STREAMLIT, AgentDisplayManager
+    global IN_STREAMLIT, AgentDisplayManager, AGENT
     if 'IN_NOTEBOOK' not in globals():
         try:  # test if IN_NOTEBOOK
             from IPython import get_ipython
@@ -51,6 +53,7 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False):
     if 'IN_STREAMLIT' not in globals():
         globals()['IN_STREAMLIT'] = True
     if IN_STREAMLIT:
+        AGENT = agent_name
         if append:
             # Write in "data.txt" file
             with open("data.txt", "a") as file:
@@ -93,8 +96,9 @@ def smart_input(message: str, agent_name=None, message_type=None):
     if 'IN_STREAMLIT' not in globals():
         globals()['IN_STREAMLIT'] = True
     if IN_STREAMLIT:
-        global ON_INPUT
+        global ON_INPUT, AGENT
         ON_INPUT = True
+        AGENT = agent_name
         # Write message in "input_data.txt" file
         with open("input_data.txt", "w") as file:
             file.write(message)

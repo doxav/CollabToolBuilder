@@ -658,12 +658,12 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
         current_skip_rounds = agent_validation.human_llm_validate_code.skip_rounds
         for index, (parsed_code, no_runtime_error, exec_result, new_reset_unique_ids, scores, env_states) in enumerate(results):
             agent_validation.human_llm_validate_code.skip_rounds = current_skip_rounds # to prevent skip_rounds decreased multiple times by multiple calls of HumanLLMMonitor
-            smart_print(f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace("\\n", "\n"), None, "coding_and_validation_loop RESULT")
+            smart_print(f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace("\\n", "\n"), 'coding_agent', "coding_and_validation_loop RESULT")
             validation_agent_feedback = agent_validation.validate_code(parsed_code["program_code"], no_runtime_error, exec_result, task=task_description, scores=scores, env_states=env_states)
-            smart_print("Agent validation 'feedback' currently only support 1 feedback", None, "coding_and_validation_loop WARNING")
+            smart_print("Agent validation 'feedback' currently only support 1 feedback", 'coding_agent', "coding_and_validation_loop WARNING")
             validation_agent_feedback = validation_agent_feedback[0]
             afb = validation_agent_feedback.content.replace('\\n', '\n')
-            smart_print("#"*20 + f"\nAgent validation feedback: {afb}", None, "coding_and_validation_loop RESULT")
+            smart_print("#"*20 + f"\nAgent validation feedback: {afb}", 'coding_agent', "coding_and_validation_loop RESULT")
             if extra_manual_validation_to_capitalize:
                 validated = (input("#"*20+f"\nADD THIS FUNCTION TO LIBRARY ? Please enter 'yes' if this a success and you want to add this function to library, 'no' if this failed: ").lower() in ["yes", "y", True])
             else:
@@ -683,7 +683,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
         if successful_codes and not continue_even_if_successful:
             break
         if attempt == max_attempts - 1:
-            smart_print("Max attempts reached. Trying a new task.", None, "coding_and_validation_loop WARNING")
+            smart_print("Max attempts reached. Trying a new task.", 'coding_agent', "coding_and_validation_loop WARNING")
     # Second part: If there are successful codes, ask user to select one
     if successful_codes and (not continue_even_if_successful or attempt >= max_attempts - 1):
         if len(successful_codes)==1:
@@ -691,11 +691,11 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
             return selected_code, "success"
         if current_skip_rounds <= 0:
             for i, (parsed_code, feedback, new_reset_unique_ids, scores) in enumerate(successful_codes):
-                smart_print(f"\033[91mOption {i+1}:\033[0m\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {scores}\033[0m\n", None, "coding_and_validation_loop RESULT")
+                smart_print(f"\033[91mOption {i+1}:\033[0m\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {scores}\033[0m\n", 'coding_agent', "coding_and_validation_loop RESULT")
             selection = smart_input("Several codes were successful. Please enter the number of the code you want to add to the library: ").strip()
             if selection.isdigit() and 0 < int(selection) <= len(successful_codes):
                 selected_index = int(selection) - 1
-                smart_print("Code validated successfully.", None, "coding_and_validation_loop RESULT")
+                smart_print("Code validated successfully.", 'coding_agent', "coding_and_validation_loop RESULT")
                 selected_code, _, selected_reset_unique_ids, scores = successful_codes[selected_index]
                 return selected_code, "success"
             else:

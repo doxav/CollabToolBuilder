@@ -71,6 +71,9 @@ def main():
 if __name__ == "__main__":
     main()
 """
+import os
+import subprocess
+
 import streamlit as st
 import time
 import threading
@@ -212,63 +215,79 @@ def show_page1():
     concatenated_code = '\n'.join(st.session_state['page1_data'])
     placeholder.code(concatenated_code, language='python')
 
-
-
+    animation = "Waiting for AI ..."
     while not llm_utils.ON_INPUT:
-        time.sleep(2)
-        with open('data.txt', 'r') as file:
-            new_data = file.read()
-            if new_data:
-                placeholder.code(new_data, language='python')
+        text = ""
+        for letter in animation:
+            text += letter
+            placeholder.code(text, language='python')
+            time.sleep(0.1)
+        time.sleep(0.1)
 
-    """
+
+    with open('data.txt', 'r') as file:
+        new_data = file.read()
+        output = ""
+        i = 0
+        if new_data:
+            for line in new_data.split('\n'):
+                if line:
+                    output += f"{line}\n"
+                    i += 1
+                    if i % 15 == 0:
+                        time.sleep(1)
+                        i = 0
+                    time.sleep(0.1)
+                    placeholder.code(output, language='python')
+
+
     if llm_utils.ON_INPUT:
         with st.form(key='my_form'):
-            choice = st.selectbox('Choose an action', ["Modify agent's system prompt (role, global context, constraints, examples).",
-                                                       "Add instruction or information to agent.",
-                                                       "Skip and set LLM output from recent outputs or manually define it.",
-                                                       "Log comments (not used by model, just for information).",
-                                                       "See all previous results for this agent.",
-                                                       "See previous MODIFIED/SCORED/COMMENTED results for this agent.",
-                                                       "Skip human actions for N rounds.",
-                                                       "Change default LLM.",
-                                                       "Change premium LLM.",
-                                                       "Change num of parallel inferences.",
-                                                       "Exit program.",
-                                                       "Proceed to inference using a PREMIUM LLM."])
-            new_item = ''
-            if choice == "Modify agent's system prompt (role, global context, constraints, examples).":
-                new_item = 'A'
-            elif choice == "Add instruction or information to agent.":
-                new_item = 'B'
-            elif choice == "Skip and set LLM output from recent outputs or manually define it.":
-                new_item = 'C'
-            elif choice == "Log comments (not used by model, just for information).":
-                new_item = 'D'
-            elif choice == "See all previous results for this agent.":
-                new_item = 'E'
-            elif choice == "See previous MODIFIED/SCORED/COMMENTED results for this agent.":
-                new_item = 'F'
-            elif choice == "Skip human actions for N rounds.":
-                new_item = 'G'
-            elif choice == "Change default LLM.":
-                new_item = 'H'
-            elif choice == "Change premium LLM.":
-                new_item = 'I'
-            elif choice == "Change num of parallel inferences.":
-                new_item = 'J'
-            elif choice == "Exit program.":
-                new_item = 'K'
-            elif choice == "Proceed to inference using a PREMIUM LLM.":
-                new_item = 'P'
-            """
-    new_item = st.text_input('Input')
+            if llm_utils.AGENT == None:
+                choice = st.selectbox('Choose an action', ["Modify agent's system prompt (role, global context, constraints, examples).",
+                                                           "Add instruction or information to agent.",
+                                                           "Skip and set LLM output from recent outputs or manually define it.",
+                                                           "Log comments (not used by model, just for information).",
+                                                           "See all previous results for this agent.",
+                                                           "See previous MODIFIED/SCORED/COMMENTED results for this agent.",
+                                                           "Skip human actions for N rounds.",
+                                                           "Change default LLM.",
+                                                           "Change premium LLM.",
+                                                           "Change num of parallel inferences.",
+                                                           "Exit program.",
+                                                           "Proceed to inference using a PREMIUM LLM."])
+                new_item = ''
+                if choice == "Modify agent's system prompt (role, global context, constraints, examples).":
+                    new_item = 'A'
+                elif choice == "Add instruction or information to agent.":
+                    new_item = 'B'
+                elif choice == "Skip and set LLM output from recent outputs or manually define it.":
+                    new_item = 'C'
+                elif choice == "Log comments (not used by model, just for information).":
+                    new_item = 'D'
+                elif choice == "See all previous results for this agent.":
+                    new_item = 'E'
+                elif choice == "See previous MODIFIED/SCORED/COMMENTED results for this agent.":
+                    new_item = 'F'
+                elif choice == "Skip human actions for N rounds.":
+                    new_item = 'G'
+                elif choice == "Change default LLM.":
+                    new_item = 'H'
+                elif choice == "Change premium LLM.":
+                    new_item = 'I'
+                elif choice == "Change num of parallel inferences.":
+                    new_item = 'J'
+                elif choice == "Exit program.":
+                    new_item = 'K'
+                elif choice == "Proceed to inference using a PREMIUM LLM.":
+                    new_item = 'P'
+            else:
+                print(f"Agent: {llm_utils.AGENT}")
 
-
-    send_button = st.form_submit_button(label='Send')
-    while not send_button:
-        time.sleep(1)
-    write_input_data(new_item)
+            send_button = st.form_submit_button(label='Send')
+            while not send_button:
+                time.sleep(1)
+            write_input_data(new_item)
 
 
     if st.button('Back to Home Page'):
@@ -327,6 +346,12 @@ def refresh_data():
         for line in file:
             st.session_state['page1_data'].append(line.strip())
     st.rerun()
+
+def open_vscode(file_path, line_number):
+    if os.path.exists(file_path):
+        subprocess.run(["code", "-g", f"{file_path}:{line_number}"])
+    else:
+        st.error("Le fichier n'existe pas.")
 
 
 # Bouton pour actualiser les données
