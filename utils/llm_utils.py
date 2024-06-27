@@ -928,12 +928,13 @@ class HumanLLMMonitor:
 
             # Pre-inference human intervention
             llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(original_input_messages, default_llm_function, premium_llm_function, function_calling, callable_system_message, optuna=optuna, model_choice=model_choice)
-            
             start_time = datetime.now()
             if llm_input_messages and not skip_inference:
                 # Use concurrent futures to parallelize the LLM calls.
                 outputs = []
                 with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_parallel_inferences) as executor:
+                    if type(self.premium_llm) == type(self.llmORchains_list.get('3_majority_chain')) and self.agent_name == "CodingAgent":
+                        stream_output = True
                     futures = [executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling, temperature, stream_output, _) for _ in range(self.num_parallel_inferences)]
                     for future in futures:
                         try:
