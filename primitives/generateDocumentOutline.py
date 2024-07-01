@@ -1,7 +1,7 @@
 from env.IR_CPS_TechSynthesis.env import SynthesisManager
 
 def generate_outline(bot: SynthesisManager, temperature=0.7):
-    from langchain.chat_models import ChatOpenAI
+    from langchain_openai import ChatOpenAI
     from langchain.prompts import ChatPromptTemplate
     from config import OPENAI_API_KEY
     import re
