@@ -635,7 +635,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         if answer.upper() in ["Y", "YES"]:
             [env.reset() for env in test_environments]
             # Calculate the average score of the task, and return it for optuna optimization
-            if optuna_coach:
+            if optuna_coach and scores_ret is not None:
                 temp = 0
                 for dic in scores_ret:
                     for i in dic:

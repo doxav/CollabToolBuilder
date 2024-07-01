@@ -4,15 +4,28 @@ import optuna as opt
 
 def objective(trial):
     # Define the parameters (Caoch)
-    promptVariation = trial.suggest_int("prompt_variation", 0, 10)
+    promptVariation = trial.suggest_int("prompt_variation", 0, 9)
     modelVariation = trial.suggest_int("model_variation", 0, 3)
+
+    # Define the parameters (Coder)
+    constraint = trial.suggest_categorical("constraint", [True, False])
+    helpers = trial.suggest_categorical("helpers", [True, False])
+
+    # Define the parameters (Critic)
+    give_feedback = trial.suggest_categorical("give_feedback", [True, False])
+    promptCritVariation = trial.suggest_int("prompt_crit_variation", 0, 10)
+
+    # Define the parameters (Capitalizer)
+    # Not sure it is necessary to define parameters for the Capitalizer and optimize it with Optuna...
 
     # Define parameters (global)
     score_calculation = trial.suggest_categorical("score_calculation", ["Semantic", "Sum semantic", "Succes rate"])
 
+    print(f"constraint: {constraint}\nscore_calculation: {score_calculation}")
+
     # Save the parameters chosen by the trial
     with open("selected_task.txt", "a") as f:
-        f.write(f"Trial: {trial}\nPrompt Chosen: {promptVariation}\nModel Chosen (0: gpt-3.5, 1: gpt-4o, 2: 3-chains, 3: 10-chains): {modelVariation}\n\n")
+        f.write(f"Trial: {trial.number}\nPrompt Chosen: {promptVariation}\nModel Chosen (0: gpt-3.5, 1: gpt-4o, 2: 3-chains, 3: 10-chains): {modelVariation}\n\n")
 
     # Run the learning loop
     perf = run_4agents_learning_loop(default_llm_key="default_llm",
