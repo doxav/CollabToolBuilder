@@ -18,7 +18,8 @@ from bs4 import BeautifulSoup, Comment
 from doctran import Doctran, ExtractProperty
 from dotenv import load_dotenv, find_dotenv
 from evaluate import load
-from langchain.embeddings import OpenAIEmbeddings, HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain.text_splitter import (
     RecursiveCharacterTextSplitter,
 )

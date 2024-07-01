@@ -7,7 +7,8 @@ import time
 import json
 import requests
 
-from langchain.embeddings import OpenAIEmbeddings, HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_openai import OpenAIEmbeddings
 #from langchain.schema import AIMessage, HumanMessage, SystemMessage, FunctionMessage
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.ai import AIMessage
@@ -20,8 +21,8 @@ from tkinter import scrolledtext
 from utils.file_utils import *
 import concurrent.futures
 
-from langchain.vectorstores import Chroma, ElasticsearchStore
-from config import OPENAI_API_KEY
+from langchain_community.vectorstores import Chroma, ElasticsearchStore
+from config import OPENAI_API_KEY, PickleCacheActivated
 import os
 import openai
 
@@ -63,7 +64,8 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False):
         except:
             globals()['IN_STREAMLIT'] = IN_STREAMLIT = False
     else:
-        IN_STREAMLIT = globals()['IN_STREAMLIT']
+        globals()['IN_STREAMLIT'] = IN_STREAMLIT = False # By default, globals()['IN_STREAMLIT'] is True, and it brake the output in terminal. So, we set it to False until we have finished.
+        # IN_STREAMLIT = globals()['IN_STREAMLIT'] # Uncomment this line if you want to keep the default value of IN_STREAMLIT
 
     if IN_STREAMLIT:
         AGENT = agent_name
@@ -553,7 +555,7 @@ class HumanLLMMonitor:
             return self.premium_llm(messages)
 
     def _before_inference(self, messages, default_llm_function, premium_llm_function, function_calling,
-                          callable_system_message=None, use_premium_llm=None):
+                          callable_system_message=None, use_premium_llm=None, optuna=None, model_choice=None):
         comments = None
         initial_user_message = messages[1].content
         function_name = inspect.stack()[2].function
@@ -582,7 +584,30 @@ class HumanLLMMonitor:
 
             smart_print(menu, self.agent_name, "BEFORE inference action MENU")
             menu_start_time = time.time()
-            action = smart_input(
+            match(optuna) :
+                case "Coach" :
+                    llm_keys = list(self.llmORchains_list.keys())
+                    # Model change from choice of optuna
+                    new_llm_name = llm_keys[model_choice]
+                    self.set_default_llm(new_llm_name)
+                    self.set_premium_llm(new_llm_name)
+                    default_llm_function = self.default_llm
+                    premium_llm_function = self.premium_llm
+                    # Default actions for all agents while running with optuna
+                    if self.agent_name == "TaskIdentificationAgent":
+                        action = "J"
+                    elif self.agent_name in ["CodingAgent", "ValidationAgent", "CapitalizationAgent"]:
+                        action = ""
+                    else:
+                        action = input(f"\n\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :").upper()
+                case "Coder" :
+                    break
+                case "Critic" :
+                    break
+                case "Capitalizer" :
+                    break
+                case _: # Default case
+                    action = smart_input(
                 f"\n\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :").upper()
 
             # ACTIONS processing
@@ -776,15 +801,18 @@ class HumanLLMMonitor:
                     self.num_parallel_inferences = 1
 
             elif action == "J":  # Change num of parallel inferences and synthesize mode
-                try:
-                    self.num_parallel_inferences = int(input("Enter new value for num_parallel_inferences: "))
-                except:
-                    self.num_parallel_inferences = 1
-                synthesize_mode_input = input("Turn synthesis mode on/off (1 for ON, 0 for OFF): ").strip()  #NEW
-                if synthesize_mode_input in ["0", "1"]:  #NEW
-                    self.synthesize_mode = synthesize_mode_input == "1"  #NEW
-                else:  #NEW
-                    print("Invalid input. Synthesize mode remains unchanged.")
+                if (self.agent_name == "TaskIdentificationAgent" and optuna == "Coach") :
+                    try: self.num_parallel_inferences = 10
+                    except: self.num_parallel_inferences = 1
+                    self.synthesize_mode = synthesize_mode_input == "1"
+                else :
+                    try: self.num_parallel_inferences = int(input("Enter new value for num_parallel_inferences: "))
+                    except: self.num_parallel_inferences = 1
+                    synthesize_mode_input = input("Turn synthesis mode on/off (1 for ON, 0 for OFF): ").strip()  #NEW
+                    if synthesize_mode_input in ["0", "1"]:  #NEW
+                        self.synthesize_mode = synthesize_mode_input == "1"  #NEW
+                    else:  #NEW
+                        print("Invalid input. Synthesize mode remains unchanged.")
 
             # Count time spent and occurrences waiting and in each option
             if action:
@@ -804,7 +832,7 @@ class HumanLLMMonitor:
                 if action == "P": use_premium_llm = True
                 break
             else:
-                proceed = smart_input(
+                proceed = "y" if optuna else smart_input(
                     "Proceed to inference (y/n) ? You can also hit 'p' to proceed using a premium llm.").lower()
                 if proceed in ["y", "p", ""]:
                     if proceed == "p": use_premium_llm = True
@@ -816,7 +844,7 @@ class HumanLLMMonitor:
         return messages, comments, forced_llm_output, use_premium_llm, default_llm_function, premium_llm_function, function_calling
 
     def _after_inference(self, inference_result_msg, premium_llm_function, color="37", output_id=None,
-                         outputs_count=None):
+                         outputs_count=None, optuna=None):
         comments, score = None, None
         if inference_result_msg is None:
             # enable to request inference_result_msg.content to be None
@@ -841,7 +869,7 @@ class HumanLLMMonitor:
             smart_print(menu, self.agent_name, "AFTER inference action MENU" + (
                 f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""))
             menu_start_time = time.time()
-            action = smart_input(
+            action = "" if optuna else smart_input(
                 f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :").upper()
 
             # ACTIONS processing
@@ -1064,7 +1092,7 @@ class HumanLLMMonitor:
     def CallHumanLLM(self, original_input_messages=None, default_llm_function=None, premium_llm_function=None,
                      callable_system_message=None, system_prompt_template=None, user_message=None,
                      return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=90,
-                     stream_output=True, use_default_llm=True):
+                     stream_output=True, use_default_llm=True, optuna=None, model_choice=None):
         #if not self.selected_llm_or_chain: raise ValueError("No LLM or chain selected for use.")
         # Define a helper function to perform the LLM calls for parallel inference.
         def perform_llm_call(input_msg, use_premium, func_calling, temperature, stream_output=True, color_id=None):
@@ -1116,15 +1144,14 @@ class HumanLLMMonitor:
                     self.agent_name, "Skipping round")
 
             # Pre-inference human intervention
-            llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(
-                original_input_messages, default_llm_function, premium_llm_function, function_calling,
-                callable_system_message)
-
+            llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(original_input_messages, default_llm_function, premium_llm_function, function_calling, callable_system_message, optuna=optuna, model_choice=model_choice)
             start_time = datetime.now()
             if llm_input_messages and not skip_inference:
                 # Use concurrent futures to parallelize the LLM calls.
                 outputs = []
                 with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_parallel_inferences) as executor:
+                    if type(self.premium_llm) == type(self.llmORchains_list.get('3_majority_chain')) and self.agent_name == "CodingAgent":
+                        stream_output = True
                     futures = [executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling,
                                                temperature, stream_output, _) for _ in
                                range(self.num_parallel_inferences)]
@@ -1182,7 +1209,7 @@ class HumanLLMMonitor:
                     # Post-inference human intervention
                     output_messages_instance, output_comments_instance, score_instance = self._after_inference(
                         llm_output, premium_llm_function=premium_llm_function, output_id=counter,
-                        outputs_count=len(llm_outputs))
+                        outputs_count=len(llm_outputs), optuna=optuna)
                     output_messages.append(output_messages_instance)
                     if output_messages_instance == -1:
                         break

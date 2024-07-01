@@ -1,0 +1,48 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{natbib}
+\usepackage{hyperref}
+\usepackage{lipsum} % For dummy text, you can remove this in your final document
+
+\title{Recent Advances in Quantum Computing for Optimization Problems}
+\author{Your Name}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Quantum computing has shown promise in tackling optimization problems with potential computational speedups over classical methods. This paper reviews recent advancements in quantum algorithms for optimization, compares their efficiency with classical approaches, explores practical applications, and discusses future directions in the field.
+\end{abstract}
+
+\section{Introduction}
+Quantum computing leverages quantum phenomena to perform computations that are believed to be exponentially faster than classical computers for certain problems. Optimization problems, such as combinatorial optimization and constraint satisfaction, are among the key application areas where quantum algorithms hold significant potential. This paper provides an overview of recent advances in quantum computing for optimization, highlighting algorithmic developments, computational efficiency gains, and practical implications.
+
+\section{Algorithm Overview}
+\subsection{Quantum Approximate Optimization Algorithm (QAOA)}
+QAOA is a variational quantum algorithm designed to find approximate solutions to combinatorial optimization problems. It uses a sequence of quantum gates to evolve an initial quantum state towards an optimal solution \citep{farhi2014quantum, hadfield2019quantum}.
+
+\subsection{Variational Quantum Eigensolver (VQE)}
+While primarily used for quantum chemistry simulations, VQE can be adapted to solve optimization problems by encoding the objective function as a Hamiltonian and using quantum circuit parameters to minimize its expectation value \citep{peruzzo2014variational, kandala2017hardware}.
+
+\section{Comparison with Classical Methods}
+Quantum algorithms for optimization promise potential speedups over classical methods such as Integer Linear Programming (ILP), Simulated Annealing, and Genetic Algorithms. However, practical implementations currently face challenges related to qubit coherence, gate fidelity, and scalability \citep{glover2019quantum, lucas2014ising}.
+
+\section{Applications}
+\subsection{Portfolio Optimization}
+Quantum algorithms can optimize portfolios by efficiently finding asset allocations that maximize returns while minimizing risks \citep{rebentrost2018quantum}.
+
+\subsection{Machine Learning}
+Optimization tasks in machine learning, such as training deep neural networks and solving clustering problems, can benefit from quantum computing's potential speedups \citep{biamonte2017quantum, wiebe2014quantum}.
+
+\section{Future Directions}
+The future of quantum computing for optimization hinges on overcoming current technical limitations and exploring hybrid quantum-classical approaches. Advances in error correction, hardware scalability, and algorithmic innovations are critical for realizing the full potential of quantum optimization in practical applications.
+
+\section*{References}
+\bibliographystyle{plainnat}
+\bibliography{prompt5_35}
+
+\end{document}

@@ -1,5 +1,5 @@
 from langchain.callbacks import StreamingStdOutCallbackHandler
-from langchain.chat_models import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI
 import re
 import os
 

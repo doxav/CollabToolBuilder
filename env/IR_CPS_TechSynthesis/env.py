@@ -24,11 +24,12 @@ from learn import Environment
 
 # import a function from langchain which could embed a text into a vector using OpenAI ada-002 or HuggingFace
 import langchain
-from langchain.embeddings import OpenAIEmbeddings, HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_openai import OpenAIEmbeddings
 
 from utils.file_utils import save_to_pickle, load_from_pickle
 from utils.llm_utils import UnifiedVectorDB
-#from langchain.cache import InMemoryCache, SQLiteCache
+#from langchain_community.cache import InMemoryCache, SQLiteCache
 #langchain.llm_cache = SQLiteCache(database_path="sqlite/langchain_cache.db")
 
 from bs4 import BeautifulSoup

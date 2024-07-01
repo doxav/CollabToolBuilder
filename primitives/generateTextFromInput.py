@@ -3,7 +3,7 @@ from utils.file_utils import load_from_pickle, save_to_pickle
 @save_to_pickle
 # This function returns a text generated for a given task on a text by GPT3.5 Given a prompt template and a text in order to summarize it, or extract some key information...
 def generateTextFromInput(prompt_template = "", text="", temperature=0.5, request_timout=120):
-    from langchain.chat_models import ChatOpenAI
+    from langchain_openai import ChatOpenAI
     from langchain.prompts import ChatPromptTemplate
     from config import OPENAI_API_KEY
 
