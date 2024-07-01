@@ -650,14 +650,15 @@ class HumanLLMMonitor:
                 if (self.agent_name == "TaskIdentificationAgent" and optuna == "Coach") :
                     try: self.num_parallel_inferences = 10
                     except: self.num_parallel_inferences = 1
+                    self.synthesize_mode = synthesize_mode_input == "1"
                 else :
                     try: self.num_parallel_inferences = int(input("Enter new value for num_parallel_inferences: "))
                     except: self.num_parallel_inferences = 1
-                synthesize_mode_input = input("Turn synthesis mode on/off (1 for ON, 0 for OFF): ").strip() #NEW
-                if synthesize_mode_input in ["0", "1"]: #NEW
-                    self.synthesize_mode = synthesize_mode_input == "1" #NEW
-                else: #NEW
-                    print("Invalid input. Synthesize mode remains unchanged.")
+                    synthesize_mode_input = input("Turn synthesis mode on/off (1 for ON, 0 for OFF): ").strip() #NEW
+                    if synthesize_mode_input in ["0", "1"]: #NEW
+                        self.synthesize_mode = synthesize_mode_input == "1" #NEW
+                    else: #NEW
+                        print("Invalid input. Synthesize mode remains unchanged.")
 
             # Count time spent and occurrences waiting and in each option
             if action:
