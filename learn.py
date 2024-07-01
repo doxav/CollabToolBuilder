@@ -27,6 +27,8 @@ from langchain_core.messages.function import FunctionMessage
 from langchain_openai import ChatOpenAI # from langchain.chat_models import ChatOpenAI
 #from langchain.chat_models import ChatOpenAI
 
+import json
+
 from langchain.globals import set_llm_cache
 from langchain_community.cache import SQLiteCache
 set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
@@ -393,7 +395,7 @@ class ValidationAgent():
     def validate_code(self, code: str, no_runtime_error:bool, exec_result:str, task:str=None, human_evaluation_required=False, scores=None, env_states=None) -> str:
         runtime_errors = f'\033[32mno runtime errors at execution - code returned:\n{exec_result}\n\033[0m' if no_runtime_error else f'\033[31mruntime errors at execution - error:{exec_result}\033[0m'
         if human_evaluation_required:
-            human_evaluation = input(f"\n\n*******************\n{code}\n************\nCODE ABOVE EXECUTED with result: {runtime_errors}\n****\System may not efficiently evaluate what is produced by the code, please add your evaluation of the result (or hit enter): ")
+            human_evaluation = smart_input(f"\n\n*******************\n{code}\n************\nCODE ABOVE EXECUTED with result: {runtime_errors}\n****\System may not efficiently evaluate what is produced by the code, please add your evaluation of the result (or hit enter): ")
         else:
             human_evaluation = ""
         runtime_errors = 'no runtime errors at execution' if no_runtime_error else 'runtime errors at execution' # just to avoid to break colors inside HumanLLMMonitor
@@ -444,7 +446,7 @@ class CapitalizationAgent:
         # check if the function file already exists, if yes, ask the user a new name
         if os.path.exists(function_file_path):
             smart_print(f"Function file {function_file_path} already exists, please provide a new name for the function.", self.name, "capitalize_successful_tasks WARNING")
-            function_file_path = os.path.join("functions", input("New function name: ")+".py")
+            function_file_path = os.path.join("functions", smart_input("New function name: ")+".py")
         with open(function_file_path, "w") as function_file:
              # use regex to extract the docstring from tool_description
             docstring_pattern = re.compile(r'(""".*?""")', re.DOTALL)
@@ -595,10 +597,9 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
 
     continue_identifying_tasks = True
 
-    # Gllobal learn loop
+    # Global learn loop
     while continue_identifying_tasks:
         HumanLLMMonitor.step_id = str(uuid.uuid4())
-        print(f"optuna = {optuna_opti}")
         task = agent_taskreco.identify_best_task()
         # Handle multiple-tasks case
         if len(task) > 1:
@@ -610,12 +611,12 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             # get input from user with the index of the task to select, manage exceptions
             while True:
                 try:
-                    task = task[prompt_choice] if optuna_opti and prompt_choice else task[int(input("Enter the index of the task to select: ").strip())]
+                    task = task[prompt_choice] if optuna_opti and prompt_choice else task[int(smart_input("Enter the index of the task to select: ").strip())]
                     with open("selected_task.txt", "a") as f:
                         f.write(f"Prompt {prompt_choice}: \n{task.content}\n\n")
                     break
                 except Exception as e:
-                    print(f"Error: {e}\n\nEnter a valid index")
+                    smart_print(f"Error: {e}\n\nEnter a valid index")
         else:
             task = task[0]
         smart_print("Identified Task: "+task.content.replace("\\n", "\n"), "orchestrate_agents", "orchestrate_agents RESULT")
@@ -759,11 +760,11 @@ def sanitized_task_name(task):
 
 class PrintPromptRunnable(Runnable):
     def invoke(self, input_msg, config):
-        print(f"PrintPromptRunnable type of input_msg: {type(input_msg)}")
+        smart_print(f"PrintPromptRunnable type of input_msg: {type(input_msg)}")
         # Extract and format the prompt
         formatted_prompt = format_prompt(input_msg if isinstance(input_msg, list) else input_msg.messages)
         # Print the prompt in RED
-        print("\033[31m" + formatted_prompt + "\033[0m")
+        smart_print("\033[31m" + formatted_prompt + "\033[0m")
         return input_msg
 
 class ExtractMessage(Runnable):
