@@ -7,8 +7,11 @@ from dataclasses import dataclass, field
 import re
 from typing import List, SupportsFloat, Any, Tuple, Dict
 from dataclasses import asdict
-import uuid
+
+#from config import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, ELASTICSEARCH_HOST
+from config import *
 #from attr import dataclass, field
+
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -1316,7 +1319,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         if not self.has_reset_once:
             print("Environment has not been reset yet - resetting now !")
             self.reset()
-        return super().step(action_code=code, context={'problem': self.synthesis_manager, 'results': None, 'SynthesisManager': SynthesisManager, 'DocumentStructure': DocumentStructure, 'Section': Section, 'Document': Document})
+        return super().step(action_code=code, context={'problem': self.synthesis_manager, 'bot': self.synthesis_manager, 'results': None, 'SynthesisManager': SynthesisManager, 'DocumentStructure': DocumentStructure, 'Section': Section, 'Document': Document})
 
     def get_state(self, extended: bool = False):
         #TODO: move to self.document.get_state() ?

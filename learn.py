@@ -319,7 +319,7 @@ class CodingAgent():
                             no_runtime_error, exec_result = env.step(code_to_run)
                             while not no_runtime_error and current_skip_rounds <= 0:
                                 smart_print("\033[31mCODE ERROR\033[0m: "+exec_result, self.name, "code_task_and_run_test SystemMessage")
-                                decision = input("Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ").strip().lower()
+                                decision = smart_input("Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ").strip().lower()
                                 if decision in ("no", "n", ""):
                                     break
                                 elif decision == "a":
@@ -366,7 +366,7 @@ class CodingAgent():
                 if self.optuna_opti:
                     if top_indice != -1: selected_code = f"{top_indice}"
                     else: selected_code = "n"
-                else: selected_code = input(f"{results_list}CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL): ").strip().replace(" ","").lower().split(",")
+                else: selected_code = smart_input(f"{results_list}CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL): ").strip().replace(" ","").lower().split(",")
             else:
                 selected_code = [""] # keep all if skip_rounds is not 0
             id = 0
@@ -513,10 +513,10 @@ class CapitalizationAgent:
             task_data = json.loads(page_content)
             smart_print(f"{id}: function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
         if include_code is None:
-            include_code = input(f"CONFIG When adding the functions description in successful tasks, do you want to also include the code (it may overflow the maximum prompt length but can also guide generation) ? (yes/no): ").strip().lower() in ["yes", "y"]
+            include_code = smart_input(f"CONFIG When adding the functions description in successful tasks, do you want to also include the code (it may overflow the maximum prompt length but can also guide generation) ? (yes/no): ").strip().lower() in ["yes", "y"]
         # Second step: ask the user to select the functions to load
         if selected_successful_functions is None:
-            selected_successful_functions = input(f"CONFIG Please select the successful functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
+            selected_successful_functions = smart_input(f"CONFIG Please select the successful functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
         id = 0
         # load into self.tasks_repository
         for result in results_success_db:
@@ -547,7 +547,7 @@ class CapitalizationAgent:
             smart_print(f"{id}: failed function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
         # Second step: ask the user to select the functions to load
         if selected_failed_functions is None:
-            selected_failed_functions = input(f"CONFIG Please select the failed functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
+            selected_failed_functions = smart_input(f"CONFIG Please select the failed functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
         id = 0
         # load into self.tasks_repository
         for result in results_failed_db:
@@ -627,10 +627,10 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
             agent_taskreco.update_learnt_tasks(agent_capitalize.tasks_repository)
         else:
-            if input("Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ").strip().upper() in ["Y", "YES"]:
+            if smart_input("Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ").strip().upper() in ["Y", "YES"]:
                 agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
                 agent_taskreco.update_failed_tasks(agent_capitalize.failed_tasks_repository)
-        answer = "y" if optuna_opti else input("Do you want to reset the environment for searching a new task (Y/YES) or search a new task by keeping what has been created by this task (N/NO/Enter) ? or just exit (E/EXIT) ?").strip().upper()
+        answer = "y" if optuna_opti else smart_input("Do you want to reset the environment for searching a new task (Y/YES) or search a new task by keeping what has been created by this task (N/NO/Enter) ? or just exit (E/EXIT) ?").strip().upper()
         continue_identifying_tasks, optuna_coach = False, False if answer in ["E", "EXIT"] else True
         if answer.upper() in ["Y", "YES"]:
             [env.reset() for env in test_environments]
@@ -738,7 +738,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
                 selected_code, _, selected_reset_unique_ids, scores = successful_codes[highest_score_index]
                 return selected_code, "success", scores
             else:
-                selection = input("Several codes were successful. Please enter the number of the code you want to add to the library: ").strip()
+                selection = smart_input("Several codes were successful. Please enter the number of the code you want to add to the library: ").strip()
             if selection.isdigit() and 0 < int(selection) <= len(successful_codes):
                 selected_index = int(selection) - 1
                 smart_print("Code validated successfully.", None, "coding_and_validation_loop RESULT")
