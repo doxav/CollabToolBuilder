@@ -17,7 +17,7 @@ arxiv
 pyparsing
 spacy
 scikit-image
-#sklearn # la dépendance est scikit-learn. J'ai commenté car pas utilisé apparemment.
+scikit-learn
 bs4
 config
 #gradio==3.48.0

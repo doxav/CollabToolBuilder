@@ -382,7 +382,7 @@ def my_multi_part_query_best_task():
     7) After proposing the task, you should provide a test case of the function corresponding to this task for each example:
         a) Write a one liner python call to the main function for each "Document to be tested", this call should be designed to maximize the expected results for the "Document to be tested"
         b) Precede each one liner call with a line of comment in this form "# document #uuid usage test" (e.g. "#document #125dc4bc-54e0-4336-82bc-417e40ec9b8f usage test"...) to indicate to which document the code of the next line applies to given its unique id
-        c) Call to the main function uses bot as first required parameter, then provide parameters sepecific to the document for this function (do not provide document #uuid as parameter but title and abstract instead)
+        c) Call to the main function uses bot as first required parameter, then provide parameters sepecific to the document for this function (do not provide document #uuid as parameter but title and context instead)
         d) Generate only one test for each document, so the total number of function calls in this test list should be equal to the number of "Document to be tested"
 
     RESPONSE FORMAT (you should only respond in the format as described below):
