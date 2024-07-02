@@ -27,3 +27,6 @@ IPython
 ipykernel
 neo4j
 langchain_community
+langchain_openai
+streamlit
+optuna
