@@ -590,13 +590,9 @@ class HumanLLMMonitor:
                     self.set_premium_llm(new_llm_name)
                     default_llm_function = self.default_llm
                     premium_llm_function = self.premium_llm
+                    self.synthesize_mode = False
                     # Default actions for all agents while running with optuna
-                    if self.agent_name == "TaskIdentificationAgent":
-                        action = "J"
-                    elif self.agent_name in ["CodingAgent", "ValidationAgent", "CapitalizationAgent"]:
-                        action = ""
-                    else:
-                        action = input(f"\n\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :").upper()
+                    action = ""
                 case "Coder" :
                     break
                 case "Critic" :
@@ -791,25 +787,14 @@ class HumanLLMMonitor:
                 else:
                     exit()
 
-            elif action == "J":  # Change num of parallel inferences
-                try:
-                    self.num_parallel_inferences = int(smart_input("Enter new value for num_parallel_inferences: "))
-                except:
-                    self.num_parallel_inferences = 1
-
             elif action == "J":  # Change num of parallel inferences and synthesize mode
-                if (self.agent_name == "TaskIdentificationAgent" and optuna == "Coach") :
-                    try: self.num_parallel_inferences = 10
-                    except: self.num_parallel_inferences = 1
-                    self.synthesize_mode = synthesize_mode_input == "1"
-                else :
-                    try: self.num_parallel_inferences = int(input("Enter new value for num_parallel_inferences: "))
-                    except: self.num_parallel_inferences = 1
-                    synthesize_mode_input = input("Turn synthesis mode on/off (1 for ON, 0 for OFF): ").strip()  #NEW
-                    if synthesize_mode_input in ["0", "1"]:  #NEW
-                        self.synthesize_mode = synthesize_mode_input == "1"  #NEW
-                    else:  #NEW
-                        print("Invalid input. Synthesize mode remains unchanged.")
+                try: self.num_parallel_inferences = int(input("Enter new value for num_parallel_inferences: "))
+                except: self.num_parallel_inferences = 1
+                synthesize_mode_input = input("Turn synthesis mode on/off (1 for ON, 0 for OFF): ").strip()  #NEW
+                if synthesize_mode_input in ["0", "1"]:  #NEW
+                    self.synthesize_mode = synthesize_mode_input == "1"  #NEW
+                else:  #NEW
+                    print("Invalid input. Synthesize mode remains unchanged.")
 
             # Count time spent and occurrences waiting and in each option
             if action:

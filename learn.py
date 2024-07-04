@@ -156,7 +156,7 @@ class TaskIdentificationAgent():
     def update_failed_tasks(self, tasks: Dict[str, str]) -> None:
         self.failed_tasks = tasks
 
-    def identify_best_task(self, prompt_choice=None) -> str:
+    def identify_best_task(self) -> str:
         learnt_tasks = format(json.dumps(self.learnt_tasks))
         failed_tasks = format(json.dumps(self.failed_tasks))
         envs_status = '\n'.join([env.get_state() for env in self.envs])
@@ -569,7 +569,7 @@ class CapitalizationAgent:
 # Main learning loop orchestration functions
 def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environments=None, manual_validation_to_capitalize=True, problem_prompts_subdir=None, 
                              max_coding_attempts=4, include_code=None, selected_successful_functions=None, selected_failed_functions=None, agtask_premium_llm_by_default=True, 
-                             agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0, agcapitalize_skip_rounds=0, llmORchains_list=None, prompt_choice=None, model_choice=None, optuna_opti=None):
+                             agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0, agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None, optuna_opti=None):
     global scores_ret
     if problem_prompts_subdir is None:
         # menu to choose the problem prompts subdirectory
@@ -611,10 +611,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             # get input from user with the index of the task to select, manage exceptions
             while True:
                 try:
-                    task = task[prompt_choice] if optuna_opti and prompt_choice else task[int(smart_input("Enter the index of the task to select: ").strip())]
-                    with open("selected_task.txt", "a") as f:
-                        f.write(f"Prompt {prompt_choice}: \n{task.content}\n\n")
-                    break
+                    task = task[int(smart_input("Enter the index of the task to select: ").strip())]
                 except Exception as e:
                     smart_print(f"Error: {e}\n\nEnter a valid index")
         else:
@@ -720,11 +717,19 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
 
         reset_unique_ids = new_reset_unique_ids # Update reset_unique_ids for the next iteration
 
+
+
         if successful_codes and not continue_even_if_successful:
             break
 
+        if not successful_codes and attempt == (max_attempts / 2) - 1:
+            attempt = max_attempts - 1
+        
         if attempt == max_attempts - 1:
-            smart_print("Max attempts reached. Trying a new task.", None, "coding_and_validation_loop WARNING")
+            if not successful_codes:
+                smart_print("No successful code yet. Stop this task.", None, "coding_and_validation_loop WARNING")
+            else:
+                smart_print("Max attempts reached. Trying a new task.", None, "coding_and_validation_loop WARNING")
 
     # Second part: If there are successful codes, ask user to select one
     if successful_codes and (not continue_even_if_successful or attempt >= max_attempts - 1):
