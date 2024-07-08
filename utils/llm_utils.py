@@ -33,6 +33,16 @@ ON_INPUT = False
 
 AGENT = ''
 
+import asyncio
+import websockets
+
+ws_url = "ws://localhost:6789"
+
+
+async def send_message(message):
+    async with websockets.connect(ws_url) as websocket:
+        await websocket.send(message)
+
 
 def is_streamlit_running():
     url = "http://localhost:8501"
@@ -50,33 +60,24 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False):
         try:  # test if IN_NOTEBOOK
             from IPython import get_ipython
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = get_ipython().__class__.__name__ == 'ZMQInteractiveShell'
-            print("Notebook mode = " + str(IN_NOTEBOOK))
+            print("Smart_print: Notebook mode = " + str(IN_NOTEBOOK))
         except:
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = False
     else:
         IN_NOTEBOOK = globals()['IN_NOTEBOOK']
 
     if 'IN_STREAMLIT' not in globals():
-        # Check if a Streamlit server is running
-        try:
-            is_streamlit_running()
+        if True or is_streamlit_running():
             globals()['IN_STREAMLIT'] = IN_STREAMLIT = True
-        except:
+        else:
             globals()['IN_STREAMLIT'] = IN_STREAMLIT = False
     else:
-        globals()['IN_STREAMLIT'] = IN_STREAMLIT = False # By default, globals()['IN_STREAMLIT'] is True, and it brake the output in terminal. So, we set it to False until we have finished.
-        # IN_STREAMLIT = globals()['IN_STREAMLIT'] # Uncomment this line if you want to keep the default value of IN_STREAMLIT
+        IN_STREAMLIT = globals()['IN_STREAMLIT']
 
+    print("## 6")
     if IN_STREAMLIT:
         AGENT = agent_name
-        if append:
-            # Write in "data.txt" file
-            with open("data.txt", "a") as file:
-                file.write(message + "\n")
-        else:
-            # Write in "data.txt" file
-            with open("data.txt", "w") as file:
-                file.write(message + "\n")
+        asyncio.run(send_message(message))
 
     elif IN_NOTEBOOK and agent_name:
         # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
@@ -103,7 +104,7 @@ def smart_input(message: str, agent_name=None, message_type=None):
         try:  # test if IN_NOTEBOOK
             from IPython import get_ipython
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = get_ipython().__class__.__name__ == 'ZMQInteractiveShell'
-            print("Notebook mode = " + str(IN_NOTEBOOK))
+            print("Smart_input: Notebook mode = " + str(IN_NOTEBOOK))
         except:
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = False
     else:
@@ -111,35 +112,29 @@ def smart_input(message: str, agent_name=None, message_type=None):
 
     if 'IN_STREAMLIT' not in globals():
         # Check if a Streamlit server is running
-        try:
-            is_streamlit_running()
+        if is_streamlit_running():
             globals()['IN_STREAMLIT'] = IN_STREAMLIT = True
-        except:
+
+        else:
             globals()['IN_STREAMLIT'] = IN_STREAMLIT = False
     else:
         IN_STREAMLIT = globals()['IN_STREAMLIT']
-
+    print("Streamlit mode = " + str(IN_STREAMLIT))
     if IN_STREAMLIT:
         global ON_INPUT, AGENT
         ON_INPUT = True
         AGENT = agent_name
-        # Write message in "input_data.txt" file
-        with open("input_data.txt", "w") as file:
-            file.write(message)
-        time.sleep(1)
-        smart_print(message, append=True)
-        # Wait and return changed value from "input_data.txt" file
-        while True:
-            time.sleep(1)
-            with open("input_data.txt", "r") as file:
-                line = file.read()
-                print("line = ", line)
-                print("message = ", message)
-                if line != message:
-                    # Return last line of "input_data.txt" file
-                    match = re.match(r'^\s*(\w+|\d+)', line)
-                    first_word_or_number = match.group(1)
-                    return first_word_or_number
+        asyncio.run(send_message(message))
+
+        # Wait and receive response from WebSocket
+        async def receive_message():
+            async with websockets.connect(ws_url) as websocket:
+                print("Waiting for response from WebSocket")
+                response = await websocket.recv()
+                print("Received response from WebSocket")
+                return response
+
+        return asyncio.run(receive_message())
 
     elif IN_NOTEBOOK and agent_name:  # Currently DE-ACTIVATED
         # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
@@ -584,8 +579,8 @@ class HumanLLMMonitor:
 
             smart_print(menu, self.agent_name, "BEFORE inference action MENU")
             menu_start_time = time.time()
-            match(optuna) :
-                case "Coach" :
+            match (optuna):
+                case "Coach":
                     llm_keys = list(self.llmORchains_list.keys())
                     # Model change from choice of optuna
                     new_llm_name = llm_keys[model_choice]
@@ -599,16 +594,17 @@ class HumanLLMMonitor:
                     elif self.agent_name in ["CodingAgent", "ValidationAgent", "CapitalizationAgent"]:
                         action = ""
                     else:
-                        action = input(f"\n\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :").upper()
-                case "Coder" :
+                        action = input(
+                            f"\n\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :").upper()
+                case "Coder":
                     break
-                case "Critic" :
+                case "Critic":
                     break
-                case "Capitalizer" :
+                case "Capitalizer":
                     break
-                case _: # Default case
+                case _:  # Default case
                     action = smart_input(
-                f"\n\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :").upper()
+                        f"\n\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :").upper()
 
             # ACTIONS processing
             start_time, action = time.time(), action  # Init action selected and timer to measure time spent and occurences in action processing
@@ -801,13 +797,17 @@ class HumanLLMMonitor:
                     self.num_parallel_inferences = 1
 
             elif action == "J":  # Change num of parallel inferences and synthesize mode
-                if (self.agent_name == "TaskIdentificationAgent" and optuna == "Coach") :
-                    try: self.num_parallel_inferences = 10
-                    except: self.num_parallel_inferences = 1
+                if (self.agent_name == "TaskIdentificationAgent" and optuna == "Coach"):
+                    try:
+                        self.num_parallel_inferences = 10
+                    except:
+                        self.num_parallel_inferences = 1
                     self.synthesize_mode = synthesize_mode_input == "1"
-                else :
-                    try: self.num_parallel_inferences = int(input("Enter new value for num_parallel_inferences: "))
-                    except: self.num_parallel_inferences = 1
+                else:
+                    try:
+                        self.num_parallel_inferences = int(input("Enter new value for num_parallel_inferences: "))
+                    except:
+                        self.num_parallel_inferences = 1
                     synthesize_mode_input = input("Turn synthesis mode on/off (1 for ON, 0 for OFF): ").strip()  #NEW
                     if synthesize_mode_input in ["0", "1"]:  #NEW
                         self.synthesize_mode = synthesize_mode_input == "1"  #NEW
@@ -853,7 +853,7 @@ class HumanLLMMonitor:
         while self.skip_rounds <= 0:
             # MENU
             multiple_ref = (f"OUTPUT \033[31m{output_id} OUT OF {outputs_count}\033[0m OUTPUTS" if (
-                        output_id and outputs_count and (outputs_count > 1)) else "")
+                    output_id and outputs_count and (outputs_count > 1)) else "")
             menu = (
                 f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")
             menu += (
@@ -1106,8 +1106,8 @@ class HumanLLMMonitor:
                     start_color, end_color = "", ""
                 else:
                     start_color, end_color = \
-                    ["\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m", "\033[97m"][
-                        color_id % 7], "\033[0m"
+                        ["\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m", "\033[97m"][
+                            color_id % 7], "\033[0m"
                 final_output = ""  # Initialize an empty string to hold the full response
                 smart_print("", self.agent_name, "Inference streaming output")
                 for chunk in func.stream(
@@ -1144,13 +1144,16 @@ class HumanLLMMonitor:
                     self.agent_name, "Skipping round")
 
             # Pre-inference human intervention
-            llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(original_input_messages, default_llm_function, premium_llm_function, function_calling, callable_system_message, optuna=optuna, model_choice=model_choice)
+            llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(
+                original_input_messages, default_llm_function, premium_llm_function, function_calling,
+                callable_system_message, optuna=optuna, model_choice=model_choice)
             start_time = datetime.now()
             if llm_input_messages and not skip_inference:
                 # Use concurrent futures to parallelize the LLM calls.
                 outputs = []
                 with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_parallel_inferences) as executor:
-                    if type(self.premium_llm) == type(self.llmORchains_list.get('3_majority_chain')) and self.agent_name == "CodingAgent":
+                    if type(self.premium_llm) == type(
+                            self.llmORchains_list.get('3_majority_chain')) and self.agent_name == "CodingAgent":
                         stream_output = True
                     futures = [executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling,
                                                temperature, stream_output, _) for _ in
@@ -1234,7 +1237,7 @@ class HumanLLMMonitor:
             output_contents=output_messages,
             inference_time=(end_time - start_time).total_seconds(),
             input_modified=((llm_input_messages[0].content + "\n" + llm_input_messages[1].content) != (
-                        input_contents_str0 + "\n" + input_contents_str1)),
+                    input_contents_str0 + "\n" + input_contents_str1)),
             skipped_inference=True if skip_inference else False,
             skip_rounds=self.skip_rounds,
             input_comments=input_comments,
