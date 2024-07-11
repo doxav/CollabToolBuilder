@@ -1291,12 +1291,12 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
 
     def get_score(self):
         distance = self.synthesis_manager.get_distance_to_targetJSON()
-        return {    'sections titles progress': distance['plan_titles_embedding_similarity'],
-                    'sections content progress': distance['plan_contents_embedding_similarity'],
-                    'sections count ratio progress': distance['sections_count_ratio_to_target'],
-                    'title non-empty count ratio progress': distance['title_non_empty_count_ratio_to_target'],
-                    'content length ratio progress': distance['content_length_ratio_to_target'],
-                    'content non-empty count ratio progress': distance['content_non_empty_count_ratio_to_target']}
+        return {    'sections titles progress (best = 1, worst = 0)': distance['plan_titles_embedding_similarity'],
+                    'sections content progress (best = 1, worst = 0)': distance['plan_contents_embedding_similarity'],
+                    'sections count ratio progress (best = 1, too short <1, too long >1)': distance['sections_count_ratio_to_target'],
+                    'title non-empty count ratio progress (best = 1, too short <1, too long >1)': distance['title_non_empty_count_ratio_to_target'],
+                    'content length ratio progress (best = 1, too short <1, too long >1)': distance['content_length_ratio_to_target'],
+                    'content non-empty count ratio progress (best = 1, too short <1, too long >1)': distance['content_non_empty_count_ratio_to_target']}
 
     def reset(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         self.has_reset_once = True
