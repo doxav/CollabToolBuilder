@@ -14,6 +14,8 @@ import re
 import shutil
 import hashlib
 import optuna as opt
+import inspect
+import types
 
 from langchain_core.runnables import Runnable, RunnablePassthrough
 from langchain_core.prompts import ChatPromptTemplate
@@ -119,8 +121,28 @@ class Environment:
         return state_text
     
     def get_score(self):
-        # return the score of the current state
-        return None
+        # indicate that automatic scoring is not set, then ask the user to provide a score between 0 and 1, we ensure that the score is a float between 0 and 1
+        score = None
+        while score is None:
+            try:
+                score = float(input("No automatic get_score set, please provide a score between 0 and 1: "))
+                if score < 0 or score > 1:
+                    score = None
+            except ValueError:
+                pass
+        return {'score (best=1, worst=0)': score}
+
+    def set_score_function(self, score_function_code: str):
+        local_scope = {'self': self}
+        func_name = re.search(r'def (\w+)\(', score_function_code).group(1)
+        if validate_function_code(score_function_code, func_name, local_scope):
+            self.get_score = types.MethodType(local_scope[func_name], self)
+
+    def set_state_function(self, state_function_code: str):
+        local_scope = {'self': self}
+        func_name = re.search(r'def (\w+)\(', state_function_code).group(1)
+        if validate_function_code(state_function_code, func_name, local_scope):
+            self.get_state = types.MethodType(local_scope[func_name], self)
 
 class EnvironmentManager:
     def __init__(self, env_type="default", **kwargs):
@@ -566,10 +588,49 @@ class CapitalizationAgent:
             self.failed_tasks_repository[task_data["main_function_name"]] = task_data["task_description_refined"]
             smart_print(f"> failed function/task {task_data['main_function_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
 
+#        smart_print(f"Error: Could not find a valid definition for {function_name}. Please set it:", "orchestrate_agents", "orchestrate_agents ERROR")
+#        function_code = _visual_input(current_function_code, filetype="py")
+
+
+def validate_function_code(code, function_name, local_scope=None, compile_test_only=False):
+    if local_scope is None:
+        local_scope = {}
+    try:
+        compiled_code = compile(code, '<string>', 'exec')
+        if compile_test_only:
+            return True
+        exec(compiled_code, globals(), local_scope)
+        func = local_scope.get(function_name)
+        if func is None or not callable(func):
+            raise ValueError(f"Function {function_name} is not defined or not callable.")
+        return func
+    except Exception as e:
+        print(f"Error setting {function_name} function: {e}")
+        return None
+
+def extract_function_code(task_content, function_name, current_function_code=None):
+    """
+    Extracts the complete code block for the specified function from the given task content.
+    If extraction fails, prompts the user for correct function code until successful.
+    """
+    pattern = rf"(def {function_name}\(.*?\):.*?)(?=\ndef [a-zA-Z_]+\(|$)"
+    match = re.search(pattern, task_content, re.DOTALL)
+    function_code = match.group(1) if match else None
+
+    local_scope = {}
+    validated_function = validate_function_code(function_code, function_name, local_scope) if function_code else None
+
+    while not validated_function:
+        smart_print(f"Error: Could not find a valid definition for {function_name}. Please set it:", "orchestrate_agents", "orchestrate_agents ERROR")
+        function_code = _visual_input(current_function_code, filetype="py")
+        validated_function = validate_function_code(function_code, function_name, local_scope)
+
+    return function_code
+
 # Main learning loop orchestration functions
 def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environments=None, manual_validation_to_capitalize=True, problem_prompts_subdir=None, 
                              max_coding_attempts=4, include_code=None, selected_successful_functions=None, selected_failed_functions=None, agtask_premium_llm_by_default=True, 
-                             agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0, agcapitalize_skip_rounds=0, llmORchains_list=None, prompt_choice=None, model_choice=None, optuna_opti=None):
+                             agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0, agcapitalize_skip_rounds=0, llmORchains_list=None, prompt_choice=None, model_choice=None, optuna_opti=None, allow_custom_score_state_functions=True):
     global scores_ret
     if problem_prompts_subdir is None:
         # menu to choose the problem prompts subdirectory
@@ -601,6 +662,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     while continue_identifying_tasks:
         HumanLLMMonitor.step_id = str(uuid.uuid4())
         task = agent_taskreco.identify_best_task()
+
         # Handle multiple-tasks case
         if len(task) > 1:
             # list all tasks with their index and the 200 first characters of their content
@@ -619,8 +681,21 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                     smart_print(f"Error: {e}\n\nEnter a valid index")
         else:
             task = task[0]
+
         smart_print("Identified Task: "+task.content.replace("\\n", "\n"), "orchestrate_agents", "orchestrate_agents RESULT")
         task_description = task.content
+
+        # Extract potential score and state function code from the task
+        if allow_custom_score_state_functions:
+            # Extract current implementation of get_score and get_state from the first environment
+            current_score_function_code = inspect.getsource(test_environments[0].get_score)
+            current_state_function_code = inspect.getsource(test_environments[0].get_state)
+            score_function_code = extract_function_code(task_description, 'get_score', current_score_function_code)
+            state_function_code = extract_function_code(task_description, 'get_state', current_state_function_code)
+
+            for env in test_environments:
+                env.set_score_function(score_function_code)
+                env.set_state_function(state_function_code)
 
         parsed_code, validation, scores = coding_and_validation_loop(agent_coding, agent_validation, task_description, max_coding_attempts, manual_validation_to_capitalize, optuna=optuna_opti)
         scores_ret = scores
