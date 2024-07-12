@@ -18,6 +18,8 @@ from langchain_core.messages.function import FunctionMessage
 import tkinter as tk
 from tkinter import scrolledtext
 
+from requests.auth import HTTPBasicAuth
+
 from utils.file_utils import *
 import concurrent.futures
 
@@ -54,7 +56,7 @@ def is_streamlit_running():
         return False
 
 
-def smart_print(message: str, agent_name=None, message_type=None, append=False):
+def smart_print(message: str, agent_name=None, message_type=None, append=False, column_id=None, column_max=None):
     global AgentDisplayManager, AGENT
     if 'IN_NOTEBOOK' not in globals():
         try:  # test if IN_NOTEBOOK
@@ -77,6 +79,9 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False):
     print("## 6")
     if IN_STREAMLIT:
         AGENT = agent_name
+        message_dict = {'message':message, 'agent_name':agent_name, 'message_type':message_type, 'append':append, 'column_id':column_id, 'column_max':column_max}
+        # convert message_dict to json
+        message = json.dumps(message_dict)
         asyncio.run(send_message(message))
 
     elif IN_NOTEBOOK and agent_name:
@@ -128,9 +133,11 @@ def smart_input(message: str, agent_name=None, message_type=None):
         # Wait and receive response from WebSocket
         async def receive_message():
             async with websockets.connect(ws_url) as websocket:
+                global ON_INPUT
                 print("Waiting for response from WebSocket")
                 response = await websocket.recv()
                 print("Received response from WebSocket")
+                ON_INPUT = False
                 return response
 
         return asyncio.run(receive_message())
@@ -291,15 +298,25 @@ def save_prompt_with_tag(prompt_name, text, new_tag, package_path="."):
 class UnifiedVectorDB:
     db_type = 'elasticsearch'  # can be 'elasticsearch' or 'chroma'
     es_url = 'http://127.0.0.1:9200'
+    es_user = 'temp_user'
+    es_password = 'temp_pass'
 
     @staticmethod
     def check_db():
         if UnifiedVectorDB.db_type == 'elasticsearch':
             try:
-                urllib.request.urlopen(UnifiedVectorDB.es_url, timeout=1)
-            except urllib.error.URLError as e:
+                #     urllib.request.urlopen(UnifiedVectorDB.es_url, timeout=1)
+                # except urllib.error.URLError as e:
+                #     print(
+                #         f"Error: {e.reason} - {e}\nUnifiedVectorDB.es_url: {UnifiedVectorDB.es_url}\nPlease check if elasticsearch is running and reachable at the specified URL\nplease set UnifiedVectorDB.es_url = 'http://x.x.x.x:9200' in your config.py or search where it is set in your code.")
+                #     exit(1)
+                response = requests.get(UnifiedVectorDB.es_url,
+                                        auth=HTTPBasicAuth(UnifiedVectorDB.es_user, UnifiedVectorDB.es_password),
+                                        timeout=1, verify=False)
+                response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
+            except requests.exceptions.RequestException as e:
                 print(
-                    f"Error: {e.reason} - {e}\nUnifiedVectorDB.es_url: {UnifiedVectorDB.es_url}\nPlease check if elasticsearch is running and reachable at the specified URL\nplease set UnifiedVectorDB.es_url = 'http://x.x.x.x:9200' in your config.py or search where it is set in your code.")
+                    f"Error: {e}\nUnifiedVectorDB.es_url: {UnifiedVectorDB.es_url}\nPlease check if Elasticsearch is running and reachable at the specified URL\nplease set UnifiedVectorDB.es_url, UnifiedVectorDB.es_user, and UnifiedVectorDB.es_password correctly in your code.")
                 exit(1)
         elif UnifiedVectorDB.db_type == 'chroma':
             print("Chroma DB check is not yet implemented")

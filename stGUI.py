@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import streamlit as st
@@ -9,6 +10,15 @@ from queue import Queue, Empty
 from langchain_openai import ChatOpenAI
 from learn import create_Nmajority_chain, EnvironmentManager, run_4agents_learning_loop
 import utils.llm_utils as llm_utils
+
+import sys
+
+local_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'src'))
+if local_path not in sys.path:
+    sys.path.insert(0, local_path)
+from streamlit_annotation_tools import text_highlighter, text_labeler
+
+st.set_page_config(layout="wide")
 
 # Initialiser l'état de session pour stocker les données
 if 'page1_data' not in st.session_state:
@@ -29,14 +39,17 @@ if 'current_page' not in st.session_state:
 if 'thread_started' not in st.session_state:
     st.session_state['thread_started'] = False
 
+if 'columns_data' not in st.session_state:
+    st.session_state['columns_data'] = {}
+
+# Initialize session state for columns
+if 'columns' not in st.session_state:
+    st.session_state.columns = []
+
 # Vérifier si le mode large est activé dans session_state
 if "wide_mode" not in st.session_state:
     st.session_state.wide_mode = False
 
-if st.session_state.wide_mode:
-    st.set_page_config(page_title="CollabFunctionsGPTCreator", layout="wide")
-else:
-    st.set_page_config(page_title="CollabFunctionsGPTCreator", layout="centered")
 
 print('Initialisation de l\'état de session terminée.')
 
@@ -47,7 +60,7 @@ llm_utils.ON_INPUT = False
 def get_message_queue():
     mq = Queue()
     for _ in range(5):
-        mq.put("Pipo")
+        mq.put({'message': f"Pipo{_}", 'column_id': _ % 3})
         print("Pipo added to the queue - queue size: ", mq.qsize())
     return mq
 
@@ -94,7 +107,7 @@ def process_messages():
             message = (st.session_state[
                            'data_queue'] if 'data_queue' in st.session_state else message_queue).get()  # Utilisez get() au lieu de get_nowait()
             print(f"Message reçu : {message}")
-            st.session_state['page1_data'].append(message)
+            st.session_state['page1_data'].append(message if type(message) == str else message['message'])
         except Empty:
             print("La file d'attente est vide.")
             break
@@ -226,6 +239,53 @@ def show_home_page():
             change_page('page2')
 
 
+def check_choice():
+    choice = st.session_state['choice']
+    new_item = ''
+    if choice == "Modify agent's system prompt (role, global context, constraints, examples).":
+        new_item = 'A'
+    elif choice == "Add instruction or information to agent.":
+        new_item = 'B'
+    elif choice == "Skip and set LLM output from recent outputs or manually define it.":
+        new_item = 'C'
+    elif choice == "Log comments (not used by model, just for information).":
+        new_item = 'D'
+    elif choice == "See all previous results for this agent.":
+        new_item = 'E'
+    elif choice == "See previous MODIFIED/SCORED/COMMENTED results for this agent.":
+        new_item = 'F'
+    elif choice == "Skip human actions for N rounds.":
+        new_item = 'G'
+    elif choice == "Change default LLM.":
+        new_item = 'H'
+    elif choice == "Change premium LLM.":
+        new_item = 'I'
+    elif choice == "Change num of parallel inferences.":
+        new_item = 'J'
+    elif choice == "Exit program.":
+        new_item = 'K'
+    elif choice == "Proceed to inference using a PREMIUM LLM.":
+        new_item = 'P'
+
+    write_input_data(new_item)
+
+def parse_message(message):
+    if '{' not in message:
+        return message
+    try:
+        # Try to parse the message as JSON
+        return json.loads(message)
+    except json.JSONDecodeError:
+        # If it fails, return the original message as plain text
+        return message
+    except Exception as e:
+        # Log other exceptions for debugging
+        st.error(f"An unexpected error occurred: {e}")
+        return message
+
+def remove_column(col_id):
+    st.session_state.columns = [col for col in st.session_state.columns if col['id'] != col_id]
+
 def show_page1():
     global ON_INPUT
     st.title('CollabFunctionsGPTCreator')
@@ -244,12 +304,37 @@ def show_page1():
         st.selectbox('Choose default LLM', ['default_llm', '3_majority_chain', '10_majority_chain'])
         st.selectbox('Choose premium LLM', ['premium_llm', None])
 
-    with st.expander(label=time.strftime("%H:%M:%S", time.localtime()) + " - Task Agent", expanded=True, icon='🤖'):
+    with st.expander(label=time.strftime("%H:%M:%S", time.localtime()) + " - Task Agent", expanded=True, icon='🤖') as task_agent_expander:
         col1, col2, col3 = st.columns(3)
         with col3:
             st.button('Open in VSCode', help='Click to open the file in VSCode.')
 
         placeholder = st.empty()
+
+    placeholder_coders = []
+    nb_columns = 3
+    with st.expander(label=time.strftime("%H:%M:%S", time.localtime()) + " - Coder Agent", expanded=True, icon='🤖'):
+        #col1, col2, col3 = st.columns(3)
+        placeholder_coders_columns = st.columns(nb_columns)
+        for i in range(nb_columns):
+            with placeholder_coders_columns[i]:
+                placeholder_coders.append(st.empty())
+                placeholder_coders[i].code(f"def function{i}():\n    pass", language='python')
+                text_labeler(f"""
+                                def addition(a, b):
+                                    \"\"\"
+                                    Cette fonction prend deux arguments a et b,
+                                    et retourne leur somme.
+                                    \"\"\"
+                                    return a + b
+                                
+                                # Exemple d'utilisation
+                                resultat = addition(3, 5)
+                                print(f"La somme de 3 et 5 est {i}")
+                                """,frame_height=800)
+                if st.button(f'Remove Column {i}', key=f'remove_{i}'):
+                    remove_column(i)
+                    st.experimental_rerun()  # Immediately rerun the script to update the layout
 
     concatenated_code = '\n'.join(st.session_state['page1_data'])
     placeholder.code(concatenated_code, language='python')
@@ -262,65 +347,49 @@ def show_page1():
         process_messages()
         text = ""
         for message in st.session_state['page1_data']:
-            text += message + '\n'
-            placeholder.code(text, language='python')
+            parsed_message = parse_message(message)
+            
+            if isinstance(parsed_message, dict) and type(parsed_message['column_id']) == int:
+                column_id = parsed_message['column_id']
+                column_id_str = str(column_id)
+                if column_id not in range(nb_columns):
+                    print(f"Column ID {column_id} is out of range. Message: {message}")
+                    continue
+                text = parsed_message['message'] + '\n'
+                if column_id_str not in st.session_state['columns_data']:
+                    st.session_state['columns_data'][column_id_str] = text
+                else:
+                    st.session_state['columns_data'][column_id_str] += text
+                placeholder_coders[column_id].code(st.session_state['columns_data'][column_id_str], language='python')
+            else:
+                text += message + '\n'
+                placeholder.code(text, language='python')
             time.sleep(0.1)
         st.session_state['page1_data'] = []
         time.sleep(1)
 
     if llm_utils.ON_INPUT:
         time.sleep(1)
-        process_messages()
-        text = ""
-        for message in st.session_state['page1_data']:
-            text += message + '\n'
-            placeholder.code(text, language='python')
-            time.sleep(0.1)
-        st.session_state['page1_data'] = []
         with st.form(key='my_form'):
-            if llm_utils.AGENT is None:
-                choice = st.selectbox('Choose an action',
-                                      ["Modify agent's system prompt (role, global context, constraints, examples).",
-                                       "Add instruction or information to agent.",
-                                       "Skip and set LLM output from recent outputs or manually define it.",
-                                       "Log comments (not used by model, just for information).",
-                                       "See all previous results for this agent.",
-                                       "See previous MODIFIED/SCORED/COMMENTED results for this agent.",
-                                       "Skip human actions for N rounds.",
-                                       "Change default LLM.",
-                                       "Change premium LLM.",
-                                       "Change num of parallel inferences.",
-                                       "Exit program.",
-                                       "Proceed to inference using a PREMIUM LLM."], key="choice")
-                new_item = ''
-                if choice == "Modify agent's system prompt (role, global context, constraints, examples).":
-                    new_item = 'A'
-                elif choice == "Add instruction or information to agent.":
-                    new_item = 'B'
-                elif choice == "Skip and set LLM output from recent outputs or manually define it.":
-                    new_item = 'C'
-                elif choice == "Log comments (not used by model, just for information).":
-                    new_item = 'D'
-                elif choice == "See all previous results for this agent.":
-                    new_item = 'E'
-                elif choice == "See previous MODIFIED/SCORED/COMMENTED results for this agent.":
-                    new_item = 'F'
-                elif choice == "Skip human actions for N rounds.":
-                    new_item = 'G'
-                elif choice == "Change default LLM.":
-                    new_item = 'H'
-                elif choice == "Change premium LLM.":
-                    new_item = 'I'
-                elif choice == "Change num of parallel inferences.":
-                    new_item = 'J'
-                elif choice == "Exit program.":
-                    new_item = 'K'
-                elif choice == "Proceed to inference using a PREMIUM LLM.":
-                    new_item = 'P'
+            print("agent:", llm_utils.AGENT)
+            if llm_utils.AGENT == "TaskIdentificationAgent":
+                st.selectbox('Choose an action',
+                             ["Modify agent's system prompt (role, global context, constraints, examples).",
+                              "Add instruction or information to agent.",
+                              "Skip and set LLM output from recent outputs or manually define it.",
+                              "Log comments (not used by model, just for information).",
+                              "See all previous results for this agent.",
+                              "See previous MODIFIED/SCORED/COMMENTED results for this agent.",
+                              "Skip human actions for N rounds.",
+                              "Change default LLM.",
+                              "Change premium LLM.",
+                              "Change num of parallel inferences.",
+                              "Exit program.",
+                              "Proceed to inference using a PREMIUM LLM."], key="choice")
+
+                send_button = st.form_submit_button('Send', on_click=check_choice)
             else:
                 print(f"Agent: {llm_utils.AGENT}")
-
-            send_button = st.form_submit_button('Send', on_click=write_input_data, args=(new_item,))
 
 
 def show_page2():
@@ -344,6 +413,7 @@ def show_page3():
     st.write(st.session_state['page3_data'])
     if st.button('Back to Home Page'):
         change_page('home')
+
 
 
 def show_page4():
@@ -376,3 +446,7 @@ with col8:
 
 # Afficher la page
 show_page()
+
+# if __name__ == '__main__':
+#     import os
+#     os.system('streamlit run stGUI.py')

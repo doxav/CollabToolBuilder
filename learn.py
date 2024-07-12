@@ -4,6 +4,7 @@ import traceback
 import openai
 import json
 from typing import Dict, Optional
+
 from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, load_prompt, save_prompt, _visual_input, is_vscode_installed, smart_print, smart_input
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import copy
@@ -37,6 +38,8 @@ os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
 
 UnifiedVectorDB.db_type = "elasticsearch" # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
+UnifiedVectorDB.es_user = elastic_user
+UnifiedVectorDB.es_password = elastic_password
 
 embedding_function="text-embedding-ada-002" # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
 reset_db_indices=False # Set to True after changing embeddings
