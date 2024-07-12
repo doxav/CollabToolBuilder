@@ -6,6 +6,7 @@ import subprocess
 import time
 import json
 import requests
+from elasticsearch import Elasticsearch
 
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_openai import OpenAIEmbeddings
@@ -337,10 +338,13 @@ class UnifiedVectorDB:
             )
             self._collection = self.db._collection
         elif UnifiedVectorDB.db_type == 'elasticsearch':
+            elastic_client = Elasticsearch(UnifiedVectorDB.es_url,
+                                           http_auth=(UnifiedVectorDB.es_user, UnifiedVectorDB.es_password),
+                                           verify_certs=False, ssl_show_warn=False)
             self.db = ElasticsearchStore(
                 index_name=self.collection_name,
                 embedding=embedding_function,
-                es_url=UnifiedVectorDB.es_url,
+                es_connection=elastic_client,
                 distance_strategy="COSINE"
             )
             self._collection = self.db
