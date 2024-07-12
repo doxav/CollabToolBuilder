@@ -58,15 +58,13 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False):
 
     if 'IN_STREAMLIT' not in globals():
         # Check if a Streamlit server is running
-        try:
-            is_streamlit_running()
+        if is_streamlit_running():
             globals()['IN_STREAMLIT'] = IN_STREAMLIT = True
-        except:
+        else:
             globals()['IN_STREAMLIT'] = IN_STREAMLIT = False
     else:
-        globals()['IN_STREAMLIT'] = IN_STREAMLIT = False # By default, globals()['IN_STREAMLIT'] is True, and it brake the output in terminal. So, we set it to False until we have finished.
-        # IN_STREAMLIT = globals()['IN_STREAMLIT'] # Uncomment this line if you want to keep the default value of IN_STREAMLIT
-
+        IN_STREAMLIT = globals()['IN_STREAMLIT']
+        
     if IN_STREAMLIT:
         AGENT = agent_name
         if append:
@@ -111,10 +109,9 @@ def smart_input(message: str, agent_name=None, message_type=None):
 
     if 'IN_STREAMLIT' not in globals():
         # Check if a Streamlit server is running
-        try:
-            is_streamlit_running()
+        if is_streamlit_running():
             globals()['IN_STREAMLIT'] = IN_STREAMLIT = True
-        except:
+        else:
             globals()['IN_STREAMLIT'] = IN_STREAMLIT = False
     else:
         IN_STREAMLIT = globals()['IN_STREAMLIT']
