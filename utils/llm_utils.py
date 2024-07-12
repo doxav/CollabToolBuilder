@@ -129,15 +129,18 @@ def smart_input(message: str, agent_name=None, message_type=None):
         global ON_INPUT, AGENT
         ON_INPUT = True
         AGENT = agent_name
+        structured_message = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'input': True}
+        # convert structured_message to json
+        message = json.dumps(structured_message)
         asyncio.run(send_message(message))
 
         # Wait and receive response from WebSocket
         async def receive_message():
             async with websockets.connect(ws_url) as websocket:
                 global ON_INPUT
-                print("Waiting for response from WebSocket")
+                print("SMART INPUT Waiting for response from WebSocket")
                 response = await websocket.recv()
-                print("Received response from WebSocket")
+                print("SMART INPUT Received response from WebSocket")
                 ON_INPUT = False
                 return response
 
@@ -299,8 +302,8 @@ def save_prompt_with_tag(prompt_name, text, new_tag, package_path="."):
 class UnifiedVectorDB:
     db_type = 'elasticsearch'  # can be 'elasticsearch' or 'chroma'
     es_url = 'http://127.0.0.1:9200'
-    es_user = 'temp_user'
-    es_password = 'temp_pass'
+    es_user = None
+    es_password = None
 
     @staticmethod
     def check_db():
@@ -312,7 +315,7 @@ class UnifiedVectorDB:
                 #         f"Error: {e.reason} - {e}\nUnifiedVectorDB.es_url: {UnifiedVectorDB.es_url}\nPlease check if elasticsearch is running and reachable at the specified URL\nplease set UnifiedVectorDB.es_url = 'http://x.x.x.x:9200' in your config.py or search where it is set in your code.")
                 #     exit(1)
                 response = requests.get(UnifiedVectorDB.es_url,
-                                        auth=HTTPBasicAuth(UnifiedVectorDB.es_user, UnifiedVectorDB.es_password),
+                                        auth=HTTPBasicAuth(UnifiedVectorDB.es_user, UnifiedVectorDB.es_password) if UnifiedVectorDB.es_user else None,
                                         timeout=1, verify=False)
                 response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
             except requests.exceptions.RequestException as e:
@@ -339,7 +342,7 @@ class UnifiedVectorDB:
             self._collection = self.db._collection
         elif UnifiedVectorDB.db_type == 'elasticsearch':
             elastic_client = Elasticsearch(UnifiedVectorDB.es_url,
-                                           http_auth=(UnifiedVectorDB.es_user, UnifiedVectorDB.es_password),
+                                           http_auth=(UnifiedVectorDB.es_user, UnifiedVectorDB.es_password) if UnifiedVectorDB.es_user else None,
                                            verify_certs=False, ssl_show_warn=False)
             self.db = ElasticsearchStore(
                 index_name=self.collection_name,
@@ -579,25 +582,26 @@ class HumanLLMMonitor:
 
         while self.skip_rounds <= 0:
             # MENU
-            menu = f"\033[{self.print_color}m***** {self.agent_name}->{function_name}  BEFORE *****\nSYSTEM PROMPT:\n{messages[0].content}\n\nUSER MESSAGE:\n{messages[1].content}\n***** {self.agent_name}->{function_name} BEFORE *****\033[0m\n"
+            menu = ''
+            before_menu = f"\033[{self.print_color}m***** {self.agent_name}->{function_name}  BEFORE *****\nSYSTEM PROMPT:\n{messages[0].content}\n\nUSER MESSAGE:\n{messages[1].content}\n***** {self.agent_name}->{function_name} BEFORE *****\033[0m\n"
             if not self._max_tokens_ok(messages[0].content + "\n" + messages[1].content):
-                menu += ("WARNING!!!! Max tokens exceeded, you should refactor user message or system prompt!\n")
-            menu += ("A. Modify agent's 'system prompt' (role, global context, constraints, examples).\n")
-            menu += ("B. Add instruction or information to agent.\n")
-            menu += ("C. Skip and set LLM output from recent outputs or manually define it.\n")
-            menu += ("D. Log comments (not used by the model, just for information).\n")
-            menu += ("E. See all previous results for this agent.\n")
-            menu += ("F. See previous MODIFIED/SCORED/COMMENTED results for this agent.\n")
-            menu += ("G. Skip human actions for N rounds.\n")
-            menu += ("H. Change default LLM.\n")
-            menu += ("I. Change premium LLM.\n")
-            #menu += (f"I. Activate/de-activate function calling to allow model request external knowledge - current status: {function_calling}\n")
+                before_menu += ("WARNING!!!! Max tokens exceeded, you should refactor user message or system prompt!\n")
+            menu += ("[A] Modify agent's 'system prompt' (role, global context, constraints, examples).\n")
+            menu += ("[B] Add instruction or information to agent.\n")
+            menu += ("[C] Skip and set LLM output from recent outputs or manually define it.\n")
+            menu += ("[D] Log comments (not used by the model, just for information).\n")
+            menu += ("[E] See all previous results for this agent.\n")
+            menu += ("[F] See previous MODIFIED/SCORED/COMMENTED results for this agent.\n")
+            menu += ("[G] Skip human actions for N rounds.\n")
+            menu += ("[H] Change default LLM.\n")
+            menu += ("[I] Change premium LLM.\n")
+            #menu += (f"[I] Activate/de-activate function calling to allow model request external knowledge - current status: {function_calling}\n")
             menu += (
-                f"J. Change num of parallel inferences - Current value={self.num_parallel_inferences}, Synthesize mode=\033[32m{'ON' if self.synthesize_mode else 'OFF'}\033[0m\n")  # UPDATED
-            menu += ("K. Exit program.\n")
-            menu += (f"P. Proceed to inference using a PREMIUM LLM - Current value={use_premium_llm}\n")
+                f"[J] Change num of parallel inferences - Current value={self.num_parallel_inferences}, Synthesize mode=\033[32m{'ON' if self.synthesize_mode else 'OFF'}\033[0m\n")  # UPDATED
+            menu += ("[K] Exit program.\n")
+            menu += (f"[P] Proceed to inference using a PREMIUM LLM - Current value={use_premium_llm}\n")
 
-            smart_print(menu, self.agent_name, "BEFORE inference action MENU")
+            smart_print(before_menu+menu, self.agent_name, "BEFORE inference action MENU")
             menu_start_time = time.time()
             match (optuna):
                 case "Coach":
@@ -614,8 +618,8 @@ class HumanLLMMonitor:
                     elif self.agent_name in ["CodingAgent", "ValidationAgent", "CapitalizationAgent"]:
                         action = ""
                     else:
-                        action = input(
-                            f"\n\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :").upper()
+                        action = smart_input(
+                            f"{menu}\n\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",self.agent_name).upper()
                 case "Coder":
                     break
                 case "Critic":
@@ -624,7 +628,7 @@ class HumanLLMMonitor:
                     break
                 case _:  # Default case
                     action = smart_input(
-                        f"\n\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",self.agent_name).upper()
+                        f"{menu}\n\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",self.agent_name).upper()
 
             # ACTIONS processing
             start_time, action = time.time(), action  # Init action selected and timer to measure time spent and occurences in action processing
@@ -1112,7 +1116,7 @@ class HumanLLMMonitor:
     def CallHumanLLM(self, original_input_messages=None, default_llm_function=None, premium_llm_function=None,
                      callable_system_message=None, system_prompt_template=None, user_message=None,
                      return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=90,
-                     stream_output=True, use_default_llm=True, optuna=None, model_choice=None):
+                     stream_output=False, use_default_llm=True, optuna=None, model_choice=None):
         #if not self.selected_llm_or_chain: raise ValueError("No LLM or chain selected for use.")
         # Define a helper function to perform the LLM calls for parallel inference.
         def perform_llm_call(input_msg, use_premium, func_calling, temperature, stream_output=True, color_id=None):

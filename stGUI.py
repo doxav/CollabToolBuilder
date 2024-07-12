@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 import streamlit as st
 import time
@@ -8,7 +9,7 @@ import asyncio
 import websockets
 from queue import Queue, Empty
 from langchain_openai import ChatOpenAI
-from learn import create_Nmajority_chain, EnvironmentManager, run_4agents_learning_loop
+from learn import create_Nmajority_chain, EnvironmentManager, run_4agents_learning_loop, llmORchains_list, documents
 import utils.llm_utils as llm_utils
 
 import sys
@@ -50,11 +51,7 @@ if 'columns' not in st.session_state:
 if "wide_mode" not in st.session_state:
     st.session_state.wide_mode = False
 
-
 print('Initialisation de l\'état de session terminée.')
-
-llm_utils.ON_INPUT = False
-
 
 @st.cache_resource
 def get_message_queue():
@@ -64,11 +61,7 @@ def get_message_queue():
         print("Pipo added to the queue - queue size: ", mq.qsize())
     return mq
 
-
-@st.cache_resource
-def init_websocket():
-    return websockets.connect("ws://localhost:6789")
-
+ws_url = "ws://localhost:6789"
 
 # check if message_queue exists in global
 #if True or 'message_queue' not in globals() and 'data_queue' not in st.session_state:
@@ -76,36 +69,38 @@ message_queue = get_message_queue()
 print("Queue storage is set to : " + (
     "st.session_state['data_queue']" if 'data_queue' in st.session_state else "message_queue"))
 
-ws_url = "ws://localhost:6789"
-
-
 async def send_message(message):
     print(f"Websockets Envoi du message : {message}")
-    async with websockets.connect(ws_url) as websocket:
-        await websocket.send(message)
-
+    try:
+        async with websockets.connect(ws_url) as websocket:
+            await websocket.send(message)
+    except ConnectionRefusedError:
+        print("Failed to connect to WebSocket server.")
 
 async def websocket_receive():
-    async with websockets.connect(ws_url) as websocket:
-        while True:
-            message = await websocket.recv()
-            (st.session_state['data_queue'] if 'data_queue' in st.session_state else message_queue).put(message)
-            print(
-                f"Websockets réception du message et ajouté à la queue : {message} - queue size: {(st.session_state['data_queue'] if 'data_queue' in st.session_state else message_queue).qsize()}")
+    try:
+        async with websockets.connect(ws_url) as websocket:
+            while True:
+                message = await websocket.recv()
+                (st.session_state['data_queue'] if 'data_queue' in st.session_state else message_queue).put(message)
+                print(
+                    f"Websockets réception du message et ajouté à la queue : {message} - queue size: {(st.session_state['data_queue'] if 'data_queue' in st.session_state else message_queue).qsize()}")
+    except ConnectionRefusedError:
+        print("Failed to connect to WebSocket server.")
 
+from streamlit.runtime.scriptrunner.script_run_context import add_script_run_ctx
 
 def websocket_receive_thread():
     asyncio.run(websocket_receive())
 
-
 def process_messages():
+    if (st.session_state['data_queue'] if 'data_queue' in st.session_state else message_queue).empty():
+        return
     print("Début du traitement des messages")
     while not (st.session_state['data_queue'] if 'data_queue' in st.session_state else message_queue).empty():
-        print('queue size:',
-              (st.session_state['data_queue'] if 'data_queue' in st.session_state else message_queue).qsize())
+        print('queue size:', (st.session_state['data_queue'] if 'data_queue' in st.session_state else message_queue).qsize())
         try:
-            message = (st.session_state[
-                           'data_queue'] if 'data_queue' in st.session_state else message_queue).get()  # Utilisez get() au lieu de get_nowait()
+            message = (st.session_state['data_queue'] if 'data_queue' in st.session_state else message_queue).get()  # Utilisez get() au lieu de get_nowait()
             print(f"Message reçu : {message}")
             st.session_state['page1_data'].append(message if type(message) == str else message['message'])
         except Empty:
@@ -113,65 +108,8 @@ def process_messages():
             break
     print("Fin du traitement des messages")
 
-
 # Fonction pour ajouter périodiquement des éléments à la file d'attente
 def add_item_periodically():
-    llmORchains_list = {
-        "default_llm": ChatOpenAI(model_name="gpt-3.5-turbo-1106"),
-        "premium_llm": ChatOpenAI(model_name="gpt-4o"),
-        "3_majority_chain": create_Nmajority_chain(num_models=3),
-        "10_majority_chain": create_Nmajority_chain(num_models=10)
-    }
-
-    documents = [{'id': "cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
-                  'title': "Complex QA and language models hybrid architectures, Survey",
-                  'context': "This paper reviews the state-of-the-art of language models architectures and strategies "
-                             "for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large "
-                             "Language Models (LLM) are good at leveraging public data on standard problems but once "
-                             "you want to tackle more specific complex questions or problems (e.g. How does the "
-                             "concept of personal freedom vary between different cultures ? What is the best mix of "
-                             "power generation methods to reduce climate change ?) you may need specific "
-                             "architecture, knowledge, skills, methods, sensitive data protection, explainability, "
-                             "human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA "
-                             "have allowed non-specialists to grasp the great potential as well as the equally strong "
-                             "limitations of LLM in complex QA. In this paper, we start by reviewing required skills "
-                             "and evaluation techniques. We integrate findings from the robust community edited "
-                             "research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and "
-                             "challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. "
-                             "fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges "
-                             "associated with complex QA, including domain adaptation, decomposition and efficient "
-                             "multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data "
-                             "protection, multimodal search, hallucinations, explainability and truthfulness, "
-                             "temporal reasoning. We analyze current solutions and promising research trends, "
-                             "using elements such as: hybrid LLM architectural patterns, training and prompting "
-                             "strategies, active human reinforcement learning supervised with AI, neuro-symbolic and "
-                             "structured knowledge grounding, program synthesis, iterated decomposition and others.",
-                  'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA "
-                                      "and language models hybrid architectures Survey.json"},
-                 {'id': "42252c6c-12f3-4edf-9045-8acd69bc3356",
-                  'title': "Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
-                  'context': "This paper surveys the empirical literature of inflation targeting. The main findings "
-                             "from our review are the following: there is robust empirical evidence that larger and "
-                             "more developed countries are more likely to adopt the IT regime; the introduction of "
-                             "this regime is conditional on previous disinflation, greater exchange rate flexibility, "
-                             "central bank independence, and higher level of financial development; the empirical "
-                             "evidence has failed to provide convincing evidence that IT itself may serve as an "
-                             "effective tool for stabilizing inflation expectations and for reducing inflation "
-                             "persistence; the empirical research focused on advanced economies has failed to provide "
-                             "convincing evidence on the beneficial effects of IT on inflation performance, "
-                             "while there is some evidence that the gains from the IT regime may have been more "
-                             "prevalent in the emerging market economies; there is not convincing evidence that IT is "
-                             "associated with either higher output growth or lower output variability; the empirical "
-                             "research suggests that IT may have differential effects on exchange-rate volatility in "
-                             "advanced economies versus EMEs; although the empirical evidence on the impact of IT on "
-                             "fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal "
-                             "discipline; the empirical support to the proposition that IT is associated with lower "
-                             "disinflation costs seems to be rather weak. Theref    ore, the accumulated empirical "
-                             "literature implies that IT does not produce superior macroeconomic benefits in "
-                             "comparison with the alternative monetary strategies or, at most, they are quite modest.",
-                  'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv"
-                                      "/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  "
-                                      "Literature.json"}]
     envs = []
     for doc in documents:
         env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
@@ -197,8 +135,12 @@ def add_item_periodically():
 
 
 if st.session_state['thread_started'] is False:
-    threading.Thread(target=add_item_periodically, daemon=True).start()
-    threading.Thread(target=websocket_receive_thread, daemon=True).start()
+    t1 = threading.Thread(target=add_item_periodically, daemon=True)
+    t2 = threading.Thread(target=websocket_receive_thread, daemon=True)
+    add_script_run_ctx(t1)
+    add_script_run_ctx(t2)
+    t1.start()
+    t2.start()
     st.session_state['thread_started'] = True
 
 
@@ -241,33 +183,13 @@ def show_home_page():
 
 def check_choice():
     choice = st.session_state['choice']
-    new_item = ''
-    if choice == "Modify agent's system prompt (role, global context, constraints, examples).":
-        new_item = 'A'
-    elif choice == "Add instruction or information to agent.":
-        new_item = 'B'
-    elif choice == "Skip and set LLM output from recent outputs or manually define it.":
-        new_item = 'C'
-    elif choice == "Log comments (not used by model, just for information).":
-        new_item = 'D'
-    elif choice == "See all previous results for this agent.":
-        new_item = 'E'
-    elif choice == "See previous MODIFIED/SCORED/COMMENTED results for this agent.":
-        new_item = 'F'
-    elif choice == "Skip human actions for N rounds.":
-        new_item = 'G'
-    elif choice == "Change default LLM.":
-        new_item = 'H'
-    elif choice == "Change premium LLM.":
-        new_item = 'I'
-    elif choice == "Change num of parallel inferences.":
-        new_item = 'J'
-    elif choice == "Exit program.":
-        new_item = 'K'
-    elif choice == "Proceed to inference using a PREMIUM LLM.":
-        new_item = 'P'
-
-    write_input_data(new_item)
+    match = re.match(r'\[(\w)\]', choice)
+    if match:
+        letter = match.group(1)
+    else:
+        st.error(f"Invalid choice: {choice}")
+        letter = "Unkown"
+    write_input_data(letter)
 
 def parse_message(message):
     if '{' not in message:
@@ -287,7 +209,6 @@ def remove_column(col_id):
     st.session_state.columns = [col for col in st.session_state.columns if col['id'] != col_id]
 
 def show_page1():
-    global ON_INPUT
     st.title('CollabFunctionsGPTCreator')
 
     col1, col2, col3, col4 = st.columns(4)
@@ -304,7 +225,10 @@ def show_page1():
         st.selectbox('Choose default LLM', ['default_llm', '3_majority_chain', '10_majority_chain'])
         st.selectbox('Choose premium LLM', ['premium_llm', None])
 
-    with st.expander(label=time.strftime("%H:%M:%S", time.localtime()) + " - Task Agent", expanded=True, icon='🤖') as task_agent_expander:
+    task_agent_expander = st.expander(label=time.strftime("%H:%M:%S", time.localtime()) + " - Task Agent", expanded=True, icon='🤖')
+    coder_agent_expander = st.expander(label=time.strftime("%H:%M:%S", time.localtime()) + " - Coder Agent", expanded=True, icon='🤖')
+
+    with task_agent_expander:
         col1, col2, col3 = st.columns(3)
         with col3:
             st.button('Open in VSCode', help='Click to open the file in VSCode.')
@@ -313,7 +237,7 @@ def show_page1():
 
     placeholder_coders = []
     nb_columns = 3
-    with st.expander(label=time.strftime("%H:%M:%S", time.localtime()) + " - Coder Agent", expanded=True, icon='🤖'):
+    with coder_agent_expander:
         #col1, col2, col3 = st.columns(3)
         placeholder_coders_columns = st.columns(nb_columns)
         for i in range(nb_columns):
@@ -323,8 +247,7 @@ def show_page1():
                 text_labeler(f"""
                                 def addition(a, b):
                                     \"\"\"
-                                    Cette fonction prend deux arguments a et b,
-                                    et retourne leur somme.
+                                    Cette fonction prend deux arguments a et b, et retourne leur somme.
                                     \"\"\"
                                     return a + b
                                 
@@ -339,58 +262,63 @@ def show_page1():
     concatenated_code = '\n'.join(st.session_state['page1_data'])
     placeholder.code(concatenated_code, language='python')
 
-    print('ON_INPUT:', llm_utils.ON_INPUT)
     print('Queue status:',
           (st.session_state['data_queue'] if 'data_queue' in st.session_state else message_queue).qsize())
 
-    while not llm_utils.ON_INPUT:
+    while True:
         process_messages()
         text = ""
         for message in st.session_state['page1_data']:
             parsed_message = parse_message(message)
-            
-            if isinstance(parsed_message, dict) and type(parsed_message['column_id']) == int:
-                column_id = parsed_message['column_id']
-                column_id_str = str(column_id)
-                if column_id not in range(nb_columns):
-                    print(f"Column ID {column_id} is out of range. Message: {message}")
-                    continue
-                text = parsed_message['message'] + '\n'
-                if column_id_str not in st.session_state['columns_data']:
-                    st.session_state['columns_data'][column_id_str] = text
+            if 'input' in parsed_message and parsed_message['input']:
+                agent_name = parsed_message['agent_name'] if 'agent_name' in parsed_message else 'Unknown Agent'
+                message = parsed_message['message']
+                print(f"agent: {agent_name}")
+                if agent_name == "TaskIdentificationAgent":
+                    if "BEFORE" in message or "AFTER" in message:
+                        # Traitement générique qui extrait la clé de la liste
+                        selection = []
+                        for line in message.split('\n'):
+                            match = re.match(r'\[(\w)\]', line)
+                            if match:
+                                selection.append(line)
+                        with task_agent_expander:
+                            with st.form(key='my_form'):
+                                st.selectbox('Choose an action', selection, key="choice")
+                                send_button = st.form_submit_button('Send', on_click=check_choice)
+                    else:
+                        with task_agent_expander:
+                            with st.form(key='my_form'):
+                                # add a text area to input the choice
+                                answear = st.text_area(message, key='choice')
+                                send_button = st.form_submit_button('Send')
+                                if send_button:
+                                    write_input_data(answear)
                 else:
-                    st.session_state['columns_data'][column_id_str] += text
-                placeholder_coders[column_id].code(st.session_state['columns_data'][column_id_str], language='python')
+                    print(f"No handler yet for this agent")
             else:
-                text += message + '\n'
-                placeholder.code(text, language='python')
-            time.sleep(0.1)
+                if isinstance(parsed_message, dict):
+                    if type(parsed_message['column_id']) == int:
+                        column_id = parsed_message['column_id']
+                        column_id_str = str(column_id)
+                        if column_id not in range(nb_columns):
+                            print(f"Column ID {column_id} is out of range. Message: {message}")
+                            continue
+                        text = parsed_message['message'] + '\n'
+                        if column_id_str not in st.session_state['columns_data']:
+                            st.session_state['columns_data'][column_id_str] = text
+                        else:
+                            st.session_state['columns_data'][column_id_str] += text
+                        placeholder_coders[column_id].code(st.session_state['columns_data'][column_id_str], language='python')
+                    else:
+                        text += parsed_message['message'] + '\n'
+                        placeholder.code(text, language='python')
+                else:
+                    text += message + '\n'
+                    placeholder.code(text, language='python')
+                time.sleep(0.1)
         st.session_state['page1_data'] = []
         time.sleep(1)
-
-    if llm_utils.ON_INPUT:
-        time.sleep(1)
-        with st.form(key='my_form'):
-            print("agent:", llm_utils.AGENT)
-            if llm_utils.AGENT == "TaskIdentificationAgent":
-                st.selectbox('Choose an action',
-                             ["Modify agent's system prompt (role, global context, constraints, examples).",
-                              "Add instruction or information to agent.",
-                              "Skip and set LLM output from recent outputs or manually define it.",
-                              "Log comments (not used by model, just for information).",
-                              "See all previous results for this agent.",
-                              "See previous MODIFIED/SCORED/COMMENTED results for this agent.",
-                              "Skip human actions for N rounds.",
-                              "Change default LLM.",
-                              "Change premium LLM.",
-                              "Change num of parallel inferences.",
-                              "Exit program.",
-                              "Proceed to inference using a PREMIUM LLM."], key="choice")
-
-                send_button = st.form_submit_button('Send', on_click=check_choice)
-            else:
-                print(f"Agent: {llm_utils.AGENT}")
-
 
 def show_page2():
     st.title('Page 2')
@@ -413,7 +341,6 @@ def show_page3():
     st.write(st.session_state['page3_data'])
     if st.button('Back to Home Page'):
         change_page('home')
-
 
 
 def show_page4():
@@ -446,7 +373,3 @@ with col8:
 
 # Afficher la page
 show_page()
-
-# if __name__ == '__main__':
-#     import os
-#     os.system('streamlit run stGUI.py')
