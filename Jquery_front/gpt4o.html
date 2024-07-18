@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>jQuery UI WebSocket Interface</title>
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+    <style>
+        .accordion { width: 80%; margin: auto; }
+        .filter-bar { display: flex; justify-content: space-between; margin: 10px; }
+        .filter-bar input, .filter-bar select { margin: 5px; }
+        .column { display: inline-block; vertical-align: top; width: 30%; margin-right: 10px; }
+        .column button { display: block; margin: 5px; }
+        .settings-menu, .history-menu { width: 20%; float: right; }
+    </style>
+</head>
+<body>
+
+<div class="filter-bar">
+    <select id="filter-message-type"></select>
+    <select id="filter-agent-type"></select>
+    <input type="text" id="search-bar" placeholder="Search...">
+</div>
+
+<div id="accordion" class="accordion"></div>
+
+<div class="filter-bar">
+    <select id="filter-message-type-bottom"></select>
+    <select id="filter-agent-type-bottom"></select>
+    <input type="text" id="search-bar-bottom" placeholder="Search...">
+</div>
+
+<div id="menu-options" class="menu-options"></div>
+
+<div id="input-container" class="input-container">
+    <input type="text" id="user-input">
+    <button id="send-input">Send</button>
+</div>
+
+<div class="settings-menu">
+    <h3>Settings</h3>
+    <select id="default-llm"></select>
+    <select id="premium-llm"></select>
+    <input type="range" id="temperature" min="0" max="1" step="0.1">
+    <button id="save-settings">Save</button>
+</div>
+
+<div class="history-menu">
+    <h3>History</h3>
+    <div id="history-accordion"></div>
+    <a href="#" id="refresh-history">Refresh Data</a>
+</div>
+
+<script>
+    let ws = new WebSocket("ws://localhost:6789");
+
+    ws.onopen = function(event) {
+        console.log("Connected to WebSocket server");
+    };
+
+    ws.onmessage = function(event) {
+        let data = JSON.parse(event.data);
+        handleNewMessage(data);
+    };
+
+    ws.onclose = function(event) {
+        console.log("Disconnected from WebSocket server");
+    };
+
+    function handleNewMessage(data) {
+        let { agent_name, message_type, message, append, column_id, column_max, input, user_id } = data;
+
+        // Add message to accordion
+        let title = `${agent_name} | ${message_type} | ${new Date().toLocaleTimeString()}`;
+        let content = `<p>${message}</p>`;
+        let newSection = `<h3>${title}</h3><div>${content}</div>`;
+
+        if (append) {
+            $('#accordion').append(newSection).accordion("refresh");
+        } else {
+            $('#accordion').html(newSection).accordion("refresh");
+        }
+
+        if (input) {
+            $('#input-container').show();
+        }
+
+        // Handle multi-column display
+        if (column_id !== undefined) {
+            handleMultiColumnDisplay(data);
+        }
+
+        // Handle menu options
+        if (message_type.includes("BEFORE") || message_type.includes("AFTER")) {
+            handleMenuOptions(message);
+        }
+
+        // Handle filtering
+        updateFilters();
+    }
+
+    function handleMultiColumnDisplay(data) {
+        let { column_id, message } = data;
+        let column = $(`#column-${column_id}`);
+        if (column.length === 0) {
+            column = $(`<div id="column-${column_id}" class="column"><h3>Column ${column_id}</h3><div>${message}</div></div>`);
+            column.append('<button class="regenerate">Regenerate</button>');
+            column.append('<button class="delete-column">Delete</button>');
+            column.append('<button class="open-vscode">Open in VSCode</button>');
+            $('body').append(column);
+        } else {
+            column.append(`<div>${message}</div>`);
+        }
+    }
+
+    function handleMenuOptions(message) {
+        let options = message.split('\n').filter(line => line.startsWith('['));
+        $('#menu-options').empty();
+        options.forEach(option => {
+            let optionText = option.match(/\[(.*?)\]/)[1];
+            let optionButton = $(`<button class="menu-option" data-option="${optionText}">${option}</button>`);
+            $('#menu-options').append(optionButton);
+        });
+    }
+
+    function updateFilters() {
+        let messageTypes = [...new Set($('.accordion h3').map(function() { return $(this).text().split('|')[1].trim(); }).get())];
+        let agentTypes = [...new Set($('.accordion h3').map(function() { return $(this).text().split('|')[0].trim(); }).get())];
+
+        updateSelect('#filter-message-type', messageTypes);
+        updateSelect('#filter-agent-type', agentTypes);
+        updateSelect('#filter-message-type-bottom', messageTypes);
+        updateSelect('#filter-agent-type-bottom', agentTypes);
+    }
+
+    function updateSelect(selector, options) {
+        let select = $(selector);
+        select.empty();
+        options.forEach(option => {
+            select.append(new Option(option, option));
+        });
+    }
+
+    $('#send-input').click(function() {
+        let userInput = $('#user-input').val();
+        ws.send(JSON.stringify({ action: 'user_input', message: userInput }));
+        $('#user-input').val('');
+    });
+
+    $('#save-settings').click(function() {
+        let settings = {
+            default_llm: $('#default-llm').val(),
+            premium_llm: $('#premium-llm').val(),
+            temperature: $('#temperature').val()
+        };
+        ws.send(JSON.stringify({ action: 'save_settings', settings: settings }));
+    });
+
+    $('#refresh-history').click(function() {
+        $.get("/get_history", function(data) {
+            $('#history-accordion').html(data).accordion("refresh");
+        });
+    });
+
+    $(function() {
+        $("#accordion").accordion({
+            collapsible: true,
+            active: false,
+            heightStyle: "content"
+        });
+        $("#history-accordion").accordion({
+            collapsible: true,
+            active: false,
+            heightStyle: "content"
+        });
+        $('#input-container').hide();
+    });
+
+    $('body').on('click', '.menu-option', function() {
+        let option = $(this).data('option');
+        let userInput = $('#user-input').val();
+        ws.send(JSON.stringify({ action: 'menu_option', option: option, input: userInput }));
+    });
+
+    $('body').on('click', '.regenerate', function() {
+        let columnId = $(this).parent().attr('id').split('-')[1];
+        ws.send(JSON.stringify({ action: 'regenerate', column_id: columnId }));
+    });
+
+    $('body').on('click', '.delete-column', function() {
+        $(this).parent().remove();
+    });
+
+    $('body').on('click', '.open-vscode', function() {
+        let columnId = $(this).parent().attr('id').split('-')[1];
+        ws.send(JSON.stringify({ action: 'open_vscode', column_id: columnId }));
+    });
+</script>
+
+</body>
+</html>

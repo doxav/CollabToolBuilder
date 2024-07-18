@@ -47,8 +47,8 @@ async def send_message(message):
         await websocket.send(message)
 
 
-def is_streamlit_running():
-    url = "http://localhost:8501"
+def is_websocket_running():
+    url = "http://localhost:6789"
     try:
         response = requests.get(url)
         if response.status_code == 200:
@@ -69,17 +69,15 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
     else:
         IN_NOTEBOOK = globals()['IN_NOTEBOOK']
 
-    if 'IN_STREAMLIT' not in globals():
-        if True or is_streamlit_running():
-            globals()['IN_STREAMLIT'] = IN_STREAMLIT = True
+    if 'IN_WEBSOCKET' not in globals():
+        if True or is_websocket_running():
+            globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = True
         else:
-            globals()['IN_STREAMLIT'] = IN_STREAMLIT = False
+            globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = False
     else:
-        IN_STREAMLIT = globals()['IN_STREAMLIT']
+        IN_WEBSOCKET = globals()['IN_WEBSOCKET']
 
-    print("## 6")
-    if IN_STREAMLIT:
-        AGENT = agent_name
+    if IN_WEBSOCKET:
         message_dict = {'message':message, 'agent_name':agent_name, 'message_type':message_type, 'append':append, 'column_id':column_id, 'column_max':column_max}
         # convert message_dict to json
         message = json.dumps(message_dict)
@@ -115,20 +113,16 @@ def smart_input(message: str, agent_name=None, message_type=None):
     else:
         IN_NOTEBOOK = globals()['IN_NOTEBOOK']
 
-    if 'IN_STREAMLIT' not in globals():
+    if 'IN_WEBSOCKET' not in globals():
         # Check if a Streamlit server is running
-        if is_streamlit_running():
-            globals()['IN_STREAMLIT'] = IN_STREAMLIT = True
+        if is_websocket_running():
+            globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = True
 
         else:
-            globals()['IN_STREAMLIT'] = IN_STREAMLIT = False
+            globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = False
     else:
-        IN_STREAMLIT = globals()['IN_STREAMLIT']
-    print("Streamlit mode = " + str(IN_STREAMLIT))
-    if IN_STREAMLIT:
-        global ON_INPUT, AGENT
-        ON_INPUT = True
-        AGENT = agent_name
+        IN_WEBSOCKET = globals()['IN_WEBSOCKET']
+    if IN_WEBSOCKET:
         structured_message = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'input': True}
         # convert structured_message to json
         message = json.dumps(structured_message)
@@ -137,12 +131,12 @@ def smart_input(message: str, agent_name=None, message_type=None):
         # Wait and receive response from WebSocket
         async def receive_message():
             async with websockets.connect(ws_url) as websocket:
-                global ON_INPUT
                 print("SMART INPUT Waiting for response from WebSocket")
                 response = await websocket.recv()
                 print("SMART INPUT Received response from WebSocket")
-                ON_INPUT = False
-                return response
+                answer = json.loads(response)['message']
+                print("SMART INPUT Answer: ", answer)
+                return str(answer).upper()
 
         return asyncio.run(receive_message())
 
@@ -734,74 +728,21 @@ class HumanLLMMonitor:
                 comments = smart_input("Enter your comment on the prompt: ",self.agent_name)
 
             elif action == "E":  # See all previous results - list results from  HumanLLMMonitor.common_vectordb filtered by agent_name and function_name
-                HumanLLMMonitor._check_and_init_vector_db()
-                result = HumanLLMMonitor.common_vectordb.query(query_text="*",
-                                                               metadata_filter={"function_name": function_name,
-                                                                                "agent_name": self.agent_name}, k=100)
-                visual_result = "\n===============================\n".join(
-                    [json.dumps(json.loads(item.page_content), indent=4, sort_keys=True).replace("\\n", "\n") for item
-                     in result])
-                _visual_input(visual_result)
+                result = self.getPreviousResults(function_name,self.agent_name)
+                _visual_input(result)
 
             elif action == "F":  # See previous MODIFIED/SCORED/COMMENTED results - list results from  HumanLLMMonitor.common_vectordb filtered by agent_name and function_name, filtered on comments
-                HumanLLMMonitor._check_and_init_vector_db()
-                confirm = smart_input(
-                    "Do you want see:\n(A) all MODIFIED/SCORED/COMMENTED results.\n(B) INPUT modified only.\n(C) OUTPUT modified only.\n(D) SCORED only.\n(E) COMMENTED only.\nSelect your letter for choice or hit enter for all: ",self.agent_name).upper()
-                result = []
-                if confirm in ["A", "", "B"]:
-                    result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
-                                                                        metadata_filter={"function_name": function_name,
-                                                                                         "agent_name": self.agent_name,
-                                                                                         "input_modified": True},
-                                                                        k=100))
-                if confirm in ["A", "", "C"]:
-                    result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
-                                                                        metadata_filter={"function_name": function_name,
-                                                                                         "agent_name": self.agent_name,
-                                                                                         "output_modified": True},
-                                                                        k=100))
-                if confirm in ["A", "", "D"]:
-                    result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
-                                                                        metadata_filter={"function_name": function_name,
-                                                                                         "agent_name": self.agent_name,
-                                                                                         "scored": True}, k=100))
-                if confirm in ["A", "", "E"]:
-                    result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
-                                                                        metadata_filter={"function_name": function_name,
-                                                                                         "agent_name": self.agent_name,
-                                                                                         "commented": True}, k=100))
-                visual_result = "\n===============================\n".join(
-                    [json.dumps(json.loads(item.page_content), indent=4, sort_keys=True).replace("\\n", "\n") for item
-                     in result])
-                _visual_input(visual_result, filetype="json")
+                self.getScoredResults(function_name)
 
             elif action == "G":  # Skip human actions for N rounds
                 rounds = int(smart_input("Skip for how many rounds? ",self.agent_name))
                 self.skip_rounds = rounds
 
             elif action == "H":  # Change default LLM
-                llm_keys = list(self.llmORchains_list.keys())
-                for i, key in enumerate(llm_keys): smart_print(f"{i}. {key}",self.agent_name)
-                while True:
-                    new_llm_index = int(
-                        smart_input(f"Enter the number of the new default LLM (0-{len(llm_keys) - 1}): ",self.agent_name))
-                    if 0 <= new_llm_index < len(llm_keys):
-                        new_llm_name = llm_keys[new_llm_index]
-                        if self.set_default_llm(new_llm_name): break
-                default_llm_function = self.default_llm
-                smart_print(f"Default LLM changed to {new_llm_name}", self.agent_name, "Change Default LLM")
+                default_llm_function = self.changeDefaultLLM(default_llm_function)
 
             elif action == "I":  # Change premium LLM
-                llm_keys = list(self.llmORchains_list.keys())
-                for i, key in enumerate(llm_keys): smart_print(f"{i}. {key}",self.agent_name)
-                while True:
-                    new_llm_index = int(
-                        smart_input(f"Enter the number of the new premium LLM (0-{len(llm_keys) - 1}): ",self.agent_name))
-                    if 0 <= new_llm_index < len(llm_keys):
-                        new_llm_name = llm_keys[new_llm_index]
-                        if self.set_premium_llm(new_llm_name): break
-                premium_llm_function = self.premium_llm
-                smart_print(f"Premium LLM changed to {new_llm_name}", self.agent_name, "Change Premium LLM")
+                premium_llm_function = self.changePremiumLLM(premium_llm_function)
 
                 # elif action == "I":
                 #     function_calling = not function_calling
@@ -866,6 +807,77 @@ class HumanLLMMonitor:
             f"Time spent in each option and occurrences: {self.before_inference_option_times} - {self.before_inference_option_counts}",self.agent_name)
 
         return messages, comments, forced_llm_output, use_premium_llm, default_llm_function, premium_llm_function, function_calling
+
+    def changePremiumLLM(self, premium_llm_function):
+        llm_keys = list(self.llmORchains_list.keys())
+        for i, key in enumerate(llm_keys): smart_print(f"{i}. {key}", self.agent_name)
+        while True:
+            new_llm_index = int(
+                smart_input(f"Enter the number of the new premium LLM (0-{len(llm_keys) - 1}): ", self.agent_name))
+            if 0 <= new_llm_index < len(llm_keys):
+                new_llm_name = llm_keys[new_llm_index]
+                if self.set_premium_llm(new_llm_name): break
+        premium_llm_function = self.premium_llm
+        smart_print(f"Premium LLM changed to {new_llm_name}", self.agent_name, "Change Premium LLM")
+        return premium_llm_function
+
+    def changeDefaultLLM(self, default_llm_function):
+        llm_keys = list(self.llmORchains_list.keys())
+        for i, key in enumerate(llm_keys): smart_print(f"{i}. {key}", self.agent_name)
+        while True:
+            new_llm_index = int(
+                smart_input(f"Enter the number of the new default LLM (0-{len(llm_keys) - 1}): ", self.agent_name))
+            if 0 <= new_llm_index < len(llm_keys):
+                new_llm_name = llm_keys[new_llm_index]
+                if self.set_default_llm(new_llm_name): break
+        default_llm_function = self.default_llm
+        smart_print(f"Default LLM changed to {new_llm_name}", self.agent_name, "Change Default LLM")
+        return default_llm_function
+
+    def getScoredResults(self, function_name):
+        HumanLLMMonitor._check_and_init_vector_db()
+        confirm = smart_input(
+            "Do you want see:\n(A) all MODIFIED/SCORED/COMMENTED results.\n(B) INPUT modified only.\n(C) OUTPUT modified only.\n(D) SCORED only.\n(E) COMMENTED only.\nSelect your letter for choice or hit enter for all: ",
+            self.agent_name).upper()
+        result = []
+        if confirm in ["A", "", "B"]:
+            result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
+                                                                metadata_filter={"function_name": function_name,
+                                                                                 "agent_name": self.agent_name,
+                                                                                 "input_modified": True},
+                                                                k=100))
+        if confirm in ["A", "", "C"]:
+            result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
+                                                                metadata_filter={"function_name": function_name,
+                                                                                 "agent_name": self.agent_name,
+                                                                                 "output_modified": True},
+                                                                k=100))
+        if confirm in ["A", "", "D"]:
+            result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
+                                                                metadata_filter={"function_name": function_name,
+                                                                                 "agent_name": self.agent_name,
+                                                                                 "scored": True}, k=100))
+        if confirm in ["A", "", "E"]:
+            result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
+                                                                metadata_filter={"function_name": function_name,
+                                                                                 "agent_name": self.agent_name,
+                                                                                 "commented": True}, k=100))
+        visual_result = "\n===============================\n".join(
+            [json.dumps(json.loads(item.page_content), indent=4, sort_keys=True).replace("\\n", "\n") for item
+             in result])
+        _visual_input(visual_result, filetype="json")
+
+    @staticmethod
+    def getPreviousResults(function_name=None,agent_name=None,k=100):
+        HumanLLMMonitor._check_and_init_vector_db()
+        metadata_filter = {}
+        if function_name: metadata_filter["function_name"] = function_name
+        if agent_name: metadata_filter["agent_name"] = agent_name
+        result = HumanLLMMonitor.common_vectordb.query(query_text="*", metadata_filter=metadata_filter, k=k)
+        visual_result = "\n===============================\n".join(
+            [json.dumps(json.loads(item.page_content), indent=4, sort_keys=True).replace("\\n", "\n") for item
+             in result])
+        return visual_result
 
     def _after_inference(self, inference_result_msg, premium_llm_function, color="37", output_id=None,
                          outputs_count=None, optuna=None):
