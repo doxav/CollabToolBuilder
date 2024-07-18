@@ -1,6 +1,7 @@
 from learn import run_4agents_learning_loop, create_Nmajority_chain, EnvironmentManager
 from langchain_openai import ChatOpenAI
 import optuna as opt
+from config import MODELS_CONFIG_LIST
 
 def objective(trial):
 
@@ -138,46 +139,35 @@ def objective(trial):
     del criteria_coder[instruction_to_remove - 1]
     coder_text = "\n".join(criteria_coder)
     
-    if prompt_template == "Extensive":
-        prompt_coder = f"""
-        You are a helpful assistant that writes Python code to be executed using a restricted list of packages ({libraries_restriction}) to complete the task specified by me.
-        At each round of conversation, I will give you:
-        - Reasoning: explanation of the task chosen...
-        - Task: ...
-        - Plan: ...
-        - Tests: tests that will be done on target document
-        CURRENT STATE OF THE ENVIRONMENT USED TO TEST TASK
-        Document #.... : 1.title: ...; 2. abstract: ...; 3. current table of content; 4. current resources; 5. sections titles progress; 6. sections content progress; 7. events counted
-        ...
-        - General code for re-use or demonstration purpose: ...
-        - Code from the last round with attempts to implement task with its performance (e.g. 'sections titles progress': x, 'sections content progress': y): ...
-        - Execution error: ...
-        You should then respond to me with:
-        - Reasoning: How to best implement the plan with no errors and maximum performance towards the goal ?
-        - Code:
-        {coder_text}
-        RESPONSE FORMAT (You should only respond in the format as described below, and follow the example provided):
-        Reasoning: ...
-        Code:
-        ```python
-        # helper functions (only if needed, try to avoid them)
+    prompt_coder = f"""
+    You are a helpful assistant that writes Python code to be executed using a restricted list of packages ({libraries_restriction}) to complete the task specified by me.
+    At each round of conversation, I will give you:
+    - Reasoning: explanation of the task chosen...
+    - Task: ...
+    - Plan: ...
+    - Tests: tests that will be done on target document
+    CURRENT STATE OF THE ENVIRONMENT USED TO TEST TASK
+    Document #.... : 1.title: ...; 2. abstract: ...; 3. current table of content; 4. current resources; 5. sections titles progress; 6. sections content progress; 7. events counted
+    ...
+    - General code for re-use or demonstration purpose: ...
+    - Code from the last round with attempts to implement task with its performance (e.g. 'sections titles progress': x, 'sections content progress': y): ...
+    - Execution error: ...
+    You should then respond to me with:
+    - Reasoning: How to best implement the plan with no errors and maximum performance towards the goal ?
+    - Code:
+    {coder_text}
+    RESPONSE FORMAT (You should only respond in the format as described below, and follow the example provided):
+    Reasoning: ...
+    Code:
+    ```python
+    # helper functions (only if needed, try to avoid them)
+    # detailed content of the function...
+    # main function after the helper functions
+    def your_main_function_name(bot):
+        title = bot.document.title
+        abstract = bot.document.context
         # detailed content of the function...
-        # main function after the helper functions
-        def your_main_function_name(bot):
-            title = bot.document.title
-            abstract = bot.document.context
-            # detailed content of the function...
-        ```
-        """
-    else:
-        prompt_coder = f"""
-        Write a Python function to accomplish the following TASK DEFINITION.
-        If several tasks are defined (e.g. Task 1, Task 2...), choose only one task to code, reason and choose the task you have the most confidence to fully implement with success.
-        This function should be modular and reusable, embed all required packages imports inside function, no code should be outside functions, avoid any recursion and infinite loop.
-        Function should return all information produced in string or json format, the success of this TASK will be evaluated on this output so ensure this output is well aligned with the expected task output.
-        End your code with 1 liner code calling the function to execute the task and affect it to the 'result' variable - e.g. result = your_main_function(....).
-        Code should be fully functional, do not include placeholders or pass or similar.
-        {f'PREVIOUS CODE ATTEMPT: ...' if handle_previous_attempts else ''}
+    ```
         """
     # Write the prompt in the file readed after by the coder
     with open("./prompts/IR_CPS_TechSynthesis/code_task.txt", "w") as f:
@@ -264,10 +254,10 @@ if __name__ == "__main__":
     #default_llm = create_Nmajority_chain(num_models=3)
     #premium_llm = ChatOpenAI(model_name="gpt-4o") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
     llmORchains_list = {
-        "default_llm": ChatOpenAI(model_name="gpt-3.5-turbo-1106"),
-        "premium_llm": ChatOpenAI(model_name="gpt-3.5-turbo-1106"),
-        "3_majority_chain": create_Nmajority_chain(num_models=3),
-        "10_majority_chain": create_Nmajority_chain(num_models=10)
+        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt-3.5"]),
+        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt-4"]),
+        "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gemma"], reduce_model_name=MODELS_CONFIG_LIST["gemma"] , num_models=3),
+        "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gemma"], reduce_model_name=MODELS_CONFIG_LIST["gemma"], num_models=10)
     }
 
     # Set the documents to test/validate as a list of environments

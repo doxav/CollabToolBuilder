@@ -5,10 +5,10 @@ import subprocess
 
 import time
 import json
+from elasticsearch import Elasticsearch
 import requests
 
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_openai import OpenAIEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
 #from langchain.schema import AIMessage, HumanMessage, SystemMessage, FunctionMessage
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.ai import AIMessage
@@ -22,12 +22,13 @@ from utils.file_utils import *
 import concurrent.futures
 
 from langchain_community.vectorstores import Chroma, ElasticsearchStore
-from config import OPENAI_API_KEY, PickleCacheActivated
+from config import PickleCacheActivated
 import os
 import openai
+from requests.auth import HTTPBasicAuth
 
-openai.api_key = OPENAI_API_KEY
-os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
+openai.api_key = os.environ['OPENAI_API_KEY']
+openai.base_url = os.environ['OPENAI_BASE_URL']
 
 ON_INPUT = False
 
@@ -290,19 +291,27 @@ def save_prompt_with_tag(prompt_name, text, new_tag, package_path="."):
     # Save the file
     return dump_text(text, prompt_file_path_name)
 
-
 class UnifiedVectorDB:
     db_type = 'elasticsearch'  # can be 'elasticsearch' or 'chroma'
     es_url = 'http://127.0.0.1:9200'
+    es_user = 'temp_user'
+    es_password = 'temp_pass'
+    OpenAI_embedding_function_name = "text-embedding-ada-002"
 
     @staticmethod
     def check_db():
         if UnifiedVectorDB.db_type == 'elasticsearch':
             try:
-                urllib.request.urlopen(UnifiedVectorDB.es_url, timeout=1)
-            except urllib.error.URLError as e:
+            #     urllib.request.urlopen(UnifiedVectorDB.es_url, timeout=1)
+            # except urllib.error.URLError as e:
+            #     print(
+            #         f"Error: {e.reason} - {e}\nUnifiedVectorDB.es_url: {UnifiedVectorDB.es_url}\nPlease check if elasticsearch is running and reachable at the specified URL\nplease set UnifiedVectorDB.es_url = 'http://x.x.x.x:9200' in your config.py or search where it is set in your code.")
+            #     exit(1)
+                response = requests.get(UnifiedVectorDB.es_url, auth=HTTPBasicAuth(UnifiedVectorDB.es_user, UnifiedVectorDB.es_password), timeout=1, verify=False)
+                response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
+            except requests.exceptions.RequestException as e:
                 print(
-                    f"Error: {e.reason} - {e}\nUnifiedVectorDB.es_url: {UnifiedVectorDB.es_url}\nPlease check if elasticsearch is running and reachable at the specified URL\nplease set UnifiedVectorDB.es_url = 'http://x.x.x.x:9200' in your config.py or search where it is set in your code.")
+                    f"Error: {e}\nUnifiedVectorDB.es_url: {UnifiedVectorDB.es_url}\nPlease check if Elasticsearch is running and reachable at the specified URL\nplease set UnifiedVectorDB.es_url, UnifiedVectorDB.es_user, and UnifiedVectorDB.es_password correctly in your code.")
                 exit(1)
         elif UnifiedVectorDB.db_type == 'chroma':
             print("Chroma DB check is not yet implemented")
@@ -323,14 +332,16 @@ class UnifiedVectorDB:
             )
             self._collection = self.db._collection
         elif UnifiedVectorDB.db_type == 'elasticsearch':
+            elastic_client = Elasticsearch(UnifiedVectorDB.es_url, http_auth=(UnifiedVectorDB.es_user, UnifiedVectorDB.es_password), verify_certs=False, ssl_show_warn=False)
             self.db = ElasticsearchStore(
                 index_name=self.collection_name,
                 embedding=embedding_function,
-                es_url=UnifiedVectorDB.es_url,
+                es_connection = elastic_client,
                 distance_strategy="COSINE"
             )
             self._collection = self.db
-            embedding_size = len(embedding_function.embed_query(""))
+            embedding_test = embedding_function.embed_query("test")
+            embedding_size = len(embedding_test)
             if reset_db_indices:
                 self.db.client.indices.delete(index=self.collection_name, ignore=[400,
                                                                                   404])  # TODO: set it as a parameter to reset when changing embeddings
@@ -438,7 +449,7 @@ class HumanLLMMonitor:
     step_id = 0
     function_list = None
     common_vectordb = None
-    common_vectordb_embedding_function = OpenAIEmbeddings()  #HuggingFaceEmbeddings(model_name="intfloat/e5-base-v2", encode_kwargs={"normalize_embeddings": True}) # TODO: set as a parameter
+    common_vectordb_embedding_function = None #OpenAIEmbeddings(model=UnifiedVectorDB.OpenAI_embedding_function_name, deployment=UnifiedVectorDB.OpenAI_embedding_function_name)  #HuggingFaceEmbeddings(model_name="intfloat/e5-base-v2", encode_kwargs={"normalize_embeddings": True}) # TODO: set as a parameter
 
     common_vectordb_collection_name = "human_llm_monitor_logs"
     common_vectordb_persist_directory = "human_llm_monitor_vectordb"
@@ -449,13 +460,13 @@ class HumanLLMMonitor:
         # if embedding_function is a string, then create the corresponding embedding function
         if isinstance(embedding_function, str):
             if embedding_function in ["OpenAIEmbeddings", "text-embedding-ada-002"]:
-                HumanLLMMonitor.common_vectordb_embedding_function = OpenAIEmbeddings()
+                HumanLLMMonitor.common_vectordb_embedding_function = OpenAIEmbeddings(model=embedding_function, deployment=UnifiedVectorDB.OpenAI_embedding_function_name)
             elif embedding_function == "HuggingFaceEmbeddings":
                 HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
                     model_name="intfloat/e5-base-v2", encode_kwargs={"normalize_embeddings": True})
             else:
                 HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
-                    model_name=embedding_function, encode_kwargs={"normalize_embeddings": True})
+                    model_name=embedding_function, encode_kwargs={"normalize_embeddings": True}, model_kwargs={"trust_remote_code": True})
         else:
             HumanLLMMonitor.common_vectordb_embedding_function = embedding_function
 
@@ -593,12 +604,6 @@ class HumanLLMMonitor:
                     self.synthesize_mode = False
                     # Default actions for all agents while running with optuna
                     action = ""
-                case "Coder" :
-                    break
-                case "Critic" :
-                    break
-                case "Capitalizer" :
-                    break
                 case _: # Default case
                     action = smart_input(
                 f"\n\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :").upper()

@@ -1,4 +1,5 @@
 import pprint
+import random
 import subprocess
 import traceback
 import openai
@@ -13,7 +14,6 @@ import uuid
 import re
 import shutil
 import hashlib
-import optuna as opt
 
 from langchain_core.runnables import Runnable, RunnablePassthrough
 from langchain_core.prompts import ChatPromptTemplate
@@ -33,13 +33,16 @@ from langchain.globals import set_llm_cache
 from langchain_community.cache import SQLiteCache
 set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
 
-openai.api_key = OPENAI_API_KEY
-os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
+openai.api_key = os.environ['OPENAI_API_KEY']
+openai.base_url = os.environ['OPENAI_BASE_URL']
 
 UnifiedVectorDB.db_type = "elasticsearch" # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
+UnifiedVectorDB.es_user = elastic_user
+UnifiedVectorDB.es_password = elastic_password
+UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002" # "nomic-ai/nomic-embed-text-v1"
 
-embedding_function="text-embedding-ada-002" # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
+embedding_function="intfloat/e5-base-v2" # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
 reset_db_indices=False # Set to True after changing embeddings
 
 HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices) 
@@ -321,7 +324,10 @@ class CodingAgent():
                             no_runtime_error, exec_result = env.step(code_to_run)
                             while not no_runtime_error and current_skip_rounds <= 0:
                                 smart_print("\033[31mCODE ERROR\033[0m: "+exec_result, self.name, "code_task_and_run_test SystemMessage")
-                                decision = smart_input("Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ").strip().lower()
+                                if self.optuna_opti:
+                                    decision = "n"
+                                else:
+                                    decision = smart_input("Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ").strip().lower()
                                 if decision in ("no", "n", ""):
                                     break
                                 elif decision == "a":
@@ -351,7 +357,7 @@ class CodingAgent():
         if len(results) > 1:
             # display the list of results with success, exception and code
             results_list = ""
-            top_results, top_indice = 0, -1
+            top_results, top_indice = 0, 1
             for id, result in enumerate(results):
                 # parsed_code, all(no_runtime_errors), exec_results, reset_unique_ids, [env.get_score() for env in self.envs], [env.get_state(extended=True) for env in self.envs]ys
                 if result[1]:
@@ -366,8 +372,7 @@ class CodingAgent():
             # ask the user to select the code to keep
             if current_skip_rounds <= 0:
                 if self.optuna_opti:
-                    if top_indice != -1: selected_code = f"{top_indice}"
-                    else: selected_code = "n"
+                    selected_code = f"{top_indice}"
                 else: selected_code = smart_input(f"{results_list}CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL): ").strip().replace(" ","").lower().split(",")
             else:
                 selected_code = [""] # keep all if skip_rounds is not 0
@@ -446,7 +451,11 @@ class CapitalizationAgent:
         # check if the function file already exists, if yes, ask the user a new name
         if os.path.exists(function_file_path):
             smart_print(f"Function file {function_file_path} already exists, please provide a new name for the function.", self.name, "capitalize_successful_tasks WARNING")
-            function_file_path = os.path.join("functions", smart_input("New function name: ")+".py")
+            if self.optuna_opti:
+                i = random.randint(0, 1000)
+                function_file_path = os.path.join("functions", self.name + i +".py")
+            else:
+                function_file_path = os.path.join("functions", smart_input("New function name: ")+".py")
         with open(function_file_path, "w") as function_file:
              # use regex to extract the docstring from tool_description
             docstring_pattern = re.compile(r'(""".*?""")', re.DOTALL)
@@ -454,10 +463,10 @@ class CapitalizationAgent:
              # use regex to add docstring to the function parsed_code["main_function_name"] after the def line in parsed_code["program_code"]
             parsed_code["program_code"] = re.sub(r"(def "+parsed_code["main_function_name"]+"\(.*?\):)", r'\1\n    '+docstring, parsed_code["program_code"], count=1)
             function_file.write(parsed_code["program_code"])
-
-        if is_vscode_installed():
-            smart_print("Please modify the file opened in vscode if necessary, and save it (Ctrl + W) when you are ok to continue", self.name, "capitalize_successful_tasks INSTRUCTIONS")
-            subprocess.run(["code", "--wait", function_file_path])
+        if self.optuna_opti == None:
+            if is_vscode_installed():
+                smart_print("Please modify the file opened in vscode if necessary, and save it (Ctrl + W) when you are ok to continue", self.name, "capitalize_successful_tasks INSTRUCTIONS")
+                subprocess.run(["code", "--wait", function_file_path])
 
         serialized_entry = json.dumps({
             "time": datetime.datetime.now().isoformat(),
@@ -476,8 +485,12 @@ class CapitalizationAgent:
     def capitalize_failed_tasks(self, task_description: str, parsed_code: str) -> None:
         import socket, uuid, datetime
 
-        main_function_name = _visual_input(parsed_code["main_function_name"] if parsed_code is not None and "main_function_name" in parsed_code else "replace this text with a descriptive name of the function")
-        task_description_refined = _visual_input(task_description)
+        if self.optuna_opti:
+            main_function_name = parsed_code["main_function_name"] if parsed_code is not None and "main_function_name" in parsed_code else "replace this text with a descriptive name of the function"
+            task_description_refined = task_description
+        else :
+            main_function_name = _visual_input(parsed_code["main_function_name"] if parsed_code is not None and "main_function_name" in parsed_code else "replace this text with a descriptive name of the function")
+            task_description_refined = _visual_input(task_description)
         self.failed_tasks_repository[main_function_name] = task_description_refined
         # print last added task
         smart_print(f"************ Last added failed task ************\n{main_function_name}\n************************".replace("\\n", "\n"), self.name, "capitalize_failed_tasks CAPITALIZE FAIL")
@@ -789,7 +802,7 @@ def format_prompt(messages):
             prompt_str += f"Type {type(message)}: " + str(message.content) + "\n"
     return prompt_str
     
-def create_Nmajority_chain(num_models=3, map_model_name="gpt-3.5-turbo-1106", reduce_model_name="gpt-3.5-turbo-1106", map_temperature=0.7, reduce_temperature=0.7):
+def create_Nmajority_chain(num_models=3, map_model_name="gpt-3.5", reduce_model_name="gpt-3.5", map_temperature=0.7, reduce_temperature=0.7):
     # Initialize the OpenAI models
     models = [ChatOpenAI(model_name=map_model_name, temperature=map_temperature) for _ in range(num_models)]
     final_model = ChatOpenAI(model_name=reduce_model_name, temperature=reduce_temperature)
@@ -823,8 +836,8 @@ if __name__ == "__main__":
     #default_llm = create_Nmajority_chain(num_models=3)
     #premium_llm = ChatOpenAI(model_name="gpt-4o") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
     llmORchains_list = {
-        "default_llm": ChatOpenAI(model_name="gpt-3.5-turbo-1106"),
-        "premium_llm": ChatOpenAI(model_name="gpt-3.5-turbo-1106"),
+        "default_llm": ChatOpenAI(model_name="gpt-3.5"),
+        "premium_llm": ChatOpenAI(model_name="gpt-3.5"),
         "3_majority_chain": create_Nmajority_chain(num_models=3),
         "10_majority_chain": create_Nmajority_chain(num_models=10)
     }

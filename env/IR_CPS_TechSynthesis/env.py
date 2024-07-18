@@ -69,26 +69,26 @@ class Document:
     context_embedding: List[float] = field(default_factory=list)  # TODO: check if we need to store the embedding of the context because, differently to sections content, it is not used in comparison to target because it is an input
     sections_list: List[Any] = field(default_factory=list)  
     sections_list_embedding: List[float] = field(default_factory=list)
-    embedding_model_name: str = "text-embedding-ada-002" # e.g. "text-embedding-ada-002" for OpenAI ada-002, "intfloat/e5-base-v2" for HuggingFace e5-base-v2, ...
+    embedding_model_name: str = "intfloat/e5-base-v2" # e.g. "nomic-embed-text:latest" for OpenAI ada-002, "intfloat/e5-base-v2" for HuggingFace e5-base-v2, ...
 
 class DocumentStructure:
     def __init__(self,
                  synthesis_type: str,
                  initial_goal: str,
                  refined_goals: List[str] = None,
-                 embedding_model_name: str = "text-embedding-ada-002", # text-embedding-ada-002, intfloat/e5-base-v2
+                 embedding_model_name: str = "intfloat/e5-base-v2", # nomic-embed-text:latest, intfloat/e5-base-v2
                  embedding_model_query_prefix: str = '', # e.g. "query: " for intfloat/e5-base-v2 should improve for QA but we are in estimating straight semantic similarity
                  title: str = None,
                  context: str = None,
                  ): 
         self.embedding_model_query_prefix = embedding_model_query_prefix
         self.embedding_model_name = embedding_model_name
-        if embedding_model_name == "text-embedding-ada-002":
+        if embedding_model_name == "text-embeddings-ada-002":
             if not os.getenv("OPENAI_API_KEY"):
                 raise ValueError("OpenAI API key is required for OpenAI ada-002 model.")
             self.embedding_model = OpenAIEmbeddings(model=embedding_model_name) # , openAIApiKey=os.getenv("OPENAI_API_KEY")
         else:
-            self.embedding_model = HuggingFaceEmbeddings(model_name=embedding_model_name, encode_kwargs={"normalize_embeddings": True})
+            self.embedding_model = HuggingFaceEmbeddings(model_name=embedding_model_name, encode_kwargs={"normalize_embeddings": True}, model_kwargs={"trust_remote_code": True}) # , openAIApiKey=os.getenv("OPENAI_API_KEY"
 
         self.synthesis_type = synthesis_type
         self.initial_goal = initial_goal
@@ -1265,7 +1265,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
                  CPS_env_type="techsynthesis",
                  title: str = "",
                  context: str = None,
-                 embedding_model_name: str = "text-embedding-ada-002", # text-embedding-ada-002, intfloat/e5-base-v2
+                 embedding_model_name: str = "intfloat/e5-base-v2", # nomic-embed-text:latest, intfloat/e5-base-v2
                  openai_api_key: str = None,
                  target_file_path: str = None,
                  id: str = None,
