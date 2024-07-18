@@ -4,5 +4,6 @@ __pycache__/*
 venv/
 prompts/*.txt.*
 temp/
+src/
 config.py
 primitives/config.py

@@ -70,7 +70,7 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
         IN_NOTEBOOK = globals()['IN_NOTEBOOK']
 
     if 'IN_WEBSOCKET' not in globals():
-        if True or is_websocket_running():
+        if is_websocket_running():
             globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = True
         else:
             globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = False
