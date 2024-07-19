@@ -281,9 +281,14 @@ if __name__ == "__main__":
     # Wait for 10s
     time.sleep(10)
     # get current folder
-    #current_folder = os.getcwd()
-    # create the folder/file to store optuna in sqlite
-    #os.makedirs(current_folder + "/optuna.db", exist_ok=True)
+    current_folder = os.getcwd()
+
+    sqlite_file = os.path.join(current_folder, "optuna.db")
+
+    # Supprimer le fichier SQLite s'il existe
+    if os.path.exists(sqlite_file):
+        os.remove(sqlite_file)
+
     # Create a study and optimize the objective function
-    study = opt.create_study(direction="maximize") #, storage=f"sqlite:///{current_folder}/optuna.db")
+    study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}")
     study.optimize(objective, n_trials=200)

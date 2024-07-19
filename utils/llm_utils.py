@@ -48,7 +48,7 @@ async def send_message(message):
 
 
 def is_websocket_running():
-    url = "http://localhost:6789"
+    url = "http://127.0.0.1:5000/api/hello"
     try:
         response = requests.get(url)
         if response.status_code == 200:
@@ -1169,8 +1169,7 @@ class HumanLLMMonitor:
                 # Use concurrent futures to parallelize the LLM calls.
                 outputs = []
                 with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_parallel_inferences) as executor:
-                    if type(self.premium_llm) == type(
-                            self.llmORchains_list.get('3_majority_chain')) and self.agent_name == "CodingAgent":
+                    if type(self.premium_llm) == type(self.llmORchains_list.get('3_majority_chain')):
                         stream_output = True
                     futures = [executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling,
                                                temperature, stream_output, _) for _ in

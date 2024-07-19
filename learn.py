@@ -1,11 +1,16 @@
+import inspect
 import pprint
 import random
 import subprocess
 import traceback
+import types
+
 import openai
 import json
 from typing import Dict, Optional
-from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, load_prompt, save_prompt, _visual_input, is_vscode_installed, smart_print, smart_input
+
+from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, load_prompt, save_prompt, _visual_input, \
+    is_vscode_installed, smart_print, smart_input
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import copy
 from config import *
@@ -18,25 +23,26 @@ import hashlib
 from langchain_core.runnables import Runnable, RunnablePassthrough
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-#from langchain.schema import AIMessage, HumanMessage, SystemMessage
+# from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.ai import AIMessage
 from langchain_core.messages.system import SystemMessage
 from langchain_core.messages.function import FunctionMessage
 
-from langchain_openai import ChatOpenAI # from langchain.chat_models import ChatOpenAI
-#from langchain.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI  # from langchain.chat_models import ChatOpenAI
+# from langchain.chat_models import ChatOpenAI
 
 import json
 
 from langchain.globals import set_llm_cache
 from langchain_community.cache import SQLiteCache
+
 set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
 
 openai.api_key = os.environ['OPENAI_API_KEY']
 openai.base_url = os.environ['OPENAI_BASE_URL']
 
-UnifiedVectorDB.db_type = "elasticsearch" # "elasticsearch" "chroma"
+UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
 UnifiedVectorDB.es_user = elastic_user
 UnifiedVectorDB.es_password = elastic_password
@@ -47,15 +53,16 @@ reset_db_indices=False # Set to True after changing embeddings
 
 HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices) 
 
+
 class Environment:
-    def __init__(self, temp_root_dir: str=None, data_dir: str="data"):
+    def __init__(self, temp_root_dir: str = None, data_dir: str = "data"):
         self.temp_root_dir = temp_root_dir if temp_root_dir else os.path.join(os.getcwd(), "temp")
         self.data_dir = data_dir
         self.current_temp_dir = None
         # create "backups" directory were saved states will be stored
         if not os.path.exists(os.path.join(self.temp_root_dir, "backups")):
             os.makedirs(os.path.join(self.temp_root_dir, "backups"))
-        #Environment.reset(self) # Moving reset to the first call to __init__ to avoid multiple reset when class is subclassed
+        # Environment.reset(self) # Moving reset to the first call to __init__ to avoid multiple reset when class is subclassed
 
     def reset(self, backup_previous_temp_dir=True):
         if self.current_temp_dir is not None:
@@ -64,9 +71,10 @@ class Environment:
         self.current_temp_dir = os.path.join(self.temp_root_dir, str(uuid.uuid4()))
         os.makedirs(self.current_temp_dir)
         # create a write only link to the data directory in the temp directory
-        os.symlink(os.path.abspath(self.data_dir), os.path.join(self.current_temp_dir, "data"), target_is_directory=True)
+        os.symlink(os.path.abspath(self.data_dir), os.path.join(self.current_temp_dir, "data"),
+                   target_is_directory=True)
 
-    def step(self, action_code, context = {}):
+    def step(self, action_code, context={}):
         # memorize current directory, to allow to change to temp directory, then change back to memorized directory
         current_dir = os.getcwd()
         os.chdir(self.current_temp_dir)
@@ -95,20 +103,22 @@ class Environment:
         else:
             shutil.rmtree(self.current_temp_dir)
 
-    def backup_state(self, unique_id: str=None):
+    def backup_state(self, unique_id: str = None):
         # copy all the temp directory (excluding data directory) into a folder named by unique_id into backups directory
         if unique_id is None:
             unique_id = str(uuid.uuid4())
-        shutil.copytree(self.current_temp_dir, os.path.join(self.temp_root_dir, "backups", unique_id), ignore=shutil.ignore_patterns('data'))
+        shutil.copytree(self.current_temp_dir, os.path.join(self.temp_root_dir, "backups", unique_id),
+                        ignore=shutil.ignore_patterns('data'))
         return unique_id
 
     def restore_state(self, unique_id):
         # copy all the content of the backup directory into the temp directory (excluding data directory)
         self.reset(backup_previous_temp_dir=False)
         # copy all the content of the backup directory into the temp directory which already contains the data directory
-        shutil.copytree(os.path.join(self.temp_root_dir, "backups", unique_id), self.current_temp_dir, ignore=shutil.ignore_patterns('data'), dirs_exist_ok=True)
+        shutil.copytree(os.path.join(self.temp_root_dir, "backups", unique_id), self.current_temp_dir,
+                        ignore=shutil.ignore_patterns('data'), dirs_exist_ok=True)
 
-    def get_state(self, extended: bool=False):
+    def get_state(self, extended: bool = False):
         # return a dictionary containing the content of the temp directory
         state = {}
         for root, dirs, files in os.walk(self.current_temp_dir):
@@ -118,12 +128,33 @@ class Environment:
                     file_content = f.read()
                 state[file_path] = hashlib.sha256(file_content).hexdigest()
         # convert the dictionary into a string useful for comparison and analysis by language models
-        state_text = "Files directory content: "+(json.dumps(state) if state.keys().__len__() > 0 else "empty")
+        state_text = "Files directory content: " + (json.dumps(state) if state.keys().__len__() > 0 else "empty")
         return state_text
-    
+
     def get_score(self):
-        # return the score of the current state
-        return None
+        # indicate that automatic scoring is not set, then ask the user to provide a score between 0 and 1, we ensure that the score is a float between 0 and 1
+        score = None
+        while score is None:
+            try:
+                score = float(input("No automatic get_score set, please provide a score between 0 and 1: "))
+                if score < 0 or score > 1:
+                    score = None
+            except ValueError:
+                pass
+        return {'score (best=1, worst=0)': score}
+
+    def set_score_function(self, score_function_code: str):
+        local_scope = {'self': self}
+        func_name = re.search(r'def (\w+)\(', score_function_code).group(1)
+        if validate_function_code(score_function_code, func_name, local_scope):
+            self.get_score = types.MethodType(local_scope[func_name], self)
+
+    def set_state_function(self, state_function_code: str):
+        local_scope = {'self': self}
+        func_name = re.search(r'def (\w+)\(', state_function_code).group(1)
+        if validate_function_code(state_function_code, func_name, local_scope):
+            self.get_state = types.MethodType(local_scope[func_name], self)
+
 
 class EnvironmentManager:
     def __init__(self, env_type="default", **kwargs):
@@ -138,16 +169,20 @@ class EnvironmentManager:
     def get_environment(self):
         return self.env
 
+
 # Agent 1: Task Identification
 class TaskIdentificationAgent():
-    def __init__(self, default_llm_key, envs: [Environment], premium_llm_key=None, problem_prompts_subdir=None, premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None):
+    def __init__(self, default_llm_key, envs: [Environment], premium_llm_key=None, problem_prompts_subdir=None,
+                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None):
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         self.default_llm = llmORchains_list[default_llm_key]
         self.premium_llm = llmORchains_list[premium_llm_key]
         self.learnt_tasks: Dict[str, str] = {}
         self.failed_tasks: Dict[str, str] = {}
-        self.human_llm_identify_best_task = HumanLLMMonitor(llm=self.default_llm, premium_llm=self.premium_llm, premium_llm_by_default=premium_llm_by_default, llmORchains_list=llmORchains_list)
+        self.human_llm_identify_best_task = HumanLLMMonitor(llm=self.default_llm, premium_llm=self.premium_llm,
+                                                            premium_llm_by_default=premium_llm_by_default,
+                                                            llmORchains_list=llmORchains_list)
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         self.envs = envs
         self.optuna_opti = optuna
@@ -170,6 +205,7 @@ class TaskIdentificationAgent():
 
         task = self.human_llm_identify_best_task.CallHumanLLM(system_prompt_template=self.problem_prompts_subdir+"identify_best_task", user_message=user_message, return_message_content_only=False, optuna=self.optuna_opti, model_choice=self.model_choice)
         return task
+
 
 # Agent 2: Code Task
 class CodingAgent():
@@ -327,12 +363,12 @@ class CodingAgent():
                                 if self.optuna_opti:
                                     decision = "n"
                                 else:
-                                    decision = smart_input("Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ").strip().lower()
+                                    decision = smart_input("Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ", self.name).strip().lower()
                                 if decision in ("no", "n", ""):
                                     break
                                 elif decision == "a":
                                     # do not use HumanLLMMonitor because no template is available for this specific case
-                                    smart_print("\033[31mTRYING TO AUTOFIX ERROR\033[0m")
+                                    smart_print("\033[31mTRYING TO AUTOFIX ERROR\033[0m", self.name)
                                     message_content = f"ERROR MESSAGE:[[{exec_result}]]\nCODE:[[{parsed_code['program_code']}]]"
                                     edited_code = self.premium_llm([SystemMessage(content=load_prompt("code_fixer")), HumanMessage(content=message_content)]).content
                                 else:
@@ -375,14 +411,15 @@ class CodingAgent():
                     selected_code = f"{top_indice}"
                 else: selected_code = smart_input(f"{results_list}CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL): ").strip().replace(" ","").lower().split(",")
             else:
-                selected_code = [""] # keep all if skip_rounds is not 0
+                selected_code = [""]  # keep all if skip_rounds is not 0
             id = 0
             if selected_code in ["none", "n"]:
                 results = []
-            else :
+            else:
                 # keep only the selected code
                 results = [result for id, result in enumerate(results) if selected_code and (str(id) in selected_code or selected_code == [""])]
         return results
+
 
 # Agent 3: Code Validation
 class ValidationAgent():
@@ -416,6 +453,7 @@ class ValidationAgent():
 
         code_validation = self.human_llm_validate_code.CallHumanLLM(system_prompt_template="validate_code", user_message=user_message, return_message_content_only=False, optuna=self.optuna_opti, model_choice=self.model_choice) 
         return code_validation
+
 
 # Agent 4: Code Capitalization
 class CapitalizationAgent:
@@ -577,12 +615,61 @@ class CapitalizationAgent:
                 smart_print(f"> failed function/task {task_data['main_function_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
                 continue
             self.failed_tasks_repository[task_data["main_function_name"]] = task_data["task_description_refined"]
-            smart_print(f"> failed function/task {task_data['main_function_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+            smart_print(
+                f"> failed function/task {task_data['main_function_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.",
+                self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+
+
+#        smart_print(f"Error: Could not find a valid definition for {function_name}. Please set it:", "orchestrate_agents", "orchestrate_agents ERROR")
+#        function_code = _visual_input(current_function_code, filetype="py")
+
+
+def validate_function_code(code, function_name, local_scope=None, compile_test_only=False):
+    if local_scope is None:
+        local_scope = {}
+    try:
+        compiled_code = compile(code, '<string>', 'exec')
+        if compile_test_only:
+            return True
+        exec(compiled_code, globals(), local_scope)
+        func = local_scope.get(function_name)
+        if func is None or not callable(func):
+            raise ValueError(f"Function {function_name} is not defined or not callable.")
+        return func
+    except Exception as e:
+        print(f"Error setting {function_name} function: {e}")
+        return None
+
+
+def extract_function_code(task_content, function_name, current_function_code=None):
+    """
+    Extracts the complete code block for the specified function from the given task content.
+    If extraction fails, prompts the user for correct function code until successful.
+    """
+    pattern = rf"(def {function_name}\(.*?\):.*?)(?=\ndef [a-zA-Z_]+\(|$)"
+    match = re.search(pattern, task_content, re.DOTALL)
+    function_code = match.group(1) if match else None
+
+    local_scope = {}
+    validated_function = validate_function_code(function_code, function_name, local_scope) if function_code else None
+
+    while not validated_function:
+        smart_print(f"Error: Could not find a valid definition for {function_name}. Please set it:",
+                    "orchestrate_agents", "orchestrate_agents ERROR")
+        function_code = _visual_input(current_function_code, filetype="py")
+        validated_function = validate_function_code(function_code, function_name, local_scope)
+
+    return function_code
+
 
 # Main learning loop orchestration functions
-def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environments=None, manual_validation_to_capitalize=True, problem_prompts_subdir=None, 
-                             max_coding_attempts=4, include_code=None, selected_successful_functions=None, selected_failed_functions=None, agtask_premium_llm_by_default=True, 
-                             agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0, agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None, optuna_opti=None):
+def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environments=None,
+                              manual_validation_to_capitalize=True, problem_prompts_subdir=None,
+                              max_coding_attempts=4, include_code=None, selected_successful_functions=None,
+                              selected_failed_functions=None, agtask_premium_llm_by_default=True,
+                              agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0,
+                              agcapitalize_skip_rounds=0, llmORchains_list=None, prompt_choice=None, model_choice=None,
+                              optuna_opti=None, allow_custom_score_state_functions=False):
     global scores_ret
     if problem_prompts_subdir is None:
         # menu to choose the problem prompts subdirectory
@@ -614,6 +701,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     while continue_identifying_tasks:
         HumanLLMMonitor.step_id = str(uuid.uuid4())
         task = agent_taskreco.identify_best_task()
+
         # Handle multiple-tasks case
         if len(task) > 1:
             # list all tasks with their index and the 200 first characters of their content
@@ -632,7 +720,22 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         smart_print("Identified Task: "+task.content.replace("\\n", "\n"), "orchestrate_agents", "orchestrate_agents RESULT")
         task_description = task.content
 
-        parsed_code, validation, scores = coding_and_validation_loop(agent_coding, agent_validation, task_description, max_coding_attempts, manual_validation_to_capitalize, optuna=optuna_opti)
+        # Extract potential score and state function code from the task
+        if allow_custom_score_state_functions:
+            # Extract current implementation of get_score and get_state from the first environment
+            current_score_function_code = inspect.getsource(test_environments[0].get_score)
+            current_state_function_code = inspect.getsource(test_environments[0].get_state)
+            score_function_code = extract_function_code(task_description, 'get_score', current_score_function_code)
+            state_function_code = extract_function_code(task_description, 'get_state', current_state_function_code)
+
+            for env in test_environments:
+                env.set_score_function(score_function_code)
+                env.set_state_function(state_function_code)
+
+        parsed_code, validation, scores = coding_and_validation_loop(agent_coding, agent_validation, task_description,
+                                                                     max_coding_attempts,
+                                                                     manual_validation_to_capitalize,
+                                                                     optuna=optuna_opti)
         scores_ret = scores
         if validation == "success":
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
@@ -665,6 +768,7 @@ def get_success_value_in_text(text):
         success_value = match.group(2)
         return success_value.lower() in ['true', 'yes', 'y', '1']
     return False
+
 
 def get_highest_score_index(score_array, mode='total'):
     """
@@ -840,10 +944,10 @@ if __name__ == "__main__":
     #default_llm = create_Nmajority_chain(num_models=3)
     #premium_llm = ChatOpenAI(model_name="gpt-4o") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
     llmORchains_list = {
-        "default_llm": ChatOpenAI(model_name="gpt-3.5"),
-        "premium_llm": ChatOpenAI(model_name="gpt-3.5"),
-        "3_majority_chain": create_Nmajority_chain(num_models=3),
-        "10_majority_chain": create_Nmajority_chain(num_models=10)
+        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt-3.5"]),
+        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt-4"]),
+        "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"], num_models=3),
+        "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"], num_models=10)
     }
 
     # Set the documents to test/validate as a list of environments

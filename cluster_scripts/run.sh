@@ -15,5 +15,6 @@ end_datetime=$(date +"%Y-%m-%d %H:%M:%S")
 duration=$(( (end_time - start_time) / 60 ))
 
 # Send the output via email with start and end time, and duration
-mail -s "Cluster expriments result (START: $start_datetime, END: $end_datetime, Duration: $duration mins)" xavier.daull@lis-lab.fr < /tmp/script_output.log
+mailx -s "Cluster experiments result (START: $start_datetime, END: $end_datetime, Duration: $duration mins)" \
+-a /home/$USER/CollabFunctionsGPTCreator/optuna.db xavier.daull@lis-lab.fr < /tmp/script_output.log
 
