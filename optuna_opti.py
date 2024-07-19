@@ -1,34 +1,233 @@
-from learn import run_4agents_learning_loop, create_Nmajority_chain, EnvironmentManager
+import os
+import time
+import learn
 from langchain_openai import ChatOpenAI
 import optuna as opt
+from config import MODELS_CONFIG_LIST
 
 def objective(trial):
-    # Define the parameters (Caoch)
-    promptVariation = trial.suggest_int("prompt_variation", 0, 9)
+
     modelVariation = trial.suggest_int("model_variation", 0, 3)
 
-    # Define the parameters (Coder)
-    constraint = trial.suggest_categorical("constraint", [True, False])
-    helpers = trial.suggest_categorical("helpers", [True, False])
+    # Define parameters for the coach
 
-    # Define the parameters (Critic)
-    give_feedback = trial.suggest_categorical("give_feedback", [True, False])
-    promptCritVariation = trial.suggest_int("prompt_crit_variation", 0, 10)
+    role_priming = trial.suggest_categorical("role_priming", [
+        "research assistant",
+        "AI coach",
+        "task optimizer",
+        "technical synthesis expert",
+        "knowledge engineer",
+        "content curator"
+    ])
+    goal_description = trial.suggest_categorical("goal_description", [
+        "produce high quality technical synthesis",
+        "generate state-of-the-art research survey paper",
+        "create comprehensive Wikipedia-like article",
+        "develop patent-quality technical document",
+        "formulate detailed technical guides",
+        "synthesize research findings effectively"
+    ])
+    task_format = trial.suggest_categorical("task_format", [
+        "[verb] [quantity if applicable] [object] [tools] [detailed instructions and parameters]",
+        "[action] [target] using [method] with [specifications]",
+        "[operation] on [subject] utilizing [resources] following [guidelines]",
+        "[do] [what] [how] [with what] [detailed instructions]"
+    ])
+    reasoning_steps = trial.suggest_int("reasoning_steps", 3, 10)
+    specification_depth = trial.suggest_int("specification_depth", 2, 5)
+    use_examples = trial.suggest_categorical("use_examples", [True, False])
+    auto_add_test_to_prompt_answer = trial.suggest_categorical("auto_add_test_to_prompt_answer", [True, False])
+    include_failed_tasks = trial.suggest_categorical("include_failed_tasks", [True, False])
+    plan_depth = trial.suggest_int("plan_depth", 2, 4)
+    available_commands_detail = trial.suggest_categorical("available_commands_detail", [
+        "minimal",
+        "moderate",
+        "comprehensive",
+        "detailed"
+    ])
+    task_complexity = trial.suggest_categorical("task_complexity", [
+        "Task shouldn’t be too difficult to convert into Python code given available commands and learnt tasks.",
+        "Task should balance complexity and feasibility for effective implementation.",
+        "Task should challenge the LLM while remaining solvable with available resources.",
+        "Task should involve multiple steps that require coordination among different functions.",
+        "Task should leverage advanced features of the LLM to achieve superior results.",
+        "Task should be modular, allowing parts of the solution to be reused in other contexts.",
+        "Task should be scalable, capable of being applied to larger datasets or more complex scenarios."
+    ])
+    criteria_to_remove = trial.suggest_int("criteria_to_remove", 1, 7)
+    
+    # Construct the prompt based on the suggested parameters
+    criteria_coach = [
+        f"1) Reason in {reasoning_steps} steps to find out the best task to minimize distance to goal.",
+        f'2) Task should be written in the form of "{task_format}"',
+        "3) Task will be converted into Python code given available commands, learnt tasks, use of LLM if required.",
+        f"4) Task should be novel compared to learnt {f'and failed ' if include_failed_tasks else ''}tasks.",
+        f"5) Develop key minimal elements of specification (acceptance criteria, best strategies to compare, performance tips to beat a LLM) to successfully prompt a coder agent to generate code implementing the task while minimizing distance to goal. Organize the requirements with clear indexing to a depth of {specification_depth}.",
+        f"6) Tasks provided should be generic, not specific to given examples{', so the reasoning can mention examples but proposed task and plan should not mention any information related to examples' if use_examples else ''}.",
+        f"7) After proposing the task, {'you should provide a test case of the function corresponding to this task for each example using the one-liner function call format.' if auto_add_test_to_prompt_answer else 'do not add test cases automatically.'}"
+    ]
+    
+    del criteria_coach[criteria_to_remove - 1]
+    coach_text = "\n".join(criteria_coach)
+    
+    prompt_coach = f"""
+    You are a {role_priming} that defines tasks to {goal_description} given a [Title] and an [Abstract].
+    Each task you propose will be prompted to a language model which will try to convert it into Python functions.{task_complexity}
+    If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration.
+    I will provide you:
+    - Learnt tasks available (with information gain between 0 and 1 on plan's titles, and contents): ...
+    {f'- Failed tasks to learn that are too hard: ...' if include_failed_tasks else ''}
+    - Current status of examples of technical synthesis the proposed next task will be tested on: ...
+    You should tell me the next best novel task we should try to implement given your LLM knowledge, available learnt tasks, in order to maximize synthesis generated quality, length and format, and speed to produce it.
+    You must follow the criteria below:
+    {coach_text}
+    You should propose a plan to achieve this task by breaking it down as a tree-structure. The plan tree should be of depth {plan_depth}.
+    Some specific commands available later for implementation in python of the task you will provide:
+    {available_commands_detail} list of commands...
+    You should only respond in the format as described below:
+    RESPONSE FORMAT:
+    1. Reasoning: Based on the information listed above, do reasoning about what the next task should be and why. Ensure it will minimize the distance to goal.
+    2. Task: Next best task to develop.
+    3. Specifications: present a tree-like structure of acceptance criteria, best strategies to compare, performance tips to beat a single LLM.
+    4. Plan: Tree-structured plan of depth {plan_depth} breaking-down next best task into basic commands
+    {'5. Tests: Provide test cases using the one-liner function call format.' if auto_add_test_to_prompt_answer else ''}
+    """
+    # Write the prompt in the file readed after by the coach
+    with open("./prompts/IR_CPS_TechSynthesis/identify_best_task.txt", "w") as f:
+            f.write(prompt_coach)
 
-    # Define the parameters (Capitalizer)
-    # Not sure it is necessary to define parameters for the Capitalizer and optimize it with Optuna...
+    # Define parameters for Coder
 
-    # Define parameters (global)
-    score_calculation = trial.suggest_categorical("score_calculation", ["Semantic", "Sum semantic", "Succes rate"])
+    prompt_template = trial.suggest_categorical("prompt_template", ["Extensive", "Minimal"])
+    libraries_restriction = trial.suggest_categorical("libraries_restriction", [
+        "BeautifulSoap, RegEx, Sklearn, Huggingface, Langchain, Voyager",
+        "Numpy, Pandas, Matplotlib, Scikit-learn",
+        "TensorFlow, PyTorch, Transformers, SpaCy"
+    ])
+    bot_function_specifications = trial.suggest_categorical("bot_function_specifications", [
+        "Manipulate document sections: bot.create_and_add_section_then_return_id(title: str, content: str, section_id: int = None, parent_id: int = None) -> int, bot.get_all_sections() -> List[Section], bot.get_sections(ids: List[int]) -> List[Section], bot.edit_section(section_id: int, new_content: str = None, new_title: str = None, new_parent_id: int = None) -> bool, bot.remove_section(section_id: int) -> bool, bot.swap_sections(section_id_1: int, section_id_2: int) -> bool",
+        "Manipulate document resources: bot.add_or_update_results_in_resources(results, metadatas_to_add:dict=None, store_linked_document_content:bool=False), bot.add_or_update_result_in_resources(metadatas:dict, name:str=None, content:dict=None, link:str=None, store_linked_document_content:bool=False), bot.get_all_resources(self) -> List[Dict[str, Any]], bot.semantic_search_resources(query_texts, n_results=10), bot.add_or_update_results_in_resources(results, metadatas:dict=None, store_linked_document_content:bool=False), bot.get_and_store_link_content(link:str=None, parent_id=None, chaining:bool=True), bot.remove_resource(resource_id)"
+    ])
+    reasoning_depth = trial.suggest_int("reasoning_depth", 1, 3)
+    modularity = trial.suggest_categorical("modularity", [
+        "None",
+        "Helper functions for common tasks",
+        "Modular classes for related functions",
+        "Parameterize all varying data"
+    ])
+    handle_previous_attempts = trial.suggest_categorical("handle_previous_attempts", [True, False])
+    instruction_to_remove = trial.suggest_int("instruction_to_remove", 1, 14)
 
-    print(f"constraint: {constraint}\nscore_calculation: {score_calculation}")
+    modularity_final = f"3) Ensure that the generated code adheres to principles of reusability and modularity as {modularity}." if modularity != "None" else "3) Ensure that the generated code adheres to principles of reusability." 
+    
+    # Construct the prompt based on the suggested parameters
+    criteria_coder = [
+         f"1) Reason in {reasoning_depth} steps to find out the best task to minimize distance to goal.",
+        "2) Write a function taking the bot as the first parameter which is the shared object of document content and resources (it is an instance of the class SynthesisManager).",
+        f"{modularity_final} Specifically, functions should not hard-code strings, variables, or parameters that make them context-specific. Instead, any data or parameters of helpers functions that can vary should be passed as arguments to the functions, ensuring that the functions can be reused in different contexts or with different data without requiring modifications to the code itself. This ensures that the code is adaptable and can be utilized in various scenarios, enhancing its utility and longevity.",
+        "4) Call existing functions as much as possible.",
+        "5) Your function will be reused for building more complex functions. Therefore, you should make it generic and reusable. Avoid to include specific query or information in the function instead of using it as an argument.",
+        "6) Anything defined outside a function will be ignored, define all your variables and classes inside your functions.",
+        "7) Ensure that your code is fully executable, it is not a skeleton and does not contain placeholders, unimplemented sections, or comments indicating future work (e.g., TODO, pass, '....', etc.). All functions and logic must be complete and runnable to facilitate immediate use and testing.",
+        "8) Do not write infinite loops or recursive functions.",
+        "9) Name your function in a meaningful way (can infer the task from the name).",
+        "10) Any packages/libraries used by the function should be imported inside the function (it will be ignored if imported outside)",
+        "11) Success of the task output is evaluated by analyzing the new state of resources and sections, and events.",
+        "12) If some content is generated for the task and that its quality impacts task's success, you must log an event using `bot.add_event(event: str, data: dict)` to enable the critic agent to evaluate this content it through the events' list. The `event` should describe the type of event to help the critic to understand what to check, and `data` should include all information to be analyzed. If this event is in a loop/for, just fully log the event 1 time to avoid too much logging and allow sampling evaluation.",
+        f"13) Your function should include appropriate modification to resources and sections to measure task success. Main functions are:\n- class Section(section_id: int, title: str, content: str, parent_id: int)\n- {bot_function_specifications}",
+        "14) Before the return of the main function, ensure to store your results or text generated in resources or sections which are the only permanent storage. Also, ensure that results are returned for future reuse of the function."
+    ]
+    
+    del criteria_coder[instruction_to_remove - 1]
+    coder_text = "\n".join(criteria_coder)
+    
+    prompt_coder = f"""
+    You are a helpful assistant that writes Python code to be executed using a restricted list of packages ({libraries_restriction}) to complete the task specified by me.
+    At each round of conversation, I will give you:
+    - Reasoning: explanation of the task chosen...
+    - Task: ...
+    - Plan: ...
+    - Tests: tests that will be done on target document
+    CURRENT STATE OF THE ENVIRONMENT USED TO TEST TASK
+    Document #.... : 1.title: ...; 2. abstract: ...; 3. current table of content; 4. current resources; 5. sections titles progress; 6. sections content progress; 7. events counted
+    ...
+    - General code for re-use or demonstration purpose: ...
+    - Code from the last round with attempts to implement task with its performance (e.g. 'sections titles progress': x, 'sections content progress': y): ...
+    - Execution error: ...
+    You should then respond to me with:
+    - Reasoning: How to best implement the plan with no errors and maximum performance towards the goal ?
+    - Code:
+    {coder_text}
+    RESPONSE FORMAT (You should only respond in the format as described below, and follow the example provided):
+    Reasoning: ...
+    Code:
+    ```python
+    # helper functions (only if needed, try to avoid them)
+    # detailed content of the function...
+    # main function after the helper functions
+    def your_main_function_name(bot):
+        title = bot.document.title
+        abstract = bot.document.context
+        # detailed content of the function...
+    ```
+        """
+    # Write the prompt in the file readed after by the coder
+    with open("./prompts/IR_CPS_TechSynthesis/code_task.txt", "w") as f:
+            f.write(prompt_coder)
+
+    # Define parameters for the Critic
+
+    prompt_template = trial.suggest_categorical("prompt_template", ["Extensive", "Minimal"])
+    reasoning_depth = trial.suggest_int("reasoning_depth", 1, 3)
+    detailed_explanation = trial.suggest_categorical("detailed_explanation", [True, False])
+    critic_to_remove = trial.suggest_int("critic_to_remove", 1, 3)
+    
+    # Construct the prompt based on the suggested parameters
+    criteria_critic = [
+        f"Reasoning: Based on the information I listed above, do a {reasoning_depth} step reasoning to evaluate if the code implementation and execution is aligned with the task goal to decide if it is a success.",
+        "Success: write 'True' if code is a success, 'False' otherwise",
+        f"Explain: explain in detail your evaluation of your success evaluation." if detailed_explanation else ""
+    ]
+    
+    del criteria_critic[critic_to_remove - 1]
+    critic_text = "\n".join(criteria_critic)
+    
+    if prompt_template == "Extensive":
+        prompt_critic = f"""
+        You are a Python expert and domain expert in the field of the task, you should validate the Python code provided and its result regarding the code implementing the task and feedback.
+        I will provide you:
+        TASK: {{task}}
+        CODE: {{code}}
+        Some additional information to evaluate code: {{runtime_errors}}
+        Execution result returned by exec command of code provided: {{exec_result}}
+        RESPONSE FORMAT: you should only respond in the format as described below:
+        {critic_text}
+        EXAMPLES:
+        Reasoning: The initial task was to list all GPS points of vessels in the zone. The code is aligned with this task, it ran without errors, your confirmed what I could not check.
+        Success: "True"
+        Explain: code generated result expected by task without errors.
+        """
+    else:
+        prompt_critic = f"""
+        You are a Python expert and domain expert in the field of the task, you should validate the Python code provided and its result regarding the code implementing the task and feedback.
+        I will provide you:
+        TASK: {{task}}
+        CODE: {{code}}
+        Some additional information to evaluate code: {{runtime_errors}}
+        Execution result returned by exec command of code provided: {{exec_result}}
+        RESPONSE FORMAT: you should only respond in the format as described below:
+        {critic_text}
+        """
+
+        with open("./prompts/validate_code.txt", "w") as f:
+            f.write(prompt_critic)
 
     # Save the parameters chosen by the trial
-    with open("selected_task.txt", "a") as f:
-        f.write(f"Trial: {trial.number}\nPrompt Chosen: {promptVariation}\nModel Chosen (0: gpt-3.5, 1: gpt-4o, 2: 3-chains, 3: 10-chains): {modelVariation}\n\n")
+    with open("Optuna_results.txt", "a") as f:
+        f.write(f"Trial: {trial.number}\nPrompt Coach Chosen: \n{prompt_coach}\nPrompt Coder Chosen : \n{prompt_coder}\nPrompt Critic Chosen : \n{prompt_critic}\nModel Chosen: {modelVariation}\n")
 
     # Run the learning loop
-    perf = run_4agents_learning_loop(default_llm_key="default_llm",
+    perf = learn.run_4agents_learning_loop(default_llm_key="default_llm",
                                 premium_llm_key="premium_llm",
                                 llmORchains_list=llmORchains_list,
                                 test_environments=envs,
@@ -43,9 +242,11 @@ def objective(trial):
                                 agcoding_skip_rounds=0,
                                 agvalidation_skip_rounds=0,
                                 agcapitalize_skip_rounds=0,
-                                prompt_choice=promptVariation,
                                 model_choice=modelVariation,
                                 optuna_opti="Coach")
+    
+    with open("Optuna_results.txt", "a") as f:
+        f.write(f"Performance: {perf}\n\n")
     
     return perf
 
@@ -55,10 +256,10 @@ if __name__ == "__main__":
     #default_llm = create_Nmajority_chain(num_models=3)
     #premium_llm = ChatOpenAI(model_name="gpt-4o") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
     llmORchains_list = {
-        "default_llm": ChatOpenAI(model_name="gpt-3.5-turbo-1106"),
-        "premium_llm": ChatOpenAI(model_name="gpt-3.5-turbo-1106"),
-        "3_majority_chain": create_Nmajority_chain(num_models=3),
-        "10_majority_chain": create_Nmajority_chain(num_models=10)
+        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt-3.5"]),
+        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt-4"]),
+        "3_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"] , num_models=3),
+        "10_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"], num_models=10)
     }
 
     # Set the documents to test/validate as a list of environments
@@ -72,8 +273,22 @@ if __name__ == "__main__":
             'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
     envs = []
     for doc in documents:
-        env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'], target_file_path=doc['target_file_path'], id=doc['id']).get_environment()
+        env = learn.EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'], target_file_path=doc['target_file_path'], id=doc['id']).get_environment()
         envs.append(env)
 
-    study = opt.create_study(direction="maximize")
-    study.optimize(objective, n_trials=10)
+    with open("Optuna_results.txt", "w") as f:
+        f.write("")
+    # Wait for 10s
+    time.sleep(10)
+    # get current folder
+    current_folder = os.getcwd()
+
+    sqlite_file = os.path.join(current_folder, "optuna.db")
+
+    # Supprimer le fichier SQLite s'il existe
+    if os.path.exists(sqlite_file):
+        os.remove(sqlite_file)
+
+    # Create a study and optimize the objective function
+    study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}")
+    study.optimize(objective, n_trials=200)

@@ -5,11 +5,10 @@ import subprocess
 
 import time
 import json
-import requests
 from elasticsearch import Elasticsearch
+import requests
 
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_openai import OpenAIEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
 #from langchain.schema import AIMessage, HumanMessage, SystemMessage, FunctionMessage
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.ai import AIMessage
@@ -25,12 +24,13 @@ from utils.file_utils import *
 import concurrent.futures
 
 from langchain_community.vectorstores import Chroma, ElasticsearchStore
-from config import OPENAI_API_KEY, PickleCacheActivated
+from config import PickleCacheActivated
 import os
 import openai
+from requests.auth import HTTPBasicAuth
 
-openai.api_key = OPENAI_API_KEY
-os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
+openai.api_key = os.environ['OPENAI_API_KEY']
+openai.base_url = os.environ['OPENAI_BASE_URL']
 
 ON_INPUT = False
 
@@ -48,7 +48,7 @@ async def send_message(message):
 
 
 def is_websocket_running():
-    url = "http://localhost:6789"
+    url = "http://127.0.0.1:5000/api/hello"
     try:
         response = requests.get(url)
         if response.status_code == 200:
@@ -292,12 +292,12 @@ def save_prompt_with_tag(prompt_name, text, new_tag, package_path="."):
     # Save the file
     return dump_text(text, prompt_file_path_name)
 
-
 class UnifiedVectorDB:
     db_type = 'elasticsearch'  # can be 'elasticsearch' or 'chroma'
     es_url = 'http://127.0.0.1:9200'
     es_user = None
     es_password = None
+    OpenAI_embedding_function_name = "text-embedding-ada-002"
 
     @staticmethod
     def check_db():
@@ -345,7 +345,8 @@ class UnifiedVectorDB:
                 distance_strategy="COSINE"
             )
             self._collection = self.db
-            embedding_size = len(embedding_function.embed_query(""))
+            embedding_test = embedding_function.embed_query("test")
+            embedding_size = len(embedding_test)
             if reset_db_indices:
                 self.db.client.indices.delete(index=self.collection_name, ignore=[400,
                                                                                   404])  # TODO: set it as a parameter to reset when changing embeddings
@@ -453,7 +454,7 @@ class HumanLLMMonitor:
     step_id = 0
     function_list = None
     common_vectordb = None
-    common_vectordb_embedding_function = OpenAIEmbeddings()  #HuggingFaceEmbeddings(model_name="intfloat/e5-base-v2", encode_kwargs={"normalize_embeddings": True}) # TODO: set as a parameter
+    common_vectordb_embedding_function = None #OpenAIEmbeddings(model=UnifiedVectorDB.OpenAI_embedding_function_name, deployment=UnifiedVectorDB.OpenAI_embedding_function_name)  #HuggingFaceEmbeddings(model_name="intfloat/e5-base-v2", encode_kwargs={"normalize_embeddings": True}) # TODO: set as a parameter
 
     common_vectordb_collection_name = "human_llm_monitor_logs"
     common_vectordb_persist_directory = "human_llm_monitor_vectordb"
@@ -464,13 +465,13 @@ class HumanLLMMonitor:
         # if embedding_function is a string, then create the corresponding embedding function
         if isinstance(embedding_function, str):
             if embedding_function in ["OpenAIEmbeddings", "text-embedding-ada-002"]:
-                HumanLLMMonitor.common_vectordb_embedding_function = OpenAIEmbeddings()
+                HumanLLMMonitor.common_vectordb_embedding_function = OpenAIEmbeddings(model=embedding_function, deployment=UnifiedVectorDB.OpenAI_embedding_function_name)
             elif embedding_function == "HuggingFaceEmbeddings":
                 HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
                     model_name="intfloat/e5-base-v2", encode_kwargs={"normalize_embeddings": True})
             else:
                 HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
-                    model_name=embedding_function, encode_kwargs={"normalize_embeddings": True})
+                    model_name=embedding_function, encode_kwargs={"normalize_embeddings": True}, model_kwargs={"trust_remote_code": True})
         else:
             HumanLLMMonitor.common_vectordb_embedding_function = embedding_function
 
@@ -606,21 +607,10 @@ class HumanLLMMonitor:
                     self.set_premium_llm(new_llm_name)
                     default_llm_function = self.default_llm
                     premium_llm_function = self.premium_llm
+                    self.synthesize_mode = False
                     # Default actions for all agents while running with optuna
-                    if self.agent_name == "TaskIdentificationAgent":
-                        action = "J"
-                    elif self.agent_name in ["CodingAgent", "ValidationAgent", "CapitalizationAgent"]:
-                        action = ""
-                    else:
-                        action = smart_input(
-                            f"{menu}\n\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",self.agent_name).upper()
-                case "Coder":
-                    break
-                case "Critic":
-                    break
-                case "Capitalizer":
-                    break
-                case _:  # Default case
+                    action = ""
+                case _: # Default case
                     action = smart_input(
                         f"{menu}\n\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",self.agent_name).upper()
 
@@ -762,22 +752,13 @@ class HumanLLMMonitor:
                     self.num_parallel_inferences = 1
 
             elif action == "J":  # Change num of parallel inferences and synthesize mode
-                if (self.agent_name == "TaskIdentificationAgent" and optuna == "Coach"):
-                    try:
-                        self.num_parallel_inferences = 10
-                    except:
-                        self.num_parallel_inferences = 1
-                    self.synthesize_mode = synthesize_mode_input == "1"
-                else:
-                    try:
-                        self.num_parallel_inferences = int(input("Enter new value for num_parallel_inferences: "))
-                    except:
-                        self.num_parallel_inferences = 1
-                    synthesize_mode_input = input("Turn synthesis mode on/off (1 for ON, 0 for OFF): ").strip()  #NEW
-                    if synthesize_mode_input in ["0", "1"]:  #NEW
-                        self.synthesize_mode = synthesize_mode_input == "1"  #NEW
-                    else:  #NEW
-                        print("Invalid input. Synthesize mode remains unchanged.")
+                try: self.num_parallel_inferences = int(input("Enter new value for num_parallel_inferences: "))
+                except: self.num_parallel_inferences = 1
+                synthesize_mode_input = input("Turn synthesis mode on/off (1 for ON, 0 for OFF): ").strip()  #NEW
+                if synthesize_mode_input in ["0", "1"]:  #NEW
+                    self.synthesize_mode = synthesize_mode_input == "1"  #NEW
+                else:  #NEW
+                    print("Invalid input. Synthesize mode remains unchanged.")
 
             # Count time spent and occurrences waiting and in each option
             if action:
@@ -1127,7 +1108,7 @@ class HumanLLMMonitor:
     #    def CallHumanLLM(self, original_input_messages=None, llm_function=None, premium_llm_function=None, callable_system_message=None, system_prompt_template=None, user_message=None, return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=90, stream_output=True):
     def CallHumanLLM(self, original_input_messages=None, default_llm_function=None, premium_llm_function=None,
                      callable_system_message=None, system_prompt_template=None, user_message=None,
-                     return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=90,
+                     return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=300,
                      stream_output=False, use_default_llm=True, optuna=None, model_choice=None):
         #if not self.selected_llm_or_chain: raise ValueError("No LLM or chain selected for use.")
         # Define a helper function to perform the LLM calls for parallel inference.
@@ -1188,8 +1169,7 @@ class HumanLLMMonitor:
                 # Use concurrent futures to parallelize the LLM calls.
                 outputs = []
                 with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_parallel_inferences) as executor:
-                    if type(self.premium_llm) == type(
-                            self.llmORchains_list.get('3_majority_chain')) and self.agent_name == "CodingAgent":
+                    if type(self.premium_llm) == type(self.llmORchains_list.get('3_majority_chain')):
                         stream_output = True
                     futures = [executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling,
                                                temperature, stream_output, _) for _ in
