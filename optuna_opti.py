@@ -286,4 +286,4 @@ if __name__ == "__main__":
     #os.makedirs(current_folder + "/optuna.db", exist_ok=True)
     # Create a study and optimize the objective function
     study = opt.create_study(direction="maximize") #, storage=f"sqlite:///{current_folder}/optuna.db")
-    study.optimize(objective, n_trials=10000000)
+    study.optimize(objective, n_trials=200)
