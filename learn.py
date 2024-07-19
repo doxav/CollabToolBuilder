@@ -4,6 +4,7 @@ import traceback
 import openai
 import json
 from typing import Dict, Optional
+
 from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, load_prompt, save_prompt, _visual_input, is_vscode_installed, smart_print, smart_input
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import copy
@@ -40,6 +41,8 @@ os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
 
 UnifiedVectorDB.db_type = "elasticsearch" # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
+UnifiedVectorDB.es_user = elastic_user
+UnifiedVectorDB.es_password = elastic_password
 
 embedding_function="text-embedding-ada-002" # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
 reset_db_indices=False # Set to True after changing embeddings
@@ -343,12 +346,12 @@ class CodingAgent():
                             no_runtime_error, exec_result = env.step(code_to_run)
                             while not no_runtime_error and current_skip_rounds <= 0:
                                 smart_print("\033[31mCODE ERROR\033[0m: "+exec_result, self.name, "code_task_and_run_test SystemMessage")
-                                decision = smart_input("Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ").strip().lower()
+                                decision = smart_input("Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ",self.name).strip().lower()
                                 if decision in ("no", "n", ""):
                                     break
                                 elif decision == "a":
                                     # do not use HumanLLMMonitor because no template is available for this specific case
-                                    smart_print("\033[31mTRYING TO AUTOFIX ERROR\033[0m")
+                                    smart_print("\033[31mTRYING TO AUTOFIX ERROR\033[0m",self.name)
                                     message_content = f"ERROR MESSAGE:[[{exec_result}]]\nCODE:[[{parsed_code['program_code']}]]"
                                     edited_code = self.premium_llm([SystemMessage(content=load_prompt("code_fixer")), HumanMessage(content=message_content)]).content
                                 else:
@@ -390,7 +393,7 @@ class CodingAgent():
                 if self.optuna_opti:
                     if top_indice != -1: selected_code = f"{top_indice}"
                     else: selected_code = "n"
-                else: selected_code = smart_input(f"{results_list}CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL): ").strip().replace(" ","").lower().split(",")
+                else: selected_code = smart_input(f"{results_list}CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL): ",self.name).strip().replace(" ","").lower().split(",")
             else:
                 selected_code = [""] # keep all if skip_rounds is not 0
             id = 0
@@ -417,7 +420,7 @@ class ValidationAgent():
     def validate_code(self, code: str, no_runtime_error:bool, exec_result:str, task:str=None, human_evaluation_required=False, scores=None, env_states=None) -> str:
         runtime_errors = f'\033[32mno runtime errors at execution - code returned:\n{exec_result}\n\033[0m' if no_runtime_error else f'\033[31mruntime errors at execution - error:{exec_result}\033[0m'
         if human_evaluation_required:
-            human_evaluation = smart_input(f"\n\n*******************\n{code}\n************\nCODE ABOVE EXECUTED with result: {runtime_errors}\n****\System may not efficiently evaluate what is produced by the code, please add your evaluation of the result (or hit enter): ")
+            human_evaluation = smart_input(f"\n\n*******************\n{code}\n************\nCODE ABOVE EXECUTED with result: {runtime_errors}\n****\System may not efficiently evaluate what is produced by the code, please add your evaluation of the result (or hit enter): ",self.name)
         else:
             human_evaluation = ""
         runtime_errors = 'no runtime errors at execution' if no_runtime_error else 'runtime errors at execution' # just to avoid to break colors inside HumanLLMMonitor
@@ -468,7 +471,7 @@ class CapitalizationAgent:
         # check if the function file already exists, if yes, ask the user a new name
         if os.path.exists(function_file_path):
             smart_print(f"Function file {function_file_path} already exists, please provide a new name for the function.", self.name, "capitalize_successful_tasks WARNING")
-            function_file_path = os.path.join("functions", smart_input("New function name: ")+".py")
+            function_file_path = os.path.join("functions", smart_input("New function name: ",self.name)+".py")
         with open(function_file_path, "w") as function_file:
              # use regex to extract the docstring from tool_description
             docstring_pattern = re.compile(r'(""".*?""")', re.DOTALL)
@@ -537,10 +540,10 @@ class CapitalizationAgent:
             task_data = json.loads(page_content)
             smart_print(f"{id}: function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
         if include_code is None:
-            include_code = smart_input(f"CONFIG When adding the functions description in successful tasks, do you want to also include the code (it may overflow the maximum prompt length but can also guide generation) ? (yes/no): ").strip().lower() in ["yes", "y"]
+            include_code = smart_input(f"CONFIG When adding the functions description in successful tasks, do you want to also include the code (it may overflow the maximum prompt length but can also guide generation) ? (yes/no): ",self.name).strip().lower() in ["yes", "y"]
         # Second step: ask the user to select the functions to load
         if selected_successful_functions is None:
-            selected_successful_functions = smart_input(f"CONFIG Please select the successful functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
+            selected_successful_functions = smart_input(f"CONFIG Please select the successful functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ",self.name).strip().replace(" ","").lower().split(",")
         id = 0
         # load into self.tasks_repository
         for result in results_success_db:
@@ -571,7 +574,7 @@ class CapitalizationAgent:
             smart_print(f"{id}: failed function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
         # Second step: ask the user to select the functions to load
         if selected_failed_functions is None:
-            selected_failed_functions = smart_input(f"CONFIG Please select the failed functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
+            selected_failed_functions = smart_input(f"CONFIG Please select the failed functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ",self.name).strip().replace(" ","").lower().split(",")
         id = 0
         # load into self.tasks_repository
         for result in results_failed_db:
@@ -673,12 +676,12 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             # get input from user with the index of the task to select, manage exceptions
             while True:
                 try:
-                    task = task[prompt_choice] if optuna_opti and prompt_choice else task[int(smart_input("Enter the index of the task to select: ").strip())]
+                    task = task[prompt_choice] if optuna_opti and prompt_choice else task[int(smart_input("Enter the index of the task to select: ","orchestrate_agents").strip())]
                     with open("selected_task.txt", "a") as f:
                         f.write(f"Prompt {prompt_choice}: \n{task.content}\n\n")
                     break
                 except Exception as e:
-                    smart_print(f"Error: {e}\n\nEnter a valid index")
+                    smart_print(f"Error: {e}\n\nEnter a valid index","orchestrate_agents")
         else:
             task = task[0]
 
@@ -703,10 +706,10 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
             agent_taskreco.update_learnt_tasks(agent_capitalize.tasks_repository)
         else:
-            if smart_input("Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ").strip().upper() in ["Y", "YES"]:
+            if smart_input("Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ","orchestrate_agents").strip().upper() in ["Y", "YES"]:
                 agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
                 agent_taskreco.update_failed_tasks(agent_capitalize.failed_tasks_repository)
-        answer = "y" if optuna_opti else smart_input("Do you want to reset the environment for searching a new task (Y/YES) or search a new task by keeping what has been created by this task (N/NO/Enter) ? or just exit (E/EXIT) ?").strip().upper()
+        answer = "y" if optuna_opti else smart_input("Do you want to reset the environment for searching a new task (Y/YES) or search a new task by keeping what has been created by this task (N/NO/Enter) ? or just exit (E/EXIT) ?","orchestrate_agents").strip().upper()
         continue_identifying_tasks, optuna_coach = False, False if answer in ["E", "EXIT"] else True
         if answer.upper() in ["Y", "YES"]:
             [env.reset() for env in test_environments]
@@ -769,15 +772,15 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
         current_skip_rounds = agent_validation.human_llm_validate_code.skip_rounds
         for index, (parsed_code, no_runtime_error, exec_result, new_reset_unique_ids, scores, env_states) in enumerate(results):
             agent_validation.human_llm_validate_code.skip_rounds = current_skip_rounds # to prevent skip_rounds decreased multiple times by multiple calls of HumanLLMMonitor
-            smart_print(f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace("\\n", "\n"), None, "coding_and_validation_loop RESULT")
+            smart_print(f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace("\\n", "\n"), "coding_and_validation_loop", "coding_and_validation_loop RESULT")
             validation_agent_feedback = agent_validation.validate_code(parsed_code["program_code"], no_runtime_error, exec_result, task=task_description, scores=scores, env_states=env_states)
-            smart_print("Agent validation 'feedback' currently only support 1 feedback", None, "coding_and_validation_loop WARNING")
+            smart_print("Agent validation 'feedback' currently only support 1 feedback", "coding_and_validation_loop", "coding_and_validation_loop WARNING")
             validation_agent_feedback = validation_agent_feedback[0]
             afb = validation_agent_feedback.content.replace('\\n', '\n')
-            smart_print("#"*20 + f"\nAgent validation feedback: {afb}", None, "coding_and_validation_loop RESULT")
+            smart_print("#"*20 + f"\nAgent validation feedback: {afb}", "coding_and_validation_loop", "coding_and_validation_loop RESULT")
 
             if extra_manual_validation_to_capitalize:
-                validated = (input("#"*20+f"\nADD THIS FUNCTION TO LIBRARY ? Please enter 'yes' if this a success and you want to add this function to library, 'no' if this failed: ").lower() in ["yes", "y", True])
+                validated = (smart_input("#"*20+f"\nADD THIS FUNCTION TO LIBRARY ? Please enter 'yes' if this a success and you want to add this function to library, 'no' if this failed: ","coding_and_validation_loop").lower() in ["yes", "y", True])
             else:
                 validated = get_success_value_in_text(afb) in ["yes", "y", True]
             if validated:
@@ -799,7 +802,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
             break
 
         if attempt == max_attempts - 1:
-            smart_print("Max attempts reached. Trying a new task.", None, "coding_and_validation_loop WARNING")
+            smart_print("Max attempts reached. Trying a new task.", "coding_and_validation_loop", "coding_and_validation_loop WARNING")
 
     # Second part: If there are successful codes, ask user to select one
     if successful_codes and (not continue_even_if_successful or attempt >= max_attempts - 1):
@@ -808,20 +811,20 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
             return selected_code, "success", scores
         if current_skip_rounds <= 0:
             for i, (parsed_code, feedback, new_reset_unique_ids, scores) in enumerate(successful_codes):
-                smart_print(f"\033[91mOption {i+1}:\033[0m\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {scores}\033[0m\n", None, "coding_and_validation_loop RESULT")
+                smart_print(f"\033[91mOption {i+1}:\033[0m\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {scores}\033[0m\n", "coding_and_validation_loop", "coding_and_validation_loop RESULT")
             if optuna : 
                 highest_score_index = get_highest_score_index([scores for _, _, _, scores in successful_codes], mode='total')
                 selected_code, _, selected_reset_unique_ids, scores = successful_codes[highest_score_index]
                 return selected_code, "success", scores
             else:
-                selection = smart_input("Several codes were successful. Please enter the number of the code you want to add to the library: ").strip()
+                selection = smart_input("Several codes were successful. Please enter the number of the code you want to add to the library: ","coding_and_validation_loop").strip()
             if selection.isdigit() and 0 < int(selection) <= len(successful_codes):
                 selected_index = int(selection) - 1
-                smart_print("Code validated successfully.", None, "coding_and_validation_loop RESULT")
+                smart_print("Code validated successfully.", "coding_and_validation_loop", "coding_and_validation_loop RESULT")
                 selected_code, _, selected_reset_unique_ids, scores = successful_codes[selected_index]
                 return selected_code, "success", scores
             else:
-                smart_print("Invalid selection or no selection made. Exiting without adding any code.", None, "coding_and_validation_loop WARNING")
+                smart_print("Invalid selection or no selection made. Exiting without adding any code.", "coding_and_validation_loop", "coding_and_validation_loop WARNING")
         else: # if in automatic mode, select the code with the highest score
             highest_score_index = get_highest_score_index([scores for _, _, _, scores in successful_codes], mode='total')
             selected_code, _, selected_reset_unique_ids, scores = successful_codes[highest_score_index]
@@ -835,11 +838,11 @@ def sanitized_task_name(task):
 
 class PrintPromptRunnable(Runnable):
     def invoke(self, input_msg, config):
-        smart_print(f"PrintPromptRunnable type of input_msg: {type(input_msg)}")
+        smart_print(f"PrintPromptRunnable type of input_msg: {type(input_msg)}","PrintPromptRunnable")
         # Extract and format the prompt
         formatted_prompt = format_prompt(input_msg if isinstance(input_msg, list) else input_msg.messages)
         # Print the prompt in RED
-        smart_print("\033[31m" + formatted_prompt + "\033[0m")
+        smart_print("\033[31m" + formatted_prompt + "\033[0m","PrintPromptRunnable")
         return input_msg
 
 class ExtractMessage(Runnable):
