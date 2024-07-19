@@ -1130,7 +1130,7 @@ class SynthesisManager:
         if not hasattr(self, 'target_file_path'):
             raise ValueError("Please set target_file_path using set_targetJSON_comparison method")
         if not hasattr(self, 'target_data'):
-            section_embedding_key, content_embedding_key, plan_embedding_key = "content_embedding_1", "section_embedding_1", "plan_embedding_1"
+            section_embedding_key, content_embedding_key, plan_embedding_key = "content_embedding_2", "section_embedding_2", "plan_embedding_2"
             self.set_targetJSON_comparison(self.target_file_path, target_section_title_embedding_label = section_embedding_key, target_section_content_embedding_label = content_embedding_key, target_plan_embedding_label = plan_embedding_key)
             self.document.update_plan_embedding()
         elif not hasattr(self.document.document_content, 'sections_list_title_embedding'):

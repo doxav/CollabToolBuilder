@@ -9,7 +9,7 @@ ollama serve &
 sleep 5
 
 print_message "34" "Pulling models"
-for model in "gemma2:9b" "qwen2:7b" "phi3:medium" "eramax/nxcode-cq-7b-orpo:q6"; do
+for model in "gemma2:9b" "qwen2:7b" "phi3:mini" "eramax/nxcode-cq-7b-orpo:q6"; do
   ollama pull "$model"
 done
 

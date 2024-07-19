@@ -1078,7 +1078,7 @@ class HumanLLMMonitor:
     #    def CallHumanLLM(self, original_input_messages=None, llm_function=None, premium_llm_function=None, callable_system_message=None, system_prompt_template=None, user_message=None, return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=90, stream_output=True):
     def CallHumanLLM(self, original_input_messages=None, default_llm_function=None, premium_llm_function=None,
                      callable_system_message=None, system_prompt_template=None, user_message=None,
-                     return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=90,
+                     return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=300,
                      stream_output=True, use_default_llm=True, optuna=None, model_choice=None):
         #if not self.selected_llm_or_chain: raise ValueError("No LLM or chain selected for use.")
         # Define a helper function to perform the LLM calls for parallel inference.

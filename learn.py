@@ -637,10 +637,14 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         if validation == "success":
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
             agent_taskreco.update_learnt_tasks(agent_capitalize.tasks_repository)
-        else:
-            if smart_input("Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ").strip().upper() in ["Y", "YES"]:
+        else :
+            if optuna_opti:
                 agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
                 agent_taskreco.update_failed_tasks(agent_capitalize.failed_tasks_repository)
+            else :
+                if smart_input("Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ").strip().upper() in ["Y", "YES"]:
+                    agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
+                    agent_taskreco.update_failed_tasks(agent_capitalize.failed_tasks_repository)
         answer = "y" if optuna_opti else smart_input("Do you want to reset the environment for searching a new task (Y/YES) or search a new task by keeping what has been created by this task (N/NO/Enter) ? or just exit (E/EXIT) ?").strip().upper()
         continue_identifying_tasks, optuna_coach = False, False if answer in ["E", "EXIT"] else True
         if answer.upper() in ["Y", "YES"]:

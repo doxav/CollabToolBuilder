@@ -13,5 +13,5 @@ PickleCacheActivated = False
 MODELS_CONFIG_LIST = {
     "gpt-4":"gemma2:9b",
     "gemma":"gemma2:9b",
-    "gpt-3.5":"phi3:medium",
+    "gpt-3.5":"qwen2:7b",
 }

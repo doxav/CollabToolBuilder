@@ -1,4 +1,6 @@
-from learn import run_4agents_learning_loop, create_Nmajority_chain, EnvironmentManager
+import os
+import time
+import learn
 from langchain_openai import ChatOpenAI
 import optuna as opt
 from config import MODELS_CONFIG_LIST
@@ -225,7 +227,7 @@ def objective(trial):
         f.write(f"Trial: {trial.number}\nPrompt Coach Chosen: \n{prompt_coach}\nPrompt Coder Chosen : \n{prompt_coder}\nPrompt Critic Chosen : \n{prompt_critic}\nModel Chosen: {modelVariation}\n")
 
     # Run the learning loop
-    perf = run_4agents_learning_loop(default_llm_key="default_llm",
+    perf = learn.run_4agents_learning_loop(default_llm_key="default_llm",
                                 premium_llm_key="premium_llm",
                                 llmORchains_list=llmORchains_list,
                                 test_environments=envs,
@@ -256,8 +258,8 @@ if __name__ == "__main__":
     llmORchains_list = {
         "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt-3.5"]),
         "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt-4"]),
-        "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gemma"], reduce_model_name=MODELS_CONFIG_LIST["gemma"] , num_models=3),
-        "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gemma"], reduce_model_name=MODELS_CONFIG_LIST["gemma"], num_models=10)
+        "3_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"] , num_models=3),
+        "10_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"], num_models=10)
     }
 
     # Set the documents to test/validate as a list of environments
@@ -271,11 +273,17 @@ if __name__ == "__main__":
             'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
     envs = []
     for doc in documents:
-        env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'], target_file_path=doc['target_file_path'], id=doc['id']).get_environment()
+        env = learn.EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'], target_file_path=doc['target_file_path'], id=doc['id']).get_environment()
         envs.append(env)
 
     with open("Optuna_results.txt", "w") as f:
         f.write("")
-
-    study = opt.create_study(direction="maximize")
-    study.optimize(objective, n_trials=10)
+    # Wait for 10s
+    time.sleep(10)
+    # get current folder
+    #current_folder = os.getcwd()
+    # create the folder/file to store optuna in sqlite
+    #os.makedirs(current_folder + "/optuna.db", exist_ok=True)
+    # Create a study and optimize the objective function
+    study = opt.create_study(direction="maximize") #, storage=f"sqlite:///{current_folder}/optuna.db")
+    study.optimize(objective, n_trials=10000000)

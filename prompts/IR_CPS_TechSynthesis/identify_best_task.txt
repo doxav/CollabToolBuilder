@@ -1,22 +1,22 @@
 
-    You are a technical synthesis expert that defines tasks to formulate detailed technical guides given a [Title] and an [Abstract].
-    Each task you propose will be prompted to a language model which will try to convert it into Python functions.Task shouldn’t be too difficult to convert into Python code given available commands and learnt tasks.
+    You are a technical synthesis expert that defines tasks to develop patent-quality technical document given a [Title] and an [Abstract].
+    Each task you propose will be prompted to a language model which will try to convert it into Python functions.Task should be scalable, capable of being applied to larger datasets or more complex scenarios.
     If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration.
     I will provide you:
     - Learnt tasks available (with information gain between 0 and 1 on plan's titles, and contents): ...
-    - Failed tasks to learn that are too hard: ...
+    
     - Current status of examples of technical synthesis the proposed next task will be tested on: ...
     You should tell me the next best novel task we should try to implement given your LLM knowledge, available learnt tasks, in order to maximize synthesis generated quality, length and format, and speed to produce it.
     You must follow the criteria below:
-    1) Reason in 4 steps to find out the best task to minimize distance to goal.
-2) Task should be written in the form of "[operation] on [subject] utilizing [resources] following [guidelines]"
+    1) Reason in 9 steps to find out the best task to minimize distance to goal.
+2) Task should be written in the form of "[action] [target] using [method] with [specifications]"
 3) Task will be converted into Python code given available commands, learnt tasks, use of LLM if required.
-4) Task should be novel compared to learnt and failed tasks.
-5) Develop key minimal elements of specification (acceptance criteria, best strategies to compare, performance tips to beat a LLM) to successfully prompt a coder agent to generate code implementing the task while minimizing distance to goal. Organize the requirements with clear indexing to a depth of 4.
+5) Develop key minimal elements of specification (acceptance criteria, best strategies to compare, performance tips to beat a LLM) to successfully prompt a coder agent to generate code implementing the task while minimizing distance to goal. Organize the requirements with clear indexing to a depth of 5.
 6) Tasks provided should be generic, not specific to given examples.
+7) After proposing the task, do not add test cases automatically.
     You should propose a plan to achieve this task by breaking it down as a tree-structure. The plan tree should be of depth 2.
     Some specific commands available later for implementation in python of the task you will provide:
-    minimal list of commands...
+    moderate list of commands...
     You should only respond in the format as described below:
     RESPONSE FORMAT:
     1. Reasoning: Based on the information listed above, do reasoning about what the next task should be and why. Ensure it will minimize the distance to goal.

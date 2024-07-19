@@ -7,7 +7,7 @@ start_datetime=$(date +"%Y-%m-%d %H:%M:%S")
 enroot import docker://jitaross/ollamawithpython:latest
 
 # Run the container and experiment
-srun --container-image=/home/$USER/jitaross+ollamawithpython+latest.sqsh --gres=gpu:1 \
+srun --container-image=/home/$USER/jitaross+ollamawithpython+latest.sqsh --gres=gpu:1 --partition=ouranos \
      --container-mounts=/home/$USER/.ollama:/home/$USER/.ollama,/home/$USER/CollabFunctionsGPTCreator:/home/$USER/CollabFunctionsGPTCreator,/home/$USER/.cache:/home/$USER/.cache /home/$USER/CollabFunctionsGPTCreator/cluster_scripts/run_indocker.sh | tee /tmp/script_output.log
 
 end_time=$(date +%s)

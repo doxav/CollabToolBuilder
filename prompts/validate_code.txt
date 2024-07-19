@@ -6,6 +6,6 @@
         Some additional information to evaluate code: {runtime_errors}
         Execution result returned by exec command of code provided: {exec_result}
         RESPONSE FORMAT: you should only respond in the format as described below:
-        Success: write 'True' if code is a success, 'False' otherwise
-
+        Reasoning: Based on the information I listed above, do a 3 step reasoning to evaluate if the code implementation and execution is aligned with the task goal to decide if it is a success.
+Success: write 'True' if code is a success, 'False' otherwise
         
