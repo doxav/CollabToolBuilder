@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Communication Interface</title>
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+    <style>
+        body { display: flex; font-family: Arial, sans-serif; }
+        #main-content { flex: 1; padding: 20px; }
+        #history-sidebar { width: 250px; padding: 20px; border-right: 1px solid #ccc; }
+        #settings-sidebar { width: 250px; padding: 20px; border-left: 1px solid #ccc; }
+        .accordion { margin-bottom: 20px; }
+        .filter-bar { margin-bottom: 20px; }
+        .column { display: inline-block; vertical-align: top; margin-right: 20px; width: 30%; }
+        .menu-option { display: inline-block; margin: 5px; padding: 5px 10px; border: 1px solid #ccc; border-radius: 15px; cursor: pointer; }
+        #user-input { width: 100%; padding: 10px; margin-top: 10px; }
+        #send-button { margin-top: 10px; }
+        .annotation-menu { display: none; position: absolute; background: white; border: 1px solid #ccc; padding: 10px; }
+    </style>
+</head>
+<body>
+    <div id="history-sidebar">
+        <h3>History</h3>
+        <div id="history-accordion" class="accordion"></div>
+        <a href="#" id="refresh-history">Refresh History</a>
+    </div>
+
+    <div id="main-content">
+        <div class="filter-bar">
+            <select id="filter-message-type">
+                <option value="all">All Message Types</option>
+            </select>
+            <select id="filter-agent-type">
+                <option value="all">All Agent Types</option>
+            </select>
+            <input type="text" id="search-filter" placeholder="Search...">
+        </div>
+
+        <div id="message-accordion" class="accordion"></div>
+
+        <div id="multi-column-display"></div>
+
+        <div id="menu-options"></div>
+
+        <input type="text" id="user-input" placeholder="Type your message...">
+        <button id="send-button">Send</button>
+
+        <div class="filter-bar">
+            <!-- Duplicate of the top filter bar -->
+        </div>
+    </div>
+
+    <div id="settings-sidebar">
+        <h3>Settings</h3>
+        <label for="default-llm">Default LLM:</label>
+        <select id="default-llm"></select>
+
+        <label for="premium-llm">Premium LLM:</label>
+        <select id="premium-llm"></select>
+
+        <label for="temperature">Temperature:</label>
+        <input type="range" id="temperature" min="0" max="1" step="0.1" value="0.5">
+
+        <button id="apply-settings">Apply Settings</button>
+    </div>
+
+    <div class="annotation-menu">
+        <select id="annotation-scope">
+            <option value="span">Selected Text</option>
+            <option value="lines">Selected Lines</option>
+            <option value="full">Full Last Answer</option>
+        </select>
+        <select id="annotation-action">
+            <option value="edit">Edit in VSCode</option>
+            <option value="improve-answer">Improve Answer</option>
+            <option value="improve-prompt">Improve Prompt</option>
+        </select>
+        <button id="apply-annotation">Apply</button>
+    </div>
+
+    <script>
+        $(function() {
+            let socket = new WebSocket('ws://localhost:6789');
+            let currentAgent = '';
+
+            socket.onopen = function() {
+                console.log('WebSocket connection established');
+            };
+
+            socket.onmessage = function(event) {
+                let data = JSON.parse(event.data);
+                displayMessage(data);
+            };
+
+            socket.onclose = function() {
+                console.log('WebSocket connection closed');
+            };
+
+            function displayMessage(data) {
+                let title = `${data.agent_name} | ${data.message_type} | ${new Date().toLocaleTimeString()}`;
+                let content = `<div class='message'>${data.message}</div>`;
+
+                if (data.agent_name !== currentAgent) {
+                    currentAgent = data.agent_name;
+                    $(`<h3>${currentAgent}</h3><div></div>`).appendTo("#message-accordion");
+                }
+
+                let $lastAgentSection = $("#message-accordion").children("div").last();
+                $(`<h4>${title}</h4><div>${content}</div>`).appendTo($lastAgentSection);
+
+                if (data.column_id) {
+                    displayInColumn(data);
+                }
+
+                if (data.input) {
+                    displayInputField();
+                }
+
+                if (data.message.includes("BEFORE") || data.message.includes("AFTER")) {
+                    displayMenuOptions(data.message);
+                }
+
+                $("#message-accordion").accordion("refresh");
+                updateFilters(data);
+            }
+
+            function displayInColumn(data) {
+                let columnHtml = `
+                    <div class="column" data-column-id="${data.column_id}">
+                        <h4>${data.agent_name} | ${data.message_type}</h4>
+                        <div>${data.message}</div>
+                        <button class="regenerate">Regenerate</button>
+                        <button class="delete">Delete</button>
+                        <button class="open-vscode">Open in VSCode</button>
+                    </div>
+                `;
+                $("#multi-column-display").append(columnHtml);
+            }
+
+            function displayInputField() {
+                $("#user-input").show();
+                $("#send-button").show();
+            }
+
+            function displayMenuOptions(message) {
+                $("#menu-options").empty();
+                let options = message.split('\n').filter(line => line.startsWith('['));
+                options.forEach(option => {
+                    let match = option.match(/\[(.)\](.*)/);
+                    if (match) {
+                        let [, letter, text] = match;
+                        $(`<span class="menu-option" data-option="${letter}">${text}</span>`).appendTo("#menu-options");
+                    }
+                });
+            }
+
+            function updateFilters(data) {
+                if (!$("#filter-message-type option[value='" + data.message_type + "']").length) {
+                    $("#filter-message-type").append(new Option(data.message_type, data.message_type));
+                }
+                if (!$("#filter-agent-type option[value='" + data.agent_name + "']").length) {
+                    $("#filter-agent-type").append(new Option(data.agent_name, data.agent_name));
+                }
+            }
+
+            $("#message-accordion").accordion({
+                header: "> div > h4",
+                collapsible: true,
+                active: false,
+                heightStyle: "content"
+            });
+
+            $("#history-accordion").accordion({
+                collapsible: true,
+                active: false,
+                heightStyle: "content"
+            });
+
+            $("#send-button").click(function() {
+                let message = $("#user-input").val();
+                if (message) {
+                    socket.send(JSON.stringify({ message: message }));
+                    $("#user-input").val('');
+                }
+            });
+
+            $("#refresh-history").click(function(e) {
+                e.preventDefault();
+                $.get("/get_history", function(data) {
+                    $("#history-accordion").empty();
+                    data.forEach(item => {
+                        $(`<h3>${item.title}</h3><div>${item.content}</div>`).appendTo("#history-accordion");
+                    });
+                    $("#history-accordion").accordion("refresh");
+                });
+            });
+
+            $("#apply-settings").click(function() {
+                let settings = {
+                    defaultLLM: $("#default-llm").val(),
+                    premiumLLM: $("#premium-llm").val(),
+                    temperature: $("#temperature").val()
+                };
+                socket.send(JSON.stringify({ type: "settings", data: settings }));
+            });
+
+            $(document).on("mouseup", ".message", function(e) {
+                let selection = window.getSelection().toString();
+                if (selection) {
+                    $(".annotation-menu")
+                        .css({top: e.pageY, left: e.pageX})
+                        .show();
+                }
+            });
+
+            $("#apply-annotation").click(function() {
+                let annotation = {
+                    scope: $("#annotation-scope").val(),
+                    action: $("#annotation-action").val(),
+                    text: window.getSelection().toString()
+                };
+                socket.send(JSON.stringify({ type: "annotation", data: annotation }));
+                $(".annotation-menu").hide();
+            });
+
+            $(document).on("click", ".menu-option", function() {
+                let option = $(this).data("option");
+                let input = $("#user-input").val();
+                socket.send(JSON.stringify({ message: `${option}:${input}` }));
+            });
+
+            $(document).on("click", ".regenerate", function() {
+                let columnId = $(this).closest(".column").data("column-id");
+                socket.send(JSON.stringify({ type: "regenerate", columnId: columnId }));
+            });
+
+            $(document).on("click", ".delete", function() {
+                $(this).closest(".column").remove();
+            });
+
+            $(document).on("click", ".open-vscode", function() {
+                let columnId = $(this).closest(".column").data("column-id");
+                socket.send(JSON.stringify({ type: "open-vscode", columnId: columnId }));
+            });
+
+            $(".filter-bar select, #search-filter").on("change keyup", function() {
+                let messageType = $("#filter-message-type").val();
+                let agentType = $("#filter-agent-type").val();
+                let searchText = $("#search-filter").val().toLowerCase();
+
+                $(".message").each(function() {
+                    let $message = $(this);
+                    let $header = $message.prev("h4");
+                    let headerText = $header.text().toLowerCase();
+                    let messageText = $message.text().toLowerCase();
+
+                    let showMessage = (messageType === "all" || headerText.includes(messageType)) &&
+                                      (agentType === "all" || headerText.includes(agentType)) &&
+                                      (messageText.includes(searchText) || headerText.includes(searchText));
+
+                    $message.toggle(showMessage);
+                    $header.toggle(showMessage);
+                });
+            });
+        });
+    </script>
+</body>
+</html>

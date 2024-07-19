@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Communication Interface</title>
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.5.1/highlight.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.5.1/styles/default.min.css">
+    <style>
+        body { display: flex; font-family: Arial, sans-serif; background-color: #8f8f8f; }
+        #main-content { flex: 1; padding: 20px; }
+        #history-sidebar { width: 250px; padding: 20px; border-right: 1px solid #3e3e3e; display: none; }
+        #settings-sidebar { width: 250px; padding: 20px; border-left: 1px solid #3e3e3e; display: none; }
+        .accordion { margin-bottom: 20px; background-color: #6a737d; color: white; }
+        .filter-bar { margin-bottom: 20px; }
+        .column { display: inline-block; vertical-align: top; margin-right: 20px; width: 30%; }
+        .menu-option { display: inline-block; margin: 5px; padding: 5px 10px; border: 1px solid #2e2e2e; border-radius: 15px; cursor: pointer; color: white; background-color: #555555; }
+        #user-input { width: 100%; padding: 10px; margin-top: 10px; }
+        #send-button { margin-top: 10px; }
+        .annotation-menu { display: none; position: absolute; background: #636363; border: 1px solid #636363; padding: 10px; }
+        .sidebar-toggle { cursor: pointer; padding: 5px 10px; background-color: #636363; border: 1px solid #636363; margin-bottom: 10px; color: white; }
+        .close-btn { position: absolute; top: -4px; right: -4px; cursor: pointer; background-color: transparent; border: none; color: white; font-size: 16px; }
+        pre { background-color: #f0f0f0; padding: 10px; border-radius: 5px; overflow-x: auto; }
+        code { font-family: 'Courier New', Courier, monospace; }
+    </style>
+</head>
+<body>
+    <div id="history-sidebar">
+        <div class="sidebar-toggle" id="toggle-history">Hide History</div>
+        <div id="history-accordion" class="accordion">
+            <h3>History</h3>
+            <div>
+                <p>History is empty</p>
+            </div>
+        </div>
+        <a href="#" id="refresh-history">Refresh History</a>
+    </div>
+
+    <div id="main-content">
+        <div class="sidebar-toggle" id="toggle-history-main">Show History</div>
+        <div class="sidebar-toggle" id="toggle-settings-main">Show Settings</div>
+        <div class="filter-bar">
+            <select id="filter-message-type">
+                <option value="all">All Message Types</option>
+            </select>
+            <select id="filter-agent-type">
+                <option value="all">All Agent Types</option>
+            </select>
+            <input type="text" id="search-filter" placeholder="Search...">
+        </div>
+
+        <div id="message-accordion" class="accordion"></div>
+
+        <div id="menu-options"></div>
+
+        <input type="text" id="user-input" placeholder="Type your message...">
+        <button id="send-button">Send</button>
+
+        <div class="filter-bar-bottom">
+            <select id="filter-message-type-bottom">
+                <option value="all">All Message Types</option>
+            </select>
+            <select id="filter-agent-type-bottom">
+                <option value="all">All Agent Types</option>
+            </select>
+            <input type="text" id="search-filter-bottom" placeholder="Search...">
+        </div>
+    </div>
+
+    <div id="settings-sidebar">
+        <div class="sidebar-toggle" id="toggle-settings">Hide Settings</div>
+        <h3>Settings</h3>
+        <center>
+        <label for="default-llm">Default LLM:</label><br><br>
+        <select id="default-llm">
+            <option value="0">GPT-3.5</option>
+            <option value="1">GPT-4</option>
+            <option value="2">Sonnet 3.5</option>
+        </select><br><br><br>
+
+        <label for="premium-llm">Premium LLM:</label><br><br>
+        <select id="premium-llm">
+            <option value="0">GPT-4</option>
+            <option value="1">Sonnet 3.5</option>
+        </select><br><br><br>
+
+        <label for="temperature">Temperature:</label><br><br>
+        <input type="range" id="temperature" min="0" max="1" step="0.1" value="0.5"><br><br><br>
+
+        <button id="apply-settings">Apply Settings</button>
+        </center>
+    </div>
+
+    <div class="annotation-menu">
+        <button class="close-btn">&times;</button>
+        <select id="annotation-scope">
+            <option value="span">Selected Text</option>
+            <option value="lines">Selected Lines</option>
+            <option value="full">Full Last Answer</option>
+        </select>
+        <select id="annotation-action">
+            <option value="edit">Edit in VSCode</option>
+            <option value="improve-answer">Improve Answer</option>
+            <option value="improve-prompt">Improve Prompt</option>
+        </select>
+        <button id="apply-annotation">Apply</button>
+    </div>
+
+     <script>
+        $(function() {
+            let socket = new WebSocket('ws://localhost:6789');
+            let currentAgent = '';
+
+            socket.onopen = function() {
+                console.log('WebSocket connection established');
+            };
+
+            socket.onmessage = function(event) {
+                let data = JSON.parse(event.data);
+                displayMessage(data);
+            };
+
+            socket.onclose = function() {
+                console.log('WebSocket connection closed');
+            };
+
+            function displayMessage(data) {
+                let title = `${data.agent_name} | ${data.message_type} | ${new Date().toLocaleTimeString()}`;
+                let content = `<div class='message'>${formatMessage(data.message)}</div>`;
+
+                let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
+                if ($agentAccordion.length === 0) {
+                    $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
+                    $("#message-accordion").append($agentAccordion);
+                }
+
+                let $messageContainer = $(`<h4>${title}</h4><div>${content}</div>`);
+                $agentAccordion.children("div").append($messageContainer);
+
+                if (data.column_id) {
+                    displayInColumn(data, $messageContainer);
+                }
+
+                if (data.input) {
+                    displayInputField();
+                }
+
+                if (data.message.includes("BEFORE") || data.message.includes("AFTER")) {
+                    displayMenuOptions(data.message);
+                }
+
+                $("#message-accordion").accordion("refresh");
+                updateFilters(data);
+
+                // Apply syntax highlighting to code blocks
+                $('pre code').each(function(i, block) {
+                    hljs.highlightBlock(block);
+                });
+            }
+
+            function formatMessage(message) {
+                // Regular expression to match Python code blocks
+                const codeBlockRegex = /```python\n([\s\S]*?)```/g;
+
+                // Replace code blocks with pretty-printed versions
+                return message.replace(codeBlockRegex, function(match, code) {
+                    return `<pre><code class="python">${code}</code></pre>`;
+                });
+            }
+
+            function displayInColumn(data, $messageContainer) {
+                let $column = $messageContainer.find(`.column[data-column-id="${data.column_id}"]`);
+                if ($column.length === 0) {
+                    $column = $(`
+                        <div class="column" data-column-id="${data.column_id}">
+                            <h4>${data.agent_name} | ${data.message_type}</h4>
+                            <div>${data.message}</div>
+                            <button class="regenerate">Regenerate</button>
+                            <button class="delete">Delete</button>
+                            <button class="open-vscode">Open in VSCode</button>
+                        </div>
+                    `);
+                    $messageContainer.append($column);
+                } else {
+                    $column.find('div').first().append(data.message);
+                }
+            }
+
+            function displayInputField() {
+                $("#user-input").show();
+                $("#send-button").show();
+            }
+
+            function displayMenuOptions(message) {
+                $("#menu-options").empty();
+                let options = message.split('\n').filter(line => line.startsWith('['));
+                options.forEach(option => {
+                    let match = option.match(/\[(.)\](.*)/);
+                    letter = match[1].toUpperCase();
+                    // Si la ligne contient le mot "Change" on l'ignore
+                    if (match && !match[2].includes("Change default") && !match[2].includes("Change premium") && !match[2].includes("Exit") && !match[2].includes("Log comments")){
+                        let $option = $(`<div class="menu-option" data-option="${match[1]}">${match[2]}</div>`);
+                        $("#menu-options").append($option);
+                    }
+                });
+            }
+
+            function updateFilters(data) {
+                if (!$("#filter-message-type option[value='" + data.message_type + "']").length) {
+                    $("#filter-message-type, #filter-message-type-bottom").append(new Option(data.message_type, data.message_type));
+                }
+                if (!$("#filter-agent-type option[value='" + data.agent_name + "']").length) {
+                    $("#filter-agent-type, #filter-agent-type-bottom").append(new Option(data.agent_name, data.agent_name));
+                }
+            }
+
+            $("#message-accordion").accordion({
+                header: "> div > h3",
+                collapsible: true,
+                active: false,
+                heightStyle: "content"
+            });
+
+            $("#history-accordion").accordion({
+                collapsible: true,
+                active: false,
+                heightStyle: "content"
+            });
+
+            $("#send-button").click(function() {
+                let message = $("#user-input").val();
+                if (message) {
+                    socket.send(JSON.stringify({ message: message }));
+                    $("#user-input").val('');
+                }
+            });
+
+            $("#refresh-history").click(function(e) {
+                e.preventDefault();
+                $.ajax({
+                    url: "http://127.0.0.1:5000/api/history",
+                    type: "GET",
+                    dataType: 'text',
+                    success: function(data) {
+                        $("#history-accordion").empty();
+                        console.log("Received raw data:", data);
+
+                        let sanitizedData = data.replace(/[\u0000-\u001F\u007F-\u009F]/g, "");
+
+                        try {
+                            let historyContent = JSON.parse(sanitizedData);
+                            let contentHtml = '';
+
+                            if (Object.keys(historyContent).length === 0) {
+                                contentHtml = '<h3>History</h3><div><p>History is empty</p></div>';
+                            } else {
+                                // Get all entries and sort them by date (assuming the key is a date string)
+                                let sortedEntries = Object.entries(historyContent).sort((a, b) => new Date(b[0]) - new Date(a[0]));
+
+                                // Keep only the last 20 entries
+                                sortedEntries = sortedEntries.slice(0, 20);
+
+                                for (const [key, value] of sortedEntries) {
+                                    contentHtml += `<h3>${key}</h3><div><pre>${JSON.stringify(value, null, 2)}</pre></div>`;
+                                }
+                            }
+
+                            $("#history-accordion").html(contentHtml);
+                            $("#history-accordion").accordion("refresh");
+                        } catch (e) {
+                            console.error("Failed to parse JSON data:", e);
+                            console.error("Received data:", sanitizedData);
+                            $("<h3>History</h3><div><p>Failed to load history due to invalid JSON format.</p></div>").appendTo("#history-accordion");
+                            $("#history-accordion").accordion("refresh");
+
+                            // Attempt to salvage partial JSON
+                            try {
+                                let partialJson = sanitizedData.substring(0, sanitizedData.lastIndexOf("}") + 1);
+                                let partialData = JSON.parse(partialJson);
+                                console.log("Partial JSON data:", partialData);
+                            } catch (e) {
+                                console.error("Failed to parse partial JSON:", e);
+                            }
+                        }
+                    },
+                    error: function(jqXHR, textStatus, errorThrown) {
+                        console.error("Failed to fetch history:", textStatus, errorThrown);
+                        $("<h3>History</h3><div><p>Failed to load history</p></div>").appendTo("#history-accordion");
+                        $("#history-accordion").accordion("refresh");
+                    }
+                });
+            });
+
+            $("#apply-settings").click(function() {
+                let settings = {
+                    defaultLLM: $("#default-llm").val(),
+                    premiumLLM: $("#premium-llm").val(),
+                    temperature: $("#temperature").val()
+                };
+                socket.send(JSON.stringify({ type: "settings", data: settings }));
+            });
+
+            $(document).on("mouseup", ".message", function(e) {
+                let selection = window.getSelection().toString();
+                if (selection) {
+                    $(".annotation-menu")
+                        .css({top: e.pageY, left: e.pageX})
+                        .show();
+                }
+            });
+
+            $("#apply-annotation").click(function() {
+                let annotation = {
+                    scope: $("#annotation-scope").val(),
+                    action: $("#annotation-action").val(),
+                    text: window.getSelection().toString()
+                };
+                socket.send(JSON.stringify({ type: "annotation", data: annotation }));
+                $(".annotation-menu").hide();
+            });
+
+            $(".annotation-menu .close-btn").click(function() {
+                $(".annotation-menu").hide();
+            });
+
+            $(document).on("click", ".menu-option", function() {
+                let option = $(this).data("option");
+                let input = $("#user-input").val();
+                socket.send(JSON.stringify({ message: `${option}` }));
+            });
+
+            $(document).on("click", ".regenerate", function() {
+                let columnId = $(this).closest(".column").data("column-id");
+                socket.send(JSON.stringify({ type: "regenerate", columnId: columnId }));
+            });
+
+            $(document).on("click", ".delete", function() {
+                $(this).closest(".column").remove();
+            });
+
+            $(document).on("click", ".open-vscode", function() {
+                let columnId = $(this).closest(".column").data("column-id");
+                socket.send(JSON.stringify({ type: "open-vscode", columnId: columnId }));
+            });
+
+            $(".filter-bar select, .filter-bar-bottom select, #search-filter, #search-filter-bottom").on("change keyup", function() {
+                let messageType = $("#filter-message-type").val();
+                let agentType = $("#filter-agent-type").val();
+                let searchText = $("#search-filter").val().toLowerCase();
+
+                let messageTypeBottom = $("#filter-message-type-bottom").val();
+                let agentTypeBottom = $("#filter-agent-type-bottom").val();
+                let searchTextBottom = $("#search-filter-bottom").val().toLowerCase();
+
+                $("#message-accordion > div").each(function() {
+                    let $agentSection = $(this);
+                    let $agentHeader = $agentSection.children("h3");
+                    let $messages = $agentSection.find(".message");
+                    let $headers = $agentSection.find("h4");
+
+                    let agentVisible = false;
+                    let agentName = $agentHeader.text().toLowerCase();
+
+                    if ((agentType === "all" || agentName.includes(agentType.toLowerCase())) &&
+                        (agentTypeBottom === "all" || agentName.includes(agentTypeBottom.toLowerCase()))) {
+                        $messages.each(function(index) {
+                            let $message = $(this);
+                            let $header = $headers.eq(index);
+                            let headerText = $header.text().toLowerCase();
+                            let messageText = $message.text().toLowerCase();
+
+                            let showMessage = (messageType === "all" || headerText.includes(messageType.toLowerCase())) &&
+                                              (messageTypeBottom === "all" || headerText.includes(messageTypeBottom.toLowerCase())) &&
+                                              (messageText.includes(searchText) || headerText.includes(searchText)) &&
+                                              (messageText.includes(searchTextBottom) || headerText.includes(searchTextBottom));
+
+                            $message.toggle(showMessage);
+                            $header.toggle(showMessage);
+
+                            if (showMessage) {
+                                agentVisible = true;
+                            }
+                        });
+                    }
+
+                    $agentSection.toggle(agentVisible);
+                });
+
+                $("#message-accordion").accordion("refresh");
+            });
+
+            // Toggle history sidebar
+            $("#toggle-history, #toggle-history-main").click(function() {
+                $("#history-sidebar").toggle();
+                $("#toggle-history-main").text($("#history-sidebar").is(":visible") ? "Hide History" : "Show History");
+                $("#toggle-history").text($("#history-sidebar").is(":visible") ? "Hide History" : "Show History");
+            });
+
+            // Toggle settings sidebar
+            $("#toggle-settings, #toggle-settings-main").click(function() {
+                $("#settings-sidebar").toggle();
+                $("#toggle-settings-main").text($("#settings-sidebar").is(":visible") ? "Hide Settings" : "Show Settings");
+                $("#toggle-settings").text($("#settings-sidebar").is(":visible") ? "Hide Settings" : "Show Settings");
+            });
+        });
+    </script>
+</body>
+</html>

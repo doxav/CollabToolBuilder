@@ -1291,7 +1291,12 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
 
     def get_score(self):
         distance = self.synthesis_manager.get_distance_to_targetJSON()
-        return {'sections titles progress': distance['plan_titles_embedding_similarity'], 'sections content progress': distance['plan_contents_embedding_similarity']}
+        return {    'sections titles progress (best = 1, worst = 0)': distance['plan_titles_embedding_similarity'],
+                    'sections content progress (best = 1, worst = 0)': distance['plan_contents_embedding_similarity'],
+                    'sections count ratio progress (best = 1, too short <1, too long >1)': distance['sections_count_ratio_to_target'],
+                    'title non-empty count ratio progress (best = 1, too short <1, too long >1)': distance['title_non_empty_count_ratio_to_target'],
+                    'content length ratio progress (best = 1, too short <1, too long >1)': distance['content_length_ratio_to_target'],
+                    'content non-empty count ratio progress (best = 1, too short <1, too long >1)': distance['content_non_empty_count_ratio_to_target']}
 
     def reset(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         self.has_reset_once = True
@@ -1326,8 +1331,6 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         table_of_content = self.synthesis_manager.get_plan_status(compact_string_format=True)
         resources_observation = self.synthesis_manager.get_resources_status(compact_string_format=True)
         document_state = f"<<< Document #{self.id} properties:\n"
-        #document_state += f"1. title: {self.title}\n"
-        #document_state += f"2. abstract: {self.abstract}\n"
         document_state += f"> Current table of content: {table_of_content if len(table_of_content) > 0 else 'Empty'}\n"
         document_state += f"> Current resources: {resources_observation if len(resources_observation) > 0 else 'Empty'}\n"
         if extended:
@@ -1335,6 +1338,11 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
             events_action_counts = self.synthesis_manager.get_count_method_calls()
             document_state += f"5. sections titles progress: {distance_to_targetJSON['plan_titles_embedding_similarity']}\n"
             document_state += f"6. sections content progress: {distance_to_targetJSON['plan_contents_embedding_similarity']}\n"
-            document_state += f"7. events counted: {events_action_counts if len(events_action_counts) > 0 else 'Empty'}\n"
+            document_state += f"7. sections count ratio progress: {distance_to_targetJSON['sections_count_ratio_to_target']}\n"
+            document_state += f"8. title non-empty count ratio progress: {distance_to_targetJSON['title_non_empty_count_ratio_to_target']}\n"
+            document_state += f"9. content length ratio progress: {distance_to_targetJSON['content_length_ratio_to_target']}\n"
+            document_state += f"10. content non-empty count ratio progress: {distance_to_targetJSON['content_non_empty_count_ratio_to_target']}\n"
+            document_state += f"11. events counted: {events_action_counts if len(events_action_counts) > 0 else 'Empty'}\n"
+
         document_state += ">>>"
         return document_state

@@ -18,6 +18,8 @@ from langchain_core.messages.function import FunctionMessage
 import tkinter as tk
 from tkinter import scrolledtext
 
+from requests.auth import HTTPBasicAuth
+
 from utils.file_utils import *
 import concurrent.futures
 
@@ -34,9 +36,19 @@ ON_INPUT = False
 
 AGENT = ''
 
+import asyncio
+import websockets
 
-def is_streamlit_running():
-    url = "http://localhost:8501"
+ws_url = "ws://localhost:6789"
+
+
+async def send_message(message):
+    async with websockets.connect(ws_url) as websocket:
+        await websocket.send(message)
+
+
+def is_websocket_running():
+    url = "http://localhost:6789"
     try:
         response = requests.get(url)
         if response.status_code == 200:
@@ -45,37 +57,31 @@ def is_streamlit_running():
         return False
 
 
-def smart_print(message: str, agent_name=None, message_type=None, append=False):
+def smart_print(message: str, agent_name=None, message_type=None, append=False, column_id=None, column_max=None):
     global AgentDisplayManager, AGENT
     if 'IN_NOTEBOOK' not in globals():
         try:  # test if IN_NOTEBOOK
             from IPython import get_ipython
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = get_ipython().__class__.__name__ == 'ZMQInteractiveShell'
-            print("Notebook mode = " + str(IN_NOTEBOOK))
+            print("Smart_print: Notebook mode = " + str(IN_NOTEBOOK))
         except:
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = False
     else:
         IN_NOTEBOOK = globals()['IN_NOTEBOOK']
 
-    if 'IN_STREAMLIT' not in globals():
-        # Check if a Streamlit server is running
-        if is_streamlit_running():
-            globals()['IN_STREAMLIT'] = IN_STREAMLIT = True
+    if 'IN_WEBSOCKET' not in globals():
+        if is_websocket_running():
+            globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = True
         else:
-            globals()['IN_STREAMLIT'] = IN_STREAMLIT = False
+            globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = False
     else:
-        IN_STREAMLIT = globals()['IN_STREAMLIT']
-        
-    if IN_STREAMLIT:
-        AGENT = agent_name
-        if append:
-            # Write in "data.txt" file
-            with open("data.txt", "a") as file:
-                file.write(message + "\n")
-        else:
-            # Write in "data.txt" file
-            with open("data.txt", "w") as file:
-                file.write(message + "\n")
+        IN_WEBSOCKET = globals()['IN_WEBSOCKET']
+
+    if IN_WEBSOCKET:
+        message_dict = {'message':message, 'agent_name':agent_name, 'message_type':message_type, 'append':append, 'column_id':column_id, 'column_max':column_max}
+        # convert message_dict to json
+        message = json.dumps(message_dict)
+        asyncio.run(send_message(message))
 
     elif IN_NOTEBOOK and agent_name:
         # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
@@ -102,42 +108,37 @@ def smart_input(message: str, agent_name=None, message_type=None):
         try:  # test if IN_NOTEBOOK
             from IPython import get_ipython
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = get_ipython().__class__.__name__ == 'ZMQInteractiveShell'
-            print("Notebook mode = " + str(IN_NOTEBOOK))
         except:
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = False
     else:
         IN_NOTEBOOK = globals()['IN_NOTEBOOK']
 
-    if 'IN_STREAMLIT' not in globals():
+    if 'IN_WEBSOCKET' not in globals():
         # Check if a Streamlit server is running
-        if is_streamlit_running():
-            globals()['IN_STREAMLIT'] = IN_STREAMLIT = True
-        else:
-            globals()['IN_STREAMLIT'] = IN_STREAMLIT = False
-    else:
-        IN_STREAMLIT = globals()['IN_STREAMLIT']
+        if is_websocket_running():
+            globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = True
 
-    if IN_STREAMLIT:
-        global ON_INPUT, AGENT
-        ON_INPUT = True
-        AGENT = agent_name
-        # Write message in "input_data.txt" file
-        with open("input_data.txt", "w") as file:
-            file.write(message)
-        time.sleep(1)
-        smart_print(message, append=True)
-        # Wait and return changed value from "input_data.txt" file
-        while True:
-            time.sleep(1)
-            with open("input_data.txt", "r") as file:
-                line = file.read()
-                print("line = ", line)
-                print("message = ", message)
-                if line != message:
-                    # Return last line of "input_data.txt" file
-                    match = re.match(r'^\s*(\w+|\d+)', line)
-                    first_word_or_number = match.group(1)
-                    return first_word_or_number
+        else:
+            globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = False
+    else:
+        IN_WEBSOCKET = globals()['IN_WEBSOCKET']
+    if IN_WEBSOCKET:
+        structured_message = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'input': True}
+        # convert structured_message to json
+        message = json.dumps(structured_message)
+        asyncio.run(send_message(message))
+
+        # Wait and receive response from WebSocket
+        async def receive_message():
+            async with websockets.connect(ws_url) as websocket:
+                print("SMART INPUT Waiting for response from WebSocket")
+                response = await websocket.recv()
+                print("SMART INPUT Received response from WebSocket")
+                answer = json.loads(response)['message']
+                print("SMART INPUT Answer: ", answer)
+                return str(answer).upper()
+
+        return asyncio.run(receive_message())
 
     elif IN_NOTEBOOK and agent_name:  # Currently DE-ACTIVATED
         # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
@@ -258,10 +259,10 @@ def save_prompt(prompt_name, text, package_path="."):
     # if prompt_file_path_name exists, move existing file to prompt_file_path_name.timestamp (timestamp = datetime.now().isoformat())
     if f_exists(prompt_file_path_name):
         moved_file_path_name = prompt_file_path_name + datetime.now().strftime(".%H-%M-%S_%m-%d-%y")
-        smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}")
+        smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}","save_prompt")
         f_move(prompt_file_path_name, moved_file_path_name)
 
-    smart_print(f"Saving new prompt file {prompt_file_path_name}")
+    smart_print(f"Saving new prompt file {prompt_file_path_name}", "save_prompt")
 
     return dump_text(text, prompt_file_path_name)
 
@@ -283,10 +284,10 @@ def save_prompt_with_tag(prompt_name, text, new_tag, package_path="."):
     # Backup existing file
     if f_exists(prompt_file_path_name):
         moved_file_path_name = prompt_file_path_name + datetime.now().strftime(".%Y-%m-%d_%H-%M-%S")
-        smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}")
+        smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}","save_prompt_with_tag")
         f_move(prompt_file_path_name, moved_file_path_name)
 
-    smart_print(f"Saving new prompt file {prompt_file_path_name}")
+    smart_print(f"Saving new prompt file {prompt_file_path_name}", "save_prompt_with_tag")
 
     # Save the file
     return dump_text(text, prompt_file_path_name)
@@ -294,20 +295,22 @@ def save_prompt_with_tag(prompt_name, text, new_tag, package_path="."):
 class UnifiedVectorDB:
     db_type = 'elasticsearch'  # can be 'elasticsearch' or 'chroma'
     es_url = 'http://127.0.0.1:9200'
-    es_user = 'temp_user'
-    es_password = 'temp_pass'
+    es_user = None
+    es_password = None
     OpenAI_embedding_function_name = "text-embedding-ada-002"
 
     @staticmethod
     def check_db():
         if UnifiedVectorDB.db_type == 'elasticsearch':
             try:
-            #     urllib.request.urlopen(UnifiedVectorDB.es_url, timeout=1)
-            # except urllib.error.URLError as e:
-            #     print(
-            #         f"Error: {e.reason} - {e}\nUnifiedVectorDB.es_url: {UnifiedVectorDB.es_url}\nPlease check if elasticsearch is running and reachable at the specified URL\nplease set UnifiedVectorDB.es_url = 'http://x.x.x.x:9200' in your config.py or search where it is set in your code.")
-            #     exit(1)
-                response = requests.get(UnifiedVectorDB.es_url, auth=HTTPBasicAuth(UnifiedVectorDB.es_user, UnifiedVectorDB.es_password), timeout=1, verify=False)
+                #     urllib.request.urlopen(UnifiedVectorDB.es_url, timeout=1)
+                # except urllib.error.URLError as e:
+                #     print(
+                #         f"Error: {e.reason} - {e}\nUnifiedVectorDB.es_url: {UnifiedVectorDB.es_url}\nPlease check if elasticsearch is running and reachable at the specified URL\nplease set UnifiedVectorDB.es_url = 'http://x.x.x.x:9200' in your config.py or search where it is set in your code.")
+                #     exit(1)
+                response = requests.get(UnifiedVectorDB.es_url,
+                                        auth=HTTPBasicAuth(UnifiedVectorDB.es_user, UnifiedVectorDB.es_password) if UnifiedVectorDB.es_user else None,
+                                        timeout=1, verify=False)
                 response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
             except requests.exceptions.RequestException as e:
                 print(
@@ -332,11 +335,13 @@ class UnifiedVectorDB:
             )
             self._collection = self.db._collection
         elif UnifiedVectorDB.db_type == 'elasticsearch':
-            elastic_client = Elasticsearch(UnifiedVectorDB.es_url, http_auth=(UnifiedVectorDB.es_user, UnifiedVectorDB.es_password), verify_certs=False, ssl_show_warn=False)
+            elastic_client = Elasticsearch(UnifiedVectorDB.es_url,
+                                           http_auth=(UnifiedVectorDB.es_user, UnifiedVectorDB.es_password) if UnifiedVectorDB.es_user else None,
+                                           verify_certs=False, ssl_show_warn=False)
             self.db = ElasticsearchStore(
                 index_name=self.collection_name,
                 embedding=embedding_function,
-                es_connection = elastic_client,
+                es_connection=elastic_client,
                 distance_strategy="COSINE"
             )
             self._collection = self.db
@@ -488,7 +493,7 @@ class HumanLLMMonitor:
             return True
         else:
             smart_print(
-                f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}")
+                f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}",self.agent_name)
             return False
 
     def set_premium_llm(self, llm_name):
@@ -497,7 +502,7 @@ class HumanLLMMonitor:
             return True
         else:
             smart_print(
-                f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}")
+                f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}",self.agent_name)
             return False
 
     def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_max_context_size=16000, llm=None,
@@ -536,7 +541,7 @@ class HumanLLMMonitor:
 
         if token_length > self.llm_max_context_size:
             smart_print(
-                f"\033[31mCANNOT SEND MESSAGE TO LLM:\n{content}\n\nToo many tokens in human message for LLM ({token_length}). Fallback to manual feedback.\033[0m")
+                f"\033[31mCANNOT SEND MESSAGE TO LLM:\n{content}\n\nToo many tokens in human message for LLM ({token_length}). Fallback to manual feedback.\033[0m",self.agent_name)
             return False
         else:
             return True
@@ -572,28 +577,29 @@ class HumanLLMMonitor:
 
         while self.skip_rounds <= 0:
             # MENU
-            menu = f"\033[{self.print_color}m***** {self.agent_name}->{function_name}  BEFORE *****\nSYSTEM PROMPT:\n{messages[0].content}\n\nUSER MESSAGE:\n{messages[1].content}\n***** {self.agent_name}->{function_name} BEFORE *****\033[0m\n"
+            menu = ''
+            before_menu = f"\033[{self.print_color}m***** {self.agent_name}->{function_name}  BEFORE *****\nSYSTEM PROMPT:\n{messages[0].content}\n\nUSER MESSAGE:\n{messages[1].content}\n***** {self.agent_name}->{function_name} BEFORE *****\033[0m\n"
             if not self._max_tokens_ok(messages[0].content + "\n" + messages[1].content):
-                menu += ("WARNING!!!! Max tokens exceeded, you should refactor user message or system prompt!\n")
-            menu += ("A. Modify agent's 'system prompt' (role, global context, constraints, examples).\n")
-            menu += ("B. Add instruction or information to agent.\n")
-            menu += ("C. Skip and set LLM output from recent outputs or manually define it.\n")
-            menu += ("D. Log comments (not used by the model, just for information).\n")
-            menu += ("E. See all previous results for this agent.\n")
-            menu += ("F. See previous MODIFIED/SCORED/COMMENTED results for this agent.\n")
-            menu += ("G. Skip human actions for N rounds.\n")
-            menu += ("H. Change default LLM.\n")
-            menu += ("I. Change premium LLM.\n")
-            #menu += (f"I. Activate/de-activate function calling to allow model request external knowledge - current status: {function_calling}\n")
+                before_menu += ("WARNING!!!! Max tokens exceeded, you should refactor user message or system prompt!\n")
+            menu += ("[A] Modify agent's 'system prompt' (role, global context, constraints, examples).\n")
+            menu += ("[B] Add instruction or information to agent.\n")
+            menu += ("[C] Skip and set LLM output from recent outputs or manually define it.\n")
+            menu += ("[D] Log comments (not used by the model, just for information).\n")
+            menu += ("[E] See all previous results for this agent.\n")
+            menu += ("[F] See previous MODIFIED/SCORED/COMMENTED results for this agent.\n")
+            menu += ("[G] Skip human actions for N rounds.\n")
+            menu += ("[H] Change default LLM.\n")
+            menu += ("[I] Change premium LLM.\n")
+            #menu += (f"[I] Activate/de-activate function calling to allow model request external knowledge - current status: {function_calling}\n")
             menu += (
-                f"J. Change num of parallel inferences - Current value={self.num_parallel_inferences}, Synthesize mode=\033[32m{'ON' if self.synthesize_mode else 'OFF'}\033[0m\n")  # UPDATED
-            menu += ("K. Exit program.\n")
-            menu += (f"P. Proceed to inference using a PREMIUM LLM - Current value={use_premium_llm}\n")
+                f"[J] Change num of parallel inferences - Current value={self.num_parallel_inferences}, Synthesize mode=\033[32m{'ON' if self.synthesize_mode else 'OFF'}\033[0m\n")  # UPDATED
+            menu += ("[K] Exit program.\n")
+            menu += (f"[P] Proceed to inference using a PREMIUM LLM - Current value={use_premium_llm}\n")
 
-            smart_print(menu, self.agent_name, "BEFORE inference action MENU")
+            smart_print(before_menu+menu, self.agent_name, "BEFORE inference action MENU")
             menu_start_time = time.time()
-            match(optuna) :
-                case "Coach" :
+            match (optuna):
+                case "Coach":
                     llm_keys = list(self.llmORchains_list.keys())
                     # Model change from choice of optuna
                     new_llm_name = llm_keys[model_choice]
@@ -606,7 +612,7 @@ class HumanLLMMonitor:
                     action = ""
                 case _: # Default case
                     action = smart_input(
-                f"\n\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :").upper()
+                        f"{menu}\n\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",self.agent_name).upper()
 
             # ACTIONS processing
             start_time, action = time.time(), action  # Init action selected and timer to measure time spent and occurences in action processing
@@ -623,11 +629,11 @@ class HumanLLMMonitor:
                 smart_print(output, self.agent_name, "PROMPT OPTIONS")
 
                 variant_choice = smart_input(
-                    "Select a number to modify a prompt or create a new variant (or press Enter to continue with the current selection): ")
+                    "Select a number to modify a prompt or create a new variant (or press Enter to continue with the current selection): ",self.agent_name)
                 if variant_choice.isdigit() and 0 < int(variant_choice) <= len(prompt_variants) + 1:
                     if int(variant_choice) == len(prompt_variants) + 1:
                         # Process to create a new variant
-                        comments = smart_input("Provide critic or feedback for the current prompt: ")
+                        comments = smart_input("Provide critic or feedback for the current prompt: ",self.agent_name)
                         refine_prompt = _visual_input(
                             f"Current system prompt:<<< {load_prompt(self.system_prompt)} >>>\n\nFeedback or critic: {comments}")
                         forced_llm_output = default_llm_function(
@@ -637,7 +643,7 @@ class HumanLLMMonitor:
                     else:
                         self.system_prompt = prompt_variants[int(variant_choice) - 1]
 
-                if smart_input("Would you like first to get suggestions for a better prompt? (y/n): ").upper() == "Y":
+                if smart_input("Would you like first to get suggestions for a better prompt? (y/n): ",self.agent_name).upper() == "Y":
                     if use_premium_llm:
                         forced_llm_output = premium_llm_function(
                             [SystemMessage(content=load_prompt("system_prompt_refiner")), HumanMessage(
@@ -655,11 +661,11 @@ class HumanLLMMonitor:
                             "NEW PROMPT TEMPLATE")
                 # Confirm that the user wants to modify the template
                 confirm = smart_input(
-                    "Do you want to replace current prompt file template with your input? (y/n): ").upper()
+                    "Do you want to replace current prompt file template with your input? (y/n): ",self.agent_name).upper()
                 # Save prompt with tag options
                 if confirm == "Y":
                     tag_option = smart_input(
-                        "Enter a tag for saving the prompt (leave blank for no tag, or 'same' to keep the current tag): ")
+                        "Enter a tag for saving the prompt (leave blank for no tag, or 'same' to keep the current tag): ",self.agent_name)
                     if tag_option.lower() == "same":
                         save_prompt_with_tag(self.system_prompt, new_template, "")
                     else:
@@ -673,7 +679,7 @@ class HumanLLMMonitor:
             elif action == "B":  # Add instruction or information to agent
                 new_message = initial_user_message + "\n" + _visual_input(" ")
                 confirm = smart_input(
-                    f"***** NEW USER MESSAGE:\n{new_message}\n*************\nAre you sure you want to modify it? (y/n): ").upper()
+                    f"***** NEW USER MESSAGE:\n{new_message}\n*************\nAre you sure you want to modify it? (y/n): ",self.agent_name).upper()
                 if confirm == "Y":
                     messages[1].content = new_message
 
@@ -693,7 +699,7 @@ class HumanLLMMonitor:
                     try:
                         selected_index = int(
                             smart_input(
-                                "Select the log entry number to load or 0/enter to manually enter LLM output: ")) - 1
+                                "Select the log entry number to load or 0/enter to manually enter LLM output: ",self.agent_name)) - 1
                     except:
                         selected_index = -1
                 else:
@@ -709,77 +715,24 @@ class HumanLLMMonitor:
                             'output_contents'])['content']
 
             elif action == "D":  # Log comments
-                comments = smart_input("Enter your comment on the prompt: ")
+                comments = smart_input("Enter your comment on the prompt: ",self.agent_name)
 
             elif action == "E":  # See all previous results - list results from  HumanLLMMonitor.common_vectordb filtered by agent_name and function_name
-                HumanLLMMonitor._check_and_init_vector_db()
-                result = HumanLLMMonitor.common_vectordb.query(query_text="*",
-                                                               metadata_filter={"function_name": function_name,
-                                                                                "agent_name": self.agent_name}, k=100)
-                visual_result = "\n===============================\n".join(
-                    [json.dumps(json.loads(item.page_content), indent=4, sort_keys=True).replace("\\n", "\n") for item
-                     in result])
-                _visual_input(visual_result)
+                result = self.getPreviousResults(function_name,self.agent_name)
+                _visual_input(result)
 
             elif action == "F":  # See previous MODIFIED/SCORED/COMMENTED results - list results from  HumanLLMMonitor.common_vectordb filtered by agent_name and function_name, filtered on comments
-                HumanLLMMonitor._check_and_init_vector_db()
-                confirm = smart_input(
-                    "Do you want see:\n(A) all MODIFIED/SCORED/COMMENTED results.\n(B) INPUT modified only.\n(C) OUTPUT modified only.\n(D) SCORED only.\n(E) COMMENTED only.\nSelect your letter for choice or hit enter for all: ").upper()
-                result = []
-                if confirm in ["A", "", "B"]:
-                    result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
-                                                                        metadata_filter={"function_name": function_name,
-                                                                                         "agent_name": self.agent_name,
-                                                                                         "input_modified": True},
-                                                                        k=100))
-                if confirm in ["A", "", "C"]:
-                    result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
-                                                                        metadata_filter={"function_name": function_name,
-                                                                                         "agent_name": self.agent_name,
-                                                                                         "output_modified": True},
-                                                                        k=100))
-                if confirm in ["A", "", "D"]:
-                    result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
-                                                                        metadata_filter={"function_name": function_name,
-                                                                                         "agent_name": self.agent_name,
-                                                                                         "scored": True}, k=100))
-                if confirm in ["A", "", "E"]:
-                    result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
-                                                                        metadata_filter={"function_name": function_name,
-                                                                                         "agent_name": self.agent_name,
-                                                                                         "commented": True}, k=100))
-                visual_result = "\n===============================\n".join(
-                    [json.dumps(json.loads(item.page_content), indent=4, sort_keys=True).replace("\\n", "\n") for item
-                     in result])
-                _visual_input(visual_result, filetype="json")
+                self.getScoredResults(function_name)
 
             elif action == "G":  # Skip human actions for N rounds
-                rounds = int(smart_input("Skip for how many rounds? "))
+                rounds = int(smart_input("Skip for how many rounds? ",self.agent_name))
                 self.skip_rounds = rounds
 
             elif action == "H":  # Change default LLM
-                llm_keys = list(self.llmORchains_list.keys())
-                for i, key in enumerate(llm_keys): smart_print(f"{i}. {key}")
-                while True:
-                    new_llm_index = int(
-                        smart_input(f"Enter the number of the new default LLM (0-{len(llm_keys) - 1}): "))
-                    if 0 <= new_llm_index < len(llm_keys):
-                        new_llm_name = llm_keys[new_llm_index]
-                        if self.set_default_llm(new_llm_name): break
-                default_llm_function = self.default_llm
-                smart_print(f"Default LLM changed to {new_llm_name}", self.agent_name, "Change Default LLM")
+                default_llm_function = self.changeDefaultLLM(default_llm_function)
 
             elif action == "I":  # Change premium LLM
-                llm_keys = list(self.llmORchains_list.keys())
-                for i, key in enumerate(llm_keys): smart_print(f"{i}. {key}")
-                while True:
-                    new_llm_index = int(
-                        smart_input(f"Enter the number of the new premium LLM (0-{len(llm_keys) - 1}): "))
-                    if 0 <= new_llm_index < len(llm_keys):
-                        new_llm_name = llm_keys[new_llm_index]
-                        if self.set_premium_llm(new_llm_name): break
-                premium_llm_function = self.premium_llm
-                smart_print(f"Premium LLM changed to {new_llm_name}", self.agent_name, "Change Premium LLM")
+                premium_llm_function = self.changePremiumLLM(premium_llm_function)
 
                 # elif action == "I":
                 #     function_calling = not function_calling
@@ -791,6 +744,12 @@ class HumanLLMMonitor:
                     raise SystemExit("I just wanted to stop!")
                 else:
                     exit()
+
+            elif action == "J":  # Change num of parallel inferences
+                try:
+                    self.num_parallel_inferences = int(smart_input("Enter new value for num_parallel_inferences: ",self.agent_name))
+                except:
+                    self.num_parallel_inferences = 1
 
             elif action == "J":  # Change num of parallel inferences and synthesize mode
                 try: self.num_parallel_inferences = int(input("Enter new value for num_parallel_inferences: "))
@@ -820,15 +779,86 @@ class HumanLLMMonitor:
                 break
             else:
                 proceed = "y" if optuna else smart_input(
-                    "Proceed to inference (y/n) ? You can also hit 'p' to proceed using a premium llm.").lower()
+                    "Proceed to inference (y/n) ? You can also hit 'p' to proceed using a premium llm.",self.agent_name).lower()
                 if proceed in ["y", "p", ""]:
                     if proceed == "p": use_premium_llm = True
                     break
 
         smart_print(
-            f"Time spent in each option and occurrences: {self.before_inference_option_times} - {self.before_inference_option_counts}")
+            f"Time spent in each option and occurrences: {self.before_inference_option_times} - {self.before_inference_option_counts}",self.agent_name)
 
         return messages, comments, forced_llm_output, use_premium_llm, default_llm_function, premium_llm_function, function_calling
+
+    def changePremiumLLM(self, premium_llm_function):
+        llm_keys = list(self.llmORchains_list.keys())
+        for i, key in enumerate(llm_keys): smart_print(f"{i}. {key}", self.agent_name)
+        while True:
+            new_llm_index = int(
+                smart_input(f"Enter the number of the new premium LLM (0-{len(llm_keys) - 1}): ", self.agent_name))
+            if 0 <= new_llm_index < len(llm_keys):
+                new_llm_name = llm_keys[new_llm_index]
+                if self.set_premium_llm(new_llm_name): break
+        premium_llm_function = self.premium_llm
+        smart_print(f"Premium LLM changed to {new_llm_name}", self.agent_name, "Change Premium LLM")
+        return premium_llm_function
+
+    def changeDefaultLLM(self, default_llm_function):
+        llm_keys = list(self.llmORchains_list.keys())
+        for i, key in enumerate(llm_keys): smart_print(f"{i}. {key}", self.agent_name)
+        while True:
+            new_llm_index = int(
+                smart_input(f"Enter the number of the new default LLM (0-{len(llm_keys) - 1}): ", self.agent_name))
+            if 0 <= new_llm_index < len(llm_keys):
+                new_llm_name = llm_keys[new_llm_index]
+                if self.set_default_llm(new_llm_name): break
+        default_llm_function = self.default_llm
+        smart_print(f"Default LLM changed to {new_llm_name}", self.agent_name, "Change Default LLM")
+        return default_llm_function
+
+    def getScoredResults(self, function_name):
+        HumanLLMMonitor._check_and_init_vector_db()
+        confirm = smart_input(
+            "Do you want see:\n(A) all MODIFIED/SCORED/COMMENTED results.\n(B) INPUT modified only.\n(C) OUTPUT modified only.\n(D) SCORED only.\n(E) COMMENTED only.\nSelect your letter for choice or hit enter for all: ",
+            self.agent_name).upper()
+        result = []
+        if confirm in ["A", "", "B"]:
+            result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
+                                                                metadata_filter={"function_name": function_name,
+                                                                                 "agent_name": self.agent_name,
+                                                                                 "input_modified": True},
+                                                                k=100))
+        if confirm in ["A", "", "C"]:
+            result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
+                                                                metadata_filter={"function_name": function_name,
+                                                                                 "agent_name": self.agent_name,
+                                                                                 "output_modified": True},
+                                                                k=100))
+        if confirm in ["A", "", "D"]:
+            result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
+                                                                metadata_filter={"function_name": function_name,
+                                                                                 "agent_name": self.agent_name,
+                                                                                 "scored": True}, k=100))
+        if confirm in ["A", "", "E"]:
+            result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
+                                                                metadata_filter={"function_name": function_name,
+                                                                                 "agent_name": self.agent_name,
+                                                                                 "commented": True}, k=100))
+        visual_result = "\n===============================\n".join(
+            [json.dumps(json.loads(item.page_content), indent=4, sort_keys=True).replace("\\n", "\n") for item
+             in result])
+        _visual_input(visual_result, filetype="json")
+
+    @staticmethod
+    def getPreviousResults(function_name=None,agent_name=None,k=100):
+        HumanLLMMonitor._check_and_init_vector_db()
+        metadata_filter = {}
+        if function_name: metadata_filter["function_name"] = function_name
+        if agent_name: metadata_filter["agent_name"] = agent_name
+        result = HumanLLMMonitor.common_vectordb.query(query_text="*", metadata_filter=metadata_filter, k=k)
+        visual_result = "\n===============================\n".join(
+            [json.dumps(json.loads(item.page_content), indent=4, sort_keys=True).replace("\\n", "\n") for item
+             in result])
+        return visual_result
 
     def _after_inference(self, inference_result_msg, premium_llm_function, color="37", output_id=None,
                          outputs_count=None, optuna=None):
@@ -840,7 +870,7 @@ class HumanLLMMonitor:
         while self.skip_rounds <= 0:
             # MENU
             multiple_ref = (f"OUTPUT \033[31m{output_id} OUT OF {outputs_count}\033[0m OUTPUTS" if (
-                        output_id and outputs_count and (outputs_count > 1)) else "")
+                    output_id and outputs_count and (outputs_count > 1)) else "")
             menu = (
                 f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")
             menu += (
@@ -857,7 +887,7 @@ class HumanLLMMonitor:
                 f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""))
             menu_start_time = time.time()
             action = "" if optuna else smart_input(
-                f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :").upper()
+                f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",self.agent_name).upper()
 
             # ACTIONS processing
             start_time, action = time.time(), action  # Init action selected and timer to measure time spent and occurences in action processing
@@ -869,18 +899,18 @@ class HumanLLMMonitor:
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
                 while True:
-                    comments = smart_input("Provide critic/feedback/request: ")
+                    comments = smart_input("Provide critic/feedback/request: ",self.agent_name)
                     refine_prompt = f"Refine the answer: {inference_result_msg.content}.\n*******************\nHuman provided feedback: {comments}"
                     llm_output = premium_llm_function(
                         [SystemMessage(content="You are a helpful assistant"), HumanMessage(content=refine_prompt)])
                     smart_print(f"***** REFINED ANSWER:\n\033[33m{llm_output.content}\033[0m\n".replace("\\n", "\n"),
                                 self.agent_name, "REFINED ANSWER")
-                    if smart_input("Is the task refinement adequate? (yes/no): ").strip().lower() in ["yes", "y"]:
+                    if smart_input("Is the task refinement adequate? (yes/no): ",self.agent_name).strip().lower() in ["yes", "y"]:
                         inference_result_msg.content = llm_output.content
                         break
 
             elif action == "C":  # Find a better Prompt by providing critic and ideal answer
-                comments = smart_input("First enter your critic here (then modify answer to get ideal answer): ")
+                comments = smart_input("First enter your critic here (then modify answer to get ideal answer): ",self.agent_name)
                 ideal_answer = _visual_input(inference_result_msg.content)
                 refine_prompt = f"Current system prompt:<<< {load_prompt(self.system_prompt)} >>>\n\nPrompt's answer:<<< {inference_result_msg.content} >>>\n\nPrompt's answer critic:{comments}\n\nPrompt's ideal Answer:<<< {ideal_answer} >>>"
                 smart_print(f"***** PROMPT FOR IMPROVEMENT *****\n{refine_prompt}", self.agent_name,
@@ -895,11 +925,11 @@ class HumanLLMMonitor:
                             "NEW PROMPT TEMPLATE")
                 # Confirm that the user wants to modify the template
                 confirm = smart_input(
-                    "Do you want to replace current prompt file template with your input? (y/n): ").upper()
+                    "Do you want to replace current prompt file template with your input? (y/n): ",self.agent_name).upper()
                 # Save prompt with tag options
                 if confirm == "Y":
                     tag_option = smart_input(
-                        "Enter a tag for saving the prompt (leave blank for no tag, or 'same' to keep the current tag): ")
+                        "Enter a tag for saving the prompt (leave blank for no tag, or 'same' to keep the current tag): ",self.agent_name)
                     if tag_option.lower() == "same":
                         save_prompt_with_tag(self.system_prompt, new_template, "")
                     else:
@@ -908,20 +938,20 @@ class HumanLLMMonitor:
             elif action == "D":  # Evaluate & comment answer to re-use in prompts or later analysis
                 while True:
                     score = float(smart_input(
-                        "Give a note for the result between 0.0 (worst) and 1.0 (top), or 0 for bad, 1 for good: "))
+                        "Give a note for the result between 0.0 (worst) and 1.0 (top), or 0 for bad, 1 for good: ",self.agent_name))
                     # if score is not between 0 and 1, then set to None and print error
                     if score < 0 or score > 1:
                         score = None
                         print(f"\033[31mInvalid score: {score}\033[0m")
                     else:
                         break
-                comments = smart_input("Comment on the result: ")
+                comments = smart_input("Comment on the result: ",self.agent_name)
 
             elif action == "E":  # Go back BEFORE inference to improve system prompt or add information to user message
                 inference_result_msg = -1  # break is set after action time measurement
 
             elif action == "G":  # Skip human actions for N rounds
-                rounds = int(smart_input("Skip for how many rounds? "))
+                rounds = int(smart_input("Skip for how many rounds? ",self.agent_name))
                 self.skip_rounds = rounds
 
             elif action == "H":  # Exit program
@@ -945,7 +975,7 @@ class HumanLLMMonitor:
             if action in [None, "",
                           "E"]: break  # E: Go back BEFORE inference to improve system prompt or add information to user message
 
-            proceed = smart_input("Continue 'y' (or 'n' to go back to menu) ? ").lower()
+            proceed = smart_input("Continue 'y' (or 'n' to go back to menu) ? ",self.agent_name).lower()
             if proceed in ["y", ""]:
                 break
 
@@ -956,7 +986,7 @@ class HumanLLMMonitor:
             self.skip_rounds -= 1
         else:
             smart_print(
-                f"Time spent in each option and occurrences: {self.after_inference_option_times} - {self.after_inference_option_counts}")
+                f"Time spent in each option and occurrences: {self.after_inference_option_times} - {self.after_inference_option_counts}", self.agent_name)
 
         return inference_result_msg, comments, score
 
@@ -1007,7 +1037,7 @@ class HumanLLMMonitor:
                     # Call the function with the provided arguments
                     result = globals()[function_name](**function_args)
                 else:
-                    result = smart_input(f"Uknown function: {function_name} -- please provide result manually:\n")
+                    result = smart_input(f"Uknown function: {function_name} -- please provide result manually:\n","call_llm_function_with_function_call")
                 messages.append(FunctionMessage(content=result, name=function_name, arguments=function_args_str))
 
         return output
@@ -1079,7 +1109,7 @@ class HumanLLMMonitor:
     def CallHumanLLM(self, original_input_messages=None, default_llm_function=None, premium_llm_function=None,
                      callable_system_message=None, system_prompt_template=None, user_message=None,
                      return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=300,
-                     stream_output=True, use_default_llm=True, optuna=None, model_choice=None):
+                     stream_output=False, use_default_llm=True, optuna=None, model_choice=None):
         #if not self.selected_llm_or_chain: raise ValueError("No LLM or chain selected for use.")
         # Define a helper function to perform the LLM calls for parallel inference.
         def perform_llm_call(input_msg, use_premium, func_calling, temperature, stream_output=True, color_id=None):
@@ -1093,8 +1123,8 @@ class HumanLLMMonitor:
                     start_color, end_color = "", ""
                 else:
                     start_color, end_color = \
-                    ["\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m", "\033[97m"][
-                        color_id % 7], "\033[0m"
+                        ["\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m", "\033[97m"][
+                            color_id % 7], "\033[0m"
                 final_output = ""  # Initialize an empty string to hold the full response
                 smart_print("", self.agent_name, "Inference streaming output")
                 for chunk in func.stream(
@@ -1131,13 +1161,16 @@ class HumanLLMMonitor:
                     self.agent_name, "Skipping round")
 
             # Pre-inference human intervention
-            llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(original_input_messages, default_llm_function, premium_llm_function, function_calling, callable_system_message, optuna=optuna, model_choice=model_choice)
+            llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(
+                original_input_messages, default_llm_function, premium_llm_function, function_calling,
+                callable_system_message, optuna=optuna, model_choice=model_choice)
             start_time = datetime.now()
             if llm_input_messages and not skip_inference:
                 # Use concurrent futures to parallelize the LLM calls.
                 outputs = []
                 with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_parallel_inferences) as executor:
-                    if type(self.premium_llm) == type(self.llmORchains_list.get('3_majority_chain')) and self.agent_name == "CodingAgent":
+                    if type(self.premium_llm) == type(
+                            self.llmORchains_list.get('3_majority_chain')) and self.agent_name == "CodingAgent":
                         stream_output = True
                     futures = [executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling,
                                                temperature, stream_output, _) for _ in
@@ -1221,7 +1254,7 @@ class HumanLLMMonitor:
             output_contents=output_messages,
             inference_time=(end_time - start_time).total_seconds(),
             input_modified=((llm_input_messages[0].content + "\n" + llm_input_messages[1].content) != (
-                        input_contents_str0 + "\n" + input_contents_str1)),
+                    input_contents_str0 + "\n" + input_contents_str1)),
             skipped_inference=True if skip_inference else False,
             skip_rounds=self.skip_rounds,
             input_comments=input_comments,
