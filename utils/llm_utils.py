@@ -7,6 +7,9 @@ import time
 import json
 from elasticsearch import Elasticsearch
 import requests
+from requests.auth import HTTPBasicAuth
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 
 from langchain_community.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
 #from langchain.schema import AIMessage, HumanMessage, SystemMessage, FunctionMessage
@@ -302,19 +305,17 @@ class UnifiedVectorDB:
     @staticmethod
     def check_db():
         if UnifiedVectorDB.db_type == 'elasticsearch':
+            session = requests.Session()
+            retry = Retry(total=5, backoff_factor=1)
+            adapter = HTTPAdapter(max_retries=retry)
+            session.mount("https://", adapter)
+            auth = HTTPBasicAuth(UnifiedVectorDB.es_user, UnifiedVectorDB.es_password) if UnifiedVectorDB.es_user else None
             try:
-                #     urllib.request.urlopen(UnifiedVectorDB.es_url, timeout=1)
-                # except urllib.error.URLError as e:
-                #     print(
-                #         f"Error: {e.reason} - {e}\nUnifiedVectorDB.es_url: {UnifiedVectorDB.es_url}\nPlease check if elasticsearch is running and reachable at the specified URL\nplease set UnifiedVectorDB.es_url = 'http://x.x.x.x:9200' in your config.py or search where it is set in your code.")
-                #     exit(1)
-                response = requests.get(UnifiedVectorDB.es_url,
-                                        auth=HTTPBasicAuth(UnifiedVectorDB.es_user, UnifiedVectorDB.es_password) if UnifiedVectorDB.es_user else None,
-                                        timeout=1, verify=False)
-                response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
+                response = session.get(UnifiedVectorDB.es_url, auth=auth, timeout=5, verify=False)
+                response.raise_for_status()
+                print("Elasticsearch response:", response.text)
             except requests.exceptions.RequestException as e:
-                print(
-                    f"Error: {e}\nUnifiedVectorDB.es_url: {UnifiedVectorDB.es_url}\nPlease check if Elasticsearch is running and reachable at the specified URL\nplease set UnifiedVectorDB.es_url, UnifiedVectorDB.es_user, and UnifiedVectorDB.es_password correctly in your code.")
+                print(f"Error: {e}\nURL: {UnifiedVectorDB.es_url}\nCheck Elasticsearch and credentials.")
                 exit(1)
         elif UnifiedVectorDB.db_type == 'chroma':
             print("Chroma DB check is not yet implemented")

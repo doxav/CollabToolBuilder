@@ -7,7 +7,7 @@ from config import MODELS_CONFIG_LIST
 
 def objective(trial):
 
-    modelVariation = trial.suggest_int("model_variation", 0, 3)
+    modelVariation = trial.suggest_int("model_variation", 0, 1)
 
     # Define parameters for the coach
 
@@ -233,7 +233,7 @@ def objective(trial):
                                 test_environments=envs,
                                 manual_validation_to_capitalize=False,
                                 problem_prompts_subdir='IR_CPS_TechSynthesis', 
-                                max_coding_attempts=4,
+                                max_coding_attempts=1,
                                 include_code=False,
                                 selected_successful_functions=[],
                                 selected_failed_functions=[],
@@ -258,8 +258,8 @@ if __name__ == "__main__":
     llmORchains_list = {
         "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt-3.5"]),
         "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt-4"]),
-        "3_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"] , num_models=3),
-        "10_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"], num_models=10)
+        #"3_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"] , num_models=3),
+        #"10_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"], num_models=10)
     }
 
     # Set the documents to test/validate as a list of environments
@@ -284,10 +284,6 @@ if __name__ == "__main__":
     current_folder = os.getcwd()
 
     sqlite_file = os.path.join(current_folder, "optuna.db")
-
-    # Supprimer le fichier SQLite s'il existe
-    if os.path.exists(sqlite_file):
-        os.remove(sqlite_file)
 
     # Create a study and optimize the objective function
     study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}")

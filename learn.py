@@ -334,10 +334,11 @@ class CodingAgent():
         for code in codes:
             try:
                 code_parsing_success, parsed_code = self.process_ai_generated_code(code.content, task_definition=refined_task)
-                if parsed_code["program_code"] in processed_codes:
-                    continue  # Skip the current iteration if this program code has already been processed to avoid duplicates
-                else:
-                    processed_codes.add(parsed_code["program_code"])
+                if isinstance(parsed_code, dict):
+                    if parsed_code["program_code"] in processed_codes:
+                        continue  # Skip the current iteration if this program code has already been processed to avoid duplicates
+                    else:
+                        processed_codes.add(parsed_code["program_code"])
                 smart_print(f"************ Code parsed result************\n{parsed_code}\n************************".replace("\\n", "\n"), self.name, "code_task_and_run_test RESULT")
                 if code_parsing_success:
                     # Set initial state before running tests or runnable code
@@ -384,8 +385,8 @@ class CodingAgent():
                         exec_results.append(exec_result)
                     # Return combined results
                     results.append((parsed_code, all(no_runtime_errors), exec_results, reset_unique_ids, [env.get_score() for env in self.envs], [env.get_state(extended=True) for env in self.envs]))
-                else:
-                    results.append((code, False, parsed_code, None, None, None))
+                #else:
+                #    results.append((code.content, False, parsed_code, None, None, None))
             except Exception as e:
                 print(f"Skipping 1 code attempt - Error: {e} Traceback: {traceback.format_exc()}")
 
@@ -404,6 +405,7 @@ class CodingAgent():
                         top_indice = id
                 else:
                     results_list += f"{id}. \033[31mFAILED\033[0m / SCORE: {result[4]} / EXCEPTION: {result[2][0][:100]} / CODE: {result[0]['program_code'][:100]}\n"
+                    #results_list += f"{id}. \033[31mFAILED\033[0m / SCORE: {result[4]} / EXCEPTION: {result[2][:100]} / CODE: {result[0][:100]}\n"
 
             # ask the user to select the code to keep
             if current_skip_rounds <= 0:
@@ -491,13 +493,14 @@ class CapitalizationAgent:
             smart_print(f"Function file {function_file_path} already exists, please provide a new name for the function.", self.name, "capitalize_successful_tasks WARNING")
             if self.optuna_opti:
                 i = random.randint(0, 1000)
-                function_file_path = os.path.join("functions", self.name + i +".py")
+                function_file_path = os.path.join("functions", self.name + f"_{i}.py")
             else:
                 function_file_path = os.path.join("functions", smart_input("New function name: ")+".py")
         with open(function_file_path, "w") as function_file:
              # use regex to extract the docstring from tool_description
             docstring_pattern = re.compile(r'(""".*?""")', re.DOTALL)
-            docstring = docstring_pattern.findall(tool_description)[0]
+            docstring_matches = docstring_pattern.findall(tool_description)
+            docstring = docstring_matches[0] if docstring_matches else f'"""{tool_description}"""'
              # use regex to add docstring to the function parsed_code["main_function_name"] after the def line in parsed_code["program_code"]
             parsed_code["program_code"] = re.sub(r"(def "+parsed_code["main_function_name"]+"\(.*?\):)", r'\1\n    '+docstring, parsed_code["program_code"], count=1)
             function_file.write(parsed_code["program_code"])
