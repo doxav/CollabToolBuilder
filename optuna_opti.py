@@ -36,7 +36,6 @@ def objective(trial):
     reasoning_steps = trial.suggest_int("reasoning_steps", 3, 10)
     specification_depth = trial.suggest_int("specification_depth", 2, 5)
     use_examples = trial.suggest_categorical("use_examples", [True, False])
-    auto_add_test_to_prompt_answer = trial.suggest_categorical("auto_add_test_to_prompt_answer", [True, False])
     include_failed_tasks = trial.suggest_categorical("include_failed_tasks", [True, False])
     plan_depth = trial.suggest_int("plan_depth", 2, 4)
     available_commands_detail = trial.suggest_categorical("available_commands_detail", [
@@ -56,6 +55,21 @@ def objective(trial):
     ])
     criteria_to_remove = trial.suggest_int("criteria_to_remove", 1, 7)
     
+    auto_add_test_to_prompt_answer = trial.suggest_categorical("auto_add_test_to_prompt_answer", [False])
+    test_criteria = """7) After proposing the task, you should provide a test of the function corresponding to this task
+    a) Write a one liner python call to the main function for each "Document to be tested", this call should be designed to maximize the expected results for the "Document to be tested"
+    b) Precede each one liner call with a line of comment in this form "# document #uuid usage test" (e.g. "#document #125dc4bc-54e0-4336-82bc-417e40ec9b8f usage test"...) to indicate to which document the code of the next line applies to given its unique id
+    c) Call to the main function uses bot as first required parameter, then provide parameters sepecific to the document for this function
+    d) No more than one test for each document, the total number of function calls in this test list should be equal to the number of "Document to be tested"
+    """ if not auto_add_test_to_prompt_answer else 'do not add test cases automatically.'
+    test_example = """5. Tests:
+```python
+# document #125dc4bc-54e0-4336-82bc-417e40ec9b8f usage test:
+task_function_name(bot, keyword arguments with value specific to document #125dc4bc-54e0-4336-82bc-417e40ec9b8f for the given task...)
+# document #2fa754cb-2e90-3376-3b2c-142f29c9ebf8 usage test:
+task_function_name(bot, keyword arguments with value specific to document #2fa754cb-2e90-3376-3b2c-142f29c9ebf8 for the given task...)
+``` """ if not auto_add_test_to_prompt_answer else ''
+
     # Construct the prompt based on the suggested parameters
     criteria_coach = [
         f"1) Reason in {reasoning_steps} steps to find out the best task to minimize distance to goal.",
@@ -64,8 +78,8 @@ def objective(trial):
         f"4) Task should be novel compared to learnt {f'and failed ' if include_failed_tasks else ''}tasks.",
         f"5) Develop key minimal elements of specification (acceptance criteria, best strategies to compare, performance tips to beat a LLM) to successfully prompt a coder agent to generate code implementing the task while minimizing distance to goal. Organize the requirements with clear indexing to a depth of {specification_depth}.",
         f"6) Tasks provided should be generic, not specific to given examples{', so the reasoning can mention examples but proposed task and plan should not mention any information related to examples' if use_examples else ''}.",
-        f"7) After proposing the task, {'you should provide a test case of the function corresponding to this task for each example using the one-liner function call format.' if auto_add_test_to_prompt_answer else 'do not add test cases automatically.'}"
-    ]
+        test_criteria
+        ]
     
     del criteria_coach[criteria_to_remove - 1]
     coach_text = "\n".join(criteria_coach)
@@ -90,7 +104,7 @@ def objective(trial):
     2. Task: Next best task to develop.
     3. Specifications: present a tree-like structure of acceptance criteria, best strategies to compare, performance tips to beat a single LLM.
     4. Plan: Tree-structured plan of depth {plan_depth} breaking-down next best task into basic commands
-    {'5. Tests: Provide test cases using the one-liner function call format.' if auto_add_test_to_prompt_answer else ''}
+    {test_example}
     """
     # Write the prompt in the file readed after by the coach
     with open("./prompts/IR_CPS_TechSynthesis/identify_best_task.txt", "w") as f:
