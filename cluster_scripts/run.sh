@@ -34,7 +34,8 @@ GZ_FILE="/home/$USER/CollabFunctionsGPTCreator/optuna.db.gz"
 
 # Ensure the log directory exists
 mkdir -p $LOG_DIR
-touch $ERROR_LOG $OUTPUT_LOG
+touch $ERROR_LOG
+touch $OUTPUT_LOG
 
 # Get SHA of optuna_opti.py
 OPTUNA_OPTI_SHA=$(sha256sum /home/$USER/CollabFunctionsGPTCreator/optuna_opti.py | awk '{ print $1 }')
@@ -75,7 +76,10 @@ send_email_update() {
   subject="Cluster experiment progress update (JobID: $JOB_ID, SrunPID: $SRUN_PID, Duration: $duration mins, SHA: $OPTUNA_OPTI_SHA)"
   [ "$final_update" == "true" ] && subject="Cluster experiments result (JobID: $JOB_ID, SrunPID: $SRUN_PID, START: $start_datetime, END: $(date +"%Y-%m-%d %H:%M:%S"), Duration: $duration mins, SHA: $OPTUNA_OPTI_SHA)"
 
-  mailx -S charset=utf-8 -s "$subject" $attachments $EMAIL < $OUTPUT_LOG
+  TEMP_LOG=$(mktemp)
+  iconv -f utf-8 -t utf-8 "$OUTPUT_LOG" > "$TEMP_LOG"
+  mailx -S charset=utf-8 -s "$subject" $attachments "$EMAIL" < "$TEMP_LOG"
+  rm -f "$TEMP_LOG"
 }
 
 # Function to handle errors and send detailed email

@@ -11,7 +11,7 @@ elastic_password="1OtNitubotjil<"
 PickleCacheActivated = False
 
 MODELS_CONFIG_LIST = {
-    "gpt-4":"gemma2:9b",
+    "gpt-4":"qwen2:7b-20k",
     "gemma":"gemma2:9b",
-    "gpt-3.5":"qwen2:7b",
+    "gpt-3.5":"qwen2:7b-20k",
 }
