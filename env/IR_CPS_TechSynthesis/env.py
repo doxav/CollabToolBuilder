@@ -11,7 +11,7 @@ from dataclasses import asdict
 #from config import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, ELASTICSEARCH_HOST
 from config import *
 #from attr import dataclass, field
-
+import PyPDF2
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -69,26 +69,26 @@ class Document:
     context_embedding: List[float] = field(default_factory=list)  # TODO: check if we need to store the embedding of the context because, differently to sections content, it is not used in comparison to target because it is an input
     sections_list: List[Any] = field(default_factory=list)  
     sections_list_embedding: List[float] = field(default_factory=list)
-    embedding_model_name: str = "intfloat/e5-base-v2" # e.g. "nomic-embed-text:latest" for OpenAI ada-002, "intfloat/e5-base-v2" for HuggingFace e5-base-v2, ...
+    embedding_model_name: str = "text-embedding-ada-002" # e.g. "text-embedding-ada-002" for OpenAI ada-002, "intfloat/e5-base-v2" for HuggingFace e5-base-v2, ...
 
 class DocumentStructure:
     def __init__(self,
                  synthesis_type: str,
                  initial_goal: str,
                  refined_goals: List[str] = None,
-                 embedding_model_name: str = "intfloat/e5-base-v2", # nomic-embed-text:latest, intfloat/e5-base-v2
+                 embedding_model_name: str = "text-embedding-ada-002", # text-embedding-ada-002, intfloat/e5-base-v2
                  embedding_model_query_prefix: str = '', # e.g. "query: " for intfloat/e5-base-v2 should improve for QA but we are in estimating straight semantic similarity
                  title: str = None,
                  context: str = None,
                  ): 
         self.embedding_model_query_prefix = embedding_model_query_prefix
         self.embedding_model_name = embedding_model_name
-        if embedding_model_name == "text-embeddings-ada-002":
+        if embedding_model_name == "text-embedding-ada-002":
             if not os.getenv("OPENAI_API_KEY"):
                 raise ValueError("OpenAI API key is required for OpenAI ada-002 model.")
             self.embedding_model = OpenAIEmbeddings(model=embedding_model_name) # , openAIApiKey=os.getenv("OPENAI_API_KEY")
         else:
-            self.embedding_model = HuggingFaceEmbeddings(model_name=embedding_model_name, encode_kwargs={"normalize_embeddings": True}, model_kwargs={"trust_remote_code": True}) # , openAIApiKey=os.getenv("OPENAI_API_KEY"
+            self.embedding_model = HuggingFaceEmbeddings(model_name=embedding_model_name, encode_kwargs={"normalize_embeddings": True})
 
         self.synthesis_type = synthesis_type
         self.initial_goal = initial_goal
@@ -234,6 +234,7 @@ class DocumentStructure:
             'resources': self.resources,
             'events': self.events,
             'embedding_model_name': self.embedding_model_name,
+            
         }
         if save:
             self.last_state = copy.deepcopy(state)
@@ -325,7 +326,8 @@ class SynthesisManager:
                 'websearch_google': SynthesisManager.search_google, #
                 'core': SynthesisManager.search_core, #
                 'websearch_wikipedia': SynthesisManager.search_wikipedia, #
-                'paper_semantic_scholar': SynthesisManager.search_semantic_scholar #
+                'paper_semantic_scholar': SynthesisManager.search_semantic_scholar, #
+                'fiche_anomalie': SynthesisManager.search_fiche_anomalie #
             }
             search_function = search_functions.get(search_type)
             if search_function:
@@ -772,6 +774,60 @@ class SynthesisManager:
 
         return results
 
+    @staticmethod
+    @method_call_counter
+    def extract_text_from_pdf(pdf_path):
+        """
+        Extract text from a PDF file
+        :param pdf_path: path to the PDF file
+        :return: extracted text as a string
+        """
+        text = ""
+        try:
+            with open(pdf_path, "rb") as file:
+                reader = PyPDF2.PdfReader(file)
+                for page_num in range(len(reader.pages)):
+                    page = reader.pages[page_num]
+                    text += page.extract_text()
+        except Exception as e:
+            print(f"Error reading {pdf_path}: {e}")
+        return text
+
+
+
+    @staticmethod
+    @method_call_counter
+    def search_fiche_anomalie(query, directory_path, output_format='json', max_results=20):
+        """
+        Search for anomalies in PDF files within a directory
+        :param query: query string
+        :param directory_path: path to the directory containing PDF files
+        :param output_format: output format (json or text)
+        :param max_results: maximum number of results returned
+        :return: response
+        """
+        
+        results = []
+        for filename in os.listdir(directory_path):
+            if filename.endswith(".pdf"):
+                pdf_path = os.path.join(directory_path, filename)
+                text = extract_text_from_pdf(pdf_path)
+                if query.lower() in text.lower():
+                    results.append({
+                        'filename': filename,
+                        'content': text
+                    })
+                if len(results) >= max_results:
+                    break
+        
+        if output_format == 'json':
+            return json.dumps(results, indent=2)
+        else:
+            return '\n'.join(['Filename: {}\nContent: {}\n'.format(result['filename'], result['content']) for result in results])
+
+
+
+
     # OK: based on search_google
     @staticmethod
     @method_call_counter
@@ -823,7 +879,8 @@ class SynthesisManager:
     def normalized_cosine_similarity(self, a: List[float], b: List[float], min_cs: float = None) -> float:
         if min_cs is None:
             min_cs = self.min_cosine_similarity
-        return (cosine_similarity([a], [b])[0][0] - min_cs) / (1 - min_cs)
+        first = (cosine_similarity([a], [b])[0][0] - min_cs)
+        return (first / (1 - min_cs))
 
     @method_call_counter
     def add_section(self, section: Section):
@@ -1130,7 +1187,7 @@ class SynthesisManager:
         if not hasattr(self, 'target_file_path'):
             raise ValueError("Please set target_file_path using set_targetJSON_comparison method")
         if not hasattr(self, 'target_data'):
-            section_embedding_key, content_embedding_key, plan_embedding_key = "content_embedding_2", "section_embedding_2", "plan_embedding_2"
+            section_embedding_key, content_embedding_key, plan_embedding_key = "content_embedding_1", "section_embedding_1", "plan_embedding_1"
             self.set_targetJSON_comparison(self.target_file_path, target_section_title_embedding_label = section_embedding_key, target_section_content_embedding_label = content_embedding_key, target_plan_embedding_label = plan_embedding_key)
             self.document.update_plan_embedding()
         elif not hasattr(self.document.document_content, 'sections_list_title_embedding'):
@@ -1149,8 +1206,12 @@ class SynthesisManager:
 
         # Compute the similarity and content length percentage
         plan_embedding_similarity = self.normalized_cosine_similarity(plan_embedding, self.target_plan_embedding, self.min_plan_cosine_similarity)
+        plan_embedding_similarity = self.min_plan_cosine_similarity
+        
         plan_titles_embedding_similarity = self.normalized_cosine_similarity(plan_titles_embedding, self.target_plan_titles_embedding, self.min_plan_titles_cosine_similarity)
+        plan_titles_embedding_similarity= self.min_plan_titles_cosine_similarity
         plan_contents_embedding_similarity = self.normalized_cosine_similarity(plan_contents_embedding, self.target_plan_contents_embedding, self.min_plan_contents_cosine_similarity)
+        plan_contents_embedding_similarity = self.min_plan_contents_cosine_similarity
 
         content_length_ratio_to_target = round(current_content_length / self.target_total_content_length, 2)
         sections_count_ratio_to_target = round(current_sections_count / self.target_total_sections_count, 2)
@@ -1173,6 +1234,7 @@ class SynthesisManager:
             "content_non_empty_count_ratio_to_target": sections_content_non_empty_count_ratio_to_target,
         }
 
+      
         if get_progress:
             # get ratio between same previous values and current values
             def get_ratio(previous_value, current_value):
@@ -1265,7 +1327,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
                  CPS_env_type="techsynthesis",
                  title: str = "",
                  context: str = None,
-                 embedding_model_name: str = "intfloat/e5-base-v2", # nomic-embed-text:latest, intfloat/e5-base-v2
+                 embedding_model_name: str = "text-embedding-ada-002", # text-embedding-ada-002, intfloat/e5-base-v2
                  openai_api_key: str = None,
                  target_file_path: str = None,
                  id: str = None,
@@ -1297,7 +1359,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
                     'title non-empty count ratio progress (best = 1, too short <1, too long >1)': distance['title_non_empty_count_ratio_to_target'],
                     'content length ratio progress (best = 1, too short <1, too long >1)': distance['content_length_ratio_to_target'],
                     'content non-empty count ratio progress (best = 1, too short <1, too long >1)': distance['content_non_empty_count_ratio_to_target']}
-
+    
     def reset(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         self.has_reset_once = True
         super().reset()
@@ -1331,6 +1393,8 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         table_of_content = self.synthesis_manager.get_plan_status(compact_string_format=True)
         resources_observation = self.synthesis_manager.get_resources_status(compact_string_format=True)
         document_state = f"<<< Document #{self.id} properties:\n"
+        #document_state += f"1. title: {self.title}\n"
+        #document_state += f"2. abstract: {self.abstract}\n"
         document_state += f"> Current table of content: {table_of_content if len(table_of_content) > 0 else 'Empty'}\n"
         document_state += f"> Current resources: {resources_observation if len(resources_observation) > 0 else 'Empty'}\n"
         if extended:
@@ -1338,11 +1402,6 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
             events_action_counts = self.synthesis_manager.get_count_method_calls()
             document_state += f"5. sections titles progress: {distance_to_targetJSON['plan_titles_embedding_similarity']}\n"
             document_state += f"6. sections content progress: {distance_to_targetJSON['plan_contents_embedding_similarity']}\n"
-            document_state += f"7. sections count ratio progress: {distance_to_targetJSON['sections_count_ratio_to_target']}\n"
-            document_state += f"8. title non-empty count ratio progress: {distance_to_targetJSON['title_non_empty_count_ratio_to_target']}\n"
-            document_state += f"9. content length ratio progress: {distance_to_targetJSON['content_length_ratio_to_target']}\n"
-            document_state += f"10. content non-empty count ratio progress: {distance_to_targetJSON['content_non_empty_count_ratio_to_target']}\n"
-            document_state += f"11. events counted: {events_action_counts if len(events_action_counts) > 0 else 'Empty'}\n"
-
+            document_state += f"7. events counted: {events_action_counts if len(events_action_counts) > 0 else 'Empty'}\n"
         document_state += ">>>"
         return document_state

@@ -5,7 +5,6 @@
 - Python 3.10+
 - Venv or Conda env
 - VSCode
-- Docker
 
 ## Installation
 
@@ -16,13 +15,6 @@ pip install -r requirements.txt
 ```
 
 MODIFY CONFIG.PY with the IP that will be given to be able to access the local ElasticSearch data server
-
-## Launch Elasticsearch and kiban containers
-
-```
-cd elasticsearch
-docker compose up
-```
 
 ## Launching the learning to develop new functions
 

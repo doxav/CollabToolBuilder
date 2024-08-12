@@ -17,16 +17,24 @@ def objective(trial):
         "task optimizer",
         "technical synthesis expert",
         "knowledge engineer",
-        "content curator"
+        "content curator", 
+        "data analyst assistant"
     ])
-    goal_description = trial.suggest_categorical("goal_description", [
+    goal_definition= trial.suggest_categorical("goal_description", [
         "produce high quality technical synthesis",
-        "generate state-of-the-art research survey paper",
-        "create comprehensive Wikipedia-like article",
-        "develop patent-quality technical document",
-        "formulate detailed technical guides",
-        "synthesize research findings effectively"
+        "analyse complex data sets",
+        "analyse a a Neo4J graph",
+        "solve JIRA issue, given a graph of a complete dataset of JIRA anomalies from Neo4J"
     ])
+
+    goal_function = trial.suggest_categorical("goal_function", [
+        "Assist users in their situation analysis and decision making with situation assesment",
+        "Show same issues depending on semantic similarity with the current issue from the graph",
+        "Propose different resolutions depending on the graph",
+        "Generate structred phases to solve this issue",
+        "Propose actions to avoid this issue in the future"
+    ])
+
     task_format = trial.suggest_categorical("task_format", [
         "[verb] [quantity if applicable] [object] [tools] [detailed instructions and parameters]",
         "[action] [target] using [method] with [specifications]",
@@ -62,60 +70,180 @@ def objective(trial):
     c) Call to the main function uses bot as first required parameter, then provide parameters sepecific to the document for this function
     d) No more than one test for each document, the total number of function calls in this test list should be equal to the number of "Document to be tested"
     """ if not auto_add_test_to_prompt_answer else 'do not add test cases automatically.'
+
+    structure_FA= trial.suggest_categorical( """
+                        <elementId>	4:39c83641-ab1b-4426-95d3-6646f85ee75c:8
+                        <id>	8
+                        fan_animpact_rnt	[]
+                        fan_batiment	Archiva
+                        fan_categorie	Bug
+                        fan_comments	['Fixed. Patch for this attached.', 'Applied.']
+                        fan_description_anomalie	When using Internet Explorer 7, the "Managed Repositories" and "Proxied Repositories" buttons under Administration are not displayed.
+                        fan_etat	Closed
+                        fan_fa_origine	[]
+                        fan_gravite_decision	Major
+                        fan_intitule	Managed Repositories and Proxied Repositories buttons under Administration are not displayed when using Internet Explorer 7.
+                        fan_numero_fa	12788643
+                        fan_programme	Web Interface
+                        fan_programme_pere	Apache
+                        fan_responsable_declaration	dangelito
+                        fan_responsable_realisation	evenisse
+                        fan_stade_generateur_anomalie	Maintenance
+                        fan_subtasks	[]
+                """, [True, False])
+    
+
+    cypher_request = trial.suggest_categorical(""" CREATE INDEX FA_fan_desc IF NOT EXISTS FOR (fa:FicheAnomalie) ON (fa.fan_description_anomalie);
+                CREATE INDEX Personne_id IF NOT EXISTS FOR (p:Personne) ON (p.id);
+                CREATE INDEX Programme_programme IF NOT EXISTS FOR (p:Programme) ON (p.programme);
+
+        // Créer des programmes
+                MATCH (fa:FicheAnomalie) WHERE fa.fan_programme IS NOT NULL
+                MERGE (prg:Programme {'programme: toString(fa.fan_programme)'});
+
+                MATCH (fa:FicheAnomalie) WHERE fa.fan_programme_pere IS NOT NULL
+                MERGE (prg:Programme {'programme: toString(fa.fan_programme_pere)'});
+
+        // Associer les programmes aux fiches d'anomalie
+                MATCH (fa:FicheAnomalie), (prg:Programme {'programme: fa.fan_programme'})
+                MERGE (prg)-[r:A_FA]->(fa);
+
+                MATCH (fa:FicheAnomalie), (prg:Programme {'programme: fa.fan_programme_pere'})
+                MERGE (prg)-[r:A_FA]->(fa);
+
+        // Créer des relations entre les programmes
+                MATCH (fa:FicheAnomalie), (prg:Programme {'programme: fa.fan_programme'}), (prg_pere:Programme {'programme: fa.fan_programme_pere'})
+                MERGE (prg_pere)-[r:A_PROGRAMME]->(prg);
+
+
+        // Créer des personnes responsables
+                CALL apoc.periodic.iterate(
+                'MATCH (n:FicheAnomalie) WHERE n.fan_responsable_declaration IS NOT NULL RETURN n',
+                'MERGE (m:Personne {'id: toString(n.fan_responsable_declaration)'})',
+                {'batchSize: 100, parallel: true'}
+                );
+
+                CALL apoc.periodic.iterate(
+                'MATCH (n:FicheAnomalie) WHERE n.fan_responsable_realisation IS NOT NULL RETURN n',
+                'MERGE (m:Personne {'id: toString(n.fan_responsable_realisation)'})',
+                {'batchSize: 100, parallel: true'}
+                );
+
+        // Associer les personnes aux fiches d'anomalie
+                CALL apoc.periodic.iterate(
+                'MATCH (n:FicheAnomalie) WHERE n.fan_responsable_declaration IS NOT NULL MATCH (m:Personne {'id: n.fan_responsable_declaration'}) RETURN n, m',
+                'MERGE (m)-[r:DECLARE]->(n)',
+                {'batchSize: 100, parallel: false'}
+                );
+
+                CALL apoc.periodic.iterate(
+                'MATCH (n:FicheAnomalie) WHERE n.fan_responsable_realisation IS NOT NULL MATCH (m:Personne {'id: n.fan_responsable_realisation'}) RETURN n, m',
+                'MERGE (m)-[r:REALISE]->(n)',
+                {'batchSize: 100, parallel: false'}
+                );
+            """, [True, False])
+
     test_example = """5. Tests:
-```python
-# document #125dc4bc-54e0-4336-82bc-417e40ec9b8f usage test:
-task_function_name(bot, keyword arguments with value specific to document #125dc4bc-54e0-4336-82bc-417e40ec9b8f for the given task...)
-# document #2fa754cb-2e90-3376-3b2c-142f29c9ebf8 usage test:
-task_function_name(bot, keyword arguments with value specific to document #2fa754cb-2e90-3376-3b2c-142f29c9ebf8 for the given task...)
-``` """ if not auto_add_test_to_prompt_answer else ''
+        ```python
+        #document #72dc469b-63f8-4751-aab5-6db3d16fca3c usage test:
+        your_main_function_name(args specific to document #72dc469b-63f8-4751-aab5-6db3d16fca3c...)
+
+        # document #c0533337-1c5e-4091-ba7d-061ae409cda4 usage test:
+        your_main_function_name(args specific to document #c0533337-1c5e-4091-ba7d-061ae409cda4...)``` """ if not auto_add_test_to_prompt_answer else ''
+
 
     # Construct the prompt based on the suggested parameters
     criteria_coach = [
         f"1) Reason in {reasoning_steps} steps to find out the best task to minimize distance to goal.",
-        f'2) Task should be written in the form of "{task_format}"',
-        "3) Task will be converted into Python code given available commands, learnt tasks, use of LLM if required.",
+        f"2) Task should be written in the form of '{task_format}'",
+        f"3) Task will be converted into Python code given available commands, learnt tasks, use of LLM if required.",
         f"4) Task should be novel compared to learnt {f'and failed ' if include_failed_tasks else ''}tasks.",
         f"5) Develop key minimal elements of specification (acceptance criteria, best strategies to compare, performance tips to beat a LLM) to successfully prompt a coder agent to generate code implementing the task while minimizing distance to goal. Organize the requirements with clear indexing to a depth of {specification_depth}.",
         f"6) Tasks provided should be generic, not specific to given examples{', so the reasoning can mention examples but proposed task and plan should not mention any information related to examples' if use_examples else ''}.",
-        test_criteria
+        f"7) After proposing the task, you should provide a test case of the function corresponding to this task for each example:",
+            f"a) Write a one liner python call to the main function for each 'Document to be tested', this call should be designed to maximize the expected results for the 'Document to be tested'",
+            f"b) Precede each one liner call with a line of comment in this form '# document #uuid usage test' (e.g. '#document #125dc4bc-54e0-4336-82bc-417e40ec9b8f usage test'...) to indicate to which document the code of the next line applies to given its unique id",
+            f"c) Call to the main function uses 'problem' as first required parameter, then provide parameters sepecific to the document for this function (do not provide document #uuid as parameter but title and context instead)",
+            f"d) Generate only one test for each document, so the total number of function calls in this test list should be equal to the number of 'Document to be tested'",
+            f"e) Your only source of data will be the Neo4j graph provide in the primitives. Do not use the date."
         ]
-    
+
     del criteria_coach[criteria_to_remove - 1]
-    coach_text = "\n".join(criteria_coach)
+
+    for i in range(len(criteria_coach)):
+        coach_text = "\n".join(criteria_coach[i])
     
-    prompt_coach = f"""
-    You are a {role_priming} that defines tasks to {goal_description} given a [Title] and an [Abstract].
-    Each task you propose will be prompted to a language model which will try to convert it into Python functions.{task_complexity}
-    If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration.
-    I will provide you:
-    - Learnt tasks available (with information gain between 0 and 1 on plan's titles, and contents): ...
-    {f'- Failed tasks to learn that are too hard: ...' if include_failed_tasks else ''}
-    - Current status of examples of technical synthesis the proposed next task will be tested on: ...
-    You should tell me the next best novel task we should try to implement given your LLM knowledge, available learnt tasks, in order to maximize synthesis generated quality, length and format, and speed to produce it.
-    You must follow the criteria below:
-    {coach_text}
-    You should propose a plan to achieve this task by breaking it down as a tree-structure. The plan tree should be of depth {plan_depth}.
-    Some specific commands available later for implementation in python of the task you will provide:
-    {available_commands_detail} list of commands...
-    You should only respond in the format as described below:
-    RESPONSE FORMAT:
-    1. Reasoning: Based on the information listed above, do reasoning about what the next task should be and why. Ensure it will minimize the distance to goal.
-    2. Task: Next best task to develop.
-    3. Specifications: present a tree-like structure of acceptance criteria, best strategies to compare, performance tips to beat a single LLM.
-    4. Plan: Tree-structured plan of depth {plan_depth} breaking-down next best task into basic commands
-    {test_example}
-    """
+    prompt_coach = [f"""
+            ROLE: 
+                You are a {role_priming} that defines tasks to {goal_definition} . 
+
+            CONTEXT:
+                JIRA anomalies are records of issues encountered in software development and project management processes. 
+                These anomalies can include bugs, performance errors, connectivity problems, and other technical malfunctions. 
+                Each anomaly is documented with specific details to facilitate its identification, analysis, and resolution.
+                The objective of analyzing JIRA anomalies is to identify clusters of recurring problems, determine root causes,
+                and recommend corrective actions to improve software quality, reduce costs, and minimize delays. 
+                All of those anomalies are stored on a Neo4J's graph. Connection informations to this database will be communicated 
+                to you via the primitives.{task_complexity}
+
+                We aim to have a chat agent to help all the Jira's users at every stage to automate possible tasks and improve their productivity by solving easily issues. 
+                Among other things, it should be able to :
+                    {goal_function}
+                
+
+            TASK:
+                Based on the current context, we need to code functions to help users to solve JIRA's anomalies by leveraging the graph database from Neo4J. This database will be your only source of information.
+                First: propose 3 differents plans to best support a crisis response / intervention from end-to-end starting when a new Jira anomalie is detected up to end of correction operation and capitalization.
+                Second: reason and identify the next best task to be converted to code by a LLM and made available as a function to a chat, it should provide the best value to target while not being too complex to 
+                be converted to code in one pass using a LLM.
+                You should propose to choose between 2 different next best task. Task could be either the most frequent and globaly impactful task to be automated throughout plans, or the highest priority and impactful task at the current status of the JIRA's issue correction (if this status is not provided, consider we are the beginning of the operation).
+                Task shouldn’t be too difficult to be converted into a single Python function for automation given available commands and learnt tasks to automate.
+                Consider and re-use the already developped learnt tasks, do not propose the same task except if improving it can be done and is better than any other task.
+                Detail this task into a specification checklist.
+                Considering this checklist, end by listing any mandatory information for code implementation unkown by an LLM (e.g. GPT-4) that should be provided by a human or a search engine.
+
+            INPUT:
+                I will provide you if there are:
+                - Learnt tasks available (with information gain between 0 (minimum) and 1 (maximum) on plan's titles, and contents): ...
+                 {f'- Failed tasks to learn that are too hard: ...' if include_failed_tasks else ''}
+                - Current status of examples of technical issues and solutions for the proposed next task will be tested on: ...
+                You should tell me the next best function we should try to implement given your LLM knowledge, available learnt tasks, in order to solve problems to produce it.
+
+                Here you can find a structure of an existing Fiche of Anomalie (FA):
+                {structure_FA}
+
+                Cypher request which was used to create the database:
+                {cypher_request}
+
+                
+            CONSTRAINTS:
+                You must follow the criteria below:
+                {coach_text}
+                 You should propose a plan to achieve this task by breaking it down as a tree-structure. The plan tree should be of depth {plan_depth}.
+                Some specific commands available later for implementation in python of the task you will provide:
+                {available_commands_detail} list of commands...
+
+
+        You should only respond in the format as described below:
+
+            RESPONSE FORMAT:
+                1. Reasoning: Based on the information listed above, do reasoning about what the next task should be and why. Ensure it will minimize the distance to goal.
+                2. Task: Next best task to develop.
+                3. Specifications: present a tree-like structure of acceptance criteria, best strategies to compare, performance tips to beat a single LLM.
+                4. Plan: Tree-structured plan of depth {plan_depth} breaking-down next best task into basic commands
+                {test_example}
+    """]
+
     # Write the prompt in the file readed after by the coach
-    with open("./prompts/IR_CPS_TechSynthesis/identify_best_task.txt", "w") as f:
-            f.write(prompt_coach)
+    with open("./prompts/identify_best_task.txt", "w") as f:
+            f.write(prompt_coach[0])
 
     # Define parameters for Coder
 
     prompt_template = trial.suggest_categorical("prompt_template", ["Extensive", "Minimal"])
     libraries_restriction = trial.suggest_categorical("libraries_restriction", [
         "BeautifulSoap, RegEx, Sklearn, Huggingface, Langchain, Voyager",
-        "Numpy, Pandas, Matplotlib, Scikit-learn",
+        "Numpy, Pandas, Scikit-learn",
         "TensorFlow, PyTorch, Transformers, SpaCy"
     ])
     bot_function_specifications = trial.suggest_categorical("bot_function_specifications", [
@@ -132,62 +260,87 @@ task_function_name(bot, keyword arguments with value specific to document #2fa75
     handle_previous_attempts = trial.suggest_categorical("handle_previous_attempts", [True, False])
     instruction_to_remove = trial.suggest_int("instruction_to_remove", 1, 14)
 
-    modularity_final = f"3) Ensure that the generated code adheres to principles of reusability and modularity as {modularity}." if modularity != "None" else "3) Ensure that the generated code adheres to principles of reusability." 
-    
+    modularity_final = f"15) Ensure that the generated code adheres to principles of reusability and modularity as {modularity}." if modularity != "None" else "3) Ensure that the generated code adheres to principles of reusability." 
+
+
     # Construct the prompt based on the suggested parameters
     criteria_coder = [
-         f"1) Reason in {reasoning_depth} steps to find out the best task to minimize distance to goal.",
-        "2) Write a function taking the bot as the first parameter which is the shared object of document content and resources (it is an instance of the class SynthesisManager).",
-        f"{modularity_final} Specifically, functions should not hard-code strings, variables, or parameters that make them context-specific. Instead, any data or parameters of helpers functions that can vary should be passed as arguments to the functions, ensuring that the functions can be reused in different contexts or with different data without requiring modifications to the code itself. This ensures that the code is adaptable and can be utilized in various scenarios, enhancing its utility and longevity.",
-        "4) Call existing functions as much as possible.",
-        "5) Your function will be reused for building more complex functions. Therefore, you should make it generic and reusable. Avoid to include specific query or information in the function instead of using it as an argument.",
-        "6) Anything defined outside a function will be ignored, define all your variables and classes inside your functions.",
-        "7) Ensure that your code is fully executable, it is not a skeleton and does not contain placeholders, unimplemented sections, or comments indicating future work (e.g., TODO, pass, '....', etc.). All functions and logic must be complete and runnable to facilitate immediate use and testing.",
-        "8) Do not write infinite loops or recursive functions.",
-        "9) Name your function in a meaningful way (can infer the task from the name).",
-        "10) Any packages/libraries used by the function should be imported inside the function (it will be ignored if imported outside)",
-        "11) Success of the task output is evaluated by analyzing the new state of resources and sections, and events.",
-        "12) If some content is generated for the task and that its quality impacts task's success, you must log an event using `bot.add_event(event: str, data: dict)` to enable the critic agent to evaluate this content it through the events' list. The `event` should describe the type of event to help the critic to understand what to check, and `data` should include all information to be analyzed. If this event is in a loop/for, just fully log the event 1 time to avoid too much logging and allow sampling evaluation.",
-        f"13) Your function should include appropriate modification to resources and sections to measure task success. Main functions are:\n- class Section(section_id: int, title: str, content: str, parent_id: int)\n- {bot_function_specifications}",
-        "14) Before the return of the main function, ensure to store your results or text generated in resources or sections which are the only permanent storage. Also, ensure that results are returned for future reuse of the function."
+        f"1) First part of the function should be dedicated for the Neo4J graph connection (which is already created). Here you can find the informations:",
+            f"URI='bolt://127.0.0.1:7687'",
+            f"AUTH = auth=('neo4j','password')",
+        f"2) Ensure that the generated code adheres to principles of reusability and modularity. Specifically, functions should not hard-code strings, variables, or parameters that make them context-specific. Instead, any data or parameters of helpers functions that can vary should be passed as arguments to the functions, ensuring that the functions can be reused in different contexts or with different data without requiring modifications to the code itself. This ensures that the code is adaptable and can be utilized in various scenarios, enhancing its utility and longevity.",
+        f"3) Call existing functions as much as possible from the primitives folder.",
+        f"4) Name your function in a meaningful way (can infer the task from the name).",
+        f"5) Your function will be reused for building more complex functions. Therefore, you should make it generic and reusable. Avoid to include specific query or information in the function instead of using it as an argument.",
+        f"6) Anything defined outside a function will be ignored, define all your variables and classes inside your functions.",
+        f"7) Ensure that your code is fully executable, it is not a skeleton and does not contain placeholders, unimplemented sections, or comments indicating future work (e.g., TODO, pass, '....', etc.). All functions and logic must be complete and runnable to facilitate immediate use and testing.",
+        f"8) Do not write infinite loops or recursive functions. Do not use Mathplotlib and clustering methods. Find the clothest ways on the graph.",
+        f"9) Name your function in a meaningful way (can infer the task from the name).",
+        f"10) Any packages/libraries used by the function should be imported inside the function (it will be ignored if imported outside).",
+        f"11) dont try to create new tab (columns and rows), or time_range (e.g 'previous 30 days' or WHERE fa.fan_date_declaration >= date('time_range'))",
+        f"12) Do not take into account the fan_date_declaration, it does not matter for the code.",
+        f"13) Adapt the exact same code as the primitives  (generateNeo4J.py) is their is nothing in the succeded functions",
+        f"14) Avoid those errors:"
+            "- Error: 'SynthesisManager' object has no attribute 'min_plan_cosine_similarity'"
+            "- analyze_similar_anomalies() got an unexpected keyword argument 'problem'",
+        {modularity_final}
     ]
     
     del criteria_coder[instruction_to_remove - 1]
-    coder_text = "\n".join(criteria_coder)
+    for i in range(len(criteria_coder)):
+        coder_text = "\n".join(criteria_coder[i])
     
-    prompt_coder = f"""
+    prompt_coder = [f"""
     You are a helpful assistant that writes Python code to be executed using a restricted list of packages ({libraries_restriction}) to complete the task specified by me.
     At each round of conversation, I will give you:
     - Reasoning: explanation of the task chosen...
     - Task: ...
     - Plan: ...
     - Tests: tests that will be done on target document
+
     CURRENT STATE OF THE ENVIRONMENT USED TO TEST TASK
-    Document #.... : 1.title: ...; 2. abstract: ...; 3. current table of content; 4. current resources; 5. sections titles progress; 6. sections content progress; 7. events counted
-    ...
+        Document #xxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx: 
+        {
+                'id: ...'
+                'title: ...'
+                'abstract: ...'
+                'comment: ...'
+                'target_file_path: ...'
+        }
+
     - General code for re-use or demonstration purpose: ...
     - Code from the last round with attempts to implement task with its performance (e.g. 'sections titles progress': x, 'sections content progress': y): ...
     - Execution error: ...
+
+    Here you can find a structure of an existing Fiche of Anomalie (FA):
+        {structure_FA}
+
+    Cypher request which was used to create the database: 
+        {cypher_request}
+               
     You should then respond to me with:
-    - Reasoning: How to best implement the plan with no errors and maximum performance towards the goal ?
-    - Code:
-    {coder_text}
+        - Reasoning: How to best implement the plan with no errors and maximum performance towards the goal ?
+        - Code:
+        {coder_text}
+
     RESPONSE FORMAT (You should only respond in the format as described below, and follow the example provided):
-    Reasoning: ...
-    Code:
-    ```python
-    # helper functions (only if needed, try to avoid them)
-    # detailed content of the function...
-    # main function after the helper functions
-    def your_main_function_name(bot):
-        title = bot.document.title
-        abstract = bot.document.context
-        # detailed content of the function...
-    ```
-        """
+        ```python    
+                main function after the helper functions
+                def your_main_function_name(args...):
+                # detailed content of the function...
+        ``` 
+
+        Tests: 
+        # document #72dc469b-63f8-4751-aab5-6db3d16fca3c usage test:
+        your_main_function_name(args specific to document #72dc469b-63f8-4751-aab5-6db3d16fca3c...)
+
+        # document #c0533337-1c5e-4091-ba7d-061ae409cda4 usage test:
+        your_main_function_name(args specific to document #c0533337-1c5e-4091-ba7d-061ae409cda4...)
+    """]
+
     # Write the prompt in the file readed after by the coder
-    with open("./prompts/IR_CPS_TechSynthesis/code_task.txt", "w") as f:
-            f.write(prompt_coder)
+    with open("./prompts/code_task.txt", "w") as f:
+            f.write(prompt_coder[0])
 
     # Define parameters for the Critic
 
@@ -277,14 +430,22 @@ if __name__ == "__main__":
     }
 
     # Set the documents to test/validate as a list of environments
-    documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
-                'title':"Complex QA and language models hybrid architectures, Survey",
-            'context':"This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
-            'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"},
-            { 'id':"42252c6c-12f3-4edf-9045-8acd69bc3356",
-                'title':"Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
-            'context':"This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
-            'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
+    documents=[
+        {
+        "id": "68802377-e8e5-4940-a337-e66930ba5015",
+        "title": "Erreur de connexion au serveur interne",
+        "context": "Lors de la tentative de connexion au serveur interne de l'entreprise, les utilisateurs rencontrent un message d'erreur indiquant une impossibilité de se connecter. Ce problème semble intermittent et affecte principalement les utilisateurs du département des ventes.",
+        "target_file_path": "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/fiche_ano/Erreur de connexion au serveur interne.json"
+        },
+
+        {
+        "id": "c0533337-1c5e-4091-ba7d-061ae409cda4",
+        "title": "Problème de performance sur le module de gestion des utilisateurs",
+        "context": "Lors de l'utilisation du module de gestion des utilisateurs, nous avons constaté des ralentissements significatifs. Les utilisateurs rapportent que la page met plusieurs minutes à se charger et que les opérations de modification et de suppression d'utilisateur prennent un temps anormalement long. Ce problème a été observé sur plusieurs navigateurs et sur différentes configurations matérielles, ce qui suggère qu'il ne s'agit pas d'un problème isolé à un utilisateur spécifique ou à un type de machine. Nous avons identifié que ce problème semble se produire principalement lorsque le nombre d'utilisateurs dépasse les 1000. Les logs du serveur montrent des temps de réponse élevés sur les requêtes liées à la base de données pour ce module spécifique. Une analyse initiale indique que certaines requêtes ne sont pas optimisées et causent des verrous au niveau de la base de données.",
+        "target_file_path": "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/fiche_ano/Problème de performance sur le module de gestion des utilisateurs.json"
+        }
+    ]
+
     envs = []
     for doc in documents:
         env = learn.EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'], target_file_path=doc['target_file_path'], id=doc['id']).get_environment()
