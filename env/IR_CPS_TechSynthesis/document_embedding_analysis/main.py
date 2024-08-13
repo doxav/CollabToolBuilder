@@ -31,7 +31,7 @@ _ = load_dotenv(find_dotenv())
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 
-def _num_tokens_from_string(string: str, encoding_name: str = "gpt-3.5-turbo") -> int:
+def _num_tokens_from_string(string: str, encoding_name: str = "gpt-4o-mini-2024-07-18") -> int:
     """Returns the number of tokens in a text string."""
     try:
         encoding = tiktoken.get_encoding(encoding_name)
@@ -398,7 +398,7 @@ async def divide_sections_if_too_large(
             splits: List[str] = char_splitter.split_text(content)
             # Keep heading the same but add numbers to sections e.g. 'h2 Reference' -> 'h2 Reference 1'
             # TODO - add a continue statement here?
-            if doc_type in ["wikipedia", "arxiv"] and is_reference_section(heading):
+            if doc_type in ["wikipedia", "arxiv", "fiche_ano"] and is_reference_section(heading):
                 for i, split in enumerate(splits, start=1):
                     new_heading = f"{heading} {i}"
                     final_dict[new_heading] = split
@@ -432,7 +432,7 @@ async def divide_sections_if_too_large(
 
 
 def _gen_embed_section_content(
-    heading: str, content: str, id: int = 1, total_sections: int = 1
+    heading: str, content: str, id: int, total_sections: int
 ) -> Dict[str, str | list[float]]:
     """Given a heading and content, returns a dictionary with the heading, content,
     and embeddings of the heading and content.
@@ -560,8 +560,8 @@ def generate_embeddings_plan_and_section_content(
             comment = content[2]
         except IndexError:
             abstract = "no abstract"
-        total_sections = len(headings) - 2
-        start_index = 2
+        total_sections = len(headings) - 1
+        start_index = 1
     else:
         raise ValueError(doc_type_error_msg)
 

@@ -24,7 +24,7 @@ def objective(trial):
         "produce high quality technical synthesis",
         "analyse complex data sets",
         "analyse a a Neo4J graph",
-        "solve JIRA issue, given a graph of a complete dataset of JIRA anomalies from Neo4J"
+        "solve JIRA issue, given a graph of a complete dataset of JIRA anomalies from Neo4J and embeddings"
     ])
 
     goal_function = trial.suggest_categorical("goal_function", [

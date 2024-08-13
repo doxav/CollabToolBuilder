@@ -1,5 +1,5 @@
 
-def retrieve_and_visualize_similar_anomalies(problem):
+def find_similar_anomaly(problem):
     """
 The function retrieves and visualizes anomalies similar to a given problem by querying a Neo4j database, processing the data, and calculating cosine similarities between the provided problem and the retrieved anomalies. It returns a JSON object containing the original problem and a list of recommended similar anomalies. The function manages database connections and handles data cleaning and embedding calculations internally. Finally, it filters and ranks the most similar anomalies based on their textual descriptions. 
 :param problem: A dictionary containing the title and abstract of the anomaly to compare against
