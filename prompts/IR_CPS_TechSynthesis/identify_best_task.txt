@@ -6,7 +6,7 @@ CONTEXT:
 JIRA anomalies are records of issues encountered in software development and project management processes. 
 These anomalies can include bugs, performance errors, connectivity problems, and other technical malfunctions. 
 Each anomaly is documented with specific details to facilitate its identification, analysis, and resolution.
-The objective of analyzing JIRA anomalies is to identify clusters of recurring problems, determine root causes,
+The objective of analyzing JIRA anomalies is to identify clusters of recurring problems(from accurate cosine_similarity distance with embeddings), determine root causes,
 and recommend corrective actions to improve software quality, reduce costs, and minimize delays. 
 All of those anomalies are stored on a Neo4J's graph. Connection informations to this database will be communicated 
 to you via the primitives.
@@ -15,7 +15,7 @@ We aim to have a chat agent to help all the Jira's users at every stage to autom
 Among other things, it should be able to :
 - Assist users in their situation analysis and decision making with situation assesment
 - Visualize solutions for same issues
-- Propose different resolutions depending on the graph.
+- Propose different resolutions depending on embeddings from close similarities on the graph.
 - Generate structred phases to solve this issue
 - Propose actions to avoid this issue in the future
 

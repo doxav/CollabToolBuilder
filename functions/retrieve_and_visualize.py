@@ -1,9 +1,14 @@
 def retrieve_and_visualize_similar_anomalies(problem):
     """
-The function retrieves and visualizes anomalies similar to a given problem by querying a Neo4j database, processing the data, and calculating cosine similarities between the provided problem and the retrieved anomalies. It returns a JSON object containing the original problem and a list of recommended similar anomalies. The function manages database connections and handles data cleaning and embedding calculations internally. Finally, it filters and ranks the most similar anomalies based on their textual descriptions. 
-:param problem: A dictionary containing the title and abstract of the anomaly to compare against
-:return: A JSON string containing the problem, a list of 3 similar anomalies and a recommendation text depending on the similarities
-"""
+    The function retrieves and visualizes anomalies similar to a given problem by querying a Neo4j database, processing the data,
+    and calculating cosine similarities between the provided problem and the retrieved anomalies. It returns a JSON object 
+    containing the original problem and a list of 3 similar anomalies. The function manages database connections and handles 
+    data cleaning and embedding calculations internally. Finally, it filters and ranks the most similar anomalies based on 
+    their textual descriptions.
+    
+    :param problem: A dictionary containing the title and abstract of the anomaly to compare against
+    :return: A JSON string containing the problem, a list of 3 similar anomalies and a recommendation text depending on the similarities
+    """
     from neo4j import GraphDatabase
     import json
     import numpy as np
@@ -11,8 +16,10 @@ The function retrieves and visualizes anomalies similar to a given problem by qu
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.decomposition import TruncatedSVD
     import openai
+    import os
+    from langchain_openai import OpenAI
 
-    openai.api_key = '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'
+    openai.api_key = os.getenv("OPENAI_API_KEY")
 
     # Step 1: Connect to Neo4j database
     def neo4j_connection():
@@ -60,9 +67,8 @@ The function retrieves and visualizes anomalies similar to a given problem by qu
     def get_most_similar_anomalies(test_anomaly_embedding, anomaly_embeddings):
         similarities = cosine_similarity(test_anomaly_embedding, anomaly_embeddings)
         most_similar_indices = np.argsort(-similarities[0])[:3]  # Get top 3 similar
-        return most_similar_indices
+        return most_similar_indices, similarities[0]
     
-    # Step 8: Generate recommendation text using OpenAI API
     def generate_recommendation_text(similar_anomalies, problem):
         prompt = f"The user has encountered a problem described as follows:\n\nTitle: {problem['title']}\nDescription: {problem['abstract']}\n\nBased on this problem, here are descriptions of 3 similar anomalies:\n\n"
         for idx, anomaly in enumerate(similar_anomalies):
@@ -77,14 +83,16 @@ The function retrieves and visualizes anomalies similar to a given problem by qu
             ]
         )
 
-        return response.choices[0].message.content.strip()
+        # Access the content correctly
+        recommendation_text = response.choices[0].message.content
+        return recommendation_text.strip()
 
+
+    
     # Step 9: Write the result to a file
     def write_to_file(result, filename="result_functions.txt"):
         with open(filename, "w") as file:
             file.write(result)
-
-
 
     # Main execution flow
     driver = neo4j_connection()
@@ -107,23 +115,35 @@ The function retrieves and visualizes anomalies similar to a given problem by qu
     validate_embeddings(test_anomaly_embeddings)
     validate_embeddings(anomaly_embeddings)
 
-    most_similar_indices = get_most_similar_anomalies(test_anomaly_embeddings, anomaly_embeddings)
+    most_similar_indices, similarity_scores = get_most_similar_anomalies(test_anomaly_embeddings, anomaly_embeddings)
 
     top3_anomalies = [
         {
             "title": cleaned_anomaly_data[idx]["title"],
             "description": cleaned_anomaly_data[idx]["description"],
+            "similarity_score": similarity_scores[idx],
         }
         for idx in most_similar_indices
     ]
 
     recommendation_text = generate_recommendation_text(top3_anomalies, problem)
 
-    result= json.dumps({ "problem": problem,
-                        "top 3 anomalies": top3_anomalies,
-                        "recommendation_text": recommendation_text 
-                        }, indent=4)
+    result = json.dumps({
+        "problem": problem,
+        "top 3 anomalies": top3_anomalies,
+        "recommendation_text": recommendation_text
+    }, indent=4)
     
     write_to_file(result)
 
     return result
+
+# Example usage
+problem = {
+    'title': 'Internal server connection error',
+    'abstract': 'A server encountered an internal error and could not complete your request.'
+}
+
+test = retrieve_and_visualize_similar_anomalies(problem)
+
+print(test)
