@@ -14,20 +14,6 @@
 ###  - Ajouter la clée d'accès OpenAI
     OPENAI_API_KEY=your-openai-api-key
 
-###  - Démarrer Ollama 
-
-    ollama serve --model llama3_8b
-
-###  - Configurer les variables d'environnement 
-
-    NEO4J_URI=bolt://localhost:7687
-    NEO4J_USER=neo4j
-    NEO4J_PASSWORD=password
-        
-    LLAMAINDEX_OLLAMA_BASE_URL=http://localhost:11434
-    LLAMAINDEX_MODEL_NAME=llama3_8b
-    LLAMAINDEX_EMBEDDING_MODEL_NAME=nomic-embed-text
-
 ### Lancer OpenWebUI via Docker 
 
     docker run -d -p 3000:8080 --add-host=host.docker.internal:host-gateway -v open-webui:/app/backend/data --name open-webui --restart always ghcr.io/open-webui/open-webui:main
@@ -37,7 +23,29 @@
 
 ### Paramétrage sous OpenWebUi
 
-    ouvrir localhost:8080, dans Admin Panel, établir les connections nécessaires: 
+    ouvrir localhost:3000, se connecter, puis dans Admin Panel, établir les connections nécessaires: 
+
+            https://api.openai.com/v1   et mettre sa clée openai
+            
+            http://host.docker.internal:9100   pwd : 0p3n-w3bu!
+
+            NB : If your Open WebUI is running in a Docker container, replace localhost with host.docker.internal in the API URL
 
             http://localhost:11434 pour ollama
+
+    Dans "pipelines", charger la pipelines.py à partir de github
+         le github doit contenir .env avec la clée openai,
+         et un .gitignore pour eviter de la publier
+
+        exemple de github : https://github.com/doxav/CollabFunctionsGPTCreator/blob/Jira-FA/anomaly_retrieval_pipeline.py
+
+        et régler les différents paramètres : 
+                Llamaindex Ollama Base Url              http://localhost:11434
+                Llamaindex Model Name                   llama3_8b
+                Llamaindex Embedding Model Name         nomic-embed-text
+                Neo4J Uri                               bolt://localhost:7687
+                Neo4J User                              neo4j
+                Neo4J Password                          password
+                Openai Api Key                          your-key-api
+
 
