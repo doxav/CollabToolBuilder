@@ -17,8 +17,9 @@ def retrieve_and_visualize_similar_anomalies(problem):
     from sklearn.decomposition import TruncatedSVD
     import openai
     from langchain_openai import OpenAI
+    import os
 
-    openai.api_key = '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'
+    openai.api_key = os.getenv("OPENAI_API_KEY")
 
     # Step 1: Connect to Neo4j database
     def neo4j_connection():

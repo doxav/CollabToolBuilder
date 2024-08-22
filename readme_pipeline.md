@@ -16,20 +16,33 @@
 
 ### Lancer OpenWebUI via Docker 
 
-    docker run -d -p 3000:8080 --add-host=host.docker.internal:host-gateway -v open-webui:/app/backend/data --name open-webui --restart always ghcr.io/open-webui/open-webui:main
+    => sans ollama : docker run -d -p 3000:8080 --add-host=host.docker.internal:host-gateway -v open-webui:/app/backend/data --name open-webui --restart always ghcr.io/open-webui/open-webui:main
+
+      ===> http://localhost:3000
+
+
+    => avec ollama : docker run -d --network=host -v open-webui:/app/backend/data -e OLLAMA_BASE_URL=http://127.0.0.1:11434 --name open-webui --restart always ghcr.io/open-webui/open-webui:main
+
+      ===> http://localhost:8080        
+
+
 
     lancer bash ./start.sh from pipelines issue de ::
             git clone https://github.com/open-webui/pipelines.git
 
+
 ### Paramétrage sous OpenWebUi
+
+
+    avec ollama : the WebUI docker container not being able to reach the Ollama server at 127.0.0.1:11434 (host.docker.internal:11434) inside the container . Use the --network=host flag in your docker command to resolve this. Note that the port changes from 3000 to 8080, resulting in the link: .
 
     ouvrir localhost:3000, se connecter, puis dans Admin Panel, établir les connections nécessaires: 
 
             https://api.openai.com/v1   et mettre sa clée openai
-            
-            http://host.docker.internal:9100   pwd : 0p3n-w3bu!
 
-            NB : If your Open WebUI is running in a Docker container, replace localhost with host.docker.internal in the API URL
+            http://localhost:9100   pwd : 0p3n-w3bu!
+
+            ou via docker : http://host.docker.internal:9100   pwd : 0p3n-w3bu!
 
             http://localhost:11434 pour ollama
 

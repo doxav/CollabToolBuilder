@@ -264,14 +264,23 @@ class CodingAgent():
 
     def get_primitives(self):
         primitives = []
-        # add to imports python text content of files located in the primitives directory which is located in the subdirectory of this file
-        for root, dirs, files in os.walk(os.path.join(os.path.dirname(__file__), "primitives")):
-            for file in files:
-                file_path = os.path.join(root, file)
-                with open(file_path, "r") as f:
-                    primitives.append(f.read())
+        # Add the pipelines folder for the primitives
+        lst_primitives_folders = ["primitives", "pipelines/pipelines"]
+
+        for folder in lst_primitives_folders:
+            folder_path = os.path.join(os.path.dirname(__file__), folder)
+            for root, dirs, files in os.walk(folder_path):
+                for file in files:
+                    if file.endswith(".py"):
+                        smart_print(f"File: {file}")
+                        file_path = os.path.join(root, file)
+                        with open(file_path, "r") as f:
+                            primitives.append(f.read())
+            
         return primitives
 
+
+     
     def code_task_and_run_test(self, refined_task: str, previous_errors=None, previous_scores=None, previous_codes=None, reset_unique_ids: str=None) -> str:
         primitives = self.get_primitives()
         user_message=f"TASK DEFINITION: {refined_task}"
