@@ -33,7 +33,7 @@ import openai
 from requests.auth import HTTPBasicAuth
 
 openai.api_key = os.environ['OPENAI_API_KEY']
-openai.base_url = os.environ['OPENAI_BASE_URL']
+if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
 
 ON_INPUT = False
 
@@ -441,14 +441,13 @@ class UnifiedVectorDB:
 # db = UnifiedVectorDB("documents", embedding_function, "bolt://localhost:7687", "neo4j", "password")
 # db.add_texts(["This is a test document"], ids=["doc1"], metadatas=[{"author": "Alice"}])
 
+class InferenceCheck:
+    def __init__(self, check_name, check_function):
+        self.check_name = check_name
+        self.check_function = check_function
 
-def search_for_external_knwoledge(description, url):
-    """
-    Search for documentation on Internet or ask Human
-    """
-    print(f"search_for_external_knwoledge: description={description}, url={url}")
-    return _visual_input(f"search_for_external_knwoledge: description={description}, url={url}")
-
+    def run_check(self, *args, **kwargs):
+        return self.check_function(*args, **kwargs)
 
 class HumanLLMMonitor:
     default_skip_rounds = 0
@@ -508,7 +507,7 @@ class HumanLLMMonitor:
 
     def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_max_context_size=16000, llm=None,
                  premium_llm=None, premium_llm_by_default=False, num_parallel_inferences=1, llmORchains_list=None,
-                 synthesize_mode=False):
+                 synthesize_mode=False, inference_checks=None):
         if llmORchains_list is None: raise ValueError("llmORchains_list must be provided")
         self.llmORchains_list = llmORchains_list
         self.system_prompt = system_prompt
@@ -529,7 +528,22 @@ class HumanLLMMonitor:
         self.num_parallel_inferences = num_parallel_inferences
         self.llm_max_context_size = model_max_context_size
         self.premium_llm_by_default = premium_llm_by_default
-        self.synthesize_mode = synthesize_mode  # NEW
+        self.synthesize_mode = synthesize_mode
+        self.inference_checks = inference_checks if inference_checks else {}
+        self.last_inference_check_results = None
+
+    def add_inference_check(self, check_name, check_function):
+        self.inference_checks[check_name] = InferenceCheck(check_name, check_function)
+
+    def run_inference_checks(self, output_id, *args, **kwargs):
+        results = {}
+        for check_name, check in self.inference_checks.items():
+            result = check.run_check(*args, **kwargs)
+            results[check_name] = result
+        # Ensure output_id is within bounds before updating the list
+        if 0 <= output_id < len(self.last_inference_check_results):
+            self.last_inference_check_results[output_id] = results  # Update the specific index
+        return results
 
     def get_caller_class_name(self):
         # Returns the name of the class that called the current function
@@ -602,8 +616,15 @@ class HumanLLMMonitor:
             match (optuna):
                 case "Coach":
                     llm_keys = list(self.llmORchains_list.keys())
-                    # Model change from choice of optuna
-                    new_llm_name = llm_keys[model_choice]
+                    if type(model_choice) == int:
+                        # Model change from choice of optuna
+                        new_llm_name = llm_keys[model_choice]
+                    elif type(model_choice) == str:
+                        if model_choice not in llm_keys:
+                            raise ValueError(f"Model choice '{model_choice}' not found in llmORchains_list {llm_keys}")
+                        new_llm_name = model_choice
+                    else:
+                        raise ValueError("Model choice must be an integer or a string")
                     self.set_default_llm(new_llm_name)
                     self.set_premium_llm(new_llm_name)
                     default_llm_function = self.default_llm
@@ -613,7 +634,7 @@ class HumanLLMMonitor:
                     action = ""
                 case _: # Default case
                     action = smart_input(
-                        f"{menu}\n\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",self.agent_name).upper()
+                        f"\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",self.agent_name).upper()
 
             # ACTIONS processing
             start_time, action = time.time(), action  # Init action selected and timer to measure time spent and occurences in action processing
@@ -864,22 +885,28 @@ class HumanLLMMonitor:
     def _after_inference(self, inference_result_msg, premium_llm_function, color="37", output_id=None,
                          outputs_count=None, optuna=None):
         comments, score = None, None
+        nl = "\n"
         if inference_result_msg is None:
             # enable to request inference_result_msg.content to be None
             inference_result_msg = type('InferenceResult', (object,), {'content': None})
 
         while self.skip_rounds <= 0:
             # MENU
-            multiple_ref = (f"OUTPUT \033[31m{output_id} OUT OF {outputs_count}\033[0m OUTPUTS" if (
-                    output_id and outputs_count and (outputs_count > 1)) else "")
-            menu = (
-                f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")
-            menu += (
-                "A. Manually set/modify the answer/output (I don't want to try to improve agent's system prompt).\n")  # je voudrais le corriger uniquement pour demander une suggestion d'amélioration du prompt (d'un autre côté, je peux aussi le faire dans le menu précédent)
+            multiple_ref = (f"OUTPUT \033[31m{output_id} OUT OF {outputs_count}\033[0m OUTPUTS" if (output_id and outputs_count and (outputs_count > 1)) else "")
+
+            # Run inference checks if any
+            check_results = self.run_inference_checks(output_id-1, inference_result_msg.content)
+            check_display = ""
+            # Display inference check results
+            for check_name, result in check_results.items():
+                check_display += f"{nl}CHECK {check_name} result: " + str(result).replace("\\n", "\n")
+
+            menu = (f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n{check_display}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")
+
+            menu += ("A. Manually set/modify the answer/output (I don't want to try to improve agent's system prompt).\n")  # je voudrais le corriger uniquement pour demander une suggestion d'amélioration du prompt (d'un autre côté, je peux aussi le faire dans le menu précédent)
             menu += ("B. Critic this answer/output to get an improved answer/output.\n")
             menu += ("C. Find a better Prompt by providing critic and ideal answer.\n")
-            menu += (
-                "D. Evaluate & comment answer (Score between 0(worst)-1(top), and explain) to improve future results by using scored/commented examples.\n")
+            menu += ("D. Evaluate & comment answer (Score between 0(worst)-1(top), and explain) to improve future results by using scored/commented examples.\n")
             menu += ("E. Go back BEFORE inference to improve system prompt or add information to user message.\n")
             menu += ("G. Skip human actions for N rounds.\n")
             menu += ("H. Exit program.\n")
@@ -895,8 +922,7 @@ class HumanLLMMonitor:
 
             if action == "A":  # Manually set/modify the answer/output
                 inference_result_msg.content = _visual_input(inference_result_msg.content)
-                smart_print(f"***** NEW USER MESSAGE:\n{inference_result_msg.content}\n*************", self.agent_name,
-                            "NEW USER MESSAGE")
+                smart_print(f"***** NEW USER MESSAGE:\n{inference_result_msg.content}\n*************", self.agent_name,"NEW USER MESSAGE")
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
                 while True:
@@ -959,10 +985,9 @@ class HumanLLMMonitor:
                 exit()
 
             # Count time spent and occurrences waiting and in each option
-            if action:
+            if action and action.isalpha() and len(action) == 1:
                 # if action is set and not exist yet, also check if this is 1 single letter
-                if action and (action not in self.after_inference_option_times) and action.isalpha() and len(
-                        action) == 1:
+                if action not in self.after_inference_option_times:
                     self.after_inference_option_times[action] = 0
                     self.after_inference_option_counts[action] = 0
                 self.after_inference_option_times[action] += (time.time() - start_time)
@@ -1128,8 +1153,7 @@ class HumanLLMMonitor:
                             color_id % 7], "\033[0m"
                 final_output = ""  # Initialize an empty string to hold the full response
                 smart_print("", self.agent_name, "Inference streaming output")
-                for chunk in func.stream(
-                        input_msg):  #, temperature=temperature):  # Ensure 'llm' is correctly initialized with temperature
+                for chunk in func.stream(input_msg, temperature=temperature):  #, temperature=temperature):  # Ensure 'llm' is correctly initialized with temperature
                     smart_print(start_color + chunk.content + end_color, self.agent_name, "Inference streaming output",
                                 append=True)
                     final_output += chunk.content  # Concatenate each chunk to build the full response
@@ -1169,11 +1193,12 @@ class HumanLLMMonitor:
             if llm_input_messages and not skip_inference:
                 # Use concurrent futures to parallelize the LLM calls.
                 outputs = []
+                self.last_inference_check_results = [None] * self.num_parallel_inferences  # Pre-allocate the list with None
                 with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_parallel_inferences) as executor:
-                    if type(self.premium_llm) == type(self.llmORchains_list.get('3_majority_chain')):
+                    if type(self.premium_llm if use_premium_llm else self.default_llm) == type(self.llmORchains_list.get('3_majority_chain')):
                         stream_output = True
                     futures = [executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling,
-                                               temperature, stream_output, _) for _ in
+                                               temperature+(i*0.05), stream_output, i) for i in
                                range(self.num_parallel_inferences)]
                     for future in futures:
                         try:

@@ -44,7 +44,8 @@ ENV PATH="/usr/local/bin:${PATH}"
 # Create virtual environment and install requirements
 RUN python3.10 -m venv /app/.venv && \
     /app/.venv/bin/python -m pip install --upgrade pip && \
-    /app/.venv/bin/python -m pip install -r /app/requirements.txt
+    /app/.venv/bin/python -m pip install -r /app/requirements.txt && \
+    /app/.venv/bin/python -m pip install aider-chat
 
 
 # Use bash shell for subsequent commands

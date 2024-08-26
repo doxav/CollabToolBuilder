@@ -901,79 +901,6 @@ class SynthesisManager:
         else:
             return False
 
-    @method_call_counter
-    def code_ignored():
-    # def add_sections(self, sections: List[Section]):
-    #     for section in sections:
-    #         self.add_section(section)
-    #         self.document.update_sections_embeddings([section.section_id])
-    #     return self
-
-    # def remove_sections(self, section_ids: List[int]):
-    #     for section_id in section_ids:
-    #         self.remove_section(section_id)
-    #     return self
-
-    # def split_section(self, section_id: int, new_title: str, split_index: int):
-    # # TODO: peut-être à supprimer car peut être fait avec edit_section + add_section
-    #     section = next((s for s in self.document.document_content.sections_list if s.section_id == section_id), None)
-    #     if section:
-    #         first_half = section.content[:split_index]
-    #         second_half = section.content[split_index:]
-    #         section.content = first_half
-    #         new_section =  Section(section_id=len(self.document.document_content.sections_list) + 1, parent_id=section.parent_id, title=new_title, content=second_half)
-    #         self.document.document_content.sections_list.append(new_section)
-    #         self.document.update_plan_embedding()
-    #         self.document.add_event('observation', {'action': 'split_section','section_id': section_id})
-    #     return self
-
-    # def add_section_feedback_to_process(self, section_id: int, feedback: str):
-    #     section = next((s for s in self.document.document_content.sections_list if s.section_id == section_id), None)
-    #     if section:
-    #         section.local_feedback_to_process.append(feedback)
-    #         self.document.add_event('observation', {'action': 'add_section_feedback_to_process','section_id': section_id})
-    #     return self
-    
-    # def get_section_feedback_to_process(self, section_id: int) -> List[str]:
-    #     section = next((s for s in self.document.document_content.sections_list if s.section_id == section_id), None)
-    #     if section:
-    #         return section.local_feedback_to_process
-    #     return []
-
-    # def set_section_feedback_processed(self, section_id: int, feedback: str):
-    #     # search for the feedback in the section feedback to process, remove it and add it to the section feedback processed
-    #     section = next((s for s in self.document.document_content.sections_list if s.section_id == section_id), None)
-    #     if section:
-    #         if feedback in section.local_feedback_to_process:
-    #             section.local_feedback_to_process.remove(feedback)
-    #             section.local_feedback_processed.append(feedback)
-    #             self.document.add_event('observation', {'action': 'set_section_feedback_processed','section_id': section_id})
-    #     return self
-    
-    # def add_global_feedback_to_process(self, feedback: str):
-    #     self.document.global_feedback_to_process.append(feedback)
-    #     self.document.add_event('observation', {'action': 'add_global_feedback_to_process'})
-    #     return self
-
-    # def get_global_feedback_to_process(self) -> List[str]:
-    #     return self.document.global_feedback_to_process
-    
-    # def set_global_feedback_processed(self, feedback: str):
-    #     if feedback in self.document.global_feedback_to_process:
-    #         self.document.global_feedback_to_process.remove(feedback)
-    #         self.document.global_feedback_processed.append(feedback)
-    #         self.document.add_event('observation', {'action': 'set_global_feedback_processed'})
-    #     return self
-
-    # def rate_section_content_progress_validation_status(self, edit_section: int, rating: int):
-    #     # section = next((s for s in self.document.document_content if s['id'] == section_id), None)
-    #     section = next((s for s in self.document.document_content.sections_list if s.section_id == section_id), None)
-    #     if section:
-    #         section.content_progress_validation_status = rating
-    #         self.document.add_event('observation', {'action': 'rate_content_progress_validation_status','section_id': section_id})
-    #     return self
-        pass
-
     # search into resources stored in self.document.resources_vectordb and self.document.resources, return a list of resources
     @method_call_counter
     def semantic_search_resources(self, query_embeddings = None, query_texts = None, n_results = 10, where = None, where_document = None, include = ["metadatas", "documents", "distances"]):
@@ -985,6 +912,7 @@ class SynthesisManager:
 
     @method_call_counter
     def add_or_update_results_in_resources(self, results, metadatas_to_add: dict = {}, store_linked_document_content: bool = False):
+        if isinstance(results, dict): results = [results]
         for result in results:
             content = {'description': result['description']} if isinstance(result['description'], str) else result['description']
             self.add_or_update_result_in_resources(metadatas=metadatas_to_add, name=result['title'], link=result['link'], content=content, store_linked_document_content=store_linked_document_content)
@@ -1279,7 +1207,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         self.initial_goal = goal
         self.refined_goals = [goal] if refined_goals is None else refined_goals
         self.title = title
-        self.abstract = context
+        self.context = context
 
         self.document = DocumentStructure(synthesis_type=synthesis_type, initial_goal=goal, refined_goals=self.refined_goals, embedding_model_name=embedding_model_name, title=title, context=context)  # Initialize your document structure
         self.synthesis_manager = SynthesisManager(document=self.document, target_file_path=target_file_path)  # Initialize your Synthesis Manager
