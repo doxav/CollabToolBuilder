@@ -193,7 +193,7 @@ def objective(trial):
 
             TASK:
                 Based on the current context, we need to code functions to help users to solve JIRA's anomalies by leveraging the graph database from Neo4J. This database will be your only source of information.
-                First: propose 3 differents plans to best support a crisis response / intervention from end-to-end starting when a new Jira anomalie is detected up to end of correction operation and capitalization.
+                First: propose  a plan to best support a crisis response / intervention from end-to-end starting when a new Jira anomalie is detected up to end of correction operation and capitalization.
                 Second: reason and identify the next best task to be converted to code by a LLM and made available as a function to a chat, it should provide the best value to target while not being too complex to 
                 be converted to code in one pass using a LLM.
                 You should propose to choose between 2 different next best task. Task could be either the most frequent and globaly impactful task to be automated throughout plans, or the highest priority and impactful task at the current status of the JIRA's issue correction (if this status is not provided, consider we are the beginning of the operation).
@@ -240,6 +240,47 @@ def objective(trial):
 
     # Define parameters for Coder
 
+    example_result = trial.suggest_categorical("example_result", ["""
+        🛠 Problem Details 🛠
+        Title: no message
+        Abstract: no message on jira between all of the collaborators
+        Number: 35678
+        Comment: very annoying
+
+    🔍 Top 3 Similar Anomalies 🔍
+        Anomaly 1 :
+            Title: JIRA displays an erroneous error message when user votes
+            Description: At 11:17 today, on jira.atlassian.com, I tried to vote on [ANSWERS-182] and got an error message "The JIRA server was contacted but has returned an error response. We are unsure of the result of this operation". Despite this, my vote was still counted. This made me confused.
+            Similarity Score: 0.77
+
+        Anomaly 2:
+            Title: Raising a jira from a defect is broken
+            Description: When you create a jira from a defect in a review, an error message is displayed:
+                        http://img.skitch.com/20101001-rmy8unkkgae6j2i5ytct4h69ij.jpg
+                        The jira is created however..
+            Similarity Score: 0.77
+
+        Anomaly 3:
+            Title: Message 'taken' notion is per message. But should be per message per queue
+            Description: Currently doing msg.take() in the broker will break pub / sub. As a message is referenced between queues not duplicated per queue. So marking message as taken in one queue will result in the message not being sent from any other queue.
+            Similarity Score: 0.76
+
+    💡 Recommendation to solve the issue 💡
+    Based on the described problem of "no message on jira between all of the collaborators," it seems the communication module, or comment section in the JIRA platform isn't working correctly. 
+
+    Comparing it with the similar anomalies:
+        Anomaly 1: This indicates that there might be a problem with the system's feedback/display mechanism as the user still saw an error message despite the vote being counted.
+        Anomaly 2: Here, even though an error message is displayed, the Jira issue is still created. Again, it suggests an issue with the output display mechanism, similar to the main problem where messages aren't showing up.
+        Anomaly 3: This issue revolves around the queue function of the software and might not be related to the messaging problem indicated in the user's issue.
+
+    Solutions:
+        Check User Permissions: First, ensure that all collaborators have appropriate permissions to send and receive messages. Insufficient permissions or roles could result in no messages being passed between collaborators.
+        Review Notification Preferences: Check to ensure that the notification settings are properly configured. Sometimes, messaging problems can occur if users have turned off their notifications or updated their notification preferences.
+        Software Updates: Make sure that all users are using the most updated version of the JIRA software. There might be a software bug or issue that's been resolved in a newer update which could be causing the messaging anomaly.
+        Clearing Cache & Cookies: Sometimes, cache buildup in the browser can cause certain functionalities to stop working. Guiding users to clear their cache or try using the software in an incognito window or a different browser might solve the problem.
+        Reach out to Support: If the problem persists despite trying these solutions, it may be best to reach out to Atlassian Support.
+        Remember to follow up with users to ensure the anomaly has been resolved and users can communicate in the software without issue."""])
+
     prompt_template = trial.suggest_categorical("prompt_template", ["Extensive", "Minimal"])
     libraries_restriction = trial.suggest_categorical("libraries_restriction", [
         "BeautifulSoap, RegEx, Sklearn, Huggingface, Langchain, Voyager",
@@ -260,7 +301,7 @@ def objective(trial):
     handle_previous_attempts = trial.suggest_categorical("handle_previous_attempts", [True, False])
     instruction_to_remove = trial.suggest_int("instruction_to_remove", 1, 14)
 
-    modularity_final = f"15) Ensure that the generated code adheres to principles of reusability and modularity as {modularity}." if modularity != "None" else "3) Ensure that the generated code adheres to principles of reusability." 
+    modularity_final = f"16) Ensure that the generated code adheres to principles of reusability and modularity as {modularity}." if modularity != "None" else "3) Ensure that the generated code adheres to principles of reusability." 
 
 
     # Construct the prompt based on the suggested parameters
@@ -274,7 +315,7 @@ def objective(trial):
         f"5) Your function will be reused for building more complex functions. Therefore, you should make it generic and reusable. Avoid to include specific query or information in the function instead of using it as an argument.",
         f"6) Anything defined outside a function will be ignored, define all your variables and classes inside your functions.",
         f"7) Ensure that your code is fully executable, it is not a skeleton and does not contain placeholders, unimplemented sections, or comments indicating future work (e.g., TODO, pass, '....', etc.). All functions and logic must be complete and runnable to facilitate immediate use and testing.",
-        f"8) Do not write infinite loops or recursive functions. Do not use Mathplotlib and clustering methods. Find the clothest ways on the graph.",
+        f"8) Do not write infinite loops or recursive functions. Do not use Mathplotlib and clustering methods. Find the clothest ways on the graph thanks to embeddings distance method.",
         f"9) Name your function in a meaningful way (can infer the task from the name).",
         f"10) Any packages/libraries used by the function should be imported inside the function (it will be ignored if imported outside).",
         f"11) dont try to create new tab (columns and rows), or time_range (e.g 'previous 30 days' or WHERE fa.fan_date_declaration >= date('time_range'))",
@@ -282,8 +323,14 @@ def objective(trial):
         f"13) Adapt the exact same code as the primitives  (generateNeo4J.py) is their is nothing in the succeded functions",
         f"14) Avoid those errors:"
             "- Error: 'SynthesisManager' object has no attribute 'min_plan_cosine_similarity'"
-            "- analyze_similar_anomalies() got an unexpected keyword argument 'problem'",
-        {modularity_final}
+            "- analyze_similar_anomalies() got an unexpected keyword argument 'problem'"
+            "TypeError: string indices must be integers, not 'str'",
+        f"15) The code should first connect to the Neo4J graph, then implement the task, and finally return the result. Ensure that the code is modular and reusable, adhering to principles of reusability and modularity. ",
+        {modularity_final},
+        f"17) Ensure to use the primitives functions",
+        f"18) Use openai.chat.completion.create to execute the code and provide the result instead of openai.ChatCompletion.create. openai_api_key should be load from .env file with os.getenv('OPENAI_API_KEY')",
+        f"19) Just use the generated recommandation instead of the creation of create a function `create_corrective_action_plan` ",
+        f"20) Do not use toLower in the cypther request ou WHERE clause",
     ]
     
     del criteria_coder[instruction_to_remove - 1]
@@ -295,7 +342,6 @@ def objective(trial):
     At each round of conversation, I will give you:
     - Reasoning: explanation of the task chosen...
     - Task: ...
-    - Plan: ...
     - Tests: tests that will be done on target document
 
     CURRENT STATE OF THE ENVIRONMENT USED TO TEST TASK
@@ -310,7 +356,8 @@ def objective(trial):
 
     - General code for re-use or demonstration purpose: ...
     - Code from the last round with attempts to implement task with its performance (e.g. 'sections titles progress': x, 'sections content progress': y): ...
-    - Execution error: ...
+    - Execution error:  You should use openai.chat.completions.create to execute the code and provide the result instead of openai.ChatCompletion.create.
+                        openai_api_key should be load from .env file with os.getenv("OPENAI_API_KEY")
 
     Here you can find a structure of an existing Fiche of Anomalie (FA):
         {structure_FA}
@@ -323,6 +370,9 @@ def objective(trial):
         - Code:
         {coder_text}
 
+        
+
+    
     RESPONSE FORMAT (You should only respond in the format as described below, and follow the example provided):
         ```python    
                 main function after the helper functions
@@ -330,7 +380,9 @@ def objective(trial):
                 # detailed content of the function...
         ``` 
 
-        Tests: 
+    EXAMPLES of code execution: {example_result} 
+
+    TESTS: 
         # document #72dc469b-63f8-4751-aab5-6db3d16fca3c usage test:
         your_main_function_name(args specific to document #72dc469b-63f8-4751-aab5-6db3d16fca3c...)
 

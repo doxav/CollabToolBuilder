@@ -27,3 +27,12 @@ IPython
 ipykernel
 neo4j
 langchain_community
+llama-index-llms-ollama
+llama_index.embeddings.ollama
+langchain_openai
+langchain_community
+optuna
+PyPDF2
+pydantic
+sentence_transformers
+watchdog

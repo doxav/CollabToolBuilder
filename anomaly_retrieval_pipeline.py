@@ -9,7 +9,7 @@ import openai
 import os
 import re
 from pydantic import BaseModel
-from dotenv import load_dotenv
+
 
 
 
@@ -43,7 +43,7 @@ class Pipeline:
         
 
     def reset_pipeline(self):
-        self.documents = None
+        self.documents = None       
         self.index = None
         self.anomaly_data = {}
         self.conversation_state = "start"
