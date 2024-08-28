@@ -1006,8 +1006,14 @@ class HumanLLMMonitor:
                 break
 
         if self.skip_rounds > 0:
+            check_results = self.run_inference_checks(output_id-1, inference_result_msg.content)
+            check_display = ""
+            # Display inference check results
+            for check_name, result in check_results.items():
+                check_display += f"{nl}CHECK {check_name} result: " + str(result).replace("\\n", "\n")
+            
             smart_print(
-                f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[2].function} LLM ANSWER content****\n{inference_result_msg.content}\n*****************\033[0m",
+                f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[2].function} LLM ANSWER content****\n{inference_result_msg.content}\n{check_display}\n*****************\033[0m",
                 self.agent_name, "LLM ANSWER content")
             self.skip_rounds -= 1
         else:
@@ -1190,10 +1196,11 @@ class HumanLLMMonitor:
                 original_input_messages, default_llm_function, premium_llm_function, function_calling,
                 callable_system_message, optuna=optuna, model_choice=model_choice)
             start_time = datetime.now()
+            self.last_inference_check_results = [None] * self.num_parallel_inferences  # Pre-allocate the list with None
+
             if llm_input_messages and not skip_inference:
                 # Use concurrent futures to parallelize the LLM calls.
                 outputs = []
-                self.last_inference_check_results = [None] * self.num_parallel_inferences  # Pre-allocate the list with None
                 with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_parallel_inferences) as executor:
                     if type(self.premium_llm if use_premium_llm else self.default_llm) == type(self.llmORchains_list.get('3_majority_chain')):
                         stream_output = True
