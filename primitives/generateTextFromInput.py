@@ -2,7 +2,7 @@
 def generateTextFromInput(prompt_template = "", text="", temperature=0.5, request_timout=120):
     from langchain_openai import ChatOpenAI
     from langchain.prompts import ChatPromptTemplate
-    from config import OPENAI_API_KEY
+    from config import openai_api_key
 
     if prompt_template == "":
         prompt_template = """Extract the following key elements from the research paper provided below:
@@ -21,7 +21,7 @@ The output should be in JSON format with the following keys (if any of the below
 
 Research Paper Text: {text}"""
 
-    llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=temperature, openai_api_key=openai_api_key)
+    llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=temperature, openai_api_key=openai_api_key)
     prompter = ChatPromptTemplate.from_template(prompt_template)
     message = prompter.format_messages(text=text)
     generated_text = llm(message)

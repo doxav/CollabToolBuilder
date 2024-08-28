@@ -6,7 +6,7 @@ def generate_outline(bot, title, abstract, temperature=0.7):
     import re
 
     
-    llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=temperature, openai_api_key=OPENAI_API_KEY)
+    llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=temperature, openai_api_key=OPENAI_API_KEY)
     prompt_template = """Generate LaTeX code for a 15-page research survey document with bibliography. 
     The title of the research survey is "{title}," and the abstract is "{abstract}." 
     Include sections such as Introduction, Literature Review, Methodology, Findings, Discussion, 
