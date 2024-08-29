@@ -26,6 +26,15 @@
       ===> http://localhost:8080        
 
 
+    docker run -d   --network=host   -v open-webui:/app/backend/data   --add-host=host.docker.internal:host-gateway   -e PIPELINES_URLS="$(for file in /pipelines/pipelines/*; do echo -n "$file,"; done | sed 's/,$//')"   -e OLLAMA_BASE_URL=http://127.0.0.1:11434   -v /path/to/pipelines:/app/pipelines   --name pipelines-combin   --restart always   ghcr.io/open-webui/pipelines:main
+
+
+#### Mais il est plus simple de lance via $run_docker.sh (lance le docker openwebui, le script start.sh qui charge les pipelines, et $watch_pipelines.sh qui surveille les modifs dans /pipelines/pipelines)
+
+
+
+
+
 
     lancer bash ./start.sh from pipelines issue de ::
             git clone https://github.com/open-webui/pipelines.git
