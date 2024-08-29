@@ -1254,13 +1254,13 @@ class HumanLLMMonitor:
                     futures = [executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling,
                                                temperature+(i*0.05), stream_output, i) for i in
                                range(self.num_parallel_inferences)]
-                    for future in futures:
+                    for idx, future in enumerate(futures):
                         try:
                             llm_response = future.result(timeout=timeout_seconds)
                             outputs.append(llm_response)
                             smart_print(
                                 f'\033[0m**** New inference result recieved and added to outputs as #{len(outputs)}\033[0m:\n{llm_response.content}\n\033[9mEND OF #{len(outputs)}****\033[0m',
-                                self.agent_name, "NEW inference result recieved")
+                                self.agent_name, "NEW inference result recieved", column_id=idx, column_max=self.num_parallel_inferences)
                         except concurrent.futures.TimeoutError:
                             smart_print('A task ran longer than the allotted timeout and was cancelled.',
                                         self.agent_name, "Inference result TIMEOUT")

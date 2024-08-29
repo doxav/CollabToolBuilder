@@ -462,7 +462,7 @@ class CodingAgent():
             if current_skip_rounds <= 0:
                 if self.optuna_opti:
                     selected_code = f"{top_indice}"
-                else: selected_code = smart_input(f"{results_list}CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL): ").strip().replace(" ","").lower().split(",")
+                else: selected_code = smart_input(f"{results_list}CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL): ",self.name,"Scores").strip().replace(" ","").lower().split(",")
             else:
                 selected_code = [""]  # keep all if skip_rounds is not 0
             id = 0

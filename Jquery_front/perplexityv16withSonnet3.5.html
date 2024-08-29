@@ -46,6 +46,17 @@ display: none;
 overflow-y: auto;
 box-sizing: border-box;
 }
+.solution-columns {
+    display: flex;
+    gap: 20px;
+}
+.solution-column {
+    flex: 1;
+    border: 1px solid #ccc;
+    padding: 10px;
+    margin-bottom: 10px;
+    max-width: 20%;
+}
 .accordion { margin-bottom: 20px; background-color: #6a737d; color: white; }
 .filter-bar { margin-bottom: 20px; }
 .column { display: inline-block; vertical-align: top; margin-right: 20px; width: 30%; }
@@ -58,7 +69,7 @@ box-sizing: border-box;
 pre { background-color: #f0f0f0; padding: 10px; border-radius: 5px; overflow-x: auto; max-width: 100%; }
 code { font-family: 'Courier New', Courier, monospace; }
 .message { max-width: 100%; word-wrap: break-word; }
-.column-container { display: flex; flex-wrap: wrap; }
+.column-container { display: flex; flex-wrap: wrap;}
 .auto-open-checkbox {
 margin-top: 10px;
 color: white;
@@ -176,45 +187,89 @@ console.log('WebSocket connection closed');
 
 function displayMessage(data) {
         let title = `${data.agent_name} | ${data.message_type} | ${new Date().toLocaleTimeString()}`;
+        if(data.message_type ===null)
+        {title = `${data.agent_name} | ${new Date().toLocaleTimeString()}`;
+        }
         let content = `<div class='message'>${formatMessage(data.message)}</div>`;
 
         let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
-        if ($agentAccordion.length === 0) {
-            $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
-            $("#message-accordion").append($agentAccordion);
+        if (data.agent_name === "CodingAgent" && data.message_type === "NEW inference result recieved") {
+            console.log("Handling multiple solutions");
+            handleMultipleSolutions(data);
+    } else {
+            if ($agentAccordion.length === 0) {
+                $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
+                $("#message-accordion").append($agentAccordion);
+            }
+
+            let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${content}</div>`);
+            $agentAccordion.children("div").append($messageContainer);
+
+            if (data.input) {
+                displayInputField();
+            }
+
+            if (data.message.includes("BEFORE") || data.message.includes("AFTER")) {
+                displayMenuOptions(data.message);
+            }
         }
 
-        let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${content}</div>`);
-        $agentAccordion.children("div").append($messageContainer);
+            $("#message-accordion").accordion("refresh");
+            updateFilters(data);
 
-        if (data.message_type === 'column') {
-            displayInColumn(data, $messageContainer.find('.column-container'));
-        }
+            // Apply syntax highlighting to code blocks
+            $('pre code').each(function (i, block) {
+                hljs.highlightBlock(block);
+            });
 
-        if (data.input) {
-            displayInputField();
-        }
+            // Auto-open accordion if checkbox is checked
+            if ($("#auto-open-accordion").is(":checked")) {
+                let accordionIndex = $("#message-accordion > div").index($agentAccordion);
+                $("#message-accordion").accordion("option", "active", accordionIndex);
+                // Wait a second then scroll to the bottom
+                setTimeout(scrollToBottom, 1000);
+            }
 
-        if (data.message.includes("BEFORE") || data.message.includes("AFTER")) {
-            displayMenuOptions(data.message);
-        }
-
-        $("#message-accordion").accordion("refresh");
-        updateFilters(data);
-
-        // Apply syntax highlighting to code blocks
-        $('pre code').each(function(i, block) {
-            hljs.highlightBlock(block);
-        });
-
-        // Auto-open accordion if checkbox is checked
-        if ($("#auto-open-accordion").is(":checked")) {
-            let accordionIndex = $("#message-accordion > div").index($agentAccordion);
-            $("#message-accordion").accordion("option", "active", accordionIndex);
-            // Wait a second then scroll to the bottom
-            setTimeout(scrollToBottom, 1000);
-        }
     }
+
+    function handleMultipleSolutions(data) {
+    try {
+        const columnMax = data.column_max;
+        const columnId = data.column_id;
+        const content = data.message;
+
+        let solutionColumns = document.querySelector('.solution-columns');
+        if (!solutionColumns) {
+            solutionColumns = document.createElement('div');
+            solutionColumns.className = 'solution-columns';
+            // Add in CodingAgent section
+            let codingAgentAccordion = document.querySelector('#message-accordion > div[data-agent="CodingAgent"] > div');
+            if (!codingAgentAccordion) {
+                codingAgentAccordion = document.createElement('div');
+                codingAgentAccordion.innerHTML = '<h3>CodingAgent</h3>';
+                document.querySelector('#message-accordion').appendChild(codingAgentAccordion);
+            }
+
+            codingAgentAccordion.appendChild(solutionColumns);
+
+            for (let i = 0; i < columnMax; i++) {
+                const column = document.createElement('div');
+                column.className = 'solution-column';
+                column.id = `column-${i}`;
+                column.innerHTML = `<h4>Solution ${i + 1}</h4>`;
+                solutionColumns.appendChild(column);
+            }
+        }
+
+        const targetColumn = document.getElementById(`column-${columnId}`);
+        const formatedMessage = formatMessage(content);
+        if (targetColumn) {
+            targetColumn.innerHTML += `<p>${formatedMessage}</p>`;
+        }
+    } catch (error) {
+        console.error('Error parsing message:', error);
+    }
+}
 
  function scrollToBottom() {
         let mainContent = document.getElementById('main-content');
@@ -245,13 +300,13 @@ function displayMessage(data) {
                 // Regular expression to match Python code blocks
                 const codeBlockRegex = /```python\n([\s\S]*?)```/g;
 
-                // Replace code blocks with pretty-printed versions
-                let formattedMessage = message.replace(codeBlockRegex, function(match, code) {
-                    return `<pre><code class="python">${code}</code></pre>`;
+                // Replace code blocks with highlighted code
+                let formattedMessage = message.replace(codeBlockRegex, (match, codeBlock) => {
+                    let highlightedCode = hljs.highlight('python', codeBlock).value;
+                    return `<pre><code>${highlightedCode}</code></pre>`;
                 });
 
-                // Replace '\n' with '<br>' for line breaks
-                formattedMessage = formattedMessage.replace(/\n/g, '<br>');
+
 
                 return `<div class="message">${formattedMessage}</div>`;
             }
@@ -465,6 +520,17 @@ function displayMessage(data) {
             $(".annotation-menu")
                 .css({top: e.pageY, left: e.pageX})
                 .show();
+        }
+    });
+
+    // Hide the annotation menu when clicking outside of it
+    $(document).click(function(e) {
+        if (!$(e.target).closest(".annotation-menu").length){
+            // If there is no text selected, hide the annotation menu
+            if (!window.getSelection().toString()) {
+                $(".annotation-menu").hide();
+                savedSelection = null;
+            }
         }
     });
 
