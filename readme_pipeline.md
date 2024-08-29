@@ -32,7 +32,7 @@
 #### Mais il est plus simple de lance via $run_docker.sh (lance le docker openwebui, le script start.sh qui charge les pipelines, et $watch_pipelines.sh qui surveille les modifs dans /pipelines/pipelines)
 
 
-![maj pipe](maj_pipe.png)
+![maj pipe](v2.png)
 
 
 
