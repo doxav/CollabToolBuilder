@@ -99,11 +99,15 @@ box-sizing: border-box;
     box-shadow: 0 0 20px rgba(0,0,0,0.5);
     padding: 20px;
     border-radius: 15px;
+    backface-visibility: hidden;
+    will-change: transform;
 }
 
 .solution-column.expanded .solution-content {
     height: 100%;
     overflow-y: auto;
+    backface-visibility: hidden;
+    will-change: transform;
 }
 
 /* Add an overlay when expanded */
@@ -116,13 +120,15 @@ box-sizing: border-box;
     height: 100%;
     background-color: rgba(0,0,0,0.5);
     z-index: 90;
+    backface-visibility: hidden;
+    will-change: transform;
 }
 
 .solution-column.expanded + .overlay {
     display: block;
+    backface-visibility: hidden;
+    will-change: transform;
 }
-
-<!-- A focus-solutions class that focus sollution-columns on click -->
 
 .focus-solutions {
     display: block;
@@ -288,7 +294,10 @@ function displayMessage(data) {
             let $button = $(`<br><button class="focus-solutions"><i class="fa fa-search" aria-hidden="true"></i> Show solutions</button>`);
             $agentAccordion.children("div").append($button);
 
-        } else {
+        } else if(data.agent_name === "CodingAgent" && (data.message_type === "LLM ANSWER content" || data.message_type === "POST INFERENCE" || data.message_type === "process_ai_generated_code SystemMessage" || data.message_type === "Multiple LLM ANSWERS" || data.message_type === "MULTIPLE inferences received") ){
+            // Do nothing
+        }
+        else {
             if ($agentAccordion.length === 0) {
                 $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
                 $("#message-accordion").append($agentAccordion);
@@ -354,7 +363,10 @@ function displayMessage(data) {
                 column.id = `column-${i}`;
                 column.innerHTML = `<button class="expand-button"><i class="fas fa-expand"></i></button><br><h4>Solution ${i + 1}</h4>`;
                 solutionColumns.appendChild(column);
+
                 column.innerHTML += `</div><div class="overlay"></div>`;
+
+
             }
         }
 
@@ -362,7 +374,19 @@ function displayMessage(data) {
         const formatedMessage = formatMessage(content);
         if (targetColumn) {
             targetColumn.innerHTML += `<p>${formatedMessage}</p>`;
+            targetColumn.innerHTML += `<div style="text-align: center; align-content: center; align-items: center;"><p>Evaluate the solution : </p><input type="range" min="0" max="10" value="5" step="1" class="slider" id = "slider-${columnId}"><br><span id="value-${columnId}">5</span></div>`;
+            targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="evaluate-"${columnId}><i class="fa-regular fa-paper-plane"></i> Evaluate this solution</button></div><br>`;
+            // Refresh score when slider is moved
+            $(`#slider-${columnId}`).on('input', function () {
+                $(`#value-${columnId}`).text(this.value);
+            });
+            targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="deletebutton-"${columnId}><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Do not keep this solution</button></div>`;
+            targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="regenwithmymodifbutton-"${columnId}><i class="fa-solid fa-rotate" aria-hidden="true"></i> Regenerate with my modifications</button></div>`;
+            targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="regenallbutton-"${columnId}><i class="fa-solid fa-rotate" aria-hidden="true"></i> Regenerate with all modifications</button></div>`;
         }
+
+
+
     } catch (error) {
         console.error('Error parsing message:', error);
     }
