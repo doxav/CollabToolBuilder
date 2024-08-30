@@ -500,14 +500,16 @@ class HumanLLMMonitor:
                 reset_db_indices=reset_db_indices
             )
 
-    def get_few_shots_tag_args(self):
+    def get_few_shots_tag_args(self, prompt=None):
         """
         Retrieves the few shots tag arguments from the system prompt.
 
         Returns:
             dict: A dictionary containing the few shots tag arguments.
         """
-        few_shots_match = re.search(r"few_shots:\s*(\{.*\})?$", self.system_prompt)
+        if prompt is None:
+            prompt = self.system_prompt
+        few_shots_match = re.search(r"few_shots:\s*(\{.*\})?$", prompt)
         few_shots_data = json.loads(few_shots_match.group(1)) if few_shots_match and few_shots_match.group(1) else {}
         return few_shots_data
 
@@ -556,7 +558,7 @@ class HumanLLMMonitor:
         self.inference_checks = inference_checks if inference_checks else {}
         self.last_inference_check_results = None
 
-    def load_prompt(self, function_name: str = None, agent_name: str = None, prompt: str = None, few_shots_tag: Optional[dict] = None) -> str:
+    def load_prompt(self, function_name: str = None, agent_name: str = None, prompt: str = None) -> str:
         """
         Load a prompt with the ability to retrieve few_shots examples based on the provided tag parameters.
 
@@ -567,11 +569,15 @@ class HumanLLMMonitor:
         """
         function_name = function_name if function_name else inspect.stack()[2].function
 
-        if prompt is not self.system_prompt:
-            with open(f"prompts/{prompt}.txt", "r") as f:
-                prompt = f.read()
+        with open(f"prompts/{prompt}.txt", "r") as f:
+            prompt = f.read()
 
-        if few_shots_tag is None:
+        if "few_shots" in prompt:
+            few_shots_tag = self.get_few_shots_tag_args()
+            match = re.search(r"few_shots:\s*(\{.*\})?$", prompt)
+            # Remove the few_shots tag and the dictionary from the prompt
+            prompt = prompt[:match.start()].rstrip()
+        else:
             return prompt
         
         HumanLLMMonitor._check_and_init_vector_db()
@@ -651,7 +657,13 @@ class HumanLLMMonitor:
             template = Template(params.format)
             examples = [template.render(example=ex) for ex in examples]
         else:
-            examples = [ex['content'] for ex in examples]
+            valid_examples = []
+            for ex in examples:
+                if 'output_llm_raw' in ex:
+                    valid_examples.append(ex['output_llm_raw'][0])  # Assuming you want the first element of the list
+                else:
+                    logging.warning(f"Missing 'output_llm_raw' key in example: {ex}")
+            examples = valid_examples
 
         return examples
 
@@ -803,9 +815,9 @@ class HumanLLMMonitor:
                         # Process to create a new variant
                         comments = smart_input("Provide critic or feedback for the current prompt: ",self.agent_name)
                         refine_prompt = _visual_input(
-                            f"Current system prompt:<<< {self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt, few_shots_tag=self.get_few_shots_tag_args if 'few_shots' in self.system_prompt else None)} >>>\n\nFeedback or critic: {comments}")
+                            f"Current system prompt:<<< {self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)} >>>\n\nFeedback or critic: {comments}")
                         forced_llm_output = default_llm_function(
-                            [SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt="improve_prompt_from_answer_critic", few_shots_tag=self.get_few_shots_tag_args if 'few_shots' in "improve_prompt_from_answer_critic" else None)),
+                            [SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt="improve_prompt_from_answer_critic")),
                              HumanMessage(content=refine_prompt)])
                         new_template = forced_llm_output.content
                     else:
@@ -814,17 +826,17 @@ class HumanLLMMonitor:
                 if smart_input("Would you like first to get suggestions for a better prompt? (y/n): ",self.agent_name).upper() == "Y":
                     if use_premium_llm:
                         forced_llm_output = premium_llm_function(
-                            [SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt="system_prompt_refiner", few_shots_tag=self.get_few_shots_tag_args if 'few_shots' in "system_prompt_refiner" else None)), HumanMessage(
-                                content=f"PROMPT TO GET SUGGESTIONS FOR IMPROVEMENT:\n{self.load_prompt(self.agent_name, self.system_prompt, self.get_few_shots_tag_args if 'few_shots' in self.system_prompt else None)}")])
+                            [SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt="system_prompt_refiner")), HumanMessage(
+                                content=f"PROMPT TO GET SUGGESTIONS FOR IMPROVEMENT:\n{self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)}")])
                     else:
                         forced_llm_output = default_llm_function(
-                            [SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt="system_prompt_refiner", few_shots_tag=self.get_few_shots_tag_args if 'few_shots' in "system_prompt_refiner" else None)), HumanMessage(
-                                content=f"PROMPT TO GET SUGGESTIONS FOR IMPROVEMENT:\n{self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt, few_shots_tag=self.get_few_shots_tag_args if 'few_shots' in self.system_prompt else None)}")])
+                            [SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt="system_prompt_refiner")), HumanMessage(
+                                content=f"PROMPT TO GET SUGGESTIONS FOR IMPROVEMENT:\n{self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)}")])
                     smart_print(
                         f"***** PROMPT SUGGESTIONS *****\n\033[33m{forced_llm_output.content}\033[0m\n*************",
                         self.agent_name, "PROMPT SUGGESTIONS")
 
-                new_template = _visual_input(self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt, few_shots_tag=self.get_few_shots_tag_args if 'few_shots' in self.system_prompt else None) if new_template is None else new_template)
+                new_template = _visual_input(self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt) if new_template is None else new_template)
                 smart_print(f"***** NEW PROMPT TEMPLATE:\n{new_template}\n*************", self.agent_name,
                             "NEW PROMPT TEMPLATE")
                 # Confirm that the user wants to modify the template
@@ -1085,11 +1097,11 @@ class HumanLLMMonitor:
             elif action == "C":  # Find a better Prompt by providing critic and ideal answer
                 comments = smart_input("First enter your critic here (then modify answer to get ideal answer): ",self.agent_name)
                 ideal_answer = _visual_input(inference_result_msg.content)
-                refine_prompt = f"Current system prompt:<<< {self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt, few_shots_tag=self.get_few_shots_tag_args if 'few_shots' in self.system_prompt else None)} >>>\n\nPrompt's answer:<<< {inference_result_msg.content} >>>\n\nPrompt's answer critic:{comments}\n\nPrompt's ideal Answer:<<< {ideal_answer} >>>"
+                refine_prompt = f"Current system prompt:<<< {self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)} >>>\n\nPrompt's answer:<<< {inference_result_msg.content} >>>\n\nPrompt's answer critic:{comments}\n\nPrompt's ideal Answer:<<< {ideal_answer} >>>"
                 smart_print(f"***** PROMPT FOR IMPROVEMENT *****\n{refine_prompt}", self.agent_name,
                             "PROMPT FOR IMPROVEMENT")
                 llm_output = premium_llm_function(
-                    [SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt="improve_prompt_from_answer_critic", few_shots_tag=self.get_few_shots_tag_args if 'few_shots' in "improve_prompt_from_answer_critic" else None)),
+                    [SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt="improve_prompt_from_answer_critic")),
                      HumanMessage(content=refine_prompt)])
                 smart_print(f"***** RECOMMENDATION OPEN FOR EDITION *****\n", self.agent_name,
                             "RECOMMENDATION OPEN FOR EDITION")
@@ -1320,7 +1332,7 @@ class HumanLLMMonitor:
         if default_llm_function is None: default_llm_function = self.default_llm if use_default_llm else self.premium_llm
         if premium_llm_function is None: premium_llm_function = self.premium_llm if self.premium_llm else None
         if original_input_messages is None: original_input_messages = [
-            SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt=system_prompt_template, few_shots_tag=self.get_few_shots_tag_args if 'few_shots' in self.system_prompt else None)), HumanMessage(content=user_message)]
+            SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt=system_prompt_template)), HumanMessage(content=user_message)]
         input_contents_str0, input_contents_str1 = str(original_input_messages[0].content), str(
             original_input_messages[1].content)
 
