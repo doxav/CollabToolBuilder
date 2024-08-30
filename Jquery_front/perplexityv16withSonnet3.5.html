@@ -9,6 +9,7 @@
 <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.5.1/highlight.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.5.1/styles/default.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
 body {
 display: flex;
@@ -55,15 +56,92 @@ box-sizing: border-box;
     border: 1px solid #ccc;
     padding: 10px;
     margin-bottom: 10px;
-    max-width: 20%;
+    max-width: 23%;
+    position: relative;
 }
+.expand-button {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 10;
+    padding: 10px;
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.expand-button i {
+    transition: transform 0.3s ease;
+}
+
+.solution-column.expanded .expand-button i {
+    transform: rotate(180deg);
+}
+
+.solution-column.expanded {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    height: 90%;
+    max-width: 1200px;
+    max-height: 800px;
+    z-index: 90;
+    background-color: white;
+    overflow-y: auto;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    padding: 20px;
+    border-radius: 15px;
+}
+
+.solution-column.expanded .solution-content {
+    height: 100%;
+    overflow-y: auto;
+}
+
+/* Add an overlay when expanded */
+.overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    z-index: 90;
+}
+
+.solution-column.expanded + .overlay {
+    display: block;
+}
+
+<!-- A focus-solutions class that focus sollution-columns on click -->
+
+.focus-solutions {
+    display: block;
+    margin-top: 10px;
+    padding: 5px 10px;
+    background-color: #636363;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
 .accordion { margin-bottom: 20px; background-color: #6a737d; color: white; }
 .filter-bar { margin-bottom: 20px; }
 .column { display: inline-block; vertical-align: top; margin-right: 20px; width: 30%; }
 .menu-option { display: inline-block; margin: 5px; padding: 5px 10px; border: 1px solid #2e2e2e; border-radius: 15px; cursor: pointer; color: white; background-color: #555555; }
 #user-input { width: 100%; padding: 10px; margin-top: 10px; box-sizing: border-box; }
 #send-button { margin-top: 10px; }
-.annotation-menu { display: none; position: absolute; background: #636363; border: 1px solid #636363; padding: 10px; }
+.annotation-menu { display: none; position: absolute; background: #636363; border: 1px solid #636363; padding: 10px; z-index: 999999;}
 .sidebar-toggle { cursor: pointer; padding: 5px 10px; background-color: #636363; border: 1px solid #636363; margin-bottom: 10px; color: white; }
 .close-btn { position: absolute; top: -4px; right: -4px; cursor: pointer; background-color: transparent; border: none; color: white; font-size: 16px; }
 pre { background-color: #f0f0f0; padding: 10px; border-radius: 5px; overflow-x: auto; max-width: 100%; }
@@ -196,7 +274,21 @@ function displayMessage(data) {
         if (data.agent_name === "CodingAgent" && data.message_type === "NEW inference result recieved") {
             console.log("Handling multiple solutions");
             handleMultipleSolutions(data);
-    } else {
+
+    } else if (data.agent_name === "CodingAgent" && data.message_type === "Scores") {
+            // Show message
+            if ($agentAccordion.length === 0) {
+                $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
+                $("#message-accordion").append($agentAccordion);
+            }
+             let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${content}</div>`);
+            $agentAccordion.children("div").append($messageContainer);
+
+            // Add a button to focus solution-columns below the last message in the CodingAgent accordion
+            let $button = $(`<br><button class="focus-solutions"><i class="fa fa-search" aria-hidden="true"></i> Show solutions</button>`);
+            $agentAccordion.children("div").append($button);
+
+        } else {
             if ($agentAccordion.length === 0) {
                 $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
                 $("#message-accordion").append($agentAccordion);
@@ -232,6 +324,10 @@ function displayMessage(data) {
 
     }
 
+
+
+
+
     function handleMultipleSolutions(data) {
     try {
         const columnMax = data.column_max;
@@ -256,8 +352,9 @@ function displayMessage(data) {
                 const column = document.createElement('div');
                 column.className = 'solution-column';
                 column.id = `column-${i}`;
-                column.innerHTML = `<h4>Solution ${i + 1}</h4>`;
+                column.innerHTML = `<button class="expand-button"><i class="fas fa-expand"></i></button><br><h4>Solution ${i + 1}</h4>`;
                 solutionColumns.appendChild(column);
+                column.innerHTML += `</div><div class="overlay"></div>`;
             }
         }
 
@@ -270,6 +367,27 @@ function displayMessage(data) {
         console.error('Error parsing message:', error);
     }
 }
+
+// Add a listener to the focus-solutions button that scroll on the solution-columns
+    $(document).on("click", ".focus-solutions", function() {
+        let $solutionColumns = document.querySelector('.solution-columns')
+        $solutionColumns.scrollIntoView({ behavior: 'smooth' });
+    });
+
+// Adds the listener for the expand button
+    $(document).on("click", ".expand-button", function() {
+        let $column = $(this).closest(".solution-column");
+        let $icon = $(this).find("i");
+        if ($column.hasClass("expanded")) {
+            $column.removeClass("expanded");
+            // Modify the icon to show the expand icon
+            $icon.removeClass("fa-compress").addClass("fa-expand");
+        } else {
+            $column.addClass("expanded");
+            // Modify the icon to show the fa-down-left-and-up-right-to-center icon
+            $icon.removeClass("fa-expand").addClass("fa-compress");
+        }
+    });
 
  function scrollToBottom() {
         let mainContent = document.getElementById('main-content');
@@ -296,21 +414,21 @@ function displayMessage(data) {
         $columnContainer.append($column);
     }
 
-            function formatMessage(message) {
+           function formatMessage(message) {
                 // Regular expression to match Python code blocks
-                const codeBlockRegex = /```python\n([\s\S]*?)```/g;
+                const codeBlockRegex = /```python\n([\s\S]*?)```/;
+                // Extract the Python code block
+                const match = message.match(codeBlockRegex);
 
-                // Replace code blocks with highlighted code
-                let formattedMessage = message.replace(codeBlockRegex, (match, codeBlock) => {
+                if (match) {
+                    const codeBlock = match[1];
                     let highlightedCode = hljs.highlight('python', codeBlock).value;
-                    return `<pre><code>${highlightedCode}</code></pre>`;
-                });
+                    return `<div class="message"><pre><code>${highlightedCode}</code></pre></div>`;
+                }
 
-
-
-                return `<div class="message">${formattedMessage}</div>`;
+                // If no Python code block is found, return the original message
+                return `<div class="message">${message}</div>`;
             }
-
             function displayInputField() {
                 $("#user-input").show();
                 $("#send-button").show();
@@ -516,6 +634,14 @@ function displayMessage(data) {
     $(document).on("mouseup", ".message", function(e) {
         let selection = window.getSelection().toString();
         if (selection) {
+            // Color the selected text
+            let range = window.getSelection().getRangeAt(0);
+            // Create a span element with a yellow background and black text with a tag "temphighlight"
+            let span = document.createElement("span");
+            span.style.backgroundColor = "yellow";
+            span.style.color = "black";
+            span.id = "temphighlight";
+            range.surroundContents(span);
             saveSelection();
             $(".annotation-menu")
                 .css({top: e.pageY, left: e.pageX})
@@ -530,7 +656,21 @@ function displayMessage(data) {
             if (!window.getSelection().toString()) {
                 $(".annotation-menu").hide();
                 savedSelection = null;
+                // Remove  all the tempHighlight spans
+                let tempHighlights = document.querySelectorAll("#temphighlight");
+                for (let i = 0; i < tempHighlights.length; i++) {
+                    let parent = tempHighlights[i].parentNode;
+                    while (tempHighlights[i].firstChild) {
+                        parent.insertBefore(tempHighlights[i].firstChild, tempHighlights[i]);
+                    }
+                    parent.removeChild(tempHighlights[i]);
+                }
             }
+        }
+        // Collapse the column if clicking outside of it unless if it's on the annotation menu
+        if (!$(e.target).closest(".solution-column").length && !$(e.target).closest(".annotation-menu").length) {
+            $(".solution-column").removeClass("expanded");
+            $(".expand-button i").removeClass("fa-compress").addClass("fa-expand");
         }
     });
 
@@ -545,11 +685,29 @@ function displayMessage(data) {
         }
         $(".annotation-menu").hide();
         savedSelection = null;
+        // Remove  all the tempHighlight spans
+                let tempHighlights = document.querySelectorAll("#temphighlight");
+                for (let i = 0; i < tempHighlights.length; i++) {
+                    let parent = tempHighlights[i].parentNode;
+                    while (tempHighlights[i].firstChild) {
+                        parent.insertBefore(tempHighlights[i].firstChild, tempHighlights[i]);
+                    }
+                    parent.removeChild(tempHighlights[i]);
+                }
     });
 
     $(".annotation-menu .close-btn").click(function() {
         $(".annotation-menu").hide();
         savedSelection = null;
+        // Remove  all the tempHighlight spans
+                let tempHighlights = document.querySelectorAll("#temphighlight");
+                for (let i = 0; i < tempHighlights.length; i++) {
+                    let parent = tempHighlights[i].parentNode;
+                    while (tempHighlights[i].firstChild) {
+                        parent.insertBefore(tempHighlights[i].firstChild, tempHighlights[i]);
+                    }
+                    parent.removeChild(tempHighlights[i]);
+                }
     });
 
 
@@ -634,7 +792,10 @@ function displayMessage(data) {
                 $("#toggle-settings-main").text($("#settings-sidebar").is(":visible") ? "Hide Settings" : "Show Settings");
                 $("#toggle-settings").text($("#settings-sidebar").is(":visible") ? "Hide Settings" : "Show Settings");
             });
+
         });
+
+
     </script>
 </body>
 </html>
