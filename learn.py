@@ -9,7 +9,8 @@ import openai
 import json
 from typing import Dict, Optional
 
-from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, load_prompt, save_prompt, _visual_input, is_vscode_installed, smart_print, smart_input
+from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, save_prompt, _visual_input, \
+    is_vscode_installed, smart_print, smart_input
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import copy
 from config import *
@@ -233,9 +234,6 @@ class CodingAgent():
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
 
-        from pydantic import BaseModel, Field
-        from typing import List, Dict, Optional
-
         self.human_llm_code_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice, premium_llm_by_default=True, num_parallel_inferences=4, llmORchains_list=llmORchains_list, output_schema="code_task.schema.py")
         self.human_llm_code_task.skip_rounds = skip_rounds
         self.human_llm_code_task.add_inference_check("Code Parsing", self.parse_ai_generated_code)
@@ -348,9 +346,9 @@ class CodingAgent():
         parsed_code = self.parsed_code if parsed_code is None else parsed_code
         current_skip_rounds = self.human_llm_code_task.skip_rounds # save the initial value to align it for code validation
 
-        if parsed_code["program_code"] not in self.processed_codes:
+        if isinstance(parsed_code, dict) and parsed_code["program_code"] not in self.processed_codes:
             self.processed_codes.add(parsed_code["program_code"])
-        elif skip_already_processed: # This logic speedup because the same code should have the same score BUT only on the same problem & state
+        elif skip_already_processed or not isinstance(parsed_code, dict): # This logic speedup because the same code should have the same score BUT only on the same problem & state
             return None
 
         #smart_print(f"************ Code parsed result ************\n{parsed_code}\n************************".replace("\\n", "\n"), self.name, "run_tests_on_code RESULT")
@@ -385,7 +383,7 @@ class CodingAgent():
                         # do not use HumanLLMMonitor because no template is available for this specific case
                         smart_print("\033[31mTRYING TO AUTOFIX ERROR\033[0m", self.name)
                         message_content = f"ERROR MESSAGE:[[{exec_result}]]\nCODE:[[{parsed_code['program_code']}]]"
-                        edited_code = self.human_llm_code_task.premium_llm([SystemMessage(content=load_prompt("code_fixer")), HumanMessage(content=message_content)]).content
+                        edited_code = self.human_llm_code_task.premium_llm([SystemMessage(content=self.human_llm_code_task.load_prompt(agent_name=self.name, prompt="code_fixer", few_shots_tag=self.human_llm_code_task.get_few_shots_tag_args if 'few_shots' in "code_fixer" else None)), HumanMessage(content=message_content)]).content
                     else:
                         edited_code = _visual_input(parsed_code["program_code"], filetype="py")
                     code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
@@ -475,7 +473,7 @@ class CodingAgent():
             if current_skip_rounds <= 0:
                 if self.optuna_opti:
                     selected_code = f"{top_indice}"
-                else: selected_code = smart_input(f"{results_list}CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL): ").strip().replace(" ","").lower().split(",")
+                else: selected_code = smart_input(f"{results_list}CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL): ",self.name,"Scores").strip().replace(" ","").lower().split(",")
             else:
                 selected_code = [""]  # keep all if skip_rounds is not 0
             id = 0
@@ -733,7 +731,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               selected_failed_functions=None, agtask_premium_llm_by_default=True,
                               agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0,
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
-                              optuna_opti=None, allow_custom_score_state_functions=False):
+                              optuna_opti=None, allow_custom_score_state_functions=False,
+                              reset_env_end=False):
     global scores_ret
     if problem_prompts_subdir is None:
         # menu to choose the problem prompts subdirectory
@@ -815,7 +814,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                 if smart_input("Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ").strip().upper() in ["Y", "YES"]:
                     agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
                     agent_taskreco.update_failed_tasks(agent_capitalize.failed_tasks_repository)
-        answer = "y" if optuna_opti else smart_input("Do you want to reset the environment for searching a new task (Y/YES) or search a new task by keeping what has been created by this task (N/NO/Enter) ? or just exit (E/EXIT) ?").strip().upper()
+        answer = "y" if optuna_opti and reset_env_end else "n" if optuna_opti and not reset_env_end else smart_input("Do you want to reset the environment for searching a new task (Y/YES) or search a new task by keeping what has been created by this task (N/NO/Enter) ? or just exit (E/EXIT) ?").strip().upper()
         continue_identifying_tasks, optuna_coach = False, False if answer in ["E", "EXIT"] else True
         if answer.upper() in ["Y", "YES"]:
             [env.reset() for env in test_environments]

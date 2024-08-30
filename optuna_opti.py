@@ -7,7 +7,7 @@ from config import MODELS_CONFIG_LIST
 
 def objective(trial):
 
-    modelVariation = trial.suggest_int("model_variation", 0, 1)
+    #reset_env_end = trial.suggest_categorical("reset_env_end", [True, False])
 
     coach_agent_role = trial.suggest_categorical("role_priming", [ "You are a research assistant", "You are an AI coach", "You are a task optimizer", "You are a technical synthesis expert"])
     #coach_user_input_failed_tasks = trial.suggest_categorical("coach_user_input_failed_tasks", [True, False])
@@ -270,7 +270,7 @@ task_function_name(bot, arguments with values describing document #2fa754cb-2e90
                                 agvalidation_skip_rounds=0,
                                 agcapitalize_skip_rounds=0,
                                 model_choice={"coach": "premium_llm", "coder":"default_llm", "critic":"default_llm", "capitalizer": "default_llm"},
-                                optuna_opti="Coach")
+                                optuna_opti="Coach")#, reset_env_end=reset_env_end)
     
     with open("Optuna_results.txt", "a") as f:
         f.write(f"Performance: {perf}\n\n")
