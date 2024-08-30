@@ -9,8 +9,7 @@ import openai
 import json
 from typing import Dict, Optional
 
-from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, load_prompt, save_prompt, _visual_input, \
-    is_vscode_installed, smart_print, smart_input
+from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, load_prompt, save_prompt, _visual_input, is_vscode_installed, smart_print, smart_input
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import copy
 from config import *
@@ -192,17 +191,17 @@ class EnvironmentManager:
 
 # Agent 1: Task Identification
 class TaskIdentificationAgent():
-    def __init__(self, default_llm_key, envs: [Environment], premium_llm_key=None, problem_prompts_subdir=None,
+    def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
                  premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None):
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
-        self.default_llm = llmORchains_list[default_llm_key]
-        self.premium_llm = llmORchains_list[premium_llm_key]
         self.learnt_tasks: Dict[str, str] = {}
         self.failed_tasks: Dict[str, str] = {}
-        self.human_llm_identify_best_task = HumanLLMMonitor(llm=self.default_llm, premium_llm=self.premium_llm,
+
+        self.human_llm_identify_best_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice,
                                                             premium_llm_by_default=premium_llm_by_default,
-                                                            llmORchains_list=llmORchains_list)
+                                                            llmORchains_list=llmORchains_list,
+                                                            output_schema="identify_best_task.schema.py")
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         self.envs = envs
         self.optuna_opti = optuna
@@ -229,13 +228,15 @@ class TaskIdentificationAgent():
 
 # Agent 2: Code Task
 class CodingAgent():
-    def __init__(self, default_llm_key, envs: [Environment], premium_llm_key=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None):
+    def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None):
         #super().__init__(llm)
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
-        self.default_llm = llmORchains_list[default_llm_key]
-        self.premium_llm = llmORchains_list[premium_llm_key]
-        self.human_llm_code_task = HumanLLMMonitor(llm=self.default_llm, premium_llm=self.premium_llm, premium_llm_by_default=True, num_parallel_inferences=4, llmORchains_list=llmORchains_list)
+
+        from pydantic import BaseModel, Field
+        from typing import List, Dict, Optional
+
+        self.human_llm_code_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice, premium_llm_by_default=True, num_parallel_inferences=4, llmORchains_list=llmORchains_list, output_schema="code_task.schema.py")
         self.human_llm_code_task.skip_rounds = skip_rounds
         self.human_llm_code_task.add_inference_check("Code Parsing", self.parse_ai_generated_code)
         self.human_llm_code_task.add_inference_check("Run Tests", self.run_tests_on_code)
@@ -248,13 +249,25 @@ class CodingAgent():
 
     def parse_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None, automatic_tests=True):
         import ast, time, re
+        # Convert text to dictionary
+        result_dict = ast.literal_eval(message)
+        # if result_dict is a dictionary and code exists, change message to result_dict["code"]
+        if isinstance(result_dict, dict) and "MainFunction" in result_dict:
+            code = ""
+            if "HelperFunctions" in result_dict:
+                for helper_function in result_dict["HelperFunctions"]:
+                    code += helper_function["code"] + "\n"
+            code += result_dict["MainFunction"]["code"]
+        else:
+            code = None
         error = None
         while retry > 0:
             try:
                 if language == "py": # Python case
-                    # Match Python code blocks
-                    code_pattern = re.compile(r"```python(.*?)```", re.DOTALL)
-                    code = "\n".join(code_pattern.findall(message))
+                    if code is None:
+                        # Match Python code blocks
+                        code_pattern = re.compile(r"```python(.*?)```", re.DOTALL)
+                        code = "\n".join(code_pattern.findall(message))
                     
                     parsed = ast.parse(code)
                     functions = []
@@ -372,7 +385,7 @@ class CodingAgent():
                         # do not use HumanLLMMonitor because no template is available for this specific case
                         smart_print("\033[31mTRYING TO AUTOFIX ERROR\033[0m", self.name)
                         message_content = f"ERROR MESSAGE:[[{exec_result}]]\nCODE:[[{parsed_code['program_code']}]]"
-                        edited_code = self.premium_llm([SystemMessage(content=load_prompt("code_fixer")), HumanMessage(content=message_content)]).content
+                        edited_code = self.human_llm_code_task.premium_llm([SystemMessage(content=load_prompt("code_fixer")), HumanMessage(content=message_content)]).content
                     else:
                         edited_code = _visual_input(parsed_code["program_code"], filetype="py")
                     code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
@@ -477,12 +490,10 @@ class CodingAgent():
 
 # Agent 3: Code Validation
 class ValidationAgent():
-    def __init__(self, default_llm_key, envs: [Environment], premium_llm_key=None, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None):
+    def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None):
         #super().__init__(llm)
         self.name = self.__class__.__name__
-        self.default_llm = llmORchains_list[default_llm_key]
-        self.premium_llm = llmORchains_list[premium_llm_key]
-        self.human_llm_validate_code = HumanLLMMonitor(llm=self.default_llm, premium_llm=self.premium_llm, premium_llm_by_default=False, llmORchains_list=llmORchains_list)
+        self.human_llm_validate_code = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice, premium_llm_by_default=False, llmORchains_list=llmORchains_list)
         self.human_llm_validate_code.skip_rounds = skip_rounds
         self.envs = envs
         self.optuna_opti = optuna
@@ -511,13 +522,11 @@ class ValidationAgent():
 
 # Agent 4: Code Capitalization
 class CapitalizationAgent:
-    def __init__(self, default_llm_key, premium_llm_key=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", db_embedding_function=None, db_perist_directory=None, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None):
+    def __init__(self, default_llm_choice, premium_llm_choice=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", db_embedding_function=None, db_perist_directory=None, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None):
         self.name = self.__class__.__name__
         self.tasks_repository: Dict[str, str] = {}
         self.failed_tasks_repository: Dict[str, str] = {}
-        self.default_llm = llmORchains_list[default_llm_key]
-        self.premium_llm = llmORchains_list[premium_llm_key]
-        self.human_llm_generate_function_description = HumanLLMMonitor(llm=self.default_llm, premium_llm=self.premium_llm, premium_llm_by_default=False, llmORchains_list=llmORchains_list)
+        self.human_llm_generate_function_description = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice, premium_llm_by_default=False, llmORchains_list=llmORchains_list)
         self.human_llm_generate_function_description.skip_rounds = skip_rounds
         self.optuna_opti = optuna
         self.model_choice = model_choice
@@ -741,10 +750,10 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         manager = EnvironmentManager(env_type)
         test_environments = [manager.get_environment()]
 
-    agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_key=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, premium_llm_by_default=agtask_premium_llm_by_default, skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(model_choice) == dict else model_choice))
-    agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_key=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['coding' if 'coding' in model_choice else 'coder'] if type(model_choice) == dict else model_choice))
-    agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_key=premium_llm_key, skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['validation' if 'validation' in model_choice else 'critic'] if type(model_choice) == dict else model_choice))
-    agent_capitalize = CapitalizationAgent(default_llm_key, premium_llm_key=premium_llm_key, skip_rounds=agcapitalize_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(model_choice) == dict else model_choice))
+    agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, premium_llm_by_default=agtask_premium_llm_by_default, skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(model_choice) == dict else model_choice))
+    agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['coding' if 'coding' in model_choice else 'coder'] if type(model_choice) == dict else model_choice))
+    agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['validation' if 'validation' in model_choice else 'critic'] if type(model_choice) == dict else model_choice))
+    agent_capitalize = CapitalizationAgent(default_llm_key, premium_llm_choice=premium_llm_key, skip_rounds=agcapitalize_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(model_choice) == dict else model_choice))
 
     agent_capitalize.retrieve_saved_tasks_in_db(include_code=include_code, selected_successful_functions=selected_successful_functions, selected_failed_functions=selected_failed_functions)
     agent_taskreco.update_learnt_tasks(agent_capitalize.tasks_repository)
