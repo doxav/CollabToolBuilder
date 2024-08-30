@@ -964,7 +964,7 @@ class HumanLLMMonitor:
                 comments = self.findBetterPrompt(comments, inference_result_msg, premium_llm_function)
 
             elif action == "D":  # Evaluate & comment answer to re-use in prompts or later analysis
-                comments, score = self.evaluateCommentAnswerForLater(comments, score)
+                comments, score = self.evaluateCommentAnswerForLater()
 
             elif action == "E":  # Go back BEFORE inference to improve system prompt or add information to user message
                 inference_result_msg = self.goBackInference(inference_result_msg)
@@ -1018,7 +1018,18 @@ class HumanLLMMonitor:
         inference_result_msg = -1  # break is set after action time measurement
         return inference_result_msg
 
-    def evaluateCommentAnswerForLater(self, comments, score):
+    def evaluateCommentAnswerForLater(self):
+        while True:
+            score = float(smart_input(
+                "Give a note for the result between 0.0 (worst) and 1.0 (top), or 0 for bad, 1 for good: ",
+                self.agent_name))
+            # if score is not between 0 and 1, then set to None and print error
+            if score < 0 or score > 1:
+                score = None
+                print(f"\033[31mInvalid score: {score}\033[0m")
+            else:
+                break
+        comments = smart_input("Comment on the result: ", self.agent_name)
         return comments, score
 
     def findBetterPrompt(self, comments, inference_result_msg, premium_llm_function):
