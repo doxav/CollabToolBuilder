@@ -515,7 +515,11 @@ class HumanLLMMonitor:
 
     def set_default_llm(self, llm_name):
         if llm_name in self.llmORchains_list:
-            self.default_llm = self.llmORchains_list[llm_name]
+            self.default_llm_name = llm_name
+            if self.output_schema:
+                self.default_llm = self.llmORchains_list[llm_name].with_structured_output(self.output_schema)
+            else:
+                self.default_llm = self.llmORchains_list[llm_name]
             return True
         else:
             smart_print(
@@ -524,21 +528,54 @@ class HumanLLMMonitor:
 
     def set_premium_llm(self, llm_name):
         if llm_name in self.llmORchains_list:
-            self.premium_llm = self.llmORchains_list[llm_name]
+            self.premium_llm_name = llm_name
+            if self.output_schema:
+                self.premium_llm = self.llmORchains_list[llm_name].with_structured_output(self.output_schema)
+            else:
+                self.premium_llm = self.llmORchains_list[llm_name]
             return True
         else:
             smart_print(
                 f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}",self.agent_name)
             return False
+    
+    def set_output_schema(self, output_schema, package_path = "."):
+        # test if output_schema is a string, then it means it is a filename located in the prompt repo, load it and set it as output_schema
+        if isinstance(output_schema, str):
+            if "/" not in output_schema: self.output_schema_path = f"{package_path}/prompts/{output_schema}"
+            output_schema = self._get_pydantic_class(self.output_schema_path)
+        self.output_schema = output_schema
 
-    def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_max_context_size=16000, llm=None,
-                 premium_llm=None, premium_llm_by_default=False, num_parallel_inferences=1, llmORchains_list=None,
-                 synthesize_mode=False, inference_checks=None):
+    def _get_pydantic_class(self, file_path: str):
+        # Dynamically import the module from the given file path
+        import importlib.util
+        import sys
+        from typing import Type
+        from pydantic import BaseModel
+        
+        module_name = "dynamic_module"
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+        
+        # Iterate through the attributes of the module to find the Pydantic class
+        for attr_name in dir(module):
+            attr = getattr(module, attr_name)
+            if isinstance(attr, type) and issubclass(attr, BaseModel) and attr is not BaseModel:
+                return attr
+        
+        raise ValueError("No Pydantic BaseModel class found in the provided file.")
+
+    def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_max_context_size=16000, default_llmORchain=None,
+                 premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1, llmORchains_list=None,
+                 synthesize_mode=False, inference_checks=None, output_schema=None):
         if llmORchains_list is None: raise ValueError("llmORchains_list must be provided")
         self.llmORchains_list = llmORchains_list
         self.system_prompt = system_prompt
-        self.default_llm = llm if llm else self.llmORchains_list.get("default_llm")
-        self.premium_llm = premium_llm if premium_llm else self.llmORchains_list.get("premium_llm")
+        self.set_output_schema(output_schema)
+        self.set_default_llm(default_llmORchain if default_llmORchain else "default_llm") #.default_llm = default_llmORchain if default_llmORchain else self.llmORchains_list.get("default_llm")
+        self.set_premium_llm(premium_llmORchain if premium_llmORchain else "premium_llm") #premium_llm = premium_llmORchain if premium_llmORchain else self.llmORchains_list.get("premium_llm")
         self.CPS_env_type = CPS_env_type
         self.agent_name = agent_name or self.get_caller_class_name()
         # set in 1 line self.print_color is 32 for ActionAgent, 35 for CurriculumAgent, 31 for CriticAgent, 33 for SkillManager, 37 for else
@@ -754,7 +791,7 @@ class HumanLLMMonitor:
             before_menu = f"\033[{self.print_color}m***** {self.agent_name}->{function_name}  BEFORE *****\nSYSTEM PROMPT:\n{messages[0].content}\n\nUSER MESSAGE:\n{messages[1].content}\n***** {self.agent_name}->{function_name} BEFORE *****\033[0m\n"
             if not self._max_tokens_ok(messages[0].content + "\n" + messages[1].content):
                 before_menu += ("WARNING!!!! Max tokens exceeded, you should refactor user message or system prompt!\n")
-            menu += ("[A] Modify agent's 'system prompt' (role, global context, constraints, examples).\n")
+            menu += ("[A] Modify agent's 'system prompt' (role, global context, constraints, examples) OR the answer SCHEMA output.\n")
             menu += ("[B] Add instruction or information to agent.\n")
             menu += ("[C] Skip and set LLM output from recent outputs or manually define it.\n")
             menu += ("[D] Log comments (not used by the model, just for information).\n")
@@ -801,6 +838,21 @@ class HumanLLMMonitor:
                 comments, forced_llm_output = self.modify_prompt(callable_system_message, comments,
                                                                  default_llm_function, forced_llm_output, messages,
                                                                  premium_llm_function, use_premium_llm)
+
+                # Adding the logic to edit the output schema
+                if hasattr(self, 'output_schema_path') and self.output_schema_path:
+                    new_schema_content = _visual_input(open(self.output_schema_path).read(), filetype="py")
+                    confirm_schema = smart_input(
+                        "Do you want to replace the current output schema with your input? (y/n): ", self.agent_name).upper()
+                    if confirm_schema == "Y":
+                        with open(self.output_schema_path, 'w') as schema_file:
+                            schema_file.write(new_schema_content)
+                        self.set_output_schema(self.output_schema_path)
+                        # Reload default and premium LLMs
+                        self.set_default_llm(self.default_llm_name)
+                        self.set_premium_llm(self.premium_llm_name)
+                        default_llm_function = self.default_llm
+                        premium_llm_function = self.premium_llm
 
             elif action == "B":  # Add instruction or information to agent
                 self.add_instruction(initial_user_message, messages)
@@ -1370,10 +1422,27 @@ class HumanLLMMonitor:
                             color_id % 7], "\033[0m"
                 final_output = ""  # Initialize an empty string to hold the full response
                 smart_print("", self.agent_name, "Inference streaming output")
+                previous_chunk_str = ""
+                # Regex to match the end of a typical JSON structure
+                json_trail_re = re.compile(r'[\'\}\]]$')
                 for chunk in func.stream(input_msg, temperature=temperature):  #, temperature=temperature):  # Ensure 'llm' is correctly initialized with temperature
-                    smart_print(start_color + chunk.content + end_color, self.agent_name, "Inference streaming output",
-                                append=True)
-                    final_output += chunk.content  # Concatenate each chunk to build the full response
+                    if hasattr(chunk, 'content'):
+                        chunk_content = chunk.content
+                        final_output += chunk_content
+                    else:
+                        # Convert the current chunk to string
+                        current_chunk_str = str(chunk)
+                        # Check and remove trailing characters for accurate comparison
+                        while json_trail_re.search(current_chunk_str):
+                            current_chunk_str = current_chunk_str[:-1]
+                        
+                        # Find the new part by removing the common prefix with the previous state
+                        new_part_index = len(previous_chunk_str)
+                        chunk_content = current_chunk_str[new_part_index:]
+                        # Store the current chunk as the previous one for the next iteration
+                        previous_chunk_str = current_chunk_str
+                        final_output = str(chunk)
+                    smart_print(start_color + chunk_content + end_color, self.agent_name, "Inference streaming output", append=True)
                 return AIMessage(content=final_output)  # Return the concatenated full respons
             else:
                 return func(input_msg, temperature=temperature)
