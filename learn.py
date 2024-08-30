@@ -335,9 +335,9 @@ class CodingAgent():
         parsed_code = self.parsed_code if parsed_code is None else parsed_code
         current_skip_rounds = self.human_llm_code_task.skip_rounds # save the initial value to align it for code validation
 
-        if parsed_code["program_code"] not in self.processed_codes:
+        if isinstance(parsed_code, dict) and parsed_code["program_code"] not in self.processed_codes:
             self.processed_codes.add(parsed_code["program_code"])
-        elif skip_already_processed: # This logic speedup because the same code should have the same score BUT only on the same problem & state
+        elif skip_already_processed or not isinstance(parsed_code, dict): # This logic speedup because the same code should have the same score BUT only on the same problem & state
             return None
 
         #smart_print(f"************ Code parsed result ************\n{parsed_code}\n************************".replace("\\n", "\n"), self.name, "run_tests_on_code RESULT")
@@ -462,7 +462,7 @@ class CodingAgent():
             if current_skip_rounds <= 0:
                 if self.optuna_opti:
                     selected_code = f"{top_indice}"
-                else: selected_code = smart_input(f"{results_list}CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL): ").strip().replace(" ","").lower().split(",")
+                else: selected_code = smart_input(f"{results_list}CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL): ",self.name,"Scores").strip().replace(" ","").lower().split(",")
             else:
                 selected_code = [""]  # keep all if skip_rounds is not 0
             id = 0

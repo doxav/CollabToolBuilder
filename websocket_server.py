@@ -24,8 +24,10 @@ CORS(app)
 
 connected_clients = set()
 
+
 def run_flask():
     app.run(debug=True, use_reloader=False, port=5000)
+
 
 @app.route("/api/hello", methods=["GET"])
 def hello():
@@ -34,13 +36,32 @@ def hello():
 
 @app.route("/api/history", methods=["GET"])
 def history():
-    function_name = request.args.get('function_name',None)
-    agent_name = request.args.get('agent_name',None)
+    function_name = request.args.get('function_name', None)
+    agent_name = request.args.get('agent_name', None)
 
     # Filtrer les résultats en fonction des paramètres
     results = HumanLLMMonitor.getPreviousResults(function_name=function_name, agent_name=agent_name)
 
     return jsonify(results)
+
+
+@app.route("/api/criticanswer", methods=["POST"])
+def criticanswer():
+    data = request.get_json()
+    function_name = data['function_name']
+    agent_name = data['agent_name']
+    question = data['question']
+    answer = data['answer']
+    HumanLLMMonitor.criticAnswer(function_name, agent_name, question, answer)
+    return jsonify({"status": "success"})
+
+@app.route("/api/changeDefaultLLM", methods=["POST"])
+def changeDefaultLLM():
+    data = request.get_json()
+    default_llm = data['default_llm']
+    HumanLLMMonitor.changeDefaultLLM(default_llm)
+    return jsonify({"status": "success"})
+
 
 async def handler(websocket, path):
     # Register the new client
