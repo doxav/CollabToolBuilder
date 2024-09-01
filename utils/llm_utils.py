@@ -20,6 +20,7 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
 from langchain_community.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
+from langchain_core.runnables import RunnableSequence, ConfigurableField
 #from langchain.schema import AIMessage, HumanMessage, SystemMessage, FunctionMessage
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.ai import AIMessage
@@ -513,32 +514,112 @@ class HumanLLMMonitor:
         few_shots_data = json.loads(few_shots_match.group(1)) if few_shots_match and few_shots_match.group(1) else {}
         return few_shots_data
 
-    def set_default_llm(self, llm_name):
+    def set_llmORchain(self, llm_name, is_premium=False):
         if llm_name in self.llmORchains_list:
-            self.default_llm_name = llm_name
-            if self.output_schema:
-                self.default_llm = self.llmORchains_list[llm_name].with_structured_output(self.output_schema)
+            if is_premium:
+                self.premium_llm_name = llm_name
             else:
-                self.default_llm = self.llmORchains_list[llm_name]
+                self.default_llm_name = llm_name
+                
+            selected_llm_or_chain = self.llmORchains_list[llm_name]
+
+            # Check if it's a sequence of steps (RunnableSequence)
+            if isinstance(selected_llm_or_chain, RunnableSequence):
+                modified_steps = []
+                for step in selected_llm_or_chain.steps:
+                    if hasattr(step, "steps__") and isinstance(step.steps__, dict):
+                        # Handle the case where step is a dict of parallel runnables
+                        modified_dict = {}
+                        for key, sub_step in step.steps__.items():
+                            if hasattr(sub_step, 'configurable_fields'):
+                                try:
+                                    sub_step = sub_step.configurable_fields(
+                                        temperature=ConfigurableField(
+                                            id="llm_temperature",
+                                            name="LLM Temperature",
+                                            description="The temperature of the LLM"
+                                        )
+                                    ).with_config(configurable={"llm_temperature": 0.7})  # Replace with desired default temperature
+                                except ValueError as e:
+                                    smart_print(f"Sub-step {key} in step {step} does not support temperature configuration: {e}", self.agent_name)
+                            modified_dict[key] = sub_step
+                        step.steps__ = modified_dict
+                        modified_steps.append(step)
+                    elif hasattr(step, 'configurable_fields'):
+                        try:
+                            step = step.configurable_fields(
+                                temperature=ConfigurableField(
+                                    id="llm_temperature",
+                                    name="LLM Temperature",
+                                    description="The temperature of the LLM"
+                                )
+                            ).with_config(configurable={"llm_temperature": 0.7})  # Replace with desired default temperature
+                        except ValueError as e:
+                            smart_print(f"Step {step} does not support temperature configuration: {e}", self.agent_name)
+                        modified_steps.append(step)
+                    else:
+                        modified_steps.append(step)
+
+                # Reconstruct the sequence with the modified steps
+                selected_llm_or_chain = RunnableSequence(
+                    first=modified_steps[0],
+                    middle=modified_steps[1:-1] if len(modified_steps) > 2 else None,
+                    last=modified_steps[-1]
+                )
+            elif hasattr(selected_llm_or_chain, 'configurable_fields'):
+                # If it's a single LLM or other runnable that supports configurable fields, apply directly
+                try:
+                    selected_llm_or_chain = selected_llm_or_chain.configurable_fields(
+                        temperature=ConfigurableField(
+                            id="llm_temperature",
+                            name="LLM Temperature",
+                            description="The temperature of the LLM"
+                        )
+                    ).with_config(configurable={"llm_temperature": 0.7})  # Replace with desired default temperature
+                except ValueError as e:
+                    smart_print(f"LLM/Chain '{llm_name}' does not support temperature configuration: {e}", self.agent_name)
+
+            # Apply structured output if needed
+            if self.output_schema:
+                if isinstance(selected_llm_or_chain, RunnableSequence):
+                    # Apply `with_structured_output` to the last element in the sequence
+                    last_element = selected_llm_or_chain.steps[-1]
+                    if hasattr(last_element, 'with_structured_output'):
+                        last_element = last_element.with_structured_output(self.output_schema)
+                    # Reconstruct the sequence with the modified last element
+                    if len(selected_llm_or_chain.steps) > 1:
+                        selected_llm_or_chain = RunnableSequence(
+                            first=selected_llm_or_chain.steps[0],
+                            middle=selected_llm_or_chain.steps[1:-1] if len(selected_llm_or_chain.steps) > 2 else None,
+                            last=last_element
+                        )
+                    else:
+                        # If there's only one step, treat the last_element as the entire sequence
+                        selected_llm_or_chain = last_element
+                elif hasattr(selected_llm_or_chain, 'with_structured_output'):
+                    # Apply `with_structured_output` directly if it's not a sequence
+                    selected_llm_or_chain = selected_llm_or_chain.with_structured_output(self.output_schema)
+                else:
+                    # If neither condition matches, `selected_llm_or_chain` is not modified
+                    smart_print(f"LLM/Chain '{llm_name}' does not support structured output", self.agent_name)
+
+            # Set the LLM/Chain to the possibly modified or original one
+            if is_premium:
+                self.premium_llm = selected_llm_or_chain
+            else:
+                self.default_llm = selected_llm_or_chain
+                
             return True
         else:
-            smart_print(
-                f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}",self.agent_name)
+            smart_print(f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}", self.agent_name)
             return False
 
-    def set_premium_llm(self, llm_name):
-        if llm_name in self.llmORchains_list:
-            self.premium_llm_name = llm_name
-            if self.output_schema:
-                self.premium_llm = self.llmORchains_list[llm_name].with_structured_output(self.output_schema)
-            else:
-                self.premium_llm = self.llmORchains_list[llm_name]
-            return True
-        else:
-            smart_print(
-                f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}",self.agent_name)
-            return False
-    
+    def set_default_llmORchain(self, llm_name):
+        return self.set_llmORchain(llm_name, is_premium=False)
+
+    def set_premium_llmORchain(self, llm_name):
+        return self.set_llmORchain(llm_name, is_premium=True)
+
     def set_output_schema(self, output_schema, package_path = "."):
         # test if output_schema is a string, then it means it is a filename located in the prompt repo, load it and set it as output_schema
         if isinstance(output_schema, str):
@@ -574,8 +655,8 @@ class HumanLLMMonitor:
         self.llmORchains_list = llmORchains_list
         self.system_prompt = system_prompt
         self.set_output_schema(output_schema)
-        self.set_default_llm(default_llmORchain if default_llmORchain else "default_llm") #.default_llm = default_llmORchain if default_llmORchain else self.llmORchains_list.get("default_llm")
-        self.set_premium_llm(premium_llmORchain if premium_llmORchain else "premium_llm") #premium_llm = premium_llmORchain if premium_llmORchain else self.llmORchains_list.get("premium_llm")
+        self.set_default_llmORchain(default_llmORchain if default_llmORchain else "default_llm") #.default_llm = default_llmORchain if default_llmORchain else self.llmORchains_list.get("default_llm")
+        self.set_premium_llmORchain(premium_llmORchain if premium_llmORchain else "premium_llm") #premium_llm = premium_llmORchain if premium_llmORchain else self.llmORchains_list.get("premium_llm")
         self.CPS_env_type = CPS_env_type
         self.agent_name = agent_name or self.get_caller_class_name()
         # set in 1 line self.print_color is 32 for ActionAgent, 35 for CurriculumAgent, 31 for CriticAgent, 33 for SkillManager, 37 for else
@@ -820,8 +901,8 @@ class HumanLLMMonitor:
                         new_llm_name = model_choice
                     else:
                         raise ValueError("Model choice must be an integer or a string")
-                    self.set_default_llm(new_llm_name)
-                    self.set_premium_llm(new_llm_name)
+                    self.set_default_llmORchain(new_llm_name)
+                    self.set_premium_llmORchain(new_llm_name)
                     default_llm_function = self.default_llm
                     premium_llm_function = self.premium_llm
                     self.synthesize_mode = False
@@ -849,8 +930,8 @@ class HumanLLMMonitor:
                             schema_file.write(new_schema_content)
                         self.set_output_schema(self.output_schema_path)
                         # Reload default and premium LLMs
-                        self.set_default_llm(self.default_llm_name)
-                        self.set_premium_llm(self.premium_llm_name)
+                        self.set_default_llmORchain(self.default_llm_name)
+                        self.set_premium_llmORchain(self.premium_llm_name)
                         default_llm_function = self.default_llm
                         premium_llm_function = self.premium_llm
 
@@ -1063,7 +1144,7 @@ class HumanLLMMonitor:
                 smart_input(f"Enter the number of the new premium LLM (0-{len(llm_keys) - 1}): ", self.agent_name))
             if 0 <= new_llm_index < len(llm_keys):
                 new_llm_name = llm_keys[new_llm_index]
-                if self.set_premium_llm(new_llm_name): break
+                if self.set_premium_llmORchain(new_llm_name): break
         premium_llm_function = self.premium_llm
         smart_print(f"Premium LLM changed to {new_llm_name}", self.agent_name, "Change Premium LLM")
         return premium_llm_function
@@ -1076,7 +1157,7 @@ class HumanLLMMonitor:
                 smart_input(f"Enter the number of the new default LLM (0-{len(llm_keys) - 1}): ", self.agent_name))
             if 0 <= new_llm_index < len(llm_keys):
                 new_llm_name = llm_keys[new_llm_index]
-                if self.set_default_llm(new_llm_name): break
+                if self.set_default_llmORchain(new_llm_name): break
         default_llm_function = self.default_llm
         smart_print(f"Default LLM changed to {new_llm_name}", self.agent_name, "Change Default LLM")
         return default_llm_function
@@ -1412,6 +1493,7 @@ class HumanLLMMonitor:
                 func = premium_llm_function if not func_calling else HumanLLMMonitor.call_llm_function_with_function_call
             else:
                 func = default_llm_function if not func_calling else HumanLLMMonitor.call_llm_function_with_function_call
+            func = func.with_config(configurable={"llm_temperature": temperature})
 
             if stream_output:
                 if color_id is None or color_id <= 0:
@@ -1425,7 +1507,7 @@ class HumanLLMMonitor:
                 previous_chunk_str = ""
                 # Regex to match the end of a typical JSON structure
                 json_trail_re = re.compile(r'[\'\}\]]$')
-                for chunk in func.stream(input_msg, temperature=temperature):  #, temperature=temperature):  # Ensure 'llm' is correctly initialized with temperature
+                for chunk in func.stream(input_msg):  #, temperature=temperature):  # Ensure 'llm' is correctly initialized with temperature
                     if hasattr(chunk, 'content'):
                         chunk_content = chunk.content
                         final_output += chunk_content

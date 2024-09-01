@@ -1003,10 +1003,10 @@ def create_Nmajority_chain(num_models=3, map_model_name="gpt-3.5", reduce_model_
 if __name__ == "__main__":
     # Initialize the default and premium LLMs
     llmORchains_list = {
-        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt-3.5"]),
-        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt-4"]),
-        "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"], num_models=3),
-        "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"], num_models=10)
+        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"]),#, temperature=0.7),
+        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["premium_gpt"]),#, temperature=0.7),
+        "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"], reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=3),
+        "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"], reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=10)
     }
 
     # Set the documents to test/validate as a list of environments
