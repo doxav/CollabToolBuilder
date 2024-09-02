@@ -1570,7 +1570,8 @@ The following annotations are provided to guide the refinement process. Each ann
                     smart_print(start_color + chunk_content + end_color, self.agent_name, "Inference streaming output", append=True)
                 return AIMessage(content=final_output)  # Return the concatenated full respons
             else:
-                return AIMessage(content=str(func.invoke(input_msg)))
+                value = func.invoke(input_msg).content
+                return AIMessage(content=value)
 
         smart_print(
             f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[1].function} calling HumanLLMMonitor****\033[0m",
