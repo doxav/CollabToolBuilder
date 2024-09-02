@@ -104,56 +104,52 @@ CONSTRAINTS:
                 ERROR: '(' was never closed (<unknown>, line 1)
         -do no test the code at the end with 'if __name__ == "__main__":
         -use same structure as anomaly_retrieval_pipeline.py
+        -avoid indentation error
 
 RESPONSE FORMAT:
-    class your_pipeline_name:
-        # detailed content of the function pipeline...
-        ... 
+    python ```
+        class your_pipeline_name:
+            # detailed content of the function pipeline...
+            ... 
 
-        def pipe()
-                ...
-                return result
+            def pipe()
+                    ...
+                    return result
 
-    class example_pipeline:
-            @staticmethod
-            async def run_pipeline(user_message: str, model_id: str, messages: List[dict], body: dict) -> str:
-        
-                pipeline = your_pipeline_name()
-                await pipeline.on_startup()
-                pipe_result =  pipeline.pipe(user_message, model_id, messages, body)
-                await pipeline.on_shutdown()
-
+        class example_pipeline:
+                @staticmethod
+                async def run_pipeline(user_message: str, model_id: str, messages: List[dict], body: dict) -> str:
+            
+                    pipeline = your_pipeline_name()
+                    await pipeline.on_startup()
+                    pipe_result =  pipeline.pipe(user_message, model_id, messages, body)
+                    await pipeline.on_shutdown()
                 return pipe_result
-
+    ```
 
   TESTS: 
-        do no test the code at the end with 'if __name__ == "__main__": ==> error because Class_If do not exist
+    do no test the code at the end with 'if __name__ == "__main__": ==> error because Class_If do not exist
 
-        use this fonction to test the pipeline:
-        
-                def test_pipeline():
-                        pipeline = ExamplePipeline()
-                        result = asyncio.run(pipeline.run_pipeline(
-                                        "Managed Repositories issue", 
-                                        "Managed Repositories and Proxied Repositories buttons under Administration are not displayed when using Internet Explorer 7."
-                                ))
-                        assert result is not None, "Le résultat ne doit pas être None"
-                        assert isinstance(result, str), "Le résultat doit être une chaîne de caractères"
+    use this kind of fonction to test the pipeline (adapte it to your proposition of pipeline structure):
+    All of the assert should be ok!
+    You should add new assert depending on the pipeline you have created
 
-                        result_data = json.loads(result)
-                        assert "problem" in result_data, "Le champ 'problem' doit être dans le résultat"
-                        assert "similar_anomalies" in result_data, "Le champ 'similar_anomalies' doit être dans le résultat"
-                        assert "resolutions" in result_data, "Le champ 'resolutions' doit être dans le résultat"
-                        print("tests réussis")
-                        return result_data
+    python ```
+        def test_pipeline():
+            pipeline = ExamplePipeline()
+            result = asyncio.run(pipeline.run_pipeline())
+            assert result is not None, "Result can't be None"
+            assert isinstance(result, str), "result should be str"
 
-                result_json= test_pipeline()
-                print(result_json)
+            # add new assert
 
+            result_json= test_pipeline()
+            print(result_json)
+    ```
 
-        # document #72dc469b-63f8-4751-aab5-6db3d16fca3c usage test:
-        your_main_function_name(args specific to document #72dc469b-63f8-4751-aab5-6db3d16fca3c...)
+    # document #72dc469b-63f8-4751-aab5-6db3d16fca3c usage test:
+    your_main_function_name(args specific to document #72dc469b-63f8-4751-aab5-6db3d16fca3c...)
 
-        # document #c0533337-1c5e-4091-ba7d-061ae409cda4 usage test:
-        your_main_function_name(args specific to document #c0533337-1c5e-4091-ba7d-061ae409cda4...)
+    # document #c0533337-1c5e-4091-ba7d-061ae409cda4 usage test:
+    your_main_function_name(args specific to document #c0533337-1c5e-4091-ba7d-061ae409cda4...)
     

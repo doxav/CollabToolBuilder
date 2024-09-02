@@ -28,7 +28,7 @@ from langchain_core.messages.function import FunctionMessage
 
 from langchain_openai import ChatOpenAI # from langchain.chat_models import ChatOpenAI
 #from langchain.chat_models import ChatOpenAI
-
+import pdb
 import json
 from typing import List, Union, Generator, Iterator
 from langchain.globals import set_llm_cache
@@ -72,9 +72,10 @@ class Environment:
         # Regular expression to check if the last line assigns to 'result'
         if not re.search(r'\bresult\s*=', action_code.strip().splitlines()[-1]):
             helper = "\nresult = locals().get('_', None)"
-        else: helper = ""
+        else: helper = None
 
         # execute action
+
         try:
             # capture stdout and stderr while executing code
             exec(action_code + helper, context)
@@ -482,7 +483,7 @@ class CapitalizationAgent:
 
         if self.pipeline_mode:
             name_file = parsed_code["class_name"]
-            function_file_path = os.path.join("pipeline_create", name_file+".py")
+            pipeline_file_path = os.path.join("pipelines/pipelines", name_file+".py")
         else:
             name_file = parsed_code["main_function_name"]
             # save function program_code in a file under the functions directory and add to the function signature the generated dosctring
@@ -492,11 +493,15 @@ class CapitalizationAgent:
         self.tasks_repository[name_file] = [tool_description, parsed_code["program_code"]]
         # print last added task
         smart_print(f"************ Last added task ************\n{name_file}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
-
+        if self.pipeline_mode:
+           if os.path.exists(pipeline_file_path):
+                smart_print(f"Pipeline file {pipeline_file_path} already exists, please provide a new name for the pipeline.", self.name, "capitalize_successful_tasks WARNING")
+                pipeline_file_path = os.path.join("pipelines", input("New pipeline name: ")+".py")    
         # check if the function file already exists, if yes, ask the user a new name
-        if os.path.exists(function_file_path):
-            smart_print(f"Function file {function_file_path} already exists, please provide a new name for the function.", self.name, "capitalize_successful_tasks WARNING")
-            function_file_path = os.path.join("functions", input("New function name: ")+".py")
+        else:    
+            if os.path.exists(function_file_path):
+                smart_print(f"Function file {function_file_path} already exists, please provide a new name for the function.", self.name, "capitalize_successful_tasks WARNING")
+                function_file_path = os.path.join("functions", input("New function name: ")+".py")
         with open(function_file_path, "w") as function_file:
              # use regex to extract the docstring from tool_description
             docstring_pattern = re.compile(r'(""".*?""")', re.DOTALL)
@@ -626,9 +631,15 @@ class CapitalizationAgent:
                         smart_print(f"> failed pipeline/task {task_data['class_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
 
             else:
-                if task_data["main_function_name"] in self.tasks_repository:
-                    smart_print(f"> function/task {task_data['main_function_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-                    continue
+                if "main_function_name" in task_data:
+                    if task_data["main_function_name"] in self.tasks_repository:
+                        smart_print(f"> pipeline/task {task_data['main_function_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+                        continue
+                else:
+                    task_data['main_function_name']=""
+                    if 'task_description-refined' in task_data:
+                        self.failed_tasks_repository[task_data["main_function_name"]] = task_data["task_description_refined"]
+                        smart_print(f"> failed pipeline/task {task_data['main_function_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
 
                 self.tasks_repository[task_data["main_function_name"]] = [task_data["tool_description"]] if not include_code else [task_data["tool_description"], task_data["program_code"]]
                 smart_print(f"> function/task {task_data['main_function_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")

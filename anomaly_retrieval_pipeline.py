@@ -299,13 +299,13 @@ class Pipeline:
         return result
 
     
-    class AnomalyRetrievalAndRecommendationPipeline:
-        @staticmethod
-        async def run_pipeline(user_message: str, model_id: str, messages: List[dict], body: dict) -> str:
+class AnomalyRetrievalAndRecommendationPipeline:
+    @staticmethod
+    async def run_pipeline(user_message: str, model_id: str, messages: List[dict], body: dict) -> str:
      
-            pipeline = Pipeline()
-            await pipeline.on_startup()
-            pipe_result =  pipeline.pipe(user_message, model_id, messages, body)
-            await pipeline.on_shutdown()
+        pipeline = Pipeline()
+        await pipeline.on_startup()
+        pipe_result =  pipeline.pipe(user_message, model_id, messages, body)
+        await pipeline.on_shutdown()
 
-            return pipe_result
+        return pipe_result
