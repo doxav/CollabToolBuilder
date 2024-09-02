@@ -149,6 +149,7 @@ box-sizing: border-box;
 #send-button { margin-top: 10px; }
 .annotation-menu { display: none; position: absolute; background: #636363; border: 1px solid #636363; padding: 10px; z-index: 999999;}
 .sidebar-toggle { cursor: pointer; padding: 5px 10px; background-color: #636363; border: 1px solid #636363; margin-bottom: 10px; color: white; }
+.default_button { background-color: #636363; color: white; border: 1px solid #b0b0b0; padding: 5px 10px; cursor: pointer; border-radius: 5px;}
 .close-btn { position: absolute; top: -4px; right: -4px; cursor: pointer; background-color: transparent; border: none; color: white; font-size: 16px; }
 pre { background-color: #f0f0f0; padding: 10px; border-radius: 5px; overflow-x: auto; max-width: 100%; }
 code { font-family: 'Courier New', Courier, monospace; }
@@ -226,9 +227,10 @@ color: white;
             </select><br><br><br>
 
             <label for="temperature">Temperature:</label><br><br>
-            <input type="range" id="temperature" min="0" max="1" step="0.1" value="0.5"><br><br><br>
+            <input type="range" id="temperature" min="0" max="1" step="0.01" value="0.7"><br>
+            <span id="value-temp">0.7</span><br><br><br>
 
-            <button id="apply-settings">Apply Settings</button>
+            <button id="apply-settings" class="default_button">Apply Settings</button>
         </center>
     </div>
 </div>
@@ -296,6 +298,22 @@ function displayMessage(data) {
 
         } else if(data.agent_name === "CodingAgent" && (data.message_type === "LLM ANSWER content" || data.message_type === "POST INFERENCE" || data.message_type === "process_ai_generated_code SystemMessage" || data.message_type === "Multiple LLM ANSWERS" || data.message_type === "MULTIPLE inferences received") ){
             // Do nothing
+        } else if (data.message_type === "Inference streaming output"){
+            console.log("Handling inference streaming output");
+            // Add message to previous “Inference streaming output” message content of the same agent_name for streaming display unless it is the first message, create a new message
+            let $lastMessage = $agentAccordion.children("div").children().last();
+            const h4Elements = document.querySelectorAll('h4');
+            // If the last message is preceded by a h4 with the text "Inference streaming output", append the new message to the previous message
+            if ($lastMessage.length > 0 && h4Elements[h4Elements.length - 1].textContent.includes( "Inference streaming output")) {
+                $lastMessage.append(data.message);
+            } else {
+                if ($agentAccordion.length === 0) {
+                    $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
+                    $("#message-accordion").append($agentAccordion);
+                }
+                let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${content}</div>`);
+                $agentAccordion.children("div").append($messageContainer);
+            }
         }
         else {
             if ($agentAccordion.length === 0) {
@@ -333,7 +351,9 @@ function displayMessage(data) {
 
     }
 
-
+    $(`#temperature`).on('input', function () {
+                $(`#value-temp`).text(this.value);
+            });
 
 
 
@@ -439,19 +459,63 @@ function displayMessage(data) {
     }
 
            function formatMessage(message) {
-                // Regular expression to match Python code blocks
-                const codeBlockRegex = /```python\n([\s\S]*?)```/;
-                // Extract the Python code block
-                const match = message.match(codeBlockRegex);
+                // Remove ANSI color codes
+                const cleanString = message.replace(/\u001b\[\d+m/g, '');
 
-                if (match) {
-                    const codeBlock = match[1];
-                    let highlightedCode = hljs.highlight('python', codeBlock).value;
-                    return `<div class="message"><pre><code>${highlightedCode}</code></pre></div>`;
+                // Extract Python code blocks
+                const codeBlocks = cleanString.match(/def .+?(?=\n\n|$)/gs) || [];
+
+                // Start with the original message
+                let formattedMessage = `<div class="message">${message}`;
+
+                // If Python code is found, add the formatted code
+                if (codeBlocks.length > 0) {
+                    // Pretty print each code block
+                    const prettyPrintedBlocks = codeBlocks.map(block => {
+                        // Split the block into lines
+                        const lines = block.split('\n');
+
+                        // Determine the base indentation level
+                        const baseIndent = lines[0].match(/^\s*/)[0].length;
+
+                        // Remove the base indentation from each line and add proper indentation
+                        return lines.map((line, index) => {
+                            const trimmedLine = line.slice(baseIndent);
+                            const indent = ' '.repeat(Math.max(0, (trimmedLine.match(/^\s*/)[0].length)));
+                            return index === 0 ? trimmedLine : indent + trimmedLine;
+                        }).join('\n');
+                    });
+
+                    const codeBlock = prettyPrintedBlocks.join('\n\n');
+
+                    // Escape HTML special characters to prevent XSS
+                    const escapeHtml = (unsafe) => {
+                        return unsafe
+                             .replace(/&/g, "&amp;")
+                             .replace(/</g, "&lt;")
+                             .replace(/>/g, "&gt;")
+                             .replace(/"/g, "&quot;")
+                             .replace(/'/g, "&#039;");
+                    };
+
+                    // Escape the code and replace spaces with non-breaking spaces
+                    let escapedCode = escapeHtml(codeBlock).replace(/ /g, '&nbsp;');
+
+                    // Split the code into lines and wrap each line in a span
+                    let formattedCode = escapedCode.split('\n').map(line =>
+                        `<span class="code-line">${line}</span>`
+                    ).join('\n');
+
+                    // Highlight the code
+                    let highlightedCode = hljs.highlight('python', formattedCode).value;
+
+                    formattedMessage += `<pre><code class="python">${highlightedCode}</code></pre>`;
                 }
 
-                // If no Python code block is found, return the original message
-                return `<div class="message">${message}</div>`;
+                // Close the message div
+                formattedMessage += `</div>`;
+
+                return formattedMessage;
             }
             function displayInputField() {
                 $("#user-input").show();
@@ -816,6 +880,26 @@ function displayMessage(data) {
                 $("#toggle-settings-main").text($("#settings-sidebar").is(":visible") ? "Hide Settings" : "Show Settings");
                 $("#toggle-settings").text($("#settings-sidebar").is(":visible") ? "Hide Settings" : "Show Settings");
             });
+
+            // Synchroniser le filtre de type de message entre les deux barres de filtre
+            $("#filter-message-type").change(function() {
+                $("#filter-message-type-bottom").val($(this).val());
+            });
+
+            $("#filter-message-type-bottom").change(function() {
+                $("#filter-message-type").val($(this).val());
+            });
+
+            // Synchroniser le filtre de type d'agent entre les deux barres de filtre
+            $("#filter-agent-type").change(function() {
+                $("#filter-agent-type-bottom").val($(this).val());
+            });
+
+            $("#filter-agent-type-bottom").change(function() {
+                $("#filter-agent-type").val($(this).val());
+            });
+
+
 
         });
 
