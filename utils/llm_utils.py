@@ -217,6 +217,16 @@ def save_prompt_with_tag(prompt_name, text, new_tag, package_path="."):
     # Save the file
     return dump_text(text, prompt_file_path_name)
 
+@dataclass
+class FewShotsParams:
+    num: int = 5
+    filter: dict = field(default_factory=dict)
+    ranking_method: str = 'by_date_desc'
+    annotations: Optional[Union[str, List[str]]] = None
+    generate_summary: bool = False
+    format: Optional[str] = None
+    summary_char_limit: int = 500
+
 class UnifiedVectorDB:
     db_type = 'elasticsearch'  # can be 'elasticsearch' or 'chroma'
     es_url = 'http://127.0.0.1:9200'
@@ -343,6 +353,10 @@ class UnifiedVectorDB:
 # db = UnifiedVectorDB("documents", embedding_function, "bolt://localhost:7687", "neo4j", "password")
 # db.add_texts(["This is a test document"], ids=["doc1"], metadatas=[{"author": "Alice"}])
 
+class InferenceCheck:
+    def __init__(self, check_name, check_function):
+        self.check_name = check_name
+        self.check_function = check_function
 
 def search_for_external_knwoledge(description, url):
     """
@@ -387,9 +401,114 @@ class HumanLLMMonitor:
                 reset_db_indices=reset_db_indices
             )
 
-    def set_default_llm(self, llm_name):
+    def get_few_shots_tag_args(self, prompt=None):
+        """
+        Retrieves the few shots tag arguments from the system prompt.
+
+        Returns:
+            dict: A dictionary containing the few shots tag arguments.
+        """
+        if prompt is None:
+            prompt = self.system_prompt
+        few_shots_match = re.search(r"few_shots:\s*(\{.*\})?$", prompt)
+        few_shots_data = json.loads(few_shots_match.group(1)) if few_shots_match and few_shots_match.group(1) else {}
+        return few_shots_data
+
+    def set_llmORchain(self, llm_name, is_premium=False):
         if llm_name in self.llmORchains_list:
-            self.default_llm = self.llmORchains_list[llm_name]
+            if is_premium:
+                self.premium_llm_name = llm_name
+            else:
+                self.default_llm_name = llm_name
+                
+            selected_llm_or_chain = self.llmORchains_list[llm_name]
+
+            # Check if it's a sequence of steps (RunnableSequence)
+            if isinstance(selected_llm_or_chain, RunnableSequence):
+                modified_steps = []
+                for step in selected_llm_or_chain.steps:
+                    if hasattr(step, "steps__") and isinstance(step.steps__, dict):
+                        # Handle the case where step is a dict of parallel runnables
+                        modified_dict = {}
+                        for key, sub_step in step.steps__.items():
+                            if hasattr(sub_step, 'configurable_fields'):
+                                try:
+                                    sub_step = sub_step.configurable_fields(
+                                        temperature=ConfigurableField(
+                                            id="llm_temperature",
+                                            name="LLM Temperature",
+                                            description="The temperature of the LLM"
+                                        )
+                                    ).with_config(configurable={"llm_temperature": 0.7})  # Replace with desired default temperature
+                                except ValueError as e:
+                                    smart_print(f"Sub-step {key} in step {step} does not support temperature configuration: {e}", self.agent_name)
+                            modified_dict[key] = sub_step
+                        step.steps__ = modified_dict
+                        modified_steps.append(step)
+                    elif hasattr(step, 'configurable_fields'):
+                        try:
+                            step = step.configurable_fields(
+                                temperature=ConfigurableField(
+                                    id="llm_temperature",
+                                    name="LLM Temperature",
+                                    description="The temperature of the LLM"
+                                )
+                            ).with_config(configurable={"llm_temperature": 0.7})  # Replace with desired default temperature
+                        except ValueError as e:
+                            smart_print(f"Step {step} does not support temperature configuration: {e}", self.agent_name)
+                        modified_steps.append(step)
+                    else:
+                        modified_steps.append(step)
+
+                # Reconstruct the sequence with the modified steps
+                selected_llm_or_chain = RunnableSequence(
+                    first=modified_steps[0],
+                    middle=modified_steps[1:-1] if len(modified_steps) > 2 else None,
+                    last=modified_steps[-1]
+                )
+            elif hasattr(selected_llm_or_chain, 'configurable_fields'):
+                # If it's a single LLM or other runnable that supports configurable fields, apply directly
+                try:
+                    selected_llm_or_chain = selected_llm_or_chain.configurable_fields(
+                        temperature=ConfigurableField(
+                            id="llm_temperature",
+                            name="LLM Temperature",
+                            description="The temperature of the LLM"
+                        )
+                    ).with_config(configurable={"llm_temperature": 0.7})  # Replace with desired default temperature
+                except ValueError as e:
+                    smart_print(f"LLM/Chain '{llm_name}' does not support temperature configuration: {e}", self.agent_name)
+
+            # Apply structured output if needed
+            if self.output_schema:
+                if isinstance(selected_llm_or_chain, RunnableSequence):
+                    # Apply `with_structured_output` to the last element in the sequence
+                    last_element = selected_llm_or_chain.steps[-1]
+                    if hasattr(last_element, 'with_structured_output'):
+                        last_element = last_element.with_structured_output(self.output_schema)
+                    # Reconstruct the sequence with the modified last element
+                    if len(selected_llm_or_chain.steps) > 1:
+                        selected_llm_or_chain = RunnableSequence(
+                            first=selected_llm_or_chain.steps[0],
+                            middle=selected_llm_or_chain.steps[1:-1] if len(selected_llm_or_chain.steps) > 2 else None,
+                            last=last_element
+                        )
+                    else:
+                        # If there's only one step, treat the last_element as the entire sequence
+                        selected_llm_or_chain = last_element
+                elif hasattr(selected_llm_or_chain, 'with_structured_output'):
+                    # Apply `with_structured_output` directly if it's not a sequence
+                    selected_llm_or_chain = selected_llm_or_chain.with_structured_output(self.output_schema)
+                else:
+                    # If neither condition matches, `selected_llm_or_chain` is not modified
+                    smart_print(f"LLM/Chain '{llm_name}' does not support structured output", self.agent_name)
+
+            # Set the LLM/Chain to the possibly modified or original one
+            if is_premium:
+                self.premium_llm = selected_llm_or_chain
+            else:
+                self.default_llm = selected_llm_or_chain
+                
             return True
         else:
             print(f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}")
@@ -407,8 +526,9 @@ class HumanLLMMonitor:
         if llmORchains_list is None: raise ValueError("llmORchains_list must be provided")
         self.llmORchains_list = llmORchains_list
         self.system_prompt = system_prompt
-        self.default_llm = llm if llm else self.llmORchains_list.get("default_llm")
-        self.premium_llm = premium_llm if premium_llm else self.llmORchains_list.get("premium_llm")
+        self.set_output_schema(output_schema)
+        self.set_default_llmORchain(default_llmORchain if default_llmORchain else "default_llm") #.default_llm = default_llmORchain if default_llmORchain else self.llmORchains_list.get("default_llm")
+        self.set_premium_llmORchain(premium_llmORchain if premium_llmORchain else "premium_llm") #premium_llm = premium_llmORchain if premium_llmORchain else self.llmORchains_list.get("premium_llm")
         self.CPS_env_type = CPS_env_type
         self.agent_name = agent_name or self.get_caller_class_name()
         # set in 1 line self.print_color is 32 for ActionAgent, 35 for CurriculumAgent, 31 for CriticAgent, 33 for SkillManager, 37 for else
@@ -421,7 +541,154 @@ class HumanLLMMonitor:
         self.num_parallel_inferences = num_parallel_inferences
         self.llm_max_context_size = model_max_context_size
         self.premium_llm_by_default = premium_llm_by_default
-        self.synthesize_mode = synthesize_mode  # NEW
+        self.synthesize_mode = synthesize_mode
+        self.inference_checks = inference_checks if inference_checks else {}
+        self.last_inference_check_results = None
+
+    def load_prompt(self, function_name: str = None, agent_name: str = None, prompt: str = None) -> str:
+        """
+        Load a prompt with the ability to retrieve few_shots examples based on the provided tag parameters.
+
+        :param function_name: The name of the function calling the prompt.
+        :param agent_name: The name of the agent requesting the prompt.
+        :param few_shots_tag: A dictionary containing parameters to customize few_shots example retrieval.
+        :return: A formatted string including the main prompt and few_shots examples.
+        """
+        function_name = function_name if function_name else inspect.stack()[2].function
+
+        with open(f"prompts/{prompt}.txt", "r") as f:
+            prompt = f.read()
+
+        if "few_shots" in prompt:
+            few_shots_tag = self.get_few_shots_tag_args()
+            match = re.search(r"few_shots:\s*(\{.*\})?$", prompt)
+            # Remove the few_shots tag and the dictionary from the prompt
+            prompt = prompt[:match.start()].rstrip()
+        else:
+            return prompt
+
+        HumanLLMMonitor._check_and_init_vector_db()
+
+        # Manage the few_shots_tag parameters
+        if few_shots_tag == {}:
+            # Set default values if the dictionary is empty
+            default_params = {
+                'num': 5,  # Default number of examples to retrieve
+                'filter': {},  # Default filter for the vector database
+                'ranking_method': 'relevance',  # Default ranking method
+                'generate_summary': False,  # Indicates if a summary should be generated
+                'summary_char_limit': 200  # Character limit for the summary
+            }
+            # Merge the provided parameters with the default values
+            merged_params = {**default_params, **(few_shots_tag or {})}
+
+            # Initialize FewShotsParams with the merged parameters
+            params = FewShotsParams(**merged_params)
+        else :
+            params = FewShotsParams(**few_shots_tag)
+
+        # Create metadata filter for querying the vector database
+        metadata_filter = {
+            "function_name": function_name,
+            "agent_name": agent_name,
+            **params.filter
+        }
+
+        try:
+            # Query the vector database to retrieve relevant log entries
+            log_entries = HumanLLMMonitor.common_vectordb.query(
+                query_text="*",
+                metadata_filter=metadata_filter,
+                k=params.num,
+                sort_order=params.ranking_method
+            )
+        except Exception as e:
+            raise ValueError(f"Error querying vector database: {e}")
+
+        # Process the retrieved examples based on the parameters
+        examples = self._process_examples(log_entries, params)
+
+        # Generate a summary if required
+        if params.generate_summary:
+            summary = self.generate_summary(examples, params.summary_char_limit)
+            examples.append(summary)
+
+        # Combine the main prompt with the examples
+        combined_prompt = f"{prompt}\n\nExamples:\n" + "\n\n".join(examples)
+
+        return combined_prompt
+
+    def _process_examples(self, log_entries: List, params: FewShotsParams) -> List[str]:
+        """
+        Process and format the examples based on the given parameters.
+
+        :param log_entries: List of log entries retrieved from the vector database.
+        :param params: FewShotsParams object containing processing parameters.
+        :return: List of processed and formatted examples.
+        """
+        examples = []
+        for entry in log_entries:
+            example_content = json.loads(entry.page_content)
+
+            # Filter examples based on annotations if specified
+            if params.annotations:
+                if isinstance(params.annotations, str):
+                    params.annotations = [params.annotations]
+                if 'annotation' in example_content and example_content['annotation'] in params.annotations:
+                    examples.append(example_content)
+            else:
+                examples.append(example_content)
+
+        # Format examples using the provided template if specified
+        if params.format:
+            template = Template(params.format)
+            examples = [template.render(example=ex) for ex in examples]
+        else:
+            valid_examples = []
+            for ex in examples:
+                if 'output_llm_raw' in ex:
+                    valid_examples.append(ex['output_llm_raw'][0])  # Assuming you want the first element of the list
+                else:
+                    logging.warning(f"Missing 'output_llm_raw' key in example: {ex}")
+            examples = valid_examples
+
+        return examples
+
+    def generate_summary(self, examples: List[str], char_limit: int) -> str:
+       """
+       Generate a summary of the examples using a language model.
+
+       :param examples: List of example strings to summarize.
+       :param char_limit: Maximum character limit for the summary.
+       :return: A string containing the generated summary.
+       """
+       # Set up the language model and prompt
+       llm = OpenAI(temperature=0.7)
+       prompt = PromptTemplate(
+          input_variables=["examples"],
+          template="Summarize the following examples in {char_limit} characters or less:\n\n{examples}"
+       )
+
+       # Create a chain to generate the summary
+       chain = LLMChain(llm=llm, prompt=prompt)
+
+       # Generate the summary
+       summary = chain.run(examples="\n".join(examples), char_limit=char_limit)
+
+       return f"Summary: {summary.strip()}"
+
+    def add_inference_check(self, check_name, check_function):
+        self.inference_checks[check_name] = InferenceCheck(check_name, check_function)
+
+    def run_inference_checks(self, output_id, *args, **kwargs):
+        results = {}
+        for check_name, check in self.inference_checks.items():
+            result = check.run_check(*args, **kwargs)
+            results[check_name] = result
+        # Ensure output_id is within bounds before updating the list
+        if 0 <= output_id < len(self.last_inference_check_results):
+            self.last_inference_check_results[output_id] = results  # Update the specific index
+        return results
 
     def get_caller_class_name(self):
         # Returns the name of the class that called the current function
@@ -488,10 +755,17 @@ class HumanLLMMonitor:
             match(optuna) :
                 case "Coach" :
                     llm_keys = list(self.llmORchains_list.keys())
-                    # Model change from choice of optuna
-                    new_llm_name = llm_keys[model_choice]
-                    self.set_default_llm(new_llm_name)
-                    self.set_premium_llm(new_llm_name)
+                    if type(model_choice) == int:
+                        # Model change from choice of optuna
+                        new_llm_name = llm_keys[model_choice]
+                    elif type(model_choice) == str:
+                        if model_choice not in llm_keys:
+                            raise ValueError(f"Model choice '{model_choice}' not found in llmORchains_list {llm_keys}")
+                        new_llm_name = model_choice
+                    else:
+                        raise ValueError("Model choice must be an integer or a string")
+                    self.set_default_llmORchain(new_llm_name)
+                    self.set_premium_llmORchain(new_llm_name)
                     default_llm_function = self.default_llm
                     premium_llm_function = self.premium_llm
                     # Default actions for all agents while running with optuna
@@ -687,6 +961,7 @@ class HumanLLMMonitor:
 
     def _after_inference(self, inference_result_msg, premium_llm_function, color="37", output_id=None, outputs_count=None, optuna=None):
         comments, score = None, None
+        nl = "\n"
         if inference_result_msg is None:
             # enable to request inference_result_msg.content to be None
             inference_result_msg = type('InferenceResult', (object,), {'content': None})
@@ -764,7 +1039,7 @@ class HumanLLMMonitor:
                 exit()
 
             # Count time spent and occurrences waiting and in each option
-            if action:
+            if action and action.isalpha() and len(action) == 1:
                 # if action is set and not exist yet, also check if this is 1 single letter
                 if action and (action not in self.after_inference_option_times) and action.isalpha() and len(action) == 1:
                     self.after_inference_option_times[action] = 0
@@ -790,6 +1065,110 @@ class HumanLLMMonitor:
             print(f"Time spent in each option and occurrences: {self.after_inference_option_times} - {self.after_inference_option_counts}")
 
         return inference_result_msg, comments, score
+
+    def goBackInference(self, inference_result_msg):
+        inference_result_msg = -1  # break is set after action time measurement
+        return inference_result_msg
+
+    def evaluateCommentAnswerForLater(self):
+        while True:
+            score = float(smart_input(
+                "Give a note for the result between 0.0 (worst) and 1.0 (top), or 0 for bad, 1 for good: ",
+                self.agent_name))
+            # if score is not between 0 and 1, then set to None and print error
+            if score < 0 or score > 1:
+                score = None
+                print(f"\033[31mInvalid score: {score}\033[0m")
+            else:
+                break
+        comments = smart_input("Comment on the result: ", self.agent_name)
+        return comments, score
+
+    def findBetterPrompt(self, comments, inference_result_msg, premium_llm_function):
+        comments = smart_input("First enter your critic here (then modify answer to get ideal answer): ",
+                               self.agent_name)
+        ideal_answer = _visual_input(inference_result_msg.content)
+        refine_prompt = f"Current system prompt:<<< {self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)} >>>\n\nPrompt's answer:<<< {inference_result_msg.content} >>>\n\nPrompt's answer critic:{comments}\n\nPrompt's ideal Answer:<<< {ideal_answer} >>>"
+        smart_print(f"***** PROMPT FOR IMPROVEMENT *****\n{refine_prompt}", self.agent_name, "PROMPT FOR IMPROVEMENT")
+        llm_output = premium_llm_function([SystemMessage(
+            content=self.load_prompt(agent_name=self.agent_name, prompt="improve_prompt_from_answer_critic")),
+                                           HumanMessage(content=refine_prompt)])
+        smart_print(f"***** RECOMMENDATION OPEN FOR EDITION *****\n", self.agent_name,
+                    "RECOMMENDATION OPEN FOR EDITION")
+        new_template = _visual_input(llm_output.content)
+        smart_print(f"***** NEW PROMPT TEMPLATE:\n{new_template}\n*************", self.agent_name,
+                    "NEW PROMPT TEMPLATE")  # Confirm that the user wants to modify the template
+        confirm = smart_input( "Do you want to replace current prompt file template with your input? (y/n): ",self.agent_name).upper() # Save prompt with tag options
+        if confirm == "Y":
+            tag_option = smart_input( "Enter a tag for saving the prompt (leave blank for no tag, or 'same' to keep the current tag): ",self.agent_name)
+        if tag_option.lower() == "same":
+            save_prompt_with_tag(self.system_prompt, new_template, "")
+        else:
+            save_prompt_with_tag(self.system_prompt, new_template, tag_option)
+
+        return comments
+
+    def criticAnswer(self, comments, inference_result_msg, premium_llm_function):
+        def is_valid_python_structure(s):
+            import ast
+            output = None
+            try:
+                output = ast.literal_eval(s)
+                return output, True
+            except (ValueError, SyntaxError):
+                return output, False
+        content_structure, is_strucutre = is_valid_python_structure(inference_result_msg.content)
+        while True:
+            content_pretty = json.dumps(content_structure, indent=4) if is_strucutre else inference_result_msg.content
+            content_annotated = _visual_input(content_pretty, filetype="py" if is_strucutre else "md")
+            #comments = smart_input("Provide critic/feedback/request: ", self.agent_name)
+            system_prompt = "Refine the ANSWER below given the HUMAN FEEDBACK to address for improving it."
+            system_prompt = """
+Refine the **ANNOTATED ANSWER** to the **TARGET TASK**, given answer including important inline text annotated instructions on key elements to improve the answer using tags (see **ANNOTATION TAGS** for interpretation). Directly answer with the updated answer aligned with annotated instructions tags, no introduction.
+
+### TARGET TASK:
+Identify and define the best task to develop using code and LLM given the status of available developed tasks and failed tasks
+
+### ANNOTATION TAGS:
+The following annotations are provided to guide the refinement process. Each annotation is in the format `\TAG{Annotated text...}[optional explanation]`. The tags indicate specific actions you should take to improve or finalize the text. Please follow the instructions for each tag carefully:
+1. **\APPROVE:**
+- **Purpose:** This tag indicates that the content is correct, clear, and relevant to the subject.
+- **Action:** **No changes are necessary.** Retain this content exactly as it is.
+- **Example:** \APPROVE{The system's reliability is essential for maintaining continuous operation.}
+2. **\FIX:**
+- **Purpose:** Content marked with this tag requires **correction or improvement**. There may be issues related to accuracy, clarity, or relevance.
+- **Action:** Make necessary revisions to ensure the text is accurate, clear, and aligned with the overall subject matter.
+- **Example:** \FIX{tomato_sauce_recipe = rubish_llm_factory('tell me how to make tomato sauce for my italian noodles')}
+3. **\DELETE:**
+- **Purpose:** This tag is used for content that is **unnecessary, irrelevant, or detrimental** to the quality of the text.
+- **Action:** **Remove** this content entirely from the final version.
+- **Example:** \DELETE{The report includes a lengthy discussion on unrelated financial data.}
+4. **\variants:**
+- **Purpose:** Content marked with this tag requires the generation of **alternative expressions or approaches**.
+- **Action:** Create multiple appropriate variations between parenthesis after the inline text between curly braces e.g. {inline initial text...}(text of variant 1...)(text of variant 2...)
+- **Example:** \VARIANTS{The user interface should be intuitive using multi-column visual side by side comparison.}
+### Your Task:
+1. **Understand** the initial task and subject matter to ensure that the text aligns with the overall objectives and audience requirements.
+2. **Interpret** the annotations in the provided text according to the guidelines above.
+3. **Revise** the text by making necessary corrections, deletions, or additions as instructed.
+4. **Generate** alternative phrasings or approaches where indicated, ensuring each variant is clearly differentiated using the inline curly braces `{}` directly followed by variants inside () without space between.
+5. Ensure that the **final text** is clear, accurate, relevant, and stylistically appropriate for the INITIAL TASK.
+"""
+            #system_prompt = """Refine the **ANNOTATED ANSWER** given inline text annotated instructions (format: \intruction_type{text selection}[optional comment]). Directly answer with the updated answer aligned with annotated instructions tags, no introduction."""
+            user_prompt = f"### ANNOTATED ANSWER:\n{content_annotated}"
+            smart_print(f"***** PROMPT:\n{system_prompt}\n `\n{user_prompt}".replace("\\n", "\n"), self.agent_name, "PROMPT")
+            llm_output = str(premium_llm_function.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]))
+            smart_print(f"***** REFINED ANSWER:\n\033[33m{llm_output}\033[0m\n".replace("\\n", "\n"),
+                        self.agent_name, "REFINED ANSWER")
+            if smart_input("Is the task refinement adequate? (yes/no): ", self.agent_name).strip().lower() in ["yes","y"]:
+                inference_result_msg.content = llm_output.content
+                break
+        return comments
+
+    def modifyAnswer(self, inference_result_msg):
+        inference_result_msg.content = _visual_input(inference_result_msg.content)
+        smart_print(f"***** NEW USER MESSAGE:\n{inference_result_msg.content}\n*************", self.agent_name,
+                    "NEW USER MESSAGE")
 
     # staticmethod get my host ID
     @staticmethod
@@ -911,6 +1290,7 @@ class HumanLLMMonitor:
                 func = premium_llm_function if not func_calling else HumanLLMMonitor.call_llm_function_with_function_call
             else:
                 func = default_llm_function if not func_calling else HumanLLMMonitor.call_llm_function_with_function_call
+            func = func.with_config(configurable={"llm_temperature": temperature})
 
             if stream_output:
                 if color_id is None or color_id <= 0:
@@ -946,9 +1326,11 @@ class HumanLLMMonitor:
             # Pre-inference human intervention
             llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(original_input_messages, default_llm_function, premium_llm_function, function_calling, callable_system_message, optuna=optuna, model_choice=model_choice)
             start_time = datetime.now()
+            self.last_inference_check_results = [None] * self.num_parallel_inferences  # Pre-allocate the list with None
             if llm_input_messages and not skip_inference:
                 # Use concurrent futures to parallelize the LLM calls.
                 outputs = []
+
                 with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_parallel_inferences) as executor:
                     if type(self.premium_llm) == type(self.llmORchains_list.get('3_majority_chain')) and self.agent_name == "CodingAgent":
                         stream_output = True
