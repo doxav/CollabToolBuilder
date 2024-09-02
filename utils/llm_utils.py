@@ -692,7 +692,7 @@ class HumanLLMMonitor:
 
         if "few_shots" in prompt:
             few_shots_tag = self.get_few_shots_tag_args()
-            match = re.search(r"few_shots:\s*(\{.*\})?$", prompt)
+            match = re.search(r"few_shots:\s*(\{[^}]*\})\s*$", prompt, re.DOTALL)
             # Remove the few_shots tag and the dictionary from the prompt
             prompt = prompt[:match.start()].rstrip()
         else:
@@ -1570,8 +1570,8 @@ The following annotations are provided to guide the refinement process. Each ann
                     smart_print(start_color + chunk_content + end_color, self.agent_name, "Inference streaming output", append=True)
                 return AIMessage(content=final_output)  # Return the concatenated full respons
             else:
-                value = func.invoke(input_msg).content
-                return AIMessage(content=value)
+                value = func.invoke(input_msg)
+                return AIMessage(content=value.content if hasattr(value, 'content') else str(value))
 
         smart_print(
             f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[1].function} calling HumanLLMMonitor****\033[0m",
