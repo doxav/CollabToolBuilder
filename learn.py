@@ -974,8 +974,8 @@ def format_prompt(messages):
     
 def create_Nmajority_chain(num_models=3, map_model_name="gpt-3.5", reduce_model_name="gpt-3.5", map_temperature=0.7, reduce_temperature=0.7):
     # Initialize the OpenAI models
-    models = [ChatOpenAI(model_name=map_model_name, temperature=map_temperature) for _ in range(num_models)]
-    final_model = ChatOpenAI(model_name=reduce_model_name, temperature=reduce_temperature)
+    models = [ChatOpenAI(model_name=map_model_name, temperature=map_temperature, cache=False) for _ in range(num_models)]
+    final_model = ChatOpenAI(model_name=reduce_model_name, temperature=reduce_temperature, cache=False)
 
     # Define the chain using LCEL
     response_keys = [f"response_{i+1}" for i in range(num_models)]
@@ -1002,9 +1002,12 @@ def create_Nmajority_chain(num_models=3, map_model_name="gpt-3.5", reduce_model_
 
 if __name__ == "__main__":
     # Initialize the default and premium LLMs
+    #from langchain_groq import ChatGroq
     llmORchains_list = {
-        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"]),#, temperature=0.7),
-        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["premium_gpt"]),#, temperature=0.7),
+        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.7),
+        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["premium_gpt"], cache=False),#, temperature=0.7),
+        #"default_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.7),
+        #"premium_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["premium_gpt"], cache=False),#, temperature=0.7),
         "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"], reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=3),
         "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"], reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=10)
     }

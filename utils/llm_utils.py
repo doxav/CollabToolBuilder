@@ -1348,15 +1348,58 @@ class HumanLLMMonitor:
         return comments
 
     def criticAnswer(self, comments, inference_result_msg, premium_llm_function):
+        def is_valid_python_structure(s):
+            import ast
+            output = None
+            try:
+                output = ast.literal_eval(s)
+                return output, True
+            except (ValueError, SyntaxError):
+                return output, False
+        content_structure, is_strucutre = is_valid_python_structure(inference_result_msg.content)
         while True:
-            comments = smart_input("Provide critic/feedback/request: ", self.agent_name)
-            refine_prompt = f"Refine the answer: {inference_result_msg.content}.\n*******************\nHuman provided feedback: {comments}"
-            llm_output = premium_llm_function(
-                [SystemMessage(content="You are a helpful assistant"), HumanMessage(content=refine_prompt)])
-            smart_print(f"***** REFINED ANSWER:\n\033[33m{llm_output.content}\033[0m\n".replace("\\n", "\n"),
+            content_pretty = json.dumps(content_structure, indent=4) if is_strucutre else inference_result_msg.content
+            content_annotated = _visual_input(content_pretty, filetype="py" if is_strucutre else "md")
+            #comments = smart_input("Provide critic/feedback/request: ", self.agent_name)
+            system_prompt = "Refine the ANSWER below given the HUMAN FEEDBACK to address for improving it."
+            system_prompt = """
+Refine the **ANNOTATED ANSWER** to the **TARGET TASK**, given answer including important inline text annotated instructions on key elements to improve the answer using tags (see **ANNOTATION TAGS** for interpretation). Directly answer with the updated answer aligned with annotated instructions tags, no introduction.
+
+### TARGET TASK:
+Identify and define the best task to develop using code and LLM given the status of available developed tasks and failed tasks
+
+### ANNOTATION TAGS:
+The following annotations are provided to guide the refinement process. Each annotation is in the format `\TAG{Annotated text...}[optional explanation]`. The tags indicate specific actions you should take to improve or finalize the text. Please follow the instructions for each tag carefully:
+1. **\APPROVE:**
+- **Purpose:** This tag indicates that the content is correct, clear, and relevant to the subject.
+- **Action:** **No changes are necessary.** Retain this content exactly as it is.
+- **Example:** \APPROVE{The system's reliability is essential for maintaining continuous operation.}
+2. **\FIX:**
+- **Purpose:** Content marked with this tag requires **correction or improvement**. There may be issues related to accuracy, clarity, or relevance.
+- **Action:** Make necessary revisions to ensure the text is accurate, clear, and aligned with the overall subject matter.
+- **Example:** \FIX{tomato_sauce_recipe = rubish_llm_factory('tell me how to make tomato sauce for my italian noodles')}
+3. **\DELETE:**
+- **Purpose:** This tag is used for content that is **unnecessary, irrelevant, or detrimental** to the quality of the text.
+- **Action:** **Remove** this content entirely from the final version.
+- **Example:** \DELETE{The report includes a lengthy discussion on unrelated financial data.}
+4. **\variants:**
+- **Purpose:** Content marked with this tag requires the generation of **alternative expressions or approaches**.
+- **Action:** Create multiple appropriate variations between parenthesis after the inline text between curly braces e.g. {inline initial text...}(text of variant 1...)(text of variant 2...)
+- **Example:** \VARIANTS{The user interface should be intuitive using multi-column visual side by side comparison.}
+### Your Task:
+1. **Understand** the initial task and subject matter to ensure that the text aligns with the overall objectives and audience requirements.
+2. **Interpret** the annotations in the provided text according to the guidelines above.
+3. **Revise** the text by making necessary corrections, deletions, or additions as instructed.
+4. **Generate** alternative phrasings or approaches where indicated, ensuring each variant is clearly differentiated using the inline curly braces `{}` directly followed by variants inside () without space between.
+5. Ensure that the **final text** is clear, accurate, relevant, and stylistically appropriate for the INITIAL TASK.
+"""
+            #system_prompt = """Refine the **ANNOTATED ANSWER** given inline text annotated instructions (format: \intruction_type{text selection}[optional comment]). Directly answer with the updated answer aligned with annotated instructions tags, no introduction."""
+            user_prompt = f"### ANNOTATED ANSWER:\n{content_annotated}"
+            smart_print(f"***** PROMPT:\n{system_prompt}\n `\n{user_prompt}".replace("\\n", "\n"), self.agent_name, "PROMPT")
+            llm_output = str(premium_llm_function.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]))
+            smart_print(f"***** REFINED ANSWER:\n\033[33m{llm_output}\033[0m\n".replace("\\n", "\n"),
                         self.agent_name, "REFINED ANSWER")
-            if smart_input("Is the task refinement adequate? (yes/no): ", self.agent_name).strip().lower() in ["yes",
-                                                                                                               "y"]:
+            if smart_input("Is the task refinement adequate? (yes/no): ", self.agent_name).strip().lower() in ["yes","y"]:
                 inference_result_msg.content = llm_output.content
                 break
         return comments
@@ -1527,7 +1570,7 @@ class HumanLLMMonitor:
                     smart_print(start_color + chunk_content + end_color, self.agent_name, "Inference streaming output", append=True)
                 return AIMessage(content=final_output)  # Return the concatenated full respons
             else:
-                return func(input_msg, temperature=temperature)
+                return AIMessage(content=str(func.invoke(input_msg)))
 
         smart_print(
             f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[1].function} calling HumanLLMMonitor****\033[0m",
