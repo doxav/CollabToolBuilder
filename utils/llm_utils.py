@@ -1095,7 +1095,7 @@ class HumanLLMMonitor:
                 comments = smart_input("Provide critic or feedback for the current prompt: ", self.agent_name)
                 refine_prompt = _visual_input(
                     f"Current system prompt:<<< {self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)} >>>\n\nFeedback or critic: {comments}")
-                forced_llm_output = default_llm_function(
+                forced_llm_output = default_llm_function.invoke(
                     [SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt="improve_prompt_from_answer_critic")),
                      HumanMessage(content=refine_prompt)])
                 new_template = forced_llm_output.content
@@ -1104,11 +1104,11 @@ class HumanLLMMonitor:
         if smart_input("Would you like first to get suggestions for a better prompt? (y/n): ",
                        self.agent_name).upper() == "Y":
             if use_premium_llm:
-                forced_llm_output = premium_llm_function(
+                forced_llm_output = premium_llm_function.invoke(
                     [SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt="system_prompt_refiner")), HumanMessage(
                         content=f"PROMPT TO GET SUGGESTIONS FOR IMPROVEMENT:\n{self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)}")])
             else:
-                forced_llm_output = default_llm_function(
+                forced_llm_output = default_llm_function.invoke(
                     [SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt="system_prompt_refiner")), HumanMessage(
                         content=f"PROMPT TO GET SUGGESTIONS FOR IMPROVEMENT:\n{self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)}")])
             smart_print(
@@ -1648,6 +1648,10 @@ The following annotations are provided to guide the refinement process. Each ann
                             self.agent_name, "MULTIPLE inferences received")
                         llm_outputs = outputs
             else:  # Skip the LLM inference.
+                # Ensure skip_inference is a string
+                if not isinstance(skip_inference, str):
+                    skip_inference = str(skip_inference)
+
                 llm_outputs = [AIMessage(content=skip_inference)]
             end_time = datetime.now()
             raw_llm_outputs = [(output.content if output else None) for output in llm_outputs] if isinstance(
