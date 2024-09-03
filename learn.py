@@ -249,28 +249,21 @@ class CodingAgent():
 
     def parse_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None):
         import ast, time, re
-        # Convert text to dictionary
-        try:
-            result_dict = ast.literal_eval(message)
-        except Exception as e:
-            result_dict = None
-        # if result_dict is a dictionary and code exists, change message to result_dict["code"]
-        if isinstance(result_dict, dict) and "MainFunction" in result_dict:
-            code = ""
-            if "HelperFunctions" in result_dict:
-                for helper_function in result_dict["HelperFunctions"]:
-                    code += helper_function["code"] + "\n"
-            code += result_dict["MainFunction"]["code"]
-        else:
-            code = None
         error = None
         while retry > 0:
             try:
-                if language == "py": # Python case
-                    if code is None:
-                        # Match Python code blocks
-                        code_pattern = re.compile(r"```python(.*?)```", re.DOTALL)
-                        code = "\n".join(code_pattern.findall(message))
+                if language == "py":  # Python case
+                    # Match Python code blocks
+                    code_pattern = re.compile(r"```python(.*?)```", re.DOTALL)
+                    code = "\n".join(code_pattern.findall(message))
+                    
+                    tests_pattern = re.compile(r'\n#\s+[Dd]ocument #([a-z0-9-]+)\s+usage test[^\n]*\n([^\n]+)')
+                    
+                    tests = tests_pattern.findall(message)
+
+                    # Search also in the task definition
+                    if task_definition is not None:
+                        tests += tests_pattern.findall(task_definition)
 
                     parsed = ast.parse(code)
                     functions = []
@@ -301,55 +294,45 @@ class CodingAgent():
                                 "name": node.name,
                                 "type": node_type,
                                 "body": ast.get_source_segment(code, node),
-                                "params": [arg.arg for arg in node.args.args],
                             }
                             classes.append(class_definition)
 
                         elif isinstance(node, ast.Expr) or isinstance(node, ast.Expression) or isinstance(node, ast.Assign):
                             node_type = "Expression"
                             runnable_code += "\n" + ast.get_source_segment(code, node)
-                                
+                            
                         elif isinstance(node, ast.ImportFrom) or isinstance(node, ast.Import):
                             node_type = "ImportFrom"
                             imports.append(ast.get_source_segment(code, node))
                             smart_print("ImportFrom node: IMPORT SHOULD BE DONE INSIDE FUNCTIONS !!!", self.name, "process_ai_generated_code SystemMessage")
-                                
+                            
                         else:
                             raise ValueError(f"Unsupported node type: {type(node)} - content:  {ast.get_source_segment(code, node)}")
 
-                    # Assurez-vous que nous avons une fonction principale et une définition de classe si nécessaire
-                    if self.pipeline_mode:
+                    # Ensure we have a main function and a class definition if needed
+                    if self.pipeline_mode :
                         assert class_definition is not None, "No class definition found."
-                        if required_bot_arg:
-                            assert required_bot_arg in class_definition["params"], f"Pipelines {class_definition['name']} must take an argument named '{required_bot_arg}'"
-                        
                     else:
                         assert main_function is not None, "No main function found."
-                        if required_bot_arg:
-                            assert required_bot_arg in main_function["params"], f"Main function {main_function['name']} must take an argument named '{required_bot_arg}'"
+
+                    if required_bot_arg:
+                        assert required_bot_arg in main_function["params"], f"Main function {main_function['name']} must take an argument named '{required_bot_arg}'"
                     
-                    # Compiler le code final
+                    # Compile the final program code
                     program_code = "\n".join(imports) + "\n"
                     program_code += "\n".join(cls["body"] for cls in classes) + "\n"
                     program_code += "\n".join(function["body"] for function in functions)
                     
-                    # Gestion des tests
-                    tests_pattern = re.compile(r'\n#\s+[Dd]ocument #([a-z0-9-]+)\s+usage test[^\n]*\n([^\n]+)')
-                    
-                    try:
-                        tests = tests_pattern.findall(message)
-                        if task_definition is not None:
-                            tests += tests_pattern.findall(task_definition)
-                    except re.error as e:
-                        return False, f"Regex error in test extraction: {e}"
-
                     for doc_id, test in tests:
                         try:
                             parsed_test = ast.parse(test)
-                        except SyntaxError as e:
+                        except Exception as e:
                             return False, f"Error parsing code of Tests:\nERROR: {e}\nCODE: {test}"
+                        # Check if the test is a function call
+                       # if not isinstance(parsed_test.body[0], ast.Expr):
+                        #   return False, f"Error parsing code of Tests (not a function call): {test}"
 
-                    # Retourner toutes les informations nécessaires
+                    # Return all necessary information
                     if self.pipeline_mode:
                         return True, {
                             "program_code": program_code,
@@ -365,6 +348,7 @@ class CodingAgent():
                             "tests": tests,
                         }
 
+
                 else:
                     raise ValueError(f"Unsupported language in this version: {language}")
             
@@ -374,7 +358,6 @@ class CodingAgent():
                 time.sleep(0.1)
 
         return False, f"Error parsing action response (before program execution): {error}"
-
 
 
     def run_tests_on_code(self, message, parsed_code=None, skip_already_processed=False):
@@ -446,9 +429,10 @@ class CodingAgent():
         else:
             path_folder = "primitives"
 
-
+        smart_print(f"Folder: {path_folder}")
         folder_path = os.path.join(os.path.dirname(__file__), path_folder)
         for root, dirs, files in os.walk(folder_path):
+            smart_print(f"Folder: {folder_path}")
             for file in files:
                 if file.endswith(".py"):
                     smart_print(f"File: {file}")
@@ -867,7 +851,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0,
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                               optuna_opti=None, allow_custom_score_state_functions=False,
-                              reset_env_end=False):
+                              reset_env_end=False, pipeline_mode=False):
     global scores_ret
     if problem_prompts_subdir is None:
         # menu to choose the problem prompts subdirectory
@@ -928,7 +912,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             task = task[0]
         smart_print("Identified Task: "+task.content.replace("\\n", "\n"), "orchestrate_agents", "orchestrate_agents RESULT")
         task_description = task.content
-        smart_print("self.pipeline_mode", pipeline_mode)
+        smart_print("pipeline_mode", pipeline_mode)
         # Extract potential score and state function code from the task
         if allow_custom_score_state_functions:
             # Extract current implementation of get_score and get_state from the first environment
@@ -1190,4 +1174,5 @@ if __name__ == "__main__":
                               agtask_skip_rounds=0, # Auto-test: 1 
                               agcoding_skip_rounds=0, # Auto-test: 4
                               agvalidation_skip_rounds=0, # Auto-test: 4
-                              agcapitalize_skip_rounds=0) # Auto-test: 0"""
+                              agcapitalize_skip_rounds=0,
+                              pipeline_mode=False) # Auto-test: 0"""
