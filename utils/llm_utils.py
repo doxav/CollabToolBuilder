@@ -1464,7 +1464,7 @@ The following annotations are provided to guide the refinement process. Each ann
     def _log_entry(self, function_name, input_contents, output_contents, input_modified=False,
                    skipped_inference=False, input_comments=None, output_comments=None, output_llm_raw=None,
                    output_modified=False, inference_time=None, message_tokens=None, score=None, use_premium_llm=False,
-                   call_duration=None, skip_rounds=None, synthesize_mode=False):
+                   call_duration=None, skip_rounds=None, synthesize_mode=False, pipeline_mode=False):
         entry = {
             "input_contents": input_contents,
             "output_contents": output_contents,
@@ -1480,7 +1480,8 @@ The following annotations are provided to guide the refinement process. Each ann
             "after_inference_option_times": self.after_inference_option_times,
             "after_inference_option_counts": self.after_inference_option_counts,
             "call_duration": call_duration,
-            "synthesize_mode": synthesize_mode
+            "synthesize_mode": synthesize_mode,
+            "pipeline_mode": pipeline_mode
         }
         #print(f"Human modifications ? input_modified:{input_modified}, output_modified:{output_modified}\nlog entry: {entry}")
 
@@ -1502,6 +1503,7 @@ The following annotations are provided to guide the refinement process. Each ann
             "function_name": function_name,
             "skipped_inference": skipped_inference,
             "skip_rounds": skip_rounds,
+            "pipeline_mode": pipeline_mode,
             "use_premium_llm": use_premium_llm,
             "commented": (input_comments is not None or output_comments is not None),
             "scored": (score is not None),
