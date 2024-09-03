@@ -4,6 +4,7 @@ import random
 import subprocess
 import traceback
 import types
+import time
 
 import openai
 import json
@@ -417,7 +418,8 @@ class CodingAgent():
                         # do not use HumanLLMMonitor because no template is available for this specific case
                         smart_print("\033[31mTRYING TO AUTOFIX ERROR\033[0m", self.name)
                         message_content = f"ERROR MESSAGE:[[{exec_result}]]\nCODE:[[{parsed_code['program_code']}]]"
-                        edited_code = self.human_llm_code_task.premium_llm.invoke([SystemMessage(content=self.human_llm_code_task.load_prompt(agent_name=self.name, prompt="code_fixer")), HumanMessage(content=message_content)]).content
+                        edited_code_returned = self.human_llm_code_task.premium_llm.invoke([SystemMessage(content=self.human_llm_code_task.load_prompt(agent_name=self.name, prompt="code_fixer")), HumanMessage(content=message_content)])
+                        edited_code = str(edited_code_returned) if isinstance(edited_code_returned, dict) else edited_code_returned.content
                     else:
                         edited_code = _visual_input(parsed_code["program_code"], filetype="py")
                     code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
@@ -765,8 +767,10 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               selected_failed_functions=None, agtask_premium_llm_by_default=True,
                               agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0,
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
-                              optuna_opti=None, allow_custom_score_state_functions=False, criteria=None):
-    global scores_ret
+                              optuna_opti=None, allow_custom_score_state_functions=False,
+                              criteria=None, max_execution_time=900):
+    time_end = time.time() + max_execution_time
+    scores = None
     if problem_prompts_subdir is None:
         # menu to choose the problem prompts subdirectory
         # get the list of subdirectories in the problem prompts directory
@@ -794,7 +798,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     continue_identifying_tasks = True
 
     # Global learn loop
-    while continue_identifying_tasks:
+    while continue_identifying_tasks and time.time() < time_end:
         HumanLLMMonitor.step_id = str(uuid.uuid4())
         task = agent_taskreco.identify_best_task()
 
@@ -834,8 +838,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         parsed_code, validation, scores = coding_and_validation_loop(agent_coding, agent_validation, task_description,
                                                                      max_coding_attempts,
                                                                      manual_validation_to_capitalize,
-                                                                     optuna=optuna_opti)
-        scores_ret = scores
+                                                                     optuna=optuna_opti,
+                                                                     end_time=time_end)
         if validation == "success":
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
             agent_taskreco.update_learnt_tasks(agent_capitalize.tasks_repository)
@@ -845,22 +849,30 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                 agent_taskreco.update_failed_tasks(agent_capitalize.failed_tasks_repository)
         if optuna_opti:
             continue_identifying_tasks = False
-            # Calculate the average score of the task, and return it for optuna optimization
-            if scores_ret is not None:
-                temp = 0
-                for dic in scores_ret:
-                    for i in dic:
-                        temp += dic[i]
-                temp /= len(scores_ret)
-                return temp
-            else:
-                return None
         else:
             answer = smart_input("Do you want to reset the environment for searching a new task (Y/YES) or search a new task by keeping what has been created by this task (N/NO/Enter) ? or just exit (E/EXIT) ?").strip().upper()
             continue_identifying_tasks = False if answer in ["E", "EXIT"] else True
             if answer.upper() in ["Y", "YES"]:
                 [env.reset() for env in test_environments]
 
+    # Calculate the average score of the task, and return it with other statistics
+    if scores:
+        if scores['validated_scores'] is not None:
+            validated_score_avg = 0
+            for dic in scores['validated_scores']:
+                for i in dic:
+                    validated_score_avg += dic[i]
+            validated_score_avg /= len(scores['validated_scores'])
+        else:
+            validated_score_avg = 0
+        total_score_weighted_with_stats = (
+            scores['percentage_no_runtime_error'] +
+            10 * scores['best_score_without_validation'] +
+            (20 * (1 + validated_score_avg) if scores['validated_scores'] else 0)
+        )
+        return total_score_weighted_with_stats
+    else:
+        return 0
 
 def get_success_value_in_text(text):
     match = re.search(r"Success['\"]?\s*[:=][:=]?\s*(['\"]?)(True|False|Yes|No|y|n|0|1)\1", text, re.IGNORECASE)
@@ -900,12 +912,16 @@ def get_highest_score_index(score_array, mode='total'):
 
     return highest_index
 
-def coding_and_validation_loop(agent_coding, agent_validation, task_description, max_attempts, extra_manual_validation_to_capitalize=True, continue_even_if_successful=True, optuna=None):
+def coding_and_validation_loop(agent_coding, agent_validation, task_description, max_attempts, extra_manual_validation_to_capitalize=True, continue_even_if_successful=True, optuna=None, end_time=None):
     previous_errors, previous_codes, previous_scores = [], [], []
     successful_codes = []  # To store successful codes
+    all_results = []  # Store all results from each attempt for statistics
 
     for attempt in range(max_attempts):
+        if end_time is not None and time.time() >= end_time:
+            break
         results = agent_coding.code_task_and_run_test(task_description, previous_errors, previous_scores, previous_codes)
+        all_results.extend(results) # Store all results for statistics
         previous_errors, previous_codes, previous_scores = [], [], [] #TEST reset
 
         # First part: Process all codes and collect results
@@ -948,33 +964,45 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
             else:
                 smart_print("Max attempts reached. Trying a new task.", None, "coding_and_validation_loop WARNING")
 
+    # Calculate metrics over all attempts
+    percentage_no_runtime_error = (sum(1 for _, no_runtime_error, _, _, _ in all_results if no_runtime_error) / len(all_results)) if all_results else 0
+    best_score_without_validation = (max(max(sum(scores.values()) for scores in score_dict) for _, _, _, score_dict, _ in all_results)) if len(all_results) > 0 else 0
+    all_scores = {
+        'percentage_no_runtime_error': percentage_no_runtime_error,
+        'best_score_without_validation': best_score_without_validation,
+        'validated_scores': None}
+
     # Second part: If there are successful codes, ask user to select one
-    if successful_codes and (not continue_even_if_successful or attempt >= max_attempts - 1):
+    if successful_codes and (not continue_even_if_successful or attempt >= max_attempts - 1) and (end_time is None or time.time() < end_time):
         if len(successful_codes)==1:
             selected_code, _, scores = successful_codes[0]
-            return selected_code, "success", scores
+            all_scores['validated_scores'] = scores
+            return selected_code, "success", all_scores
         if current_skip_rounds <= 0:
             for i, (parsed_code, feedback, scores) in enumerate(successful_codes):
                 smart_print(f"\033[91mOption {i+1}:\033[0m\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {scores}\033[0m\n", None, "coding_and_validation_loop RESULT")
             if optuna : 
                 highest_score_index = get_highest_score_index([scores for _, _, _, scores in successful_codes], mode='total')
                 selected_code, _, scores = successful_codes[highest_score_index]
-                return selected_code, "success", scores
+                all_scores['validated_scores'] = scores
+                return selected_code, "success", all_scores
             else:
                 selection = smart_input("Several codes were successful. Please enter the number of the code you want to add to the library: ").strip()
             if selection.isdigit() and 0 < int(selection) <= len(successful_codes):
                 selected_index = int(selection) - 1
                 smart_print("Code validated successfully.", None, "coding_and_validation_loop RESULT")
                 selected_code, _, scores = successful_codes[selected_index]
-                return selected_code, "success", scores
+                all_scores['validated_scores'] = scores
+                return selected_code, "success", all_scores
             else:
                 smart_print("Invalid selection or no selection made. Exiting without adding any code.", None, "coding_and_validation_loop WARNING")
         else: # if in automatic mode, select the code with the highest score
             highest_score_index = get_highest_score_index([scores for _, _, _, scores in successful_codes], mode='total')
             selected_code, _, scores = successful_codes[highest_score_index]
-            return selected_code, "success", scores
+            all_scores['validated_scores'] = scores
+            return selected_code, "success", all_scores
 
-    return None, "failed", None  # If no successful code was selected, return failure
+    return None, "failed", all_scores  # If no successful code was selected, return failure
 
 def sanitized_task_name(task):
     # Implement task name sanitization logic
@@ -1071,7 +1099,8 @@ if __name__ == "__main__":
                               include_code=False, 
                               selected_successful_functions=[], 
                               selected_failed_functions=[], 
-                              agtask_premium_llm_by_default=False, 
+                              max_execution_time=900,
+                              agtask_premium_llm_by_default=False,
                               agtask_skip_rounds=0, # Auto-test: 1 
                               agcoding_skip_rounds=0, # Auto-test: 4
                               agvalidation_skip_rounds=0, # Auto-test: 4
