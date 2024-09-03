@@ -194,15 +194,16 @@ class EnvironmentManager:
 # Agent 1: Task Identification
 class TaskIdentificationAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
-                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, pipeline_mode=None):
+                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, criteria=None, pipeline_mode=None):
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         self.learnt_tasks: Dict[str, str] = {}
         self.failed_tasks: Dict[str, str] = {}
+        self.criteria = criteria
 
         self.human_llm_identify_best_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice,
                                                             premium_llm_by_default=premium_llm_by_default,
-                                                            llmORchains_list=llmORchains_list)# ,output_schema="identify_best_task.schema.py")
+                                                            llmORchains_list=llmORchains_list)#,output_schema="identify_best_task.schema.py")
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         self.envs = envs
         self.optuna_opti = optuna
@@ -216,9 +217,40 @@ class TaskIdentificationAgent():
         self.failed_tasks = tasks
 
     def identify_best_task(self) -> str:
-        learnt_tasks = format(json.dumps(self.learnt_tasks))
-        failed_tasks = format(json.dumps(self.failed_tasks))
-        envs_status = '\n'.join([env.get_state() for env in self.envs])
+        if self.criteria == None or self.criteria == "None":
+            learnt_tasks = format(json.dumps(self.learnt_tasks))
+            failed_tasks = format(json.dumps(self.failed_tasks))
+            envs_status = '\n'.join([env.get_state() for env in self.envs])
+        else:
+            match self.criteria:
+                case "Learnt":
+                    failed_tasks = format(json.dumps(self.failed_tasks))
+                    envs_status = '\n'.join([env.get_state() for env in self.envs])
+                    learnt_tasks = None
+                case "Failed":
+                    learnt_tasks = format(json.dumps(self.learnt_tasks))
+                    envs_status = '\n'.join([env.get_state() for env in self.envs])
+                    failed_tasks = None
+                case "Env":
+                    learnt_tasks = format(json.dumps(self.learnt_tasks))
+                    failed_tasks = format(json.dumps(self.failed_tasks))
+                    envs_status = None
+                case "LearntFailed":
+                    envs_status = '\n'.join([env.get_state() for env in self.envs])
+                    learnt_tasks = None
+                    failed_tasks = None
+                case "LearntEnv":
+                    failed_tasks = format(json.dumps(self.failed_tasks))
+                    learnt_tasks = None
+                    envs_status = None
+                case "FailedEnv":
+                    learnt_tasks = format(json.dumps(self.learnt_tasks))
+                    failed_tasks = None
+                    envs_status = None
+                case _:
+                    learnt_tasks = None
+                    failed_tasks = None
+                    envs_status = None
 
         user_message =  f"- Already developed tasks: {learnt_tasks if learnt_tasks and learnt_tasks!='{}' else 'None'}\n"+\
                         f"- Already failed tasks (too hard): {failed_tasks if failed_tasks and failed_tasks!='{}' else 'None'}\n"+\
@@ -402,7 +434,7 @@ class CodingAgent():
                         # do not use HumanLLMMonitor because no template is available for this specific case
                         smart_print("\033[31mTRYING TO AUTOFIX ERROR\033[0m", self.name)
                         message_content = f"ERROR MESSAGE:[[{exec_result}]]\nCODE:[[{parsed_code['program_code']}]]"
-                        edited_code = self.human_llm_code_task.premium_llm([SystemMessage(content=self.human_llm_code_task.load_prompt(agent_name=self.name, prompt="code_fixer", few_shots_tag=self.human_llm_code_task.get_few_shots_tag_args if 'few_shots' in "code_fixer" else None)), HumanMessage(content=message_content)]).content
+                        edited_code = self.human_llm_code_task.premium_llm.invoke([SystemMessage(content=self.human_llm_code_task.load_prompt(agent_name=self.name, prompt="code_fixer")), HumanMessage(content=message_content)]).content
                     else:
                         edited_code = _visual_input(parsed_code["program_code"], filetype="py")
                     code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
@@ -850,8 +882,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               selected_failed_functions=None, agtask_premium_llm_by_default=True,
                               agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0,
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
-                              optuna_opti=None, allow_custom_score_state_functions=False,
-                              reset_env_end=False, pipeline_mode=False):
+                              optuna_opti=None, allow_custom_score_state_functions=False, criteria=None):
     global scores_ret
     if problem_prompts_subdir is None:
         # menu to choose the problem prompts subdirectory
@@ -874,7 +905,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         manager = EnvironmentManager(env_type)
         test_environments = [manager.get_environment()]
 
-    agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, premium_llm_by_default=agtask_premium_llm_by_default, skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(model_choice) == dict else model_choice), pipeline_mode=pipeline_mode)
+    agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, premium_llm_by_default=agtask_premium_llm_by_default, skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(model_choice) == dict else model_choice), pipeline_mode=pipeline_mode, criteria=criteria)
     agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['coding' if 'coding' in model_choice else 'coder'] if type(model_choice) == dict else model_choice), pipeline_mode=pipeline_mode)
     agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['validation' if 'validation' in model_choice else 'critic'] if type(model_choice) == dict else model_choice), pipeline_mode=pipeline_mode)
     agent_capitalize = CapitalizationAgent(default_llm_key, premium_llm_choice=premium_llm_key, skip_rounds=agcapitalize_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(model_choice) == dict else model_choice), pipeline_mode=pipeline_mode)
@@ -932,25 +963,26 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
             agent_taskreco.update_learnt_tasks(agent_capitalize.tasks_repository)
         else :
-            if optuna_opti:
+            if optuna_opti or smart_input("Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ").strip().upper() in ["Y", "YES"]:
                 agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
                 agent_taskreco.update_failed_tasks(agent_capitalize.failed_tasks_repository)
-            else :
-                if smart_input("Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ").strip().upper() in ["Y", "YES"]:
-                    agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
-                    agent_taskreco.update_failed_tasks(agent_capitalize.failed_tasks_repository)
-        answer = "y" if optuna_opti and reset_env_end else "n" if optuna_opti and not reset_env_end else smart_input("Do you want to reset the environment for searching a new task (Y/YES) or search a new task by keeping what has been created by this task (N/NO/Enter) ? or just exit (E/EXIT) ?").strip().upper()
-        continue_identifying_tasks, optuna_coach = False, False if answer in ["E", "EXIT"] else True
-        if answer.upper() in ["Y", "YES"]:
-            [env.reset() for env in test_environments]
+        if optuna_opti:
+            continue_identifying_tasks = False
             # Calculate the average score of the task, and return it for optuna optimization
-            if optuna_coach and scores_ret is not None:
+            if scores_ret is not None:
                 temp = 0
                 for dic in scores_ret:
                     for i in dic:
                         temp += dic[i]
                 temp /= len(scores_ret)
                 return temp
+            else:
+                return None
+        else:
+            answer = smart_input("Do you want to reset the environment for searching a new task (Y/YES) or search a new task by keeping what has been created by this task (N/NO/Enter) ? or just exit (E/EXIT) ?").strip().upper()
+            continue_identifying_tasks = False if answer in ["E", "EXIT"] else True
+            if answer.upper() in ["Y", "YES"]:
+                [env.reset() for env in test_environments]
 
 
 def get_success_value_in_text(text):

@@ -78,3 +78,5 @@ langchain-core~=0.2.36
 langchain-huggingface~=0.0.3
 langchain-text-splitters~=0.2.2
 
+
+nltk

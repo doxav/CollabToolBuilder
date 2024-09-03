@@ -7,150 +7,23 @@ from config import MODELS_CONFIG_LIST
 
 def objective(trial):
 
-    #reset_env_end = trial.suggest_categorical("reset_env_end", [True, False])
+    # Define parameters for Coach
 
-    # Define parameters for the coach
+    # Define the reset environment at the end of the learning loop
+    reset_env_end = trial.suggest_categorical("reset_env_end", [True])
 
-    role_priming = trial.suggest_categorical("role_priming", [
-        "research assistant",
-        "AI coach",
-        "task optimizer",
-        "technical synthesis expert",
-        "knowledge engineer",
-        "content curator", 
-        "data analyst assistant"
-    ])
-    goal_definition= trial.suggest_categorical("goal_description", [
-        "produce high quality technical synthesis",
-        "analyse complex data sets",
-        "analyse a a Neo4J graph",
-        "solve JIRA issue, given a graph of a complete dataset of JIRA anomalies from Neo4J and embeddings"
-    ])
+    # Define the few shots parameters and if they are used
+    few_shots_tags = trial.suggest_categorical("few_shots_tags", [True, False])
+    if few_shots_tags:
+        number_of_shots = trial.suggest_int("number_of_shots", 1, 5)
+        #filter_tags = trial.suggest_categorical("filter_tags", "")
+        ranking_tags = trial.suggest_categorical("ranking_tags", ["by_score_asc", "by_date_asc", "mrr_asc", "cosine_asc", "random", "accuracy", "relevance"])
+        annotations = trial.suggest_categorical("annotations", ["fix", "delete", "approve", "variants"])
+        summary = trial.suggest_categorical("summary", [True, False])
+        format = trial.suggest_categorical("format", ["JSON", "Markdown", "Jinja2"])
+        few_shots = f"few_shots: {{'num': {number_of_shots}, 'ranking_method': '{ranking_tags}', 'annotations': '{annotations}', 'summary': {summary}, 'format': '{format}'}}"
 
-    goal_function = trial.suggest_categorical("goal_function", [
-        "Assist users in their situation analysis and decision making with situation assesment",
-        "Show same issues depending on semantic similarity with the current issue from the graph",
-        "Propose different resolutions depending on the graph",
-        "Generate structred phases to solve this issue",
-        "Propose actions to avoid this issue in the future"
-    ])
-
-    task_format = trial.suggest_categorical("task_format", [
-        "[verb] [quantity if applicable] [object] [tools] [detailed instructions and parameters]",
-        "[action] [target] using [method] with [specifications]",
-        "[operation] on [subject] utilizing [resources] following [guidelines]",
-        "[do] [what] [how] [with what] [detailed instructions]"
-    ])
-    reasoning_steps = trial.suggest_int("reasoning_steps", 3, 10)
-    specification_depth = trial.suggest_int("specification_depth", 2, 5)
-    use_examples = trial.suggest_categorical("use_examples", [True, False])
-    include_failed_tasks = trial.suggest_categorical("include_failed_tasks", [True, False])
-    plan_depth = trial.suggest_int("plan_depth", 2, 4)
-    available_commands_detail = trial.suggest_categorical("available_commands_detail", [
-        "minimal",
-        "moderate",
-        "comprehensive",
-        "detailed"
-    ])
-    task_complexity = trial.suggest_categorical("task_complexity", [
-        "Task shouldn’t be too difficult to convert into Python code given available commands and learnt tasks.",
-        "Task should balance complexity and feasibility for effective implementation.",
-        "Task should challenge the LLM while remaining solvable with available resources.",
-        "Task should involve multiple steps that require coordination among different functions.",
-        "Task should leverage advanced features of the LLM to achieve superior results.",
-        "Task should be modular, allowing parts of the solution to be reused in other contexts.",
-        "Task should be scalable, capable of being applied to larger datasets or more complex scenarios."
-    ])
-    criteria_to_remove = trial.suggest_int("criteria_to_remove", 1, 7)
-    
-    auto_add_test_to_prompt_answer = trial.suggest_categorical("auto_add_test_to_prompt_answer", [False])
-    test_criteria = """7) After proposing the task, you should provide a test of the function corresponding to this task
-    a) Write a one liner python call to the main function for each "Document to be tested", this call should be designed to maximize the expected results for the "Document to be tested"
-    b) Precede each one liner call with a line of comment in this form "# document #uuid usage test" (e.g. "#document #125dc4bc-54e0-4336-82bc-417e40ec9b8f usage test"...) to indicate to which document the code of the next line applies to given its unique id
-    c) Call to the main function uses bot as first required parameter, then provide parameters sepecific to the document for this function
-    d) No more than one test for each document, the total number of function calls in this test list should be equal to the number of "Document to be tested"
-    """ if not auto_add_test_to_prompt_answer else 'do not add test cases automatically.'
-
-    structure_FA= trial.suggest_categorical( """
-                        <elementId>	4:39c83641-ab1b-4426-95d3-6646f85ee75c:8
-                        <id>	8
-                        fan_animpact_rnt	[]
-                        fan_batiment	Archiva
-                        fan_categorie	Bug
-                        fan_comments	['Fixed. Patch for this attached.', 'Applied.']
-                        fan_description_anomalie	When using Internet Explorer 7, the "Managed Repositories" and "Proxied Repositories" buttons under Administration are not displayed.
-                        fan_etat	Closed
-                        fan_fa_origine	[]
-                        fan_gravite_decision	Major
-                        fan_intitule	Managed Repositories and Proxied Repositories buttons under Administration are not displayed when using Internet Explorer 7.
-                        fan_numero_fa	12788643
-                        fan_programme	Web Interface
-                        fan_programme_pere	Apache
-                        fan_responsable_declaration	dangelito
-                        fan_responsable_realisation	evenisse
-                        fan_stade_generateur_anomalie	Maintenance
-                        fan_subtasks	[]
-                """, [True, False])
-    
-
-    cypher_request = trial.suggest_categorical(""" CREATE INDEX FA_fan_desc IF NOT EXISTS FOR (fa:FicheAnomalie) ON (fa.fan_description_anomalie);
-                CREATE INDEX Personne_id IF NOT EXISTS FOR (p:Personne) ON (p.id);
-                CREATE INDEX Programme_programme IF NOT EXISTS FOR (p:Programme) ON (p.programme);
-
-        // Créer des programmes
-                MATCH (fa:FicheAnomalie) WHERE fa.fan_programme IS NOT NULL
-                MERGE (prg:Programme {'programme: toString(fa.fan_programme)'});
-
-                MATCH (fa:FicheAnomalie) WHERE fa.fan_programme_pere IS NOT NULL
-                MERGE (prg:Programme {'programme: toString(fa.fan_programme_pere)'});
-
-        // Associer les programmes aux fiches d'anomalie
-                MATCH (fa:FicheAnomalie), (prg:Programme {'programme: fa.fan_programme'})
-                MERGE (prg)-[r:A_FA]->(fa);
-
-                MATCH (fa:FicheAnomalie), (prg:Programme {'programme: fa.fan_programme_pere'})
-                MERGE (prg)-[r:A_FA]->(fa);
-
-        // Créer des relations entre les programmes
-                MATCH (fa:FicheAnomalie), (prg:Programme {'programme: fa.fan_programme'}), (prg_pere:Programme {'programme: fa.fan_programme_pere'})
-                MERGE (prg_pere)-[r:A_PROGRAMME]->(prg);
-
-
-        // Créer des personnes responsables
-                CALL apoc.periodic.iterate(
-                'MATCH (n:FicheAnomalie) WHERE n.fan_responsable_declaration IS NOT NULL RETURN n',
-                'MERGE (m:Personne {'id: toString(n.fan_responsable_declaration)'})',
-                {'batchSize: 100, parallel: true'}
-                );
-
-                CALL apoc.periodic.iterate(
-                'MATCH (n:FicheAnomalie) WHERE n.fan_responsable_realisation IS NOT NULL RETURN n',
-                'MERGE (m:Personne {'id: toString(n.fan_responsable_realisation)'})',
-                {'batchSize: 100, parallel: true'}
-                );
-
-        // Associer les personnes aux fiches d'anomalie
-                CALL apoc.periodic.iterate(
-                'MATCH (n:FicheAnomalie) WHERE n.fan_responsable_declaration IS NOT NULL MATCH (m:Personne {'id: n.fan_responsable_declaration'}) RETURN n, m',
-                'MERGE (m)-[r:DECLARE]->(n)',
-                {'batchSize: 100, parallel: false'}
-                );
-
-                CALL apoc.periodic.iterate(
-                'MATCH (n:FicheAnomalie) WHERE n.fan_responsable_realisation IS NOT NULL MATCH (m:Personne {'id: n.fan_responsable_realisation'}) RETURN n, m',
-                'MERGE (m)-[r:REALISE]->(n)',
-                {'batchSize: 100, parallel: false'}
-                );
-            """, [True, False])
-
-    test_example = """5. Tests:
-        ```python
-        #document #72dc469b-63f8-4751-aab5-6db3d16fca3c usage test:
-        your_main_function_name(args specific to document #72dc469b-63f8-4751-aab5-6db3d16fca3c...)
-
-        # document #c0533337-1c5e-4091-ba7d-061ae409cda4 usage test:
-        your_main_function_name(args specific to document #c0533337-1c5e-4091-ba7d-061ae409cda4...)``` """ if not auto_add_test_to_prompt_answer else ''
-
+    # Definition of the coach's prompt
     coach_agent_role = trial.suggest_categorical("role_priming", [ "You are a research assistant", "You are an AI coach", "You are a task optimizer", "You are a technical synthesis expert"])
     #coach_user_input_failed_tasks = trial.suggest_categorical("coach_user_input_failed_tasks", [True, False])
     coach_user_input = "I will provide you:\n- Learnt tasks available (with information gain between 0 and 1 on plan's titles, and contents): ...\n- Failed tasks to learn that are too hard to code: ...\n- Current status of examples of technical synthesis the proposed next task will be tested on: ..."
@@ -203,7 +76,9 @@ def objective(trial):
         c) Call to the main function uses bot as first required parameter, then provide parameters sepecific to the document for this function
         d) No more than one test for each document, the total number of function calls in this test list should be equal to the number of "Document to be tested"
         """)
-    
+
+    criteria_user_message = trial.suggest_categorical("criteria_user_message", ["None", "Learnt", "Failed", "Env", "All", "LearntEnv", "FailedEnv"])
+        
     if coach_format_output_type == "JSON":
         coach_format_output = """You should only respond in the JSON format described below:
  {
@@ -342,6 +217,7 @@ task_function_name(bot, arguments with values describing document #2fa754cb-2e90
 
     RESPONSE FORMAT:
     {coach_format_output}
+    {few_shots if few_shots_tags else ""}
     """
     # Write the prompt in the file readed after by the coach
     with open("./prompts/identify_best_task.txt", "w") as f:
@@ -646,7 +522,8 @@ task_function_name(bot, arguments with values describing document #2fa754cb-2e90
                                 agvalidation_skip_rounds=0,
                                 agcapitalize_skip_rounds=0,
                                 model_choice={"coach": "premium_llm", "coder":"default_llm", "critic":"default_llm", "capitalizer": "default_llm"},
-                                optuna_opti="Coach")#, reset_env_end=reset_env_end)
+                                optuna_opti="Coach",
+                                criteria=criteria_user_message, reset_env_end=reset_env_end)
     
     with open("Optuna_results.txt", "a") as f:
         f.write(f"Performance: {perf}\n\n")
@@ -659,8 +536,8 @@ if __name__ == "__main__":
     #default_llm = create_Nmajority_chain(num_models=3)
     #premium_llm = ChatOpenAI(model_name="gpt-4o") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
     llmORchains_list = {
-        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt-3.5"]),
-        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt-4"]),
+        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt"]),
+        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt"]),
         #"3_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"] , num_models=3),
         #"10_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"], num_models=10)
     }
