@@ -461,61 +461,23 @@ function displayMessage(data) {
            function formatMessage(message) {
                 // Remove ANSI color codes
                 const cleanString = message.replace(/\u001b\[\d+m/g, '');
+                // Replace "\n" with "<br>"
+                const lineBreaks = cleanString.replace(/\n/g, '<br>');
+                // Regular expression to match Python code blocks
+                const codeBlockRegex = /```python\n([\s\S]*?)```/;
+                // Extract the Python code block
+                const match = cleanString.match(codeBlockRegex);
 
-                // Extract Python code blocks
-                const codeBlocks = cleanString.match(/def .+?(?=\n\n|$)/gs) || [];
-
-                // Start with the original message
-                let formattedMessage = `<div class="message">${message}`;
-
-                // If Python code is found, add the formatted code
-                if (codeBlocks.length > 0) {
-                    // Pretty print each code block
-                    const prettyPrintedBlocks = codeBlocks.map(block => {
-                        // Split the block into lines
-                        const lines = block.split('\n');
-
-                        // Determine the base indentation level
-                        const baseIndent = lines[0].match(/^\s*/)[0].length;
-
-                        // Remove the base indentation from each line and add proper indentation
-                        return lines.map((line, index) => {
-                            const trimmedLine = line.slice(baseIndent);
-                            const indent = ' '.repeat(Math.max(0, (trimmedLine.match(/^\s*/)[0].length)));
-                            return index === 0 ? trimmedLine : indent + trimmedLine;
-                        }).join('\n');
-                    });
-
-                    const codeBlock = prettyPrintedBlocks.join('\n\n');
-
-                    // Escape HTML special characters to prevent XSS
-                    const escapeHtml = (unsafe) => {
-                        return unsafe
-                             .replace(/&/g, "&amp;")
-                             .replace(/</g, "&lt;")
-                             .replace(/>/g, "&gt;")
-                             .replace(/"/g, "&quot;")
-                             .replace(/'/g, "&#039;");
-                    };
-
-                    // Escape the code and replace spaces with non-breaking spaces
-                    let escapedCode = escapeHtml(codeBlock).replace(/ /g, '&nbsp;');
-
-                    // Split the code into lines and wrap each line in a span
-                    let formattedCode = escapedCode.split('\n').map(line =>
-                        `<span class="code-line">${line}</span>`
-                    ).join('\n');
-
-                    // Highlight the code
-                    let highlightedCode = hljs.highlight('python', formattedCode).value;
-
-                    formattedMessage += `<pre><code class="python">${highlightedCode}</code></pre>`;
+                // If a Python code block is found, highlight the code
+                if (match) {
+                    const codeBlock = match[1];
+                    let highlightedCode = hljs.highlight('python', codeBlock).value;
+                    // Return the message with the highlighted code and add the rest of the message that was not part of the code block
+                    return `<div class="message"><pre><code>${highlightedCode}</code></pre></div>`;
                 }
 
-                // Close the message div
-                formattedMessage += `</div>`;
-
-                return formattedMessage;
+                // If no Python code block is found, return the original message
+                return `<div class="message">${lineBreaks}</div>`;
             }
             function displayInputField() {
                 $("#user-input").show();
