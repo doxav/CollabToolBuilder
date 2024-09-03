@@ -288,7 +288,7 @@ task_function_name(bot, arguments with values describing document #2fa754cb-2e90
                                 agcoding_skip_rounds=0,
                                 agvalidation_skip_rounds=0,
                                 agcapitalize_skip_rounds=0,
-                                model_choice={"coach": "premium_llm", "coder":"default_llm", "critic":"default_llm", "capitalizer": "default_llm"},
+                                model_choice={"coach": "premium_llm", "coder":"premium_llm", "critic":"default_llm", "capitalizer": "default_llm"},
                                 optuna_opti="Coach",
                                 criteria=criteria_user_message)
     
@@ -304,7 +304,7 @@ if __name__ == "__main__":
     #premium_llm = ChatOpenAI(model_name="gpt-4o") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
     llmORchains_list = {
         "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt"]),
-        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt"]),
+        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"]),
         #"3_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"] , num_models=3),
         #"10_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"], num_models=10)
     }
