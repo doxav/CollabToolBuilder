@@ -194,7 +194,7 @@ class EnvironmentManager:
 # Agent 1: Task Identification
 class TaskIdentificationAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
-                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, pipeline_mode=False):
+                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, pipeline_mode=None):
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         self.learnt_tasks: Dict[str, str] = {}
@@ -202,7 +202,9 @@ class TaskIdentificationAgent():
 
         self.human_llm_identify_best_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice,
                                                             premium_llm_by_default=premium_llm_by_default,
-                                                            llmORchains_list=llmORchains_list,output_schema="identify_best_task.schema.py")
+                                                            llmORchains_list=llmORchains_list,
+                                                            #output_schema="identify_best_task.schema.py"
+                                                            )
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         self.envs = envs
         self.optuna_opti = optuna
@@ -235,7 +237,9 @@ class CodingAgent():
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         self.parsed_code=None
-        self.human_llm_code_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice, premium_llm_by_default=True, num_parallel_inferences=4, llmORchains_list=llmORchains_list, output_schema="code_task.schema.py")
+        self.human_llm_code_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice, premium_llm_by_default=True, num_parallel_inferences=4, llmORchains_list=llmORchains_list, 
+                                                   #output_schema="code_task.schema.py"
+                                                   )
         self.human_llm_code_task.skip_rounds = skip_rounds
         self.human_llm_code_task.add_inference_check("Code Parsing", self.parse_ai_generated_code)
         self.human_llm_code_task.add_inference_check("Run Tests", self.run_tests_on_code)
@@ -266,36 +270,13 @@ class CodingAgent():
         error = None
         while retry > 0:
             try:
-                if language == "py":  # Cas Python
-                    # Extraction des HelperFunctions et MainFunction
-                    try:
-                        helper_function_pattern = re.compile(r"HelperFunctionModel(function_name='(.*?)', code='(.*?)')", re.DOTALL)
-                        main_function_pattern = re.compile(r"MainFunctionModel(function_name='(.*?)', code='(.*?)')", re.DOTALL)
-                        
-                        helper_functions = helper_function_pattern.findall(message)
-                        main_function_match = main_function_pattern.search(message)
+                if language == "py": # Python case
+                    if code is None:
+                        # Match Python code blocks
+                        code_pattern = re.compile(r"```python(.*?)```", re.DOTALL)
+                        code = "\n".join(code_pattern.findall(message))
 
-                        # Construction du code à partir des HelperFunctions et MainFunction
-                        helper_functions_code = "\n".join([code.replace("'", r"\'") for _, code in helper_functions])
-                        main_function_code = main_function_match.group(2) if main_function_match else ""
-
-                        # Tout le code combiné
-                        code = helper_functions_code + "\n" + main_function_code
-
-                        # Ajout d'une étape de validation pour voir le code avant le parsing
-                        if retry == 3:  # On affiche seulement lors de la première tentative
-                            print("DEBUG: Code to parse:")
-                            print(code)
-
-                    except re.error as e:
-                        return False, f"Regex error: {e}"
-
-                    # Traitement des blocs de code Python trouvés
-                    try:
-                        parsed = ast.parse(code)
-                    except SyntaxError as e:
-                        return False, f"Syntax error in code:\n{code}\nERROR: {e}"
-
+                    parsed = ast.parse(code)
                     functions = []
                     imports = []
                     classes = []
