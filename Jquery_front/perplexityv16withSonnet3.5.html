@@ -284,6 +284,7 @@ function displayMessage(data) {
             handleMultipleSolutions(data);
 
     } else if (data.agent_name === "CodingAgent" && data.message_type === "Scores") {
+            /*
             // Show message
             if ($agentAccordion.length === 0) {
                 $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
@@ -291,10 +292,73 @@ function displayMessage(data) {
             }
              let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${content}</div>`);
             $agentAccordion.children("div").append($messageContainer);
+            */
 
+            /*Modify each buttons "score" in each column with the score received a score message lokks like
+            0. FAILED / SCORE: [{'sections titles progress (best = 1, worst = 0)': 0.0, 'sections content progress (best = 1, worst = 0)': 0.0, 'sections count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'title non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content length ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0}, {'sections titles progress (best = 1, worst = 0)': 0.0, 'sections content progress (best = 1, worst = 0)': 0.0, 'sections count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'title non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content length ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0}] / EXCEPTION: Failed to execute provided code. Error: 'description' Traceback: Traceback (most recent call last):
+            / CODE: import json
+            import re
+            from langchain_openai import ChatOpenAI
+            from langchain.prompts import ChatProm
+            1. FAILED / SCORE: [{'sections titles progress (best = 1, worst = 0)': 0.0, 'sections content progress (best = 1, worst = 0)': 0.0, 'sections count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'title non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content length ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0}, {'sections titles progress (best = 1, worst = 0)': 0.0, 'sections content progress (best = 1, worst = 0)': 0.0, 'sections count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'title non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content length ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0}] / EXCEPTION: Failed to execute provided code. Error: 'description' Traceback: Traceback (most recent call last):
+            / CODE:
+            def extract_key_sections_from_paper(paper_content):
+            import spacy
+
+            nlp = spacy.load("en_
+            2. FAILED / SCORE: [{'sections titles progress (best = 1, worst = 0)': 0.0, 'sections content progress (best = 1, worst = 0)': 0.0, 'sections count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'title non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content length ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0}, {'sections titles progress (best = 1, worst = 0)': 0.0, 'sections content progress (best = 1, worst = 0)': 0.0, 'sections count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'title non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content length ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0}] / EXCEPTION: Failed to execute provided code. Error: invalid syntax (, line 1) Traceback: Traceback (most / CODE:
+            def generate_summary_from_paper(text):
+            import re
+            from langchain_openai import ChatOpenAI
+
+            3. FAILED / SCORE: [{'sections titles progress (best = 1, worst = 0)': 0.0, 'sections content progress (best = 1, worst = 0)': 0.0, 'sections count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'title non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content length ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0}, {'sections titles progress (best = 1, worst = 0)': 0.0, 'sections content progress (best = 1, worst = 0)': 0.0, 'sections count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'title non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content length ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0}] / EXCEPTION: Failed to execute provided code. Error: No content available for extraction from the document. Trace / CODE:
+            def generate_summary_from_paper(paper_text):
+            import re
+            from langchain_openai import ChatOpe
+            CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL):
+
+            so the text to change on the button is the word following the number of the solution "SUCCESS" or "FAILED", each button id is score-i with i the number of the solution
+             */
+            let $scoreButtons = $agentAccordion.find("button[id^='score-']");
+            // Stock scores in an array retrieved with the regex "const regex = new RegExp(`^${i}\\.\\s+(SUCCESS|FAILED)`, 'm');"
+
+            // for each button, we retrieve the score and we change the text of the button
+            $scoreButtons.each(function(index, button) {
+                const regex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m(SUCCESS|FAILED)\\u001b\\[0m`, 'm');
+                const match = data.message.match(regex);
+                if (match) {
+                    console.log("Match found:", match);
+                    const score = match[1];
+                    button.textContent = score;
+                    if (score === "SUCCESS") {
+                        button.style.backgroundColor = "green";
+                    } else {
+                        button.style.backgroundColor = "red";
+                    }
+                    // Extract the full text following the solution number
+                    const fullTextRegex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
+                    const fullTextMatch = data.message.match(fullTextRegex);
+
+                    if (fullTextMatch) {
+                        const fullText = fullTextMatch[1].trim();
+
+                        // Attach a click event to display the full text in a pop-up
+                        button.addEventListener('click', function() {
+                            alert(`Full text for solution ${index+1}:\n\n${fullText}`);
+                        });
+                    }
+                }else{
+                    button.textContent = "Scoring failed";
+                    button.style.backgroundColor = "red";
+                }
+            });
+
+            /*
             // Add a button to focus solution-columns below the last message in the CodingAgent accordion
             let $button = $(`<br><button class="focus-solutions"><i class="fa fa-search" aria-hidden="true"></i> Show solutions</button>`);
             $agentAccordion.children("div").append($button);
+
+             */
 
         } else if(data.agent_name === "CodingAgent" && (data.message_type === "LLM ANSWER content" || data.message_type === "POST INFERENCE" || data.message_type === "process_ai_generated_code SystemMessage" || data.message_type === "Multiple LLM ANSWERS" || data.message_type === "MULTIPLE inferences received") ){
             // Do nothing
@@ -403,6 +467,7 @@ function displayMessage(data) {
             targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="deletebutton-"${columnId}><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Do not keep this solution</button></div>`;
             targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="regenwithmymodifbutton-"${columnId}><i class="fa-solid fa-rotate" aria-hidden="true"></i> Regenerate with my modifications</button></div>`;
             targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="regenallbutton-"${columnId}><i class="fa-solid fa-rotate" aria-hidden="true"></i> Regenerate with all modifications</button></div>`;
+            targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="score-"${columnId}>Scoring ...</button></div>`;
         }
 
 
@@ -444,19 +509,6 @@ function displayMessage(data) {
         }
     });
 
-
-    function displayInColumn(data, $columnContainer) {
-        let $column = $(`
-            <div class="column" data-column-id="${data.column_id}">
-                <h4>${data.agent_name} | ${data.message_type}</h4>
-                <div>${data.message}</div>
-                <button class="regenerate">Regenerate</button>
-                <button class="delete">Delete</button>
-                <button class="open-vscode">Open in VSCode</button>
-            </div>
-        `);
-        $columnContainer.append($column);
-    }
 
            function formatMessage(message) {
                 // Remove ANSI color codes
