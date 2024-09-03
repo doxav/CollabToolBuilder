@@ -692,7 +692,7 @@ class HumanLLMMonitor:
 
         if "few_shots" in prompt:
             few_shots_tag = self.get_few_shots_tag_args()
-            match = re.search(r"few_shots:\s*(\{.*\})?$", prompt)
+            match = re.search(r"few_shots:\s*(\{[^}]*\})\s*$", prompt, re.DOTALL)
             # Remove the few_shots tag and the dictionary from the prompt
             prompt = prompt[:match.start()].rstrip()
         else:
@@ -1095,7 +1095,7 @@ class HumanLLMMonitor:
                 comments = smart_input("Provide critic or feedback for the current prompt: ", self.agent_name)
                 refine_prompt = _visual_input(
                     f"Current system prompt:<<< {self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)} >>>\n\nFeedback or critic: {comments}")
-                forced_llm_output = default_llm_function(
+                forced_llm_output = default_llm_function.invoke(
                     [SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt="improve_prompt_from_answer_critic")),
                      HumanMessage(content=refine_prompt)])
                 new_template = forced_llm_output.content
@@ -1104,11 +1104,11 @@ class HumanLLMMonitor:
         if smart_input("Would you like first to get suggestions for a better prompt? (y/n): ",
                        self.agent_name).upper() == "Y":
             if use_premium_llm:
-                forced_llm_output = premium_llm_function(
+                forced_llm_output = premium_llm_function.invoke(
                     [SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt="system_prompt_refiner")), HumanMessage(
                         content=f"PROMPT TO GET SUGGESTIONS FOR IMPROVEMENT:\n{self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)}")])
             else:
-                forced_llm_output = default_llm_function(
+                forced_llm_output = default_llm_function.invoke(
                     [SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt="system_prompt_refiner")), HumanMessage(
                         content=f"PROMPT TO GET SUGGESTIONS FOR IMPROVEMENT:\n{self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)}")])
             smart_print(
@@ -1570,8 +1570,8 @@ The following annotations are provided to guide the refinement process. Each ann
                     smart_print(start_color + chunk_content + end_color, self.agent_name, "Inference streaming output", append=True)
                 return AIMessage(content=final_output)  # Return the concatenated full respons
             else:
-                value = func.invoke(input_msg).content
-                return AIMessage(content=value)
+                value = func.invoke(input_msg)
+                return AIMessage(content=value.content if hasattr(value, 'content') else str(value))
 
         smart_print(
             f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[1].function} calling HumanLLMMonitor****\033[0m",
@@ -1648,6 +1648,10 @@ The following annotations are provided to guide the refinement process. Each ann
                             self.agent_name, "MULTIPLE inferences received")
                         llm_outputs = outputs
             else:  # Skip the LLM inference.
+                # Ensure skip_inference is a string
+                if not isinstance(skip_inference, str):
+                    skip_inference = str(skip_inference)
+
                 llm_outputs = [AIMessage(content=skip_inference)]
             end_time = datetime.now()
             raw_llm_outputs = [(output.content if output else None) for output in llm_outputs] if isinstance(

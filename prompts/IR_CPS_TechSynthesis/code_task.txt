@@ -17,7 +17,7 @@ You should respond to me with the best python code for the task
 
 Instructions: {{{
 1) Reason to find out the best task implementation to minimize distance to goal and reply in the JSON RESPONSE FORMAT given below.
-2) Write a function taking the bot as the first parameter which is the object of current document content and resources (it is an instance of the class SynthesisManager).
+2) Write a function taking the bot as the first parameter which is the object of current document content (it is an instance of the class SynthesisManager).
 3) Ensure that the generated code adheres to principles of reusability and modularity as Helper functions for common tasks. Specifically, functions should not hard-code strings, variables, or parameters that make them context-specific. Instead, any data or parameters of helpers functions that can vary should be passed as arguments to the functions, ensuring that the functions can be reused in different contexts or with different data without requiring modifications to the code itself. This ensures that the code is adaptable and can be utilized in various scenarios, enhancing its utility and longevity.
 4) Call existing functions as much as possible to spend your effort on improving rather than re-doing.
 5) Your function will be reused for building more complex functions. Therefore, you should make it generic and reusable. Avoid to include specific query or information in the function instead of using it as an argument.
@@ -25,13 +25,12 @@ Instructions: {{{
 8) Do not write infinite loops or recursive functions.
 9) Name your function in a meaningful way (can infer the task from the name).
 10) Any packages/libraries used by the function should be imported inside the function (it will be ignored if imported outside)
-11) Success of the task output is evaluated by analyzing the new state of resources and sections, and events.
+11) Success of the task output is evaluated by analyzing the new state of sections, and events.
 12) If some content is generated for the task and that its quality impacts task's success, you must log an event using `bot.add_event(event: str, data: dict)` to enable the critic agent to evaluate this content it through the events' list. The `event` should describe the type of event to help the critic to understand what to check, and `data` should include all information to be analyzed. If this event is in a loop/for, just fully log the event 1 time to avoid too much logging and allow sampling evaluation.
-13) Your function should manipulate the 'bot' document object and must provide substantial modification to resources and sections to be able to measure task success. Main functions are:
+13) Your function should manipulate the 'bot' document object and must provide substantial modification to sections to be able to measure task success. Main functions are:
 - class Section(section_id: int, title: str, content: str, parent_id: int)
-- Manipulate document resources: bot.add_or_update_results_in_resources(results, metadatas_to_add:dict=None, store_linked_document_content:bool=False), bot.add_or_update_result_in_resources(metadatas:dict, name:str=None, content:dict=None, link:str=None, store_linked_document_content:bool=False), bot.get_all_resources(self) -> List[Dict[str, Any]], bot.semantic_search_resources(query_texts, n_results=10), bot.add_or_update_results_in_resources(results, metadatas:dict=None, store_linked_document_content:bool=False), bot.get_and_store_link_content(link:str=None, parent_id=None, chaining:bool=True), bot.remove_resource(resource_id)
 - please note that 'DocumentStructure' has no attribute 'abstract', you should use 'context'
-14) Before returning result in the main function, ensure to store your results or text generated in resources or sections from bot, it is the only permanent storage. Also, ensure that results are returned for future reuse of the function.
+14) Before returning result in the main function, ensure to store your results or text generated in sections from bot, it is the only permanent storage. Also, ensure that results are returned for future reuse of the function.
 }}}
 
 DOCUMENTATION ABOUT bot document object: {{{
@@ -81,19 +80,7 @@ class SynthesisManager:
         ...
         return True
 
-    def semantic_search_resources(self, query_embeddings = None, query_texts = None, n_results = 10, where = None, where_document = None, include = ["metadatas", "documents", "distances"]):
-        result = self.document.resources_vectordb.similarity_search_with_score( query_embeddings, k=n_results)
-
-    def get_all_resources(self) -> List[Dict[str, Any]]:
-        return self.document.resources
-
-    def add_or_update_results_in_resources(self, results, metadatas_to_add: dict = {}, store_linked_document_content: bool = False):
-        ...
-        return self
-
-    def add_or_update_result_in_resources(self, metadatas: dict, name: str=None, content: dict = None, link: str = None, store_linked_document_content: bool = False, chaining: bool = True):
-        ...
-        return self if chaining else (existing_doc if existing_doc else self.document.resources[-1])
+   
 
     def get_and_store_link_content(self, link: str = None, parent_id = None, chaining: bool = True):
         ...
@@ -102,12 +89,6 @@ class SynthesisManager:
             else:
                 return splits_ids
 
-    def remove_resource(self, resource_id):
-        ...
-        return self
-    
-    def remove_resources(self, resource_ids: List[int]):
-        return self.remove_resource(resource_ids)
 
     def restore_last_state(self):
         return self.document.restore_state()
@@ -183,36 +164,6 @@ class SynthesisManager:
     def get_plan_status(self, compact_string_format: bool = False, keys = ["section_id", "title", "content_length"]):
         ...
         return plan_status
-
-    def get_resources_status(self, compact_string_format: bool = False):
-        resources_status = []
-        content_info = {}
-        for resource in self.document.resources:
-            if resource['document']['content']:
-                for key, value in resource['document']['content'].items():
-                    content_info[f"len(content['{key}'])"] = len(str(value))
-            
-            status_data = [
-                resource['id'],
-                resource['metadatas'].get('search', 'unknown'),
-                resource['document']['name'],
-                len(resource['document']['link']) if (resource['document']['link'] and isinstance(resource['document']['link'], (list, tuple, np.ndarray))) else 0,
-                *content_info.values()
-            ]
-            if compact_string_format:
-                resources_status.append("|".join(map(str, status_data)))
-            else:
-                keys = ["id", "metadatas", "document_name", "document_link_length"] + list(content_info.keys())
-                resources_status.append(dict(zip(keys, status_data)))
-        
-        if compact_string_format:
-            # if content_info is empty, it means that there is no resource in the document
-            if len(content_info) == 0:
-                return []
-            header = "id|metadatas|document_name|document_link_length|" + "|".join(content_info.keys())
-            resources_status.insert(0, header)
-        
-        return resources_status
 
 }}}
 

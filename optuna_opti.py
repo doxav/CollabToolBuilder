@@ -7,8 +7,23 @@ from config import MODELS_CONFIG_LIST
 
 def objective(trial):
 
-    #reset_env_end = trial.suggest_categorical("reset_env_end", [True, False])
+    # Define parameters for Coach
 
+    # Define the reset environment at the end of the learning loop
+    reset_env_end = trial.suggest_categorical("reset_env_end", [True])
+
+    # Define the few shots parameters and if they are used
+    few_shots_tags = trial.suggest_categorical("few_shots_tags", [True, False])
+    if few_shots_tags:
+        number_of_shots = trial.suggest_int("number_of_shots", 1, 5)
+        #filter_tags = trial.suggest_categorical("filter_tags", "")
+        ranking_tags = trial.suggest_categorical("ranking_tags", ["by_score_asc", "by_date_asc", "mrr_asc", "cosine_asc", "random", "accuracy", "relevance"])
+        annotations = trial.suggest_categorical("annotations", ["fix", "delete", "approve", "variants"])
+        summary = trial.suggest_categorical("summary", [True, False])
+        format = trial.suggest_categorical("format", ["JSON", "Markdown", "Jinja2"])
+        few_shots = f"few_shots: {{'num': {number_of_shots}, 'ranking_method': '{ranking_tags}', 'annotations': '{annotations}', 'summary': {summary}, 'format': '{format}'}}"
+
+    # Definition of the coach's prompt
     coach_agent_role = trial.suggest_categorical("role_priming", [ "You are a research assistant", "You are an AI coach", "You are a task optimizer", "You are a technical synthesis expert"])
     #coach_user_input_failed_tasks = trial.suggest_categorical("coach_user_input_failed_tasks", [True, False])
     coach_user_input = "I will provide you:\n- Learnt tasks available (with information gain between 0 and 1 on plan's titles, and contents): ...\n- Failed tasks to learn that are too hard to code: ...\n- Current status of examples of technical synthesis the proposed next task will be tested on: ..."
@@ -61,7 +76,9 @@ def objective(trial):
         c) Call to the main function uses bot as first required parameter, then provide parameters sepecific to the document for this function
         d) No more than one test for each document, the total number of function calls in this test list should be equal to the number of "Document to be tested"
         """)
-    
+
+    criteria_user_message = trial.suggest_categorical("criteria_user_message", ["None", "Learnt", "Failed", "Env", "All", "LearntEnv", "FailedEnv"])
+        
     if coach_format_output_type == "JSON":
         coach_format_output = """You should only respond in the JSON format described below:
  {
@@ -118,6 +135,7 @@ task_function_name(bot, arguments with values describing document #2fa754cb-2e90
 
     RESPONSE FORMAT:
     {coach_format_output}
+    {few_shots if few_shots_tags else ""}
     """
     # Write the prompt in the file readed after by the coach
     with open("./prompts/IR_CPS_TechSynthesis/identify_best_task.txt", "w") as f: f.write(prompt_coach)
@@ -270,7 +288,8 @@ task_function_name(bot, arguments with values describing document #2fa754cb-2e90
                                 agvalidation_skip_rounds=0,
                                 agcapitalize_skip_rounds=0,
                                 model_choice={"coach": "premium_llm", "coder":"default_llm", "critic":"default_llm", "capitalizer": "default_llm"},
-                                optuna_opti="Coach")#, reset_env_end=reset_env_end)
+                                optuna_opti="Coach",
+                                criteria=criteria_user_message, reset_env_end=reset_env_end)
     
     with open("Optuna_results.txt", "a") as f:
         f.write(f"Performance: {perf}\n\n")
@@ -283,8 +302,8 @@ if __name__ == "__main__":
     #default_llm = create_Nmajority_chain(num_models=3)
     #premium_llm = ChatOpenAI(model_name="gpt-4o") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
     llmORchains_list = {
-        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt-3.5"]),
-        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt-4"]),
+        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt"]),
+        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt"]),
         #"3_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"] , num_models=3),
         #"10_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"], num_models=10)
     }
