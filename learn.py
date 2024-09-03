@@ -1,54 +1,63 @@
+import inspect
 import pprint
+import random
 import subprocess
 import traceback
+import types
+
 import openai
 import json
 from typing import Dict, Optional
-from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, load_prompt, save_prompt, _visual_input, is_vscode_installed, smart_print, smart_input
+
+from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, save_prompt, _visual_input, \
+    is_vscode_installed, smart_print, smart_input
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import copy
 from config import *
 from pydantic import BaseModel
-
 import os
 import uuid
 import re
 import shutil
 import hashlib
-import optuna as opt
 
 from langchain_core.runnables import Runnable, RunnablePassthrough
 #from langchain.schema.runnable import Runnable, RunnablePassthrough
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-#from langchain.schema import AIMessage, HumanMessage, SystemMessage
+# from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.ai import AIMessage
 from langchain_core.messages.system import SystemMessage
 from langchain_core.messages.function import FunctionMessage
 
-from langchain_openai import ChatOpenAI # from langchain.chat_models import ChatOpenAI
-#from langchain.chat_models import ChatOpenAI
-import pdb
+from langchain_openai import ChatOpenAI  # from langchain.chat_models import ChatOpenAI
+# from langchain.chat_models import ChatOpenAI
+
 import json
-from typing import List, Union, Generator, Iterator
+
 from langchain.globals import set_llm_cache
 from langchain_community.cache import SQLiteCache
+
 set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
 
 openai.api_key = os.environ['OPENAI_API_KEY']
 if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
 
-UnifiedVectorDB.db_type = "elasticsearch" # "elasticsearch" "chroma"
+UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
+UnifiedVectorDB.es_user = elastic_user
+UnifiedVectorDB.es_password = elastic_password
+UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002" # "nomic-ai/nomic-embed-text-v1"
 
-embedding_function="text-embedding-ada-002" # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
+embedding_function="text-embedding-ada-002" # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
 reset_db_indices=False # Set to True after changing embeddings
 
 HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices) 
 
+
 class Environment:
-    def __init__(self, temp_root_dir: str=None, data_dir: str="data"):
+    def __init__(self, temp_root_dir: str = None, data_dir: str = "data"):
         self.temp_root_dir = temp_root_dir if temp_root_dir else os.path.join(os.getcwd(), "temp")
         self.data_dir = data_dir
         self.current_temp_dir = None
@@ -56,7 +65,7 @@ class Environment:
         # create "backups" directory were saved states will be stored
         if not os.path.exists(os.path.join(self.temp_root_dir, "backups")):
             os.makedirs(os.path.join(self.temp_root_dir, "backups"))
-        #Environment.reset(self) # Moving reset to the first call to __init__ to avoid multiple reset when class is subclassed
+        # Environment.reset(self) # Moving reset to the first call to __init__ to avoid multiple reset when class is subclassed
 
     def reset(self, backup_previous_temp_dir=True):
         if self.current_temp_dir is not None:
@@ -67,20 +76,19 @@ class Environment:
         # create a write only link to the data directory in the temp directory
         os.symlink(os.path.abspath(self.data_dir), os.path.join(self.current_temp_dir, "data"), target_is_directory=True)
 
-    def step(self, action_code, context = {}):
+    def step(self, action_code, context={}):
         # memorize current directory, to allow to change to temp directory, then change back to memorized directory
         current_dir = os.getcwd()
         os.chdir(self.current_temp_dir)
         # Regular expression to check if the last line assigns to 'result'
         if not re.search(r'\bresult\s*=', action_code.strip().splitlines()[-1]):
             helper = "\nresult = locals().get('_', None)"
-        else: helper = None
+        else: helper = ""
 
         # execute action
-
         try:
             # capture stdout and stderr while executing code
-            exec(action_code + helper, context)
+            exec(action_code+helper, context)
             exec_result = context.get('result', [])
             no_runtime_error = True
         except Exception as e:
@@ -97,20 +105,34 @@ class Environment:
         else:
             shutil.rmtree(self.current_temp_dir)
 
-    def backup_state(self, unique_id: str=None):
+    def backup_state(self, unique_id: str = None):
         # copy all the temp directory (excluding data directory) into a folder named by unique_id into backups directory
         if unique_id is None:
-            unique_id = str(uuid.uuid4())
-        shutil.copytree(self.current_temp_dir, os.path.join(self.temp_root_dir, "backups", unique_id), ignore=shutil.ignore_patterns('data'))
+            self.last_unique_id_backup = unique_id = str(uuid.uuid4())
+        if self.get_state(unique_id) != self.get_state():
+            shutil.copytree(self.current_temp_dir, os.path.join(self.temp_root_dir, "backups", unique_id), ignore=shutil.ignore_patterns('data'))
         return unique_id
 
     def restore_state(self, unique_id):
-        # copy all the content of the backup directory into the temp directory (excluding data directory)
-        self.reset(backup_previous_temp_dir=False)
-        # copy all the content of the backup directory into the temp directory which already contains the data directory
-        shutil.copytree(os.path.join(self.temp_root_dir, "backups", unique_id), self.current_temp_dir, ignore=shutil.ignore_patterns('data'), dirs_exist_ok=True)
+        from_folder = os.path.join(self.temp_root_dir, "backups", unique_id)
+        if not os.path.exists(from_folder): return "Restore state folder not found"
+        if self.get_state(unique_id) != self.get_state():
+            # copy all the content of the backup directory into the temp directory (excluding data directory)
+            self.reset(backup_previous_temp_dir=False)
+            # copy all the content of the backup directory into the temp directory which already contains the data directory
+            shutil.copytree(from_folder, self.current_temp_dir, ignore=shutil.ignore_patterns('data'), dirs_exist_ok=True)
+            return "State restored"
+        else:
+            return "State identical to backup folder"
 
-    def get_state(self, extended: bool=False):
+    def restore_last_state(self):
+        if self.last_unique_id_backup:
+            self.restore_state(self.last_unique_id_backup)
+            return "Last state restored"
+        else:
+            return "No last state to restore"
+        
+    def get_state(self, unique_id = None, extended_comparison = False):
         # return a dictionary containing the content of the temp directory
         state = {}
         state_folder = self.current_temp_dir if unique_id is None else os.path.join(self.temp_root_dir, "backups", unique_id)
@@ -127,12 +149,33 @@ class Environment:
                 else:
                     state[file_path] = hashlib.sha256(file_content).hexdigest()
         # convert the dictionary into a string useful for comparison and analysis by language models
-        state_text = "Files directory content: "+(json.dumps(state) if state.keys().__len__() > 0 else "empty")
+        state_text = "Files directory content: " + (json.dumps(state) if state.keys().__len__() > 0 else "empty")
         return state_text
-    
+
     def get_score(self):
-        # return the score of the current state
-        return None
+        # indicate that automatic scoring is not set, then ask the user to provide a score between 0 and 1, we ensure that the score is a float between 0 and 1
+        score = None
+        while score is None:
+            try:
+                score = float(input("No automatic get_score set, please provide a score between 0 and 1: "))
+                if score < 0 or score > 1:
+                    score = None
+            except ValueError:
+                pass
+        return {'score (best=1, worst=0)': score}
+
+    def set_score_function(self, score_function_code: str):
+        local_scope = {'self': self}
+        func_name = re.search(r'def (\w+)\(', score_function_code).group(1)
+        if validate_function_code(score_function_code, func_name, local_scope):
+            self.get_score = types.MethodType(local_scope[func_name], self)
+
+    def set_state_function(self, state_function_code: str):
+        local_scope = {'self': self}
+        func_name = re.search(r'def (\w+)\(', state_function_code).group(1)
+        if validate_function_code(state_function_code, func_name, local_scope):
+            self.get_state = types.MethodType(local_scope[func_name], self)
+
 
 class EnvironmentManager:
     def __init__(self, env_type="default", **kwargs):
@@ -147,10 +190,11 @@ class EnvironmentManager:
     def get_environment(self):
         return self.env
 
+
 # Agent 1: Task Identification
 class TaskIdentificationAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
-                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None):
+                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, pipeline_mode=False):
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         self.learnt_tasks: Dict[str, str] = {}
@@ -172,7 +216,7 @@ class TaskIdentificationAgent():
     def update_failed_tasks(self, tasks: Dict[str, str]) -> None:
         self.failed_tasks = tasks
 
-    def identify_best_task(self, prompt_choice=None) -> str:
+    def identify_best_task(self) -> str:
         learnt_tasks = format(json.dumps(self.learnt_tasks))
         failed_tasks = format(json.dumps(self.failed_tasks))
         envs_status = '\n'.join([env.get_state() for env in self.envs])
@@ -184,13 +228,14 @@ class TaskIdentificationAgent():
         task = self.human_llm_identify_best_task.CallHumanLLM(system_prompt_template=self.problem_prompts_subdir+"identify_best_task", user_message=user_message, return_message_content_only=False, optuna=self.optuna_opti, model_choice=self.model_choice)
         return task
 
+
 # Agent 2: Code Task
 class CodingAgent():
-    def __init__(self, default_llm_key, envs: [Environment], premium_llm_key=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, pipeline_mode=False):
+    def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, pipeline_mode=False):
         #super().__init__(llm)
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
-
+        self.parsed_code=None
         self.human_llm_code_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice, premium_llm_by_default=True, num_parallel_inferences=4, llmORchains_list=llmORchains_list, output_schema="code_task.schema.py")
         self.human_llm_code_task.skip_rounds = skip_rounds
         self.human_llm_code_task.add_inference_check("Code Parsing", self.parse_ai_generated_code)
@@ -203,36 +248,41 @@ class CodingAgent():
         self.db_failed_tasks = UnifiedVectorDB( collection_name=db_collection_failed, embedding_function=HumanLLMMonitor.common_vectordb_embedding_function, persist_directory=HumanLLMMonitor.common_vectordb_persist_directory+db_collection_failed, reset_db_indices=reset_db_indices)
         self.processed_codes = set()
 
-    def parse_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None, automatic_tests=True):
+    def parse_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None):
         import ast, time, re
-        # Convert text to dictionary
-        result_dict = ast.literal_eval(message)
-        # if result_dict is a dictionary and code exists, change message to result_dict["code"]
-        if isinstance(result_dict, dict) and "MainFunction" in result_dict:
-            code = ""
-            if "HelperFunctions" in result_dict:
-                for helper_function in result_dict["HelperFunctions"]:
-                    code += helper_function["code"] + "\n"
-            code += result_dict["MainFunction"]["code"]
-        else:
-            code = None
         error = None
         while retry > 0:
             try:
-                if language == "py":  # Python case
-                    # Match Python code blocks
-                    code_pattern = re.compile(r"```python(.*?)```", re.DOTALL)
-                    code = "\n".join(code_pattern.findall(message))
-                    
-                    tests_pattern = re.compile(r'\n#\s+[Dd]ocument #([a-z0-9-]+)\s+usage test[^\n]*\n([^\n]+)')
-                    
-                    tests = tests_pattern.findall(message)
+                if language == "py":  # Cas Python
+                    # Extraction des HelperFunctions et MainFunction
+                    try:
+                        helper_function_pattern = re.compile(r"HelperFunctionModel(function_name='(.*?)', code='(.*?)')", re.DOTALL)
+                        main_function_pattern = re.compile(r"MainFunctionModel(function_name='(.*?)', code='(.*?)')", re.DOTALL)
+                        
+                        helper_functions = helper_function_pattern.findall(message)
+                        main_function_match = main_function_pattern.search(message)
 
-                    # Search also in the task definition
-                    if task_definition is not None:
-                        tests += tests_pattern.findall(task_definition)
+                        # Construction du code à partir des HelperFunctions et MainFunction
+                        helper_functions_code = "\n".join([code.replace("'", r"\'") for _, code in helper_functions])
+                        main_function_code = main_function_match.group(2) if main_function_match else ""
 
-                    parsed = ast.parse(code)
+                        # Tout le code combiné
+                        code = helper_functions_code + "\n" + main_function_code
+
+                        # Ajout d'une étape de validation pour voir le code avant le parsing
+                        if retry == 3:  # On affiche seulement lors de la première tentative
+                            print("DEBUG: Code to parse:")
+                            print(code)
+
+                    except re.error as e:
+                        return False, f"Regex error: {e}"
+
+                    # Traitement des blocs de code Python trouvés
+                    try:
+                        parsed = ast.parse(code)
+                    except SyntaxError as e:
+                        return False, f"Syntax error in code:\n{code}\nERROR: {e}"
+
                     functions = []
                     imports = []
                     classes = []
@@ -261,56 +311,55 @@ class CodingAgent():
                                 "name": node.name,
                                 "type": node_type,
                                 "body": ast.get_source_segment(code, node),
+                                "params": [arg.arg for arg in node.args.args],
                             }
                             classes.append(class_definition)
 
                         elif isinstance(node, ast.Expr) or isinstance(node, ast.Expression) or isinstance(node, ast.Assign):
                             node_type = "Expression"
                             runnable_code += "\n" + ast.get_source_segment(code, node)
-                            
+                                
                         elif isinstance(node, ast.ImportFrom) or isinstance(node, ast.Import):
                             node_type = "ImportFrom"
                             imports.append(ast.get_source_segment(code, node))
                             smart_print("ImportFrom node: IMPORT SHOULD BE DONE INSIDE FUNCTIONS !!!", self.name, "process_ai_generated_code SystemMessage")
-                            
+                                
                         else:
                             raise ValueError(f"Unsupported node type: {type(node)} - content:  {ast.get_source_segment(code, node)}")
 
-                    # Ensure we have a main function and a class definition if needed
-                    if self.pipeline_mode :
+                    # Assurez-vous que nous avons une fonction principale et une définition de classe si nécessaire
+                    if self.pipeline_mode:
                         assert class_definition is not None, "No class definition found."
+                        if required_bot_arg:
+                            assert required_bot_arg in class_definition["params"], f"Pipelines {class_definition['name']} must take an argument named '{required_bot_arg}'"
+                        
                     else:
                         assert main_function is not None, "No main function found."
-
-                    if required_bot_arg:
-                        assert required_bot_arg in main_function["params"], f"Main function {main_function['name']} must take an argument named '{required_bot_arg}'"
+                        if required_bot_arg:
+                            assert required_bot_arg in main_function["params"], f"Main function {main_function['name']} must take an argument named '{required_bot_arg}'"
                     
-                    # Compile the final program code
+                    # Compiler le code final
                     program_code = "\n".join(imports) + "\n"
                     program_code += "\n".join(cls["body"] for cls in classes) + "\n"
                     program_code += "\n".join(function["body"] for function in functions)
                     
-
-                    if automatic_tests:
-                        #[test for doc_id, test in parsed_code["tests"] if doc_id == env.id]
-                        tests = [(env.id, main_function["name"]+"(bot)") for env in self.envs]
-                    else:
-                        tests = []
-                        tests_pattern = re.compile(r'\n#\s+[Dd]ocument #([a-z0-9-]+)\s+usage test[^\n]*\n([^\n]+)|{.*?"DocumentID":\s*"#(.*?)",\s*"FunctionCall":\s*"([^"]+)".*?}')
-                        matches = tests_pattern.findall(task_definition if task_definition is not None else message)
-                        for match in matches:
-                            tests.append(match[:2] if match[0] != "" else match[2:])
+                    # Gestion des tests
+                    tests_pattern = re.compile(r'\n#\s+[Dd]ocument #([a-z0-9-]+)\s+usage test[^\n]*\n([^\n]+)')
+                    
+                    try:
+                        tests = tests_pattern.findall(message)
+                        if task_definition is not None:
+                            tests += tests_pattern.findall(task_definition)
+                    except re.error as e:
+                        return False, f"Regex error in test extraction: {e}"
 
                     for doc_id, test in tests:
                         try:
                             parsed_test = ast.parse(test)
-                        except Exception as e:
+                        except SyntaxError as e:
                             return False, f"Error parsing code of Tests:\nERROR: {e}\nCODE: {test}"
-                        # Check if the test is a function call
-                       # if not isinstance(parsed_test.body[0], ast.Expr):
-                        #   return False, f"Error parsing code of Tests (not a function call): {test}"
 
-                    # Return all necessary information
+                    # Retourner toutes les informations nécessaires
                     if self.pipeline_mode:
                         return True, {
                             "program_code": program_code,
@@ -326,25 +375,17 @@ class CodingAgent():
                             "tests": tests,
                         }
 
-
                 else:
                     raise ValueError(f"Unsupported language in this version: {language}")
-                
-                self.parsed_code = {
-                    "program_code": program_code,
-                    "main_function": main_function,
-                    "runnable_code": runnable_code,
-                    "tests": tests,
-                }
-                return True, self.parsed_code
             
             except Exception as e:
                 retry -= 1
                 error = e
                 time.sleep(0.1)
 
-        self.parsed_code = f"Error parsing action response (before program execution): {error}"
-        return False, self.parsed_code
+        return False, f"Error parsing action response (before program execution): {error}"
+
+
 
     def run_tests_on_code(self, message, parsed_code=None, skip_already_processed=False):
         primitives = self.get_primitives()
@@ -356,7 +397,7 @@ class CodingAgent():
         elif skip_already_processed or not isinstance(parsed_code, dict): # This logic speedup because the same code should have the same score BUT only on the same problem & state
             return None
 
-        #smart_print(f"************ Code parsed result ************\n{parsed_code}\n************************".replace("\\n", "\n"), self.name, "run_tests_on_code RESULT")
+        smart_print(f"************ Code parsed result ************\n{parsed_code}\n************************".replace("\\n", "\n"), self.name, "run_tests_on_code RESULT")
     
         # Set initial state before running tests or runnable code
         no_runtime_errors, exec_results = [], []
@@ -405,7 +446,6 @@ class CodingAgent():
         result = (parsed_code, all(no_runtime_errors), exec_results, [env.get_score() for env in self.envs], [env.get_state(extended=True) for env in self.envs])
 
         return result
-
 
 
     def get_primitives(self):
@@ -472,8 +512,9 @@ class CodingAgent():
             
         # test if more than one code is returned, so ask to select or 
         if len(results) > 1:
+            # display the list of results with success, exception and code
             results_list = ""
-            top_results, top_indice = 0, -1
+            top_results, top_indice = 0, 1
             for id, result in enumerate(results):
                 if result[1]:
                     results_list += f"{id}. \033[32mSUCCESS\033[0m / SCORE: {result[3]} / CODE: {result[0]['program_code'][:100]}\n"
@@ -484,17 +525,18 @@ class CodingAgent():
                 else:
                     results_list += f"{id}. \033[31mFAILED\033[0m / SCORE: {result[3]} / EXCEPTION: {result[2][0][:100]} / CODE: {result[0]['program_code'][:100]}\n"
 
+            # ask the user to select the code to keep
             if current_skip_rounds <= 0:
                 if self.optuna_opti:
-                    selected_code = f"{top_indice}" if top_indice != -1 else "n"
-                else:
-                    selected_code = smart_input(f"{results_list}CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL): ").strip().replace(" ", "").lower().split(",")
+                    selected_code = f"{top_indice}"
+                else: selected_code = smart_input(f"{results_list}CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL): ",self.name,"Scores").strip().replace(" ","").lower().split(",")
             else:
-                selected_code = [""]
-
+                selected_code = [""]  # keep all if skip_rounds is not 0
+            id = 0
             if selected_code in ["none", "n"]:
                 results = []
             else:
+                # keep only the selected code
                 results = [result for id, result in enumerate(results) if selected_code and (str(id) in selected_code or selected_code == [""])]
 
         return results
@@ -502,7 +544,7 @@ class CodingAgent():
 
 # Agent 3: Code Validation
 class ValidationAgent():
-    def __init__(self, default_llm_key, envs: [Environment], premium_llm_key=None, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, pipeline_mode=False):
+    def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, pipeline_mode=False):
         #super().__init__(llm)
         self.name = self.__class__.__name__
         self.human_llm_validate_code = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice, premium_llm_by_default=False, llmORchains_list=llmORchains_list)
@@ -515,7 +557,7 @@ class ValidationAgent():
     def validate_code(self, code: str, no_runtime_error:bool, exec_result:str, task:str=None, human_evaluation_required=False, scores=None, env_states=None) -> str:
         runtime_errors = f'\033[32mno runtime errors at execution - code returned:\n{exec_result}\n\033[0m' if no_runtime_error else f'\033[31mruntime errors at execution - error:{exec_result}\033[0m'
         if human_evaluation_required:
-            human_evaluation = input(f"\n\n*******************\n{code}\n************\nCODE ABOVE EXECUTED with result: {runtime_errors}\n****\System may not efficiently evaluate what is produced by the code, please add your evaluation of the result (or hit enter): ")
+            human_evaluation = smart_input(f"\n\n*******************\n{code}\n************\nCODE ABOVE EXECUTED with result: {runtime_errors}\n****\System may not efficiently evaluate what is produced by the code, please add your evaluation of the result (or hit enter): ")
         else:
             human_evaluation = ""
         runtime_errors = 'no runtime errors at execution' if no_runtime_error else 'runtime errors at execution' # just to avoid to break colors inside HumanLLMMonitor
@@ -532,9 +574,10 @@ class ValidationAgent():
         code_validation = self.human_llm_validate_code.CallHumanLLM(system_prompt_template="validate_code", user_message=user_message, return_message_content_only=False, optuna=self.optuna_opti, model_choice=self.model_choice) 
         return code_validation
 
+
 # Agent 4: Code Capitalization
 class CapitalizationAgent:
-    def __init__(self, default_llm_key, premium_llm_key=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", db_embedding_function=None, db_perist_directory=None, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, pipeline_mode=False):
+    def __init__(self, default_llm_choice, premium_llm_choice=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", db_embedding_function=None, db_perist_directory=None, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, pipeline_mode=False):
         self.name = self.__class__.__name__
         self.tasks_repository: Dict[str, str] = {}
         self.failed_tasks_repository: Dict[str, str] = {}
@@ -563,31 +606,45 @@ class CapitalizationAgent:
             # save function program_code in a file under the functions directory and add to the function signature the generated dosctring
             function_file_path = os.path.join("functions", name_file+".py")
 
-        tool_description = str(self.generate_tool_description(name_file, parsed_code["program_code"]))
-        self.tasks_repository[name_file] = [tool_description, parsed_code["program_code"]]
+
+        tool_description = str(self.generate_tool_description(parsed_code["main_function_name"], parsed_code["program_code"]))
+        self.tasks_repository[parsed_code["main_function_name"]] = [tool_description, parsed_code["program_code"]]
         # print last added task
-        smart_print(f"************ Last added task ************\n{name_file}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
+        smart_print(f"************ Last added task ************\n{parsed_code['main_function_name']}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
+
         if self.pipeline_mode:
            if os.path.exists(pipeline_file_path):
                 smart_print(f"Pipeline file {pipeline_file_path} already exists, please provide a new name for the pipeline.", self.name, "capitalize_successful_tasks WARNING")
-                pipeline_file_path = os.path.join("pipelines", input("New pipeline name: ")+".py")    
+                if self.optuna_opti:
+                    i = random.randint(0, 1000)
+                    pipeline_file_path = os.path.join("pipelines", self.name + f"_{i}.py")
+                else:
+                    pipeline_file_path = os.path.join("pipelines", smart_input("New pipeline name: ")+".py")
+            
         # check if the function file already exists, if yes, ask the user a new name
         else:    
             if os.path.exists(function_file_path):
                 smart_print(f"Function file {function_file_path} already exists, please provide a new name for the function.", self.name, "capitalize_successful_tasks WARNING")
-                function_file_path = os.path.join("functions", input("New function name: ")+".py")
+                if self.optuna_opti:
+                    i = random.randint(0, 1000)
+                    function_file_path = os.path.join("functions", self.name + f"_{i}.py")
+                else:
+                    function_file_path = os.path.join("functions", smart_input("New function name: ")+".py")
+        
         with open(function_file_path, "w") as function_file:
              # use regex to extract the docstring from tool_description
             docstring_pattern = re.compile(r'(""".*?""")', re.DOTALL)
-            docstring = docstring_pattern.findall(tool_description)[0]
-             # use regex to add docstring to the function name_function after the def line in parsed_code["program_code"]
+            docstring_matches = docstring_pattern.findall(tool_description)
+            docstring = docstring_matches[0] if docstring_matches else f'"""{tool_description}"""'
+             # use regex to add docstring to the function parsed_code["main_function_name"] after the def line in parsed_code["program_code"]
             parsed_code["program_code"] = re.sub(r"(def "+name_file+"\(.*?\):)", r'\1\n    '+docstring, parsed_code["program_code"], count=1)
             function_file.write(parsed_code["program_code"])
 
-        if is_vscode_installed():
-            smart_print("Please modify the file opened in vscode if necessary, and save it (Ctrl + W) when you are ok to continue", self.name, "capitalize_successful_tasks INSTRUCTIONS")
-            subprocess.run(["code", "--wait", function_file_path])
-        
+        if self.optuna_opti == None:
+            if is_vscode_installed():
+                smart_print("Please modify the file opened in vscode if necessary, and save it (Ctrl + W) when you are ok to continue", self.name, "capitalize_successful_tasks INSTRUCTIONS")
+                subprocess.run(["code", "--wait", function_file_path])
+
         if self.pipeline_mode:
             serialized_entry = json.dumps({
             "time": datetime.datetime.now().isoformat(),
@@ -614,7 +671,6 @@ class CapitalizationAgent:
     def capitalize_failed_tasks(self, task_description: str, parsed_code: str) -> None:
         import socket, uuid, datetime
 
-
         if self.pipeline_mode:
             name_file = parsed_code["class_name"]
             main_class_name = _visual_input(name_file if parsed_code is not None and "class_name" in parsed_code else "replace this text with a descriptive name of the class")
@@ -632,21 +688,15 @@ class CapitalizationAgent:
             }, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
 
         else:
-            name_file = parsed_code["main_function_name"]
-            main_function_name = _visual_input(name_file if parsed_code is not None and "main_function_name" in parsed_code else "replace this text with a descriptive name of the function")
-            task_description_refined = _visual_input(task_description)
+            if self.optuna_opti:
+                main_function_name = parsed_code["main_function_name"] if parsed_code is not None and "main_function_name" in parsed_code else "replace this text with a descriptive name of the function"
+                task_description_refined = task_description
+            else :
+                main_function_name = _visual_input(parsed_code["main_function_name"] if parsed_code is not None and "main_function_name" in parsed_code else "replace this text with a descriptive name of the function")
+                task_description_refined = _visual_input(task_description)
             self.failed_tasks_repository[main_function_name] = task_description_refined
-            # print last added task
-            smart_print(f"************ Last added failed task ************\n{main_function_name}\n************************".replace("\\n", "\n"), self.name, "capitalize_failed_tasks CAPITALIZE FAIL")
-
-            serialized_entry = json.dumps({
-                "time": datetime.datetime.now().isoformat(),
-                "main_function_name": main_function_name,
-                "program_code": parsed_code["program_code"] if parsed_code is not None and "program_code" in parsed_code else None,
-                "task_description": task_description,
-                "task_description_refined": task_description_refined,
-            }, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
-      
+        
+        
         # Log entry into the common vector database with tags
         tags = {    "host": HumanLLMMonitor.get_host_id(),
                     "step_id": HumanLLMMonitor.step_id,}
@@ -662,7 +712,6 @@ class CapitalizationAgent:
         smart_print(f"************ Retrieving successful tasks from database - LIST:", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
         # Retrieve tasks from the common vector database
         results_success_db = self.db_successful_tasks.query(query_text="*", k=max_db_results)
-        
         # First step: display all the retrieved functions with time and host
         id = 0
         for result in results_success_db:
@@ -678,8 +727,8 @@ class CapitalizationAgent:
                 if 'main-function_name' in task_data:
                     smart_print(f"{id}: function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
             
-        if include_code is None:
-            include_code = smart_input(f"CONFIG When adding the functions description in successful tasks, do you want to also include the code (it may overflow the maximum prompt length but can also guide generation) ? (yes/no): ").strip().lower() in ["yes", "y"]
+            if include_code is None:
+                include_code = smart_input(f"CONFIG When adding the functions description in successful tasks, do you want to also include the code (it may overflow the maximum prompt length but can also guide generation) ? (yes/no): ").strip().lower() in ["yes", "y"]
         # Second step: ask the user to select the functions to load
         if selected_successful_functions is None:
             selected_successful_functions = smart_input(f"CONFIG Please select the successful functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
@@ -721,7 +770,6 @@ class CapitalizationAgent:
         smart_print(f"************ Retrieving failed tasks from database - LIST:", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
         # Retrieve failed tasks from the common vector database
         results_failed_db = self.db_failed_tasks.query(query_text="*", k=max_db_results)
-        
         # First step: display all the retrieved functions with time and host
         id = 0
         for result in results_failed_db:
@@ -730,7 +778,6 @@ class CapitalizationAgent:
             page_content = result.page_content
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
-
             if self.pipeline_mode:
                 if 'class_name' in task_data:
                     smart_print(f"{id}: failed Pipeline name:{task_data['class_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
@@ -738,9 +785,9 @@ class CapitalizationAgent:
                 if 'main_function-name'in task_data:
                     smart_print(f"{id}: failed function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
             
-              # Second step: ask the user to select the functions to load
+            # Second step: ask the user to select the functions to load
         if selected_failed_functions is None:
-            selected_failed_functions = smart_input(f"CONFIG Please select the failed functions/pipeline to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
+            selected_failed_functions = smart_input(f"CONFIG Please select the failed functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
         id = 0
         # load into self.tasks_repository
         for result in results_failed_db:
@@ -769,13 +816,56 @@ class CapitalizationAgent:
                 self.failed_tasks_repository[task_data["main_function_name"]] = task_data["task_description_refined"]
                 smart_print(f"> failed function/task {task_data['main_function_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
 
+
+#        smart_print(f"Error: Could not find a valid definition for {function_name}. Please set it:", "orchestrate_agents", "orchestrate_agents ERROR")
+#        function_code = _visual_input(current_function_code, filetype="py")
+
+
+def validate_function_code(code, function_name, local_scope=None, compile_test_only=False):
+    if local_scope is None:
+        local_scope = {}
+    try:
+        compiled_code = compile(code, '<string>', 'exec')
+        if compile_test_only:
+            return True
+        exec(compiled_code, globals(), local_scope)
+        func = local_scope.get(function_name)
+        if func is None or not callable(func):
+            raise ValueError(f"Function {function_name} is not defined or not callable.")
+        return func
+    except Exception as e:
+        print(f"Error setting {function_name} function: {e}")
+        return None
+
+
+def extract_function_code(task_content, function_name, current_function_code=None):
+    """
+    Extracts the complete code block for the specified function from the given task content.
+    If extraction fails, prompts the user for correct function code until successful.
+    """
+    pattern = rf"(def {function_name}\(.*?\):.*?)(?=\ndef [a-zA-Z_]+\(|$)"
+    match = re.search(pattern, task_content, re.DOTALL)
+    function_code = match.group(1) if match else None
+
+    local_scope = {}
+    validated_function = validate_function_code(function_code, function_name, local_scope) if function_code else None
+
+    while not validated_function:
+        smart_print(f"Error: Could not find a valid definition for {function_name}. Please set it:",
+                    "orchestrate_agents", "orchestrate_agents ERROR")
+        function_code = _visual_input(current_function_code, filetype="py")
+        validated_function = validate_function_code(function_code, function_name, local_scope)
+
+    return function_code
+
+
 # Main learning loop orchestration functions
 def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environments=None,
                               manual_validation_to_capitalize=True, problem_prompts_subdir=None,
                               max_coding_attempts=4, include_code=None, selected_successful_functions=None,
                               selected_failed_functions=None, agtask_premium_llm_by_default=True,
                               agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0,
-                              agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None, pipeline_mode=None,
+                              agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                               optuna_opti=None, allow_custom_score_state_functions=False,
                               reset_env_end=False):
     global scores_ret
@@ -788,23 +878,22 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         choice = smart_input("CONFIG Enter a number for subdirectory (leave empty for default): "+"; ".join(f"{i}. {subdir}" for i, subdir in enumerate(problem_prompts_subdirs, 1))+" ?", "CONFIG")
         # if choise is empty or not a number or not in the range of the list of subdirectories, set it to 1
         problem_prompts_subdir = problem_prompts_subdirs[int(choice) - 1] if choice.isdigit() and 1 <= int(choice) <= len(problem_prompts_subdirs) else default_subdir
-
+    
     pipeline_activate = smart_input("Do you want to create a pipeline as a new class (default = false, new function) ? yes/no :  ")
     if pipeline_activate =="yes" or pipeline_activate == "y":
         pipeline_mode = True
     else:
         pipeline_mode = False
 
-
     if test_environments is None:
         env_type = "default"
         manager = EnvironmentManager(env_type)
         test_environments = [manager.get_environment()]
 
-    agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, premium_llm_by_default=agtask_premium_llm_by_default, skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(model_choice) == dict else model_choice))
-    agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['coding' if 'coding' in model_choice else 'coder'] if type(model_choice) == dict else model_choice))
-    agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['validation' if 'validation' in model_choice else 'critic'] if type(model_choice) == dict else model_choice))
-    agent_capitalize = CapitalizationAgent(default_llm_key, premium_llm_choice=premium_llm_key, skip_rounds=agcapitalize_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(model_choice) == dict else model_choice))
+    agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, premium_llm_by_default=agtask_premium_llm_by_default, skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(model_choice) == dict else model_choice), pipeline_mode=pipeline_mode)
+    agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['coding' if 'coding' in model_choice else 'coder'] if type(model_choice) == dict else model_choice), pipeline_mode=pipeline_mode)
+    agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['validation' if 'validation' in model_choice else 'critic'] if type(model_choice) == dict else model_choice), pipeline_mode=pipeline_mode)
+    agent_capitalize = CapitalizationAgent(default_llm_key, premium_llm_choice=premium_llm_key, skip_rounds=agcapitalize_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(model_choice) == dict else model_choice), pipeline_mode=pipeline_mode)
 
     agent_capitalize.retrieve_saved_tasks_in_db(include_code=include_code, selected_successful_functions=selected_successful_functions, selected_failed_functions=selected_failed_functions)
     agent_taskreco.update_learnt_tasks(agent_capitalize.tasks_repository)
@@ -816,6 +905,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     while continue_identifying_tasks:
         HumanLLMMonitor.step_id = str(uuid.uuid4())
         task = agent_taskreco.identify_best_task()
+
         # Handle multiple-tasks case
         if len(task) > 1:
             # list all tasks with their index and the 200 first characters of their content
@@ -833,7 +923,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                     else:
                         raise Exception("Index out of range")
                 except Exception as e:
-                    print(f"Error: {e}\n\nEnter a valid index")
+                    smart_print(f"Error: {e}\n\nEnter a valid index")
         else:
             task = task[0]
         smart_print("Identified Task: "+task.content.replace("\\n", "\n"), "orchestrate_agents", "orchestrate_agents RESULT")
@@ -857,8 +947,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         if validation == "success":
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
             agent_taskreco.update_learnt_tasks(agent_capitalize.tasks_repository)
-        else:
-            if smart_input("Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ").strip().upper() in ["Y", "YES"]:
+        else :
+            if optuna_opti:
                 agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
                 agent_taskreco.update_failed_tasks(agent_capitalize.failed_tasks_repository)
             else :
@@ -868,9 +958,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         answer = "y" if optuna_opti and reset_env_end else "n" if optuna_opti and not reset_env_end else smart_input("Do you want to reset the environment for searching a new task (Y/YES) or search a new task by keeping what has been created by this task (N/NO/Enter) ? or just exit (E/EXIT) ?").strip().upper()
         continue_identifying_tasks, optuna_coach = False, False if answer in ["E", "EXIT"] else True
         if answer.upper() in ["Y", "YES"]:
-
             [env.reset() for env in test_environments]
-
             # Calculate the average score of the task, and return it for optuna optimization
             if optuna_coach and scores_ret is not None:
                 temp = 0
@@ -887,6 +975,7 @@ def get_success_value_in_text(text):
         success_value = match.group(2)
         return success_value.lower() in ['true', 'yes', 'y', '1']
     return False
+
 
 def get_highest_score_index(score_array, mode='total'):
     """
@@ -954,13 +1043,17 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
                 previous_scores.append(scores)
                 previous_codes.append(parsed_code["program_code"])
 
-        reset_unique_ids = new_reset_unique_ids # Update reset_unique_ids for the next iteration
-
         if successful_codes and not continue_even_if_successful:
             break
 
+        if not successful_codes and attempt == (max_attempts / 2) - 1:
+            attempt = max_attempts - 1
+        
         if attempt == max_attempts - 1:
-            smart_print("Max attempts reached. Trying a new task.", None, "coding_and_validation_loop WARNING")
+            if not successful_codes:
+                smart_print("No successful code yet. Stop this task.", None, "coding_and_validation_loop WARNING")
+            else:
+                smart_print("Max attempts reached. Trying a new task.", None, "coding_and_validation_loop WARNING")
 
     # Second part: If there are successful codes, ask user to select one
     if successful_codes and (not continue_even_if_successful or attempt >= max_attempts - 1):
@@ -996,11 +1089,11 @@ def sanitized_task_name(task):
 
 class PrintPromptRunnable(Runnable):
     def invoke(self, input_msg, config):
-        print(f"PrintPromptRunnable type of input_msg: {type(input_msg)}")
+        smart_print(f"PrintPromptRunnable type of input_msg: {type(input_msg)}")
         # Extract and format the prompt
         formatted_prompt = format_prompt(input_msg if isinstance(input_msg, list) else input_msg.messages)
         # Print the prompt in RED
-        print("\033[31m" + formatted_prompt + "\033[0m")
+        smart_print("\033[31m" + formatted_prompt + "\033[0m")
         return input_msg
 
 class ExtractMessage(Runnable):
@@ -1020,7 +1113,7 @@ def format_prompt(messages):
             prompt_str += f"Type {type(message)}: " + str(message.content) + "\n"
     return prompt_str
     
-def create_Nmajority_chain(num_models=3, map_model_name="gpt-4o-mini-2024-07-18", reduce_model_name="gpt-4o-mini-2024-07-18", map_temperature=0.7, reduce_temperature=0.7):
+def create_Nmajority_chain(num_models=3, map_model_name="gpt-3.5", reduce_model_name="gpt-3.5", map_temperature=0.7, reduce_temperature=0.7):
     # Initialize the OpenAI models
     models = [ChatOpenAI(model_name=map_model_name, temperature=map_temperature, cache=False) for _ in range(num_models)]
     final_model = ChatOpenAI(model_name=reduce_model_name, temperature=reduce_temperature, cache=False)
@@ -1076,7 +1169,6 @@ if __name__ == "__main__":
         "target_file_path": "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/fiche_ano/Problème de performance sur le module de gestion des utilisateurs.json"
         }
     ]
-    
     
     envs = []
     for doc in documents:

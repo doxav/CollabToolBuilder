@@ -3,7 +3,7 @@ from langchain_community.chat_models import ChatOpenAI
 import re
 import os
 
-os.environ["OPENAI_API_KEY"] = "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"
+os.environ["OPENAI_API_KEY"] = "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"
 
 # Set up the OpenAI LLM
 llm = ChatOpenAI(streaming=True, callbacks=[StreamingStdOutCallbackHandler()])

@@ -9,7 +9,7 @@ docker run -d \
     --network=host \
     -v open-webui:/app/backend/data \
     -e OLLAMA_BASE_URL=http://127.0.0.1:11434 \
-    --name open-web-uvic   \
+    --name open-web-uvi-a   \
     --restart always \
     ghcr.io/open-webui/open-webui:main
 

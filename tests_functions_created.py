@@ -13,7 +13,7 @@ The function retrieves and visualizes anomalies similar to a given problem by qu
     from sklearn.decomposition import TruncatedSVD
     import openai
 
-    openai.api_key = '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'
+    openai.api_key = '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'
 
     # Step 1: Connect to Neo4j database
     def neo4j_connection():
