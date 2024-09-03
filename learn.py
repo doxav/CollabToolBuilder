@@ -591,25 +591,29 @@ class CapitalizationAgent:
         if self.pipeline_mode:
             name_file = parsed_code["class_name"]
             pipeline_file_path = os.path.join("pipelines/pipelines", name_file+".py")
+            tool_description = str(self.generate_tool_description(parsed_code["class_name"], parsed_code["program_code"]))
+            self.tasks_repository[parsed_code["class_name"]] = [tool_description, parsed_code["program_code"]]
+            # print last added task
+            smart_print(f"************ Last added task ************\n{parsed_code['class_name']}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
         else:
             name_file = parsed_code["main_function_name"]
             # save function program_code in a file under the functions directory and add to the function signature the generated dosctring
             function_file_path = os.path.join("functions", name_file+".py")
+            tool_description = str(self.generate_tool_description(parsed_code["main_function_name"], parsed_code["program_code"]))
+            self.tasks_repository[parsed_code["main_function_name"]] = [tool_description, parsed_code["program_code"]]
+            # print last added task
+            smart_print(f"************ Last added task ************\n{parsed_code['main_function_name']}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
 
 
-        tool_description = str(self.generate_tool_description(parsed_code["main_function_name"], parsed_code["program_code"]))
-        self.tasks_repository[parsed_code["main_function_name"]] = [tool_description, parsed_code["program_code"]]
-        # print last added task
-        smart_print(f"************ Last added task ************\n{parsed_code['main_function_name']}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
-
+        
         if self.pipeline_mode:
            if os.path.exists(pipeline_file_path):
                 smart_print(f"Pipeline file {pipeline_file_path} already exists, please provide a new name for the pipeline.", self.name, "capitalize_successful_tasks WARNING")
                 if self.optuna_opti:
                     i = random.randint(0, 1000)
-                    pipeline_file_path = os.path.join("pipelines", self.name + f"_{i}.py")
+                    pipeline_file_path = os.path.join("pipelines/pipelines", self.name + f"_{i}.py")
                 else:
-                    pipeline_file_path = os.path.join("pipelines", smart_input("New pipeline name: ")+".py")
+                    pipeline_file_path = os.path.join("pipelines/pipelines", smart_input("New pipeline name: ")+".py")
             
         # check if the function file already exists, if yes, ask the user a new name
         else:    
@@ -621,7 +625,13 @@ class CapitalizationAgent:
                 else:
                     function_file_path = os.path.join("functions", smart_input("New function name: ")+".py")
         
-        with open(function_file_path, "w") as function_file:
+        if self.pipeline_mode:
+            new_path = pipeline_file_path
+        else:
+            new_path = function_file_path
+
+
+        with open(new_path, "w") as function_file:
              # use regex to extract the docstring from tool_description
             docstring_pattern = re.compile(r'(""".*?""")', re.DOTALL)
             docstring_matches = docstring_pattern.findall(tool_description)
@@ -633,7 +643,7 @@ class CapitalizationAgent:
         if self.optuna_opti == None:
             if is_vscode_installed():
                 smart_print("Please modify the file opened in vscode if necessary, and save it (Ctrl + W) when you are ok to continue", self.name, "capitalize_successful_tasks INSTRUCTIONS")
-                subprocess.run(["code", "--wait", function_file_path])
+                subprocess.run(["code", "--wait", new_path])
 
         if self.pipeline_mode:
             serialized_entry = json.dumps({
@@ -918,7 +928,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             task = task[0]
         smart_print("Identified Task: "+task.content.replace("\\n", "\n"), "orchestrate_agents", "orchestrate_agents RESULT")
         task_description = task.content
-
+        smart_print("self.pipeline_mode", pipeline_mode)
         # Extract potential score and state function code from the task
         if allow_custom_score_state_functions:
             # Extract current implementation of get_score and get_state from the first environment
