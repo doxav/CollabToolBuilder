@@ -1299,14 +1299,35 @@ The following annotations are provided to guide the refinement process. Each ann
                     start_color, end_color = ["\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m", "\033[97m"][color_id % 7], "\033[0m"
                 final_output = ""  # Initialize an empty string to hold the full response
                 smart_print("", self.agent_name, "Inference streaming output")
-                for chunk in func.stream(input_msg): #, temperature=temperature):  # Ensure 'llm' is correctly initialized with temperature
-                    smart_print(start_color+chunk.content+end_color, self.agent_name, "Inference streaming output", append=True)
-                    final_output += chunk.content  # Concatenate each chunk to build the full response
-                return AIMessage(content=final_output) # Return the concatenated full respons
+                previous_chunk_str = ""
+                # Regex to match the end of a typical JSON structure
+                json_trail_re = re.compile(r'[\'\}\]]$')
+                for chunk in func.stream(input_msg):  #, temperature=temperature):  # Ensure 'llm' is correctly initialized with temperature
+                    if hasattr(chunk, 'content'):
+                        chunk_content = chunk.content
+                        final_output += chunk_content
+                    else:
+                        # Convert the current chunk to string
+                        current_chunk_str = str(chunk)
+                        # Check and remove trailing characters for accurate comparison
+                        while json_trail_re.search(current_chunk_str):
+                            current_chunk_str = current_chunk_str[:-1]
+                        
+                        # Find the new part by removing the common prefix with the previous state
+                        new_part_index = len(previous_chunk_str)
+                        chunk_content = current_chunk_str[new_part_index:]
+                        # Store the current chunk as the previous one for the next iteration
+                        previous_chunk_str = current_chunk_str
+                        final_output = str(chunk)
+                    smart_print(start_color + chunk_content + end_color, self.agent_name, "Inference streaming output", append=True)
+                return AIMessage(content=final_output)  # Return the concatenated full respons
             else:
-                return func(input_msg, temperature=temperature)
-        
-        smart_print(f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[1].function} calling HumanLLMMonitor****\033[0m", self.agent_name, "HumanLLMMonitor")
+                value = func.invoke(input_msg).content
+                return AIMessage(content=value)
+
+        smart_print(
+            f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[1].function} calling HumanLLMMonitor****\033[0m",
+            self.agent_name, "HumanLLMMonitor")
         if system_prompt_template: self.system_prompt = system_prompt_template
         if default_llm_function is None: default_llm_function = self.default_llm if use_default_llm else self.premium_llm
         if premium_llm_function is None: premium_llm_function = self.premium_llm if self.premium_llm else None

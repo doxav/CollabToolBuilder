@@ -202,8 +202,7 @@ class TaskIdentificationAgent():
 
         self.human_llm_identify_best_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice,
                                                             premium_llm_by_default=premium_llm_by_default,
-                                                            llmORchains_list=llmORchains_list,
-                                                            output_schema="identify_best_task.schema.py")
+                                                            llmORchains_list=llmORchains_list,output_schema="identify_best_task.schema.py")
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         self.envs = envs
         self.optuna_opti = optuna
@@ -250,6 +249,20 @@ class CodingAgent():
 
     def parse_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None):
         import ast, time, re
+        # Convert text to dictionary
+        try:
+            result_dict = ast.literal_eval(message)
+        except Exception as e:
+            result_dict = None
+        # if result_dict is a dictionary and code exists, change message to result_dict["code"]
+        if isinstance(result_dict, dict) and "MainFunction" in result_dict:
+            code = ""
+            if "HelperFunctions" in result_dict:
+                for helper_function in result_dict["HelperFunctions"]:
+                    code += helper_function["code"] + "\n"
+            code += result_dict["MainFunction"]["code"]
+        else:
+            code = None
         error = None
         while retry > 0:
             try:
@@ -1146,7 +1159,7 @@ if __name__ == "__main__":
     #from langchain_groq import ChatGroq
     llmORchains_list = {
         "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.7),
-        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["premium_gpt"], cache=False),#, temperature=0.7),
+        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt"], cache=False),#, temperature=0.7),
         #"default_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.7),
         #"premium_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["premium_gpt"], cache=False),#, temperature=0.7),
         "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"], reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=3),
