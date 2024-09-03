@@ -194,16 +194,16 @@ class EnvironmentManager:
 # Agent 1: Task Identification
 class TaskIdentificationAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
-                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None):
+                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, criteria=None):
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         self.learnt_tasks: Dict[str, str] = {}
         self.failed_tasks: Dict[str, str] = {}
+        self.criteria = criteria
 
         self.human_llm_identify_best_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice,
                                                             premium_llm_by_default=premium_llm_by_default,
-                                                            llmORchains_list=llmORchains_list,
-                                                            output_schema="identify_best_task.schema.py")
+                                                            llmORchains_list=llmORchains_list)#,output_schema="identify_best_task.schema.py")
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         self.envs = envs
         self.optuna_opti = optuna
@@ -216,9 +216,40 @@ class TaskIdentificationAgent():
         self.failed_tasks = tasks
 
     def identify_best_task(self) -> str:
-        learnt_tasks = format(json.dumps(self.learnt_tasks))
-        failed_tasks = format(json.dumps(self.failed_tasks))
-        envs_status = '\n'.join([env.get_state() for env in self.envs])
+        if self.criteria == None or self.criteria == "None":
+            learnt_tasks = format(json.dumps(self.learnt_tasks))
+            failed_tasks = format(json.dumps(self.failed_tasks))
+            envs_status = '\n'.join([env.get_state() for env in self.envs])
+        else:
+            match self.criteria:
+                case "Learnt":
+                    failed_tasks = format(json.dumps(self.failed_tasks))
+                    envs_status = '\n'.join([env.get_state() for env in self.envs])
+                    learnt_tasks = None
+                case "Failed":
+                    learnt_tasks = format(json.dumps(self.learnt_tasks))
+                    envs_status = '\n'.join([env.get_state() for env in self.envs])
+                    failed_tasks = None
+                case "Env":
+                    learnt_tasks = format(json.dumps(self.learnt_tasks))
+                    failed_tasks = format(json.dumps(self.failed_tasks))
+                    envs_status = None
+                case "LearntFailed":
+                    envs_status = '\n'.join([env.get_state() for env in self.envs])
+                    learnt_tasks = None
+                    failed_tasks = None
+                case "LearntEnv":
+                    failed_tasks = format(json.dumps(self.failed_tasks))
+                    learnt_tasks = None
+                    envs_status = None
+                case "FailedEnv":
+                    learnt_tasks = format(json.dumps(self.learnt_tasks))
+                    failed_tasks = None
+                    envs_status = None
+                case _:
+                    learnt_tasks = None
+                    failed_tasks = None
+                    envs_status = None
 
         user_message =  f"- Already developed tasks: {learnt_tasks if learnt_tasks and learnt_tasks!='{}' else 'None'}\n"+\
                         f"- Already failed tasks (too hard): {failed_tasks if failed_tasks and failed_tasks!='{}' else 'None'}\n"+\
@@ -235,7 +266,7 @@ class CodingAgent():
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
 
-        self.human_llm_code_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice, premium_llm_by_default=True, num_parallel_inferences=4, llmORchains_list=llmORchains_list, output_schema="code_task.schema.py")
+        self.human_llm_code_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice, premium_llm_by_default=True, num_parallel_inferences=4, llmORchains_list=llmORchains_list)#, output_schema="code_task.schema.py")
         self.human_llm_code_task.skip_rounds = skip_rounds
         self.human_llm_code_task.add_inference_check("Code Parsing", self.parse_ai_generated_code)
         self.human_llm_code_task.add_inference_check("Run Tests", self.run_tests_on_code)
@@ -249,7 +280,10 @@ class CodingAgent():
     def parse_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None, automatic_tests=True):
         import ast, time, re
         # Convert text to dictionary
-        result_dict = ast.literal_eval(message)
+        try:
+            result_dict = ast.literal_eval(message)
+        except Exception as e:
+            result_dict = None
         # if result_dict is a dictionary and code exists, change message to result_dict["code"]
         if isinstance(result_dict, dict) and "MainFunction" in result_dict:
             code = ""
@@ -734,7 +768,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0,
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                               optuna_opti=None, allow_custom_score_state_functions=False,
-                              reset_env_end=False, max_execution_time=900):
+                              criteria=None, max_execution_time=900):
     time_end = time.time() + max_execution_time
     scores = None
     if problem_prompts_subdir is None:
@@ -752,7 +786,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         manager = EnvironmentManager(env_type)
         test_environments = [manager.get_environment()]
 
-    agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, premium_llm_by_default=agtask_premium_llm_by_default, skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(model_choice) == dict else model_choice))
+    agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, premium_llm_by_default=agtask_premium_llm_by_default, skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(model_choice) == dict else model_choice), criteria=criteria)
     agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['coding' if 'coding' in model_choice else 'coder'] if type(model_choice) == dict else model_choice))
     agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['validation' if 'validation' in model_choice else 'critic'] if type(model_choice) == dict else model_choice))
     agent_capitalize = CapitalizationAgent(default_llm_key, premium_llm_choice=premium_llm_key, skip_rounds=agcapitalize_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(model_choice) == dict else model_choice))
@@ -810,17 +844,16 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
             agent_taskreco.update_learnt_tasks(agent_capitalize.tasks_repository)
         else :
-            if optuna_opti:
+            if optuna_opti or smart_input("Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ").strip().upper() in ["Y", "YES"]:
                 agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
                 agent_taskreco.update_failed_tasks(agent_capitalize.failed_tasks_repository)
-            else :
-                if smart_input("Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ").strip().upper() in ["Y", "YES"]:
-                    agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
-                    agent_taskreco.update_failed_tasks(agent_capitalize.failed_tasks_repository)
-        answer = "y" if optuna_opti and reset_env_end else "n" if optuna_opti and not reset_env_end else smart_input("Do you want to reset the environment for searching a new task (Y/YES) or search a new task by keeping what has been created by this task (N/NO/Enter) ? or just exit (E/EXIT) ?").strip().upper()
-        continue_identifying_tasks = False if answer in ["E", "EXIT"] else True
-        if answer.upper() in ["Y", "YES"]:
-            [env.reset() for env in test_environments]
+        if optuna_opti:
+            continue_identifying_tasks = False
+        else:
+            answer = smart_input("Do you want to reset the environment for searching a new task (Y/YES) or search a new task by keeping what has been created by this task (N/NO/Enter) ? or just exit (E/EXIT) ?").strip().upper()
+            continue_identifying_tasks = False if answer in ["E", "EXIT"] else True
+            if answer.upper() in ["Y", "YES"]:
+                [env.reset() for env in test_environments]
 
     # Calculate the average score of the task, and return it with other statistics
     if scores:
@@ -935,8 +968,8 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
     percentage_no_runtime_error = (sum(1 for _, no_runtime_error, _, _, _ in all_results if no_runtime_error) / len(all_results)) if all_results else 0
     best_score_without_validation = (max(max(sum(scores.values()) for scores in score_dict) for _, _, _, score_dict, _ in all_results)) if len(all_results) > 0 else 0
     all_scores = {
-        'percentage_no_runtime_error': percentage_no_runtime_error, 
-        'best_score_without_validation': best_score_without_validation, 
+        'percentage_no_runtime_error': percentage_no_runtime_error,
+        'best_score_without_validation': best_score_without_validation,
         'validated_scores': None}
 
     # Second part: If there are successful codes, ask user to select one
@@ -1034,7 +1067,7 @@ if __name__ == "__main__":
     #from langchain_groq import ChatGroq
     llmORchains_list = {
         "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.7),
-        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["premium_gpt"], cache=False),#, temperature=0.7),
+        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["gpt"], cache=False),#, temperature=0.7),
         #"default_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.7),
         #"premium_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["premium_gpt"], cache=False),#, temperature=0.7),
         "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"], reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=3),
@@ -1067,7 +1100,7 @@ if __name__ == "__main__":
                               selected_successful_functions=[], 
                               selected_failed_functions=[], 
                               max_execution_time=900,
-                              agtask_premium_llm_by_default=False, 
+                              agtask_premium_llm_by_default=False,
                               agtask_skip_rounds=0, # Auto-test: 1 
                               agcoding_skip_rounds=0, # Auto-test: 4
                               agvalidation_skip_rounds=0, # Auto-test: 4
