@@ -289,64 +289,64 @@ console.log('WebSocket connection closed');
 };
 
 function displayMessage(data) {
-        let title = `${data.agent_name} | ${data.message_type} | ${new Date().toLocaleTimeString()}`;
-        if(data.message_type ===null)
-        {title = `${data.agent_name} | ${new Date().toLocaleTimeString()}`;
+    let title = `${data.agent_name} | ${data.message_type} | ${new Date().toLocaleTimeString()}`;
+    if (data.message_type === null) {
+        title = `${data.agent_name} | ${new Date().toLocaleTimeString()}`;
+    }
+    let content = `<div class='message'>${formatMessage(data.message)}</div>`;
+
+    let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
+    if (data.agent_name === "CodingAgent" && data.message_type === "NEW inference result recieved") {
+        console.log("Handling multiple solutions");
+        handleMultipleSolutions(data);
+        // If it's the last solution and there are more than 4 solutions, add pagination
+        if (data.column_id === data.column_max - 1 && data.column_max > 4) {
+            // Add the html code for the pagination
+            let pagination = document.createElement('div');
+            pagination.className = 'pagination';
+            pagination.id = 'pagination';
+            pagination.innerHTML = `<button id="prev-page">Previous</button><span id="page-info">Page 1 of 1</span><button id="next-page">Next</button>`;
+
+            // Add the pagination to the solution columns
+            let solutionColumns = document.querySelector('.solution-columns');
+            solutionColumns.parentNode.insertBefore(pagination, solutionColumns.nextSibling);
+
+            // Add event listeners for the pagination buttons taking in account that there are 4 columns per page
+            let columnMax = data.column_max;
+            let currentPage = 1;
+            let totalPages = Math.ceil(columnMax / 4);
+            let $columns = $('.solution-column');
+            let $pageInfo = $('#page-info');
+
+            $('#next-page').click(function () {
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    $columns.hide();
+                    $columns.slice((currentPage - 1) * 4, currentPage * 4).show();
+                    $pageInfo.text(`Page ${currentPage} of ${totalPages}`);
+                }
+            });
+
+            $('#prev-page').click(function () {
+                if (currentPage > 1) {
+                    currentPage--;
+                    $columns.hide();
+                    $columns.slice((currentPage - 1) * 4, currentPage * 4).show();
+                    $pageInfo.text(`Page ${currentPage} of ${totalPages}`);
+                }
+            });
+
+            $columns.hide();
+            $columns.slice(0, 4).show();
+            $pageInfo.text(`Page ${currentPage} of ${totalPages}`);
+
+            // Update the pagination info with the total number of pages
+            totalPages = Math.ceil(columnMax / 4);
+            $pageInfo.text(`Page ${currentPage} of ${totalPages}`);
         }
-        let content = `<div class='message'>${formatMessage(data.message)}</div>`;
-
-        let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
-        if (data.agent_name === "CodingAgent" && data.message_type === "NEW inference result recieved") {
-            console.log("Handling multiple solutions");
-            handleMultipleSolutions(data);
-            // If it's the last solution and there are more than 4 solutions, add pagination
-            if (data.column_id === data.column_max - 1 && data.column_max > 4) {
-                // Add the html code for the pagination
-                let pagination = document.createElement('div');
-                pagination.className = 'pagination';
-                pagination.id = 'pagination';
-                pagination.innerHTML = `<button id="prev-page">Previous</button><span id="page-info">Page 1 of 1</span><button id="next-page">Next</button>`;
-
-                // Add the pagination to the solution columns
-                let solutionColumns = document.querySelector('.solution-columns');
-                solutionColumns.parentNode.insertBefore(pagination, solutionColumns.nextSibling);
-
-                // Add event listeners for the pagination buttons taking in account that there are 4 columns per page
-                let columnMax = data.column_max;
-                let currentPage = 1;
-                let totalPages = Math.ceil(columnMax / 4);
-                let $columns = $('.solution-column');
-                let $pageInfo = $('#page-info');
-
-                $('#next-page').click(function() {
-                    if (currentPage < totalPages) {
-                        currentPage++;
-                        $columns.hide();
-                        $columns.slice((currentPage - 1) * 4, currentPage * 4).show();
-                        $pageInfo.text(`Page ${currentPage} of ${totalPages}`);
-                    }
-                });
-
-                $('#prev-page').click(function() {
-                    if (currentPage > 1) {
-                        currentPage--;
-                        $columns.hide();
-                        $columns.slice((currentPage - 1) * 4, currentPage * 4).show();
-                        $pageInfo.text(`Page ${currentPage} of ${totalPages}`);
-                    }
-                });
-
-                $columns.hide();
-                $columns.slice(0, 4).show();
-                $pageInfo.text(`Page ${currentPage} of ${totalPages}`);
-
-                // Update the pagination info with the total number of pages
-                totalPages = Math.ceil(columnMax / 4);
-                $pageInfo.text(`Page ${currentPage} of ${totalPages}`);
-            }
 
     } else if (data.agent_name === "CodingAgent" && data.message_type === "Scores") {
-            /*
+        /*
             // Show message
             if ($agentAccordion.length === 0) {
                 $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
@@ -356,7 +356,7 @@ function displayMessage(data) {
             $agentAccordion.children("div").append($messageContainer);
             */
 
-            /*Modify each buttons "score" in each column with the score received a score message lokks like
+        /*Modify each buttons "score" in each column with the score received a score message lokks like
             0. FAILED / SCORE: [{'sections titles progress (best = 1, worst = 0)': 0.0, 'sections content progress (best = 1, worst = 0)': 0.0, 'sections count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'title non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content length ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0}, {'sections titles progress (best = 1, worst = 0)': 0.0, 'sections content progress (best = 1, worst = 0)': 0.0, 'sections count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'title non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content length ratio progress (best = 1, too short <1, too long >1)': 0.0, 'content non-empty count ratio progress (best = 1, too short <1, too long >1)': 0.0}] / EXCEPTION: Failed to execute provided code. Error: 'description' Traceback: Traceback (most recent call last):
             / CODE: import json
             import re
@@ -381,46 +381,178 @@ function displayMessage(data) {
 
             so the text to change on the button is the word following the number of the solution "SUCCESS" or "FAILED", each button id is score-i with i the number of the solution
              */
-            let $scoreButtons = $agentAccordion.find("button[id^='score-']");
-            // Stock scores in an array retrieved with the regex "const regex = new RegExp(`^${i}\\.\\s+(SUCCESS|FAILED)`, 'm');"
+        let $scoreButtons = $agentAccordion.find("button[id^='score-']");
+        // Stock scores in an array retrieved with the regex "const regex = new RegExp(`^${i}\\.\\s+(SUCCESS|FAILED)`, 'm');"
 
-            // for each button, we retrieve the score and we change the text of the button
-            $scoreButtons.each(function(index, button) {
-                const regex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m(SUCCESS|FAILED)\\u001b\\[0m`, 'm');
-                const match = data.message.match(regex);
-                if (match) {
-                    console.log("Match found:", match);
-                    const score = match[1];
-                    button.textContent = score;
-                    if (score === "SUCCESS") {
-                        button.style.backgroundColor = "green";
-                    } else {
-                        button.style.backgroundColor = "red";
-                    }
-                    // Extract the full text following the solution number
-                    const fullTextRegex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
-                    const fullTextMatch = data.message.match(fullTextRegex);
-
-                    if (fullTextMatch) {
-                        const fullText = fullTextMatch[1].trim();
-
-                        // Attach a click event to display the full text in a pop-up
-                        button.addEventListener('click', function() {
-                            alert(`Full text for solution ${index+1}:\n\n${fullText}`);
-                        });
-                    }
-                }else{
-                    button.textContent = "Scoring failed";
+        // for each button, we retrieve the score and we change the text of the button
+        $scoreButtons.each(function (index, button) {
+            const regex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m(SUCCESS|FAILED)\\u001b\\[0m`, 'm');
+            const match = data.message.match(regex);
+            if (match) {
+                console.log("Match found:", match);
+                const score = match[1];
+                button.textContent = score;
+                if (score === "SUCCESS") {
+                    button.style.backgroundColor = "green";
+                } else {
                     button.style.backgroundColor = "red";
                 }
-            });
+                // Extract the full text following the solution number
+                const fullTextRegex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
+                const fullTextMatch = data.message.match(fullTextRegex);
 
-            /*
+                if (fullTextMatch) {
+                    const fullText = fullTextMatch[1].trim();
+
+                    // Attach a click event to display the full text in a pop-up
+                    button.addEventListener('click', function () {
+                        alert(`Score of solution ${index + 1}:\n\n${fullText}`);
+                    });
+                }
+            } else {
+                button.textContent = "Scoring failed";
+                button.style.backgroundColor = "red";
+            }
+        });
+
+        /*
             // Add a button to focus solution-columns below the last message in the CodingAgent accordion
             let $button = $(`<br><button class="focus-solutions"><i class="fa fa-search" aria-hidden="true"></i> Show solutions</button>`);
             $agentAccordion.children("div").append($button);
 
              */
+
+    } else if (data.message === "Skip for how many rounds? ") {
+        // Show a select list in HTML from 1 to 10 with the ability to put another number and send it to the server when the send button is pressed
+        let $select = $(`<select id="rounds-select"></select>`);
+        for (let i = 1; i <= 10; i++) {
+            $select.append(`<option value="${i}">${i}</option>`);
+        }
+        $select.append(`<option value="other">Other</option>`);
+        // If other is selected, show an input field to enter the number of rounds
+        $select.change(function () {
+            if ($(this).val() === "other") {
+                $(this).replaceWith(`<input type="number" id="rounds-input" min="0" max="100" step="1" value="1">`);
+            }
+        });
+        let $button = $(`<button id="send-rounds">Send</button>`);
+        let $container = $(`<div></div>`);
+        $container.append($select);
+        $container.append($button);
+        // Add the select list and button below the Accordion
+        $("#message-accordion").append($container);
+        // Add an event listener to the button to send the number of rounds to the server
+        $button.click(function () {
+            let rounds;
+            if ($("#rounds-select").length) {
+                rounds = $("#rounds-select").val();
+            } else {
+                rounds = $("#rounds-input").val();
+            }
+
+            if (rounds === "other") {
+                rounds = $("#rounds-input").val();
+            }
+
+            rounds = parseInt(rounds);
+            if (isNaN(rounds) || rounds < 1) {
+                rounds = 1;
+            } else if (rounds > 100) {
+                rounds = 100;
+            }
+            socket.send(JSON.stringify({message: rounds}));
+
+            $container.remove();
+        });
+    } else if (data.message_type === "NUM_PARALLEL_INFERENCES") {
+        // Show a select list in HTML from 1 to 10 with the ability to put another number and send it to the server when the send button is pressed
+        let $select = $(`<select id="parallel-inferences-select"></select>`);
+        for (let i = 1; i <= 10; i++) {
+            $select.append(`<option value="${i}">${i}</option>`);
+        }
+        $select.append(`<option value="other">Other</option>`);
+        // If other is selected, show an input field to enter the number of inference
+        $select.change(function () {
+            if ($(this).val() === "other") {
+                $(this).replaceWith(`<input type="number" id="parallel-inferences-input" min="1" max="100" step="1" value="1">`);
+            }
+        });
+        let $button = $(`<button id="send-parallel-inferences">Send</button>`);
+        let $container = $(`<div></div>`);
+        $container.append($select);
+        $container.append($button);
+        // Add the select list and button below the Accordion
+        $("#message-accordion").append($container);
+        // Add an event listener to the button to send the number of parallel inferences to the server
+        $button.click(function () {
+            let parallelInferences;
+            if ($("#parallel-inferences-select").length) {
+                parallelInferences = $("#parallel-inferences-select").val();
+            } else {
+                parallelInferences = $("#parallel-inferences-input").val();
+            }
+
+            if (parallelInferences === "other") {
+                parallelInferences = $("#parallel-inferences-input").val();
+            }
+
+            parallelInferences = parseInt(parallelInferences);
+            if (isNaN(parallelInferences) || parallelInferences < 1) {
+                parallelInferences = 1;
+            } else if (parallelInferences > 100) {
+                parallelInferences = 100;
+            }
+            socket.send(JSON.stringify({message: parallelInferences}));
+
+            $container.remove();
+        });
+    } else if (data.message_type == "INFERENCE CHOICE") {
+        // Show below the accordion a question as text and bellow two button "Yes","No" and "Use premium", and send the answer to the server as "y","n" or "p"
+        let $question = $(`<p>Proceed to inference ? You can also proceed using a premium llm.</p>`);
+        let $yesButton = $(`<button id="yes-button">Yes</button>`);
+        let $noButton = $(`<button id="no-button">No</button>`);
+        let $premiumButton = $(`<button id="premium-button">Use premium LLM</button>`);
+        let $container = $(`<div></div>`);
+        $container.append($question);
+        $container.append($yesButton);
+        $container.append($noButton);
+        $container.append($premiumButton);
+        // Add the question and buttons below the Accordion
+        $("#message-accordion").append($container);
+        // Add an event listener to the buttons to send the answer to the server
+        $yesButton.click(function () {
+            socket.send(JSON.stringify({message: "y"}));
+            $container.remove();
+        });
+        $noButton.click(function () {
+            socket.send(JSON.stringify({message: "n"}));
+            $container.remove();
+        });
+        $premiumButton.click(function () {
+            socket.send(JSON.stringify({message: "p"}));
+            $container.remove();
+        });
+
+        } else if (data.message_type === "NUM_PARALLEL_INFERENCES SYNTHESIS MODE CHOICE"){
+        // Show below the accordion a question as text and bellow two button "ON","OFF"and send the answer to the server as "1" or "0"
+        let $question = $(`<p>Proceed with synthesis mode ?</p>`);
+        let $onButton = $(`<button id="on-button">YES</button>`);
+        let $offButton = $(`<button id="off-button">NO</button>`);
+        let $container = $(`<div></div>`);
+        $container.append($question);
+        $container.append($onButton);
+        $container.append($offButton);
+        // Add the question and buttons below the Accordion
+        $("#message-accordion").append($container);
+        // Add an event listener to the buttons to send the answer to the server
+        $onButton.click(function () {
+            socket.send(JSON.stringify({message: "1"}));
+            $container.remove();
+        });
+        $offButton.click(function () {
+            socket.send(JSON.stringify({message: "0"}));
+            $container.remove();
+        });
 
         } else if(data.agent_name === "CodingAgent" && (data.message_type === "LLM ANSWER content" || data.message_type === "POST INFERENCE" || data.message_type === "process_ai_generated_code SystemMessage" || data.message_type === "Multiple LLM ANSWERS" || data.message_type === "MULTIPLE inferences received") ){
             // Do nothing
@@ -490,6 +622,18 @@ function displayMessage(data) {
         const content = data.message;
 
         let solutionColumns = document.querySelector('.solution-columns');
+
+        // The columnid is the first solution, so we need to create or recreate the solution columns
+        if (columnId === 0 && solutionColumns) {
+            solutionColumns.remove();
+            solutionColumns = null;
+            // Remove the pagination if it exists
+            let pagination = document.getElementById('pagination');
+            if (pagination) {
+                pagination.remove();
+            }
+        }
+
         if (!solutionColumns) {
             solutionColumns = document.createElement('div');
             solutionColumns.className = 'solution-columns';
@@ -521,8 +665,9 @@ function displayMessage(data) {
         const targetColumn = document.getElementById(`column-${columnId}`);
         const formatedMessage = formatMessage(content);
         if (targetColumn) {
-            targetColumn.innerHTML += `<p>${formatedMessage}</p>`;
-            targetColumn.innerHTML += `<div style="text-align: center; align-content: center; align-items: center;"><p>Evaluate the solution : </p><input type="range" min="0" max="10" value="5" step="1" class="slider" id = "slider-${columnId}"><br><span id="value-${columnId}">5</span></div>`;
+            // Add a max heigh to the formated message
+            targetColumn.innerHTML += `<div class="message" style="max-height: 450px; overflow-y: auto;">${formatedMessage}</div>`;
+            targetColumn.innerHTML += `<div style="text-align: center; align-content: center; align-items: center;"><p>Score the solution : </p><input type="range" min="0" max="10" value="5" step="1" class="slider" id = "slider-${columnId}"><br><span id="value-${columnId}">5</span></div>`;
             targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="evaluate-"${columnId}><i class="fa-regular fa-paper-plane"></i> Evaluate this solution</button></div><br>`;
             // Refresh score when slider is moved
             $(`#slider-${columnId}`).on('input', function () {
@@ -584,7 +729,9 @@ function displayMessage(data) {
 
            function formatMessage(message) {
                 // Remove ANSI color codes
-                const cleanString = message.replace(/\u001b\[\d+m/g, '');
+                let cleanString = message.replace(/\u001b\[\d+m/g, '');
+                // Remove all ANSI escape sequences
+                cleanString = cleanString.replace(/\u\d+b/g, '');
                 // Replace "\n" with "<br>"
                 const lineBreaks = cleanString.replace(/\n/g, '<br>');
                 // Regular expression to match Python code blocks
@@ -646,6 +793,8 @@ function displayMessage(data) {
 
             $("#send-button").click(function() {
             sendMessage();
+            // Hide options menu
+            $("#menu-options").empty();
         });
 
         // Add this new event listener for the Enter key
@@ -653,6 +802,7 @@ function displayMessage(data) {
             if (e.which == 13) { // 13 is the Enter key code
                 e.preventDefault(); // Prevent default Enter key behavior
                 sendMessage();
+                $("#menu-options").empty();
             }
         });
 
