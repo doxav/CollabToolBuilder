@@ -95,8 +95,10 @@ Prompts contain the "system prompts" sent to agents but it is much preferable to
 
 ```
 git clone https://github.com/open-webui/pipelines.git
+
+
 bash run_docker.sh
-bash ./start.sh
+
 
 ```
 
