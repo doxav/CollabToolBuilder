@@ -1,3 +1,4 @@
+
 #!/bin/bash
 #SBATCH --job-name=XPCollabFunctionsGPTCreator
 #SBATCH --output=/home/%u/CollabFunctionsGPTCreator/logs/ollama_experiment_%j.out
@@ -38,7 +39,7 @@ touch $ERROR_LOG
 touch $OUTPUT_LOG
 
 # Get SHA of optuna_opti.py
-OPTUNA_OPTI_SHA=$(sha256sum /home/$USER/CollabFunctionsGPTCreator/optuna_opti.py | awk '{ print $1 }')
+OPTUNA_OPTI_SHA=$(sha256sum /home/$USER/CollabFunctionsGPTCreator/optuna_opti_Synthesis.py | awk '{ print $1 }')
 
 # Check if zip or gzip is installed
 if command -v zip &> /dev/null; then
@@ -64,13 +65,13 @@ send_email_update() {
   if [ -f /home/$USER/CollabFunctionsGPTCreator/optuna.db ]; then
     if [ -n "$COMPRESS_CMD" ]; then
       eval $COMPRESS_CMD
-      attachments="-a $COMPRESSED_FILE -a /home/$USER/CollabFunctionsGPTCreator/optuna_opti.py"
+      attachments="-a $COMPRESSED_FILE -a /home/$USER/CollabFunctionsGPTCreator/optuna_opti_Synthesis.py"
     else
-      attachments="-a /home/$USER/CollabFunctionsGPTCreator/optuna_opti.py"
+      attachments="-a /home/$USER/CollabFunctionsGPTCreator/optuna_opti_Synthesis.py"
     fi
   else
     echo "No optuna.db file to attach" > $LOG_DIR/no_optuna_db.txt
-    attachments="-a $LOG_DIR/no_optuna_db.txt -a /home/$USER/CollabFunctionsGPTCreator/optuna_opti.py"
+    attachments="-a $LOG_DIR/no_optuna_db.txt -a /home/$USER/CollabFunctionsGPTCreator/optuna_opti_Synthesis.py"
   fi
 
   subject="Cluster experiment progress update (JobID: $JOB_ID, SrunPID: $SRUN_PID, Duration: $duration mins, SHA: $OPTUNA_OPTI_SHA)"
@@ -142,3 +143,4 @@ else
   send_email_update "true"
 fi
 
+~

@@ -31,7 +31,7 @@ _ = load_dotenv(find_dotenv())
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 
-def _num_tokens_from_string(string: str, encoding_name: str = "gpt-3.5-turbo") -> int:
+def _num_tokens_from_string(string: str, encoding_name: str = "gpt-4o-mini-2024-07-18") -> int:
     """Returns the number of tokens in a text string."""
     try:
         encoding = tiktoken.get_encoding(encoding_name)
@@ -111,6 +111,70 @@ def load_arxiv_paper(path: str | Path) -> Dict[str, str]:
         "References": references,
     }
     return article_dict
+
+def load_fiche_ano(path: str | Path) -> Dict[str, str]:
+    """Load a FA from disk to a dict with keys "numero_fa", "title", "Description", and "Comments"."""
+
+    doc = Path(path)
+    text = extract_text(doc)
+    
+    def extract_fa_number(text):
+        # Extraction du Numéro FA
+        match = re.search(r'(Numéro|Numero|numero|numéro|N°|n°|num)\s*(?:FA|Fiche Anomalie|fiche anomalie|fa|Fiche anomalie|Fa)\s*:\s*(\d+)', text, re.IGNORECASE)
+        if match:
+            return match.group(2)
+        return "Unknown"
+    
+    def extract_title(text):
+        # Extraction du Titre
+        for line in text.split('\n'):
+            if re.search(r'(Titre|titre|title)\s*:', line):
+                return line.split(":", 1)[1].strip()
+        return "Unknown"
+    
+    def extract_description(text):
+        # Extraction de la Description
+        description_lines = []
+        capture = False
+        for line in text.split('\n'):
+            if re.search(r'(Description|description|Descriptions|descriptions)\s*:', line, re.IGNORECASE):
+                description_lines.append(line.split(":", 1)[1].strip())
+                capture = True
+                continue
+            if re.search(r'(Commentaire|Commentaires|commentaire|commentaires)\s*:', line, re.IGNORECASE):
+                capture = False
+            if capture:
+                description_lines.append(line.strip())
+        return " ".join(description_lines)
+
+    def extract_comments(text):
+        # Extraction of comments
+        comments_lines = []
+        capture = False
+        for line in text.split('\n'):
+            if re.search(r'(Commentaire|Commentaires|commentaire|commentaires)\s*:', line, re.IGNORECASE):
+                comments_lines.append(line.split(":", 1)[1].strip())
+                capture = True
+                continue
+            if capture:
+                comments_lines.append(line.strip())
+        return " ".join(comments_lines)
+
+
+    numero_fa = extract_fa_number(text)
+    title = extract_title(text)
+    description = extract_description(text)
+    comments = extract_comments(text)
+
+    article_dict = {
+        #"numero_fa": numero_fa,
+        "title": title,
+        "Description": description,
+        "Comments": comments,
+    }
+    return article_dict
+    
+
 
 
 def split_patents_into_individual_files(patents_file: str | Path) -> None:
@@ -293,9 +357,10 @@ async def divide_sections_if_too_large(
     than 512 tokens), divides such sections into smaller sections, generates a new
     title, and returns the updated dictionary
     """
-    if doc_type not in ["patent", "wikipedia", "arxiv"]:
+    print (f"doc_type: {doc_type}")
+    if doc_type not in ["patent", "wikipedia", "arxiv", "fiche_ano"]:
         raise ValueError(
-            f"doc_type must be one of 'patent', 'wikipedia', or 'arxiv'. Got {doc_type}."
+            f"doc_type must be one of 'patent', 'wikipedia', 'fiche_ano' or 'arxiv'. Got {doc_type}."
         )
     logger.info("Dividing sections if too large in plan and section content.")
     final_dict: Dict = {}
@@ -333,7 +398,7 @@ async def divide_sections_if_too_large(
             splits: List[str] = char_splitter.split_text(content)
             # Keep heading the same but add numbers to sections e.g. 'h2 Reference' -> 'h2 Reference 1'
             # TODO - add a continue statement here?
-            if doc_type in ["wikipedia", "arxiv"] and is_reference_section(heading):
+            if doc_type in ["wikipedia", "arxiv", "fiche_ano"] and is_reference_section(heading):
                 for i, split in enumerate(splits, start=1):
                     new_heading = f"{heading} {i}"
                     final_dict[new_heading] = split
@@ -367,7 +432,7 @@ async def divide_sections_if_too_large(
 
 
 def _gen_embed_section_content(
-    heading: str, content: str, id: int = 1, total_sections: int = 1
+    heading: str, content: str, id: int, total_sections: int
 ) -> Dict[str, str | list[float]]:
     """Given a heading and content, returns a dictionary with the heading, content,
     and embeddings of the heading and content.
@@ -442,10 +507,10 @@ def generate_embeddings_plan_and_section_content(
     abstract, plan and associated embeddings.
     """
     doc_type_error_msg = (
-        f"doc_type must be one of 'patent', 'wikipedia', or 'arxiv'. "
+        f"doc_type must be one of 'patent', 'wikipedia','fiche_ano' or 'arxiv'. "
         f"Received {doc_type}"
     )
-    if doc_type not in ["patent", "wikipedia", "arxiv"]:
+    if doc_type not in ["patent", "wikipedia", "arxiv", "fiche_ano"]:
         raise ValueError(doc_type_error_msg)
     logger.info("Creating plan json")
     headings = list(article_dict.keys())
@@ -484,11 +549,25 @@ def generate_embeddings_plan_and_section_content(
             abstract = "no abstract"
         total_sections = len(headings) - 2
         start_index = 2
+
+    elif doc_type == "fiche_ano":
+        # The first key/value pairs in arxiv dicts are {'Title': title, 'Abstract': abstract}
+        # so we take the first two elements of content
+        title = content[0]
+        try:
+            abstract = content[1]
+            #numero_fa = content[0]
+            comment = content[2]
+        except IndexError:
+            abstract = "no abstract"
+        total_sections = len(headings) - 1
+        start_index = 1
     else:
         raise ValueError(doc_type_error_msg)
 
+    #logger.info("Numéro Fa: " + numero_fa)
     logger.info("Title: " + title)
-    logger.info("Abstract: " + abstract)
+    #logger.info("Abstract: " + abstract)
 
     plan = [
         _gen_embed_section_content(
@@ -512,12 +591,19 @@ def generate_embeddings_plan_and_section_content(
     try:
         plan_json = {
             "id": str(uuid4()),
+            #"numero fa": numero_fa,
             "title": title,
             "abstract": abstract,
+            "comment": comment,
+            "num_sections": total_sections,
+            #"numero_fa_embedding_1": embed_ada.embed_query(numero_fa),
+            #"numero_fa_embedding_2": embed_e5.embed_query("query: " + numero_fa),
             "title_embedding_1": embed_ada.embed_query(title),
             "title_embedding_2": embed_e5.embed_query("query: " + title),
             "abstract_embedding_1": embed_ada.embed_query(abstract),
             "abstract_embedding_2": embed_e5.embed_query("query: " + abstract),
+            "comment_embedding_1": embed_ada.embed_query(comment),
+            "comment_embedding_2": embed_e5.embed_query("query: " + comment),
             "plan": plan,
             "plan_embedding_1": plan_embed_1,
             "plan_embedding_2": plan_embed_2,
@@ -529,8 +615,10 @@ def generate_embeddings_plan_and_section_content(
     except Exception as e:
         plan_json = {
             "id": str(uuid4()),
+            #"numero fa": numero_fa,
             "title": title,
             "abstract": abstract,
+            "comment": comment,
             "title_embedding_1": None,
             "title_embedding_2": None,
             "abstract_embedding_1": None,
@@ -779,9 +867,11 @@ async def extract_plan_and_content(input: str | Path, doc_type: str) -> Dict[str
         article_dict = load_arxiv_paper(input)
     elif doc_type == "patent":
         article_dict = load_patent_file(input)
+    elif doc_type == "fiche_ano":
+        article_dict = load_fiche_ano(input)
     else:
         raise ValueError(
-            f"doc_type must be one of 'patent', 'wikipedia', or 'arxiv'. "
+            f"doc_type must be one of 'patent', 'wikipedia', 'fiche_ano' or 'arxiv'. "
             f"Received {doc_type}"
         )
     # Divide and create embeddings
@@ -880,7 +970,7 @@ async def extract_plan_and_content_patent(patent_file: str | Path) -> Dict[str, 
 
 
 if __name__ == "__main__":
-    wikipedia_articles = [
+    """wikipedia_articles = [
         "https://en.wikipedia.org/wiki/Large_language_model",
         "https://en.wikipedia.org/wiki/Transformer_(machine_learning_model)",
         "https://en.wikipedia.org/wiki/Dual-phase_evolution",
@@ -907,3 +997,7 @@ if __name__ == "__main__":
     arxiv = list(Path("data/arxiv").glob("*"))
     for arx in arxiv:
         asyncio.run(extract_plan_and_content_arxiv(arx))
+    """
+    fiche_ano = list(Path("data/fiche_ano").glob("*"))
+    for fiche in fiche_ano:
+        asyncio.run(extract_plan_and_content(fiche, doc_type="fiche_ano"))

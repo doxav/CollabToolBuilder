@@ -1,3 +1,4 @@
+
 #!/bin/bash
 while true; do
   clear
@@ -55,4 +56,3 @@ while true; do
 
   sleep 1
 done
-

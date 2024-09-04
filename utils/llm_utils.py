@@ -15,7 +15,6 @@ import time
 import json
 from elasticsearch import Elasticsearch
 import requests
-from requests.auth import HTTPBasicAuth
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
@@ -29,8 +28,6 @@ from langchain_core.messages.function import FunctionMessage
 
 import tkinter as tk
 from tkinter import scrolledtext
-
-from requests.auth import HTTPBasicAuth
 
 from utils.file_utils import *
 import concurrent.futures
@@ -992,7 +989,7 @@ class HumanLLMMonitor:
                 break
             else:
                 proceed = "y" if optuna else smart_input(
-                    "Proceed to inference (y/n) ? You can also hit 'p' to proceed using a premium llm.",self.agent_name).lower()
+                    "Proceed to inference (y/n) ? You can also hit 'p' to proceed using a premium llm.",self.agent_name,"INFERENCE CHOICE").lower()
                 if proceed in ["y", "p", ""]:
                     if proceed == "p": use_premium_llm = True
                     break
@@ -1004,19 +1001,19 @@ class HumanLLMMonitor:
 
     def changeNumParallelInferencesAndSynthesize(self):
         try:
-            self.num_parallel_inferences = int(input("Enter new value for num_parallel_inferences: "))
+            self.num_parallel_inferences = int(smart_input("Enter new value for num_parallel_inferences: ", self.agent_name, "NUM_PARALLEL_INFERENCES"))
         except:
             self.num_parallel_inferences = 1
-        synthesize_mode_input = input("Turn synthesis mode on/off (1 for ON, 0 for OFF): ").strip()  # NEW
+        synthesize_mode_input = smart_input("Turn synthesis mode on/off (1 for ON, 0 for OFF): ",self.agent_name,"NUM_PARALLEL_INFERENCES SYNTHESIS MODE CHOICE").strip()  # NEW
         if synthesize_mode_input in ["0", "1"]:  # NEW
             self.synthesize_mode = synthesize_mode_input == "1"  # NEW
         else:  # NEW
-            print("Invalid input. Synthesize mode remains unchanged.")
+            smart_print("Invalid input. Synthesize mode remains unchanged.", self.agent_name, "NUM_PARALLEL_INFERENCES SYNTHESIS MODE CHOICE")  # NEW
 
     def changeNumParallelInferences(self):
         try:
             self.num_parallel_inferences = int(
-                smart_input("Enter new value for num_parallel_inferences: ", self.agent_name))
+                smart_input("Enter new value for num_parallel_inferences: ", self.agent_name, "NUM_PARALLEL_INFERENCES"))
         except:
             self.num_parallel_inferences = 1
 
@@ -1165,8 +1162,8 @@ class HumanLLMMonitor:
     def getScoredResults(self, function_name):
         HumanLLMMonitor._check_and_init_vector_db()
         confirm = smart_input(
-            "Do you want see:\n(A) all MODIFIED/SCORED/COMMENTED results.\n(B) INPUT modified only.\n(C) OUTPUT modified only.\n(D) SCORED only.\n(E) COMMENTED only.\nSelect your letter for choice or hit enter for all: ",
-            self.agent_name).upper()
+            "Do you want see:\n[A] all MODIFIED/SCORED/COMMENTED results.\n[B] INPUT modified only.\n[C] OUTPUT modified only.\n[D] SCORED only.\n[E] COMMENTED only.\nSelect your letter for choice or hit enter for all: ",
+            self.agent_name,"BEFORE inference action MENU").upper()
         result = []
         if confirm in ["A", "", "B"]:
             result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
@@ -1228,13 +1225,13 @@ class HumanLLMMonitor:
 
             menu = (f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n{check_display}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")
 
-            menu += ("A. Manually set/modify the answer/output (I don't want to try to improve agent's system prompt).\n")  # je voudrais le corriger uniquement pour demander une suggestion d'amélioration du prompt (d'un autre côté, je peux aussi le faire dans le menu précédent)
-            menu += ("B. Critic this answer/output to get an improved answer/output.\n")
-            menu += ("C. Find a better Prompt by providing critic and ideal answer.\n")
-            menu += ("D. Evaluate & comment answer (Score between 0(worst)-1(top), and explain) to improve future results by using scored/commented examples.\n")
-            menu += ("E. Go back BEFORE inference to improve system prompt or add information to user message.\n")
-            menu += ("G. Skip human actions for N rounds.\n")
-            menu += ("H. Exit program.\n")
+            menu += ("[A] Manually set/modify the answer/output (I don't want to try to improve agent's system prompt).\n")  # je voudrais le corriger uniquement pour demander une suggestion d'amélioration du prompt (d'un autre côté, je peux aussi le faire dans le menu précédent)
+            menu += ("[B] Critic this answer/output to get an improved answer/output.\n")
+            menu += ("[C] Find a better Prompt by providing critic and ideal answer.\n")
+            menu += ("[D] Evaluate & comment answer (Score between 0(worst)-1(top), and explain) to improve future results by using scored/commented examples.\n")
+            menu += ("[E] Go back BEFORE inference to improve system prompt or add information to user message.\n")
+            menu += ("[G] Skip human actions for N rounds.\n")
+            menu += ("[H] Exit program.\n")
 
             smart_print(menu, self.agent_name, "AFTER inference action MENU" + (
                 f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""))
@@ -1464,7 +1461,7 @@ The following annotations are provided to guide the refinement process. Each ann
     def _log_entry(self, function_name, input_contents, output_contents, input_modified=False,
                    skipped_inference=False, input_comments=None, output_comments=None, output_llm_raw=None,
                    output_modified=False, inference_time=None, message_tokens=None, score=None, use_premium_llm=False,
-                   call_duration=None, skip_rounds=None, synthesize_mode=False):
+                   call_duration=None, skip_rounds=None, synthesize_mode=False, pipeline_mode=False):
         entry = {
             "input_contents": input_contents,
             "output_contents": output_contents,
@@ -1480,7 +1477,8 @@ The following annotations are provided to guide the refinement process. Each ann
             "after_inference_option_times": self.after_inference_option_times,
             "after_inference_option_counts": self.after_inference_option_counts,
             "call_duration": call_duration,
-            "synthesize_mode": synthesize_mode
+            "synthesize_mode": synthesize_mode,
+            "pipeline_mode": pipeline_mode
         }
         #print(f"Human modifications ? input_modified:{input_modified}, output_modified:{output_modified}\nlog entry: {entry}")
 
@@ -1502,6 +1500,7 @@ The following annotations are provided to guide the refinement process. Each ann
             "function_name": function_name,
             "skipped_inference": skipped_inference,
             "skip_rounds": skip_rounds,
+            "pipeline_mode": pipeline_mode,
             "use_premium_llm": use_premium_llm,
             "commented": (input_comments is not None or output_comments is not None),
             "scored": (score is not None),
