@@ -61,7 +61,7 @@ You can start creating functions or pipelines by using IHMv1.html or IHMv2.html
 > G. Skip human actions for N rounds. \
 > H. Exit program. \
 
-The validated functions that we will capitalize are placed in the **functions directory**. \
+The validated functions that we will capitalize are placed in the **functions directory** or **pipelines/pipelines**
 Prompts contain the "system prompts" sent to agents but it is much preferable to modify them from learn.py (via the Human LLM mechanism). \
 
 
@@ -72,18 +72,21 @@ Prompts contain the "system prompts" sent to agents but it is much preferable to
 
 ### Launch OpenWebUI with Docker 
 
-    => without ollama : docker run -d -p 3000:8080 --add-host=host.docker.internal:host-gateway -v open-webui:/app/backend/data --name open-webui --restart always ghcr.io/open-webui/open-webui:main
+    => without ollama 
+    
+    docker run -d -p 3000:8080 --add-host=host.docker.internal:host-gateway -v open-webui:/app/backend/data --name open-webui --restart always ghcr.io/open-webui/open-webui:main
 
-      ===> watch on  http://localhost:3000
+        ===> watch on  http://localhost:3000
 
 
-    => avec ollama : docker run -d --network=host -v open-webui:/app/backend/data -e OLLAMA_BASE_URL=http://127.0.0.1:11434 --name open-webui --restart always ghcr.io/open-webui/open-webui:main
-
-      ===> watch on http://localhost:8080        
-
+    => avec ollama : 
 
     docker run -d   --network=host   -v open-webui:/app/backend/data   --add-host=host.docker.internal:host-gateway   -e PIPELINES_URLS="$(for file in /pipelines/pipelines/*; do echo -n "$file,"; done | sed 's/,$//')"   -e OLLAMA_BASE_URL=http://127.0.0.1:11434   -v /path/to/pipelines:/app/pipelines   --name pipelines-combin   --restart always   ghcr.io/open-webui/pipelines:main
 
+        ===> watch on http://localhost:8080        
+
+
+    
 
 #### Mais il est plus simple de lance via $run_docker.sh (lance le docker openwebui, le script start.sh qui charge les pipelines, les serveurs uvicorns serveillent directement les modifiactions apportées à /pipelines/pipelines)
 
