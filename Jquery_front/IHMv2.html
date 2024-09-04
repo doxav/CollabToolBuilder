@@ -646,6 +646,8 @@ function displayMessage(data) {
 
             $("#send-button").click(function() {
             sendMessage();
+            // Hide options menu
+            $("#menu-options").empty();
         });
 
         // Add this new event listener for the Enter key
@@ -653,6 +655,7 @@ function displayMessage(data) {
             if (e.which == 13) { // 13 is the Enter key code
                 e.preventDefault(); // Prevent default Enter key behavior
                 sendMessage();
+                $("#menu-options").empty();
             }
         });
 
