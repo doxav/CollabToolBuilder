@@ -18,15 +18,18 @@ MODIFY CONFIG.PY with the IP that will be given to be able to access the local E
 
 ## Launching the learning to develop new functions
 
-To start the collaborative development process for new commands, execute the command:
+To start the collaborative development process on local IHM for new commands, execute the command:
 
 ```
 python learn.py
+python websocket_server.py
 ```
+You can start creating functions or pipelines by using IHMv1.html or IHMv2.html
+
 
 ## The basic architecture
 
-*1. Database (documentary and vectorial)* ElasticSearch: capitalizes our trials, stores new functions (can perform similarity search), is used with Kibana to temporarily store conversational agent results and visualize them
+*1. Database (documentary and vectorial)* ElasticSearch: capitalizes our trials, stores new functions or pipelines (can perform similarity search), is used with Kibana to temporarily store conversational agent results and visualize them
 
 *2. Capacity/Functions Development Agent System* Learn.py: iterative process of proposing new tasks to automate, coding, validation (go or new coding attempt), capitalization (indexing for reuse).
 ![Learning Loop](readme_learningloop.gif)
@@ -60,3 +63,63 @@ python learn.py
 
 The validated functions that we will capitalize are placed in the **functions directory**. \
 Prompts contain the "system prompts" sent to agents but it is much preferable to modify them from learn.py (via the Human LLM mechanism). \
+
+
+# Pipeline integration for Anomalies Solver
+
+###  Launch Neo4J database load on your machine 
+![graph neo4j](graph_readme.png)
+
+### Launch OpenWebUI with Docker 
+
+    => without ollama : docker run -d -p 3000:8080 --add-host=host.docker.internal:host-gateway -v open-webui:/app/backend/data --name open-webui --restart always ghcr.io/open-webui/open-webui:main
+
+      ===> watch on  http://localhost:3000
+
+
+    => avec ollama : docker run -d --network=host -v open-webui:/app/backend/data -e OLLAMA_BASE_URL=http://127.0.0.1:11434 --name open-webui --restart always ghcr.io/open-webui/open-webui:main
+
+      ===> watch on http://localhost:8080        
+
+
+    docker run -d   --network=host   -v open-webui:/app/backend/data   --add-host=host.docker.internal:host-gateway   -e PIPELINES_URLS="$(for file in /pipelines/pipelines/*; do echo -n "$file,"; done | sed 's/,$//')"   -e OLLAMA_BASE_URL=http://127.0.0.1:11434   -v /path/to/pipelines:/app/pipelines   --name pipelines-combin   --restart always   ghcr.io/open-webui/pipelines:main
+
+
+#### Mais il est plus simple de lance via $run_docker.sh (lance le docker openwebui, le script start.sh qui charge les pipelines, les serveurs uvicorns serveillent directement les modifiactions apportées à /pipelines/pipelines)
+
+
+![maj pipe](v2.png)
+
+```
+git clone https://github.com/open-webui/pipelines.git
+bash run_docker.sh
+bash ./start.sh
+
+```
+
+### OpenWebUi settings
+
+
+    with ollama : the WebUI docker container may not being able to reach the Ollama server at 127.0.0.1:11434 (host.docker.internal:11434) inside the container . Use the --network=host flag in your docker command to resolve this. Note that the port changes from 3000 to 8080, resulting in the link.
+
+    open localhost:8080, register or login, and then in Admin Panel, set the following mandatory connections: 
+
+            https://api.openai.com/v1   (add your personnal openai key)
+
+            http://localhost:9100   pwd : 0p3n-w3bu!
+
+                    NB: if you use docker : http://host.docker.internal:9100   pwd : 0p3n-w3bu!
+
+            http://localhost:11434 for ollama
+
+    
+        depending on the pipelines valves, you may have to fill the missing connections informations, such as : 
+                Llamaindex Ollama Base Url              http://localhost:11434
+                Llamaindex Model Name                   llama3_8b
+                Llamaindex Embedding Model Name         nomic-embed-text
+                Neo4J Uri                               bolt://localhost:7687
+                Neo4J User                              neo4j
+                Neo4J Password                          password
+                Openai Api Key                          your-key-api
+
+

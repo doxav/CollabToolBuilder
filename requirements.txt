@@ -1,82 +1,67 @@
+# LangChain and related dependencies
 langchain~=0.2.15
-javascript
-setuptools
+langchain_community~=0.2.14
+langchain_openai~=0.1.7
+langchain-core~=0.2.36
+langchain-huggingface~=0.0.3
+langchain-text-splitters~=0.2.2
+
+# OpenAI and tokenization
 openai~=1.43.0
 tiktoken~=0.7.0
+
+# Core utilities
 requests~=2.31.0
-setuptools
 psutil
 httpx
-elasticsearch
+PyPDF2
+pydantic
+watchdog
+PyYAML~=6.0.1
+python-dotenv~=1.0.1
+
+# Transformers and ML-related libraries
 transformers
 torch
+sentence-transformers
+scikit-learn
+numpy~=1.26.4
+optuna~=3.6.1
+einops
+
+# Web scraping and APIs
 wikipedia-api
 arxiv
+bs4
+beautifulsoup4~=4.12.3
+
+# Parsing and NLP
 pyparsing
 spacy
-scikit-image
-scikit-learn
-bs4
-config
-#gradio==3.48.0
+nltk
+
+# Web development
+flask
+flask_cors
+websockets~=11.0.3
+
+# Elasticsearch
+elasticsearch
+
+# Neo4j for graph database
+neo4j
+
+# Gradio for UI
 gradio
+
+# Jupyter and IPython tools
 ipywidgets
 IPython
 ipykernel
-neo4j
-langchain_community
-llama-index-llms-ollama
-llama_index.embeddings.ollama
-langchain_openai
-langchain_community
-optuna
-PyPDF2
-pydantic
-sentence_transformers
-watchdog
-langchain_community~=0.2.14
-langchain_openai~=0.1.7
-optuna~=3.6.1
-numpy~=1.26.4
-beautifulsoup4~=4.12.3
-python-dotenv~=1.0.1
-websockets~=11.0.3
-nbformat~=5.10.4
-PyYAML~=6.0.1
 jupyter_client~=8.6.2
-sentence-transformers
-einops
-flask
-flask_cors
-langchain-core~=0.2.36
-langchain-huggingface~=0.0.3
-langchain-text-splitters~=0.2.2
-llama-index-llms-ollama
-llama_index.embeddings.ollama
-langchain_openai
-langchain_community
-optuna
-PyPDF2
-pydantic
-sentence_transformers
-watchdog
-langchain_community~=0.2.14
-langchain_openai~=0.1.7
-optuna~=3.6.1
-numpy~=1.26.4
-beautifulsoup4~=4.12.3
-python-dotenv~=1.0.1
-websockets~=11.0.3
 nbformat~=5.10.4
-PyYAML~=6.0.1
-jupyter_client~=8.6.2
-sentence-transformers
-einops
-flask
-flask_cors
-langchain-core~=0.2.36
-langchain-huggingface~=0.0.3
-langchain-text-splitters~=0.2.2
 
-
-nltk
+# LLaMA index and embeddings
+llama-index
+llama-index-llms-ollama
+llama-index.embeddings.ollama
