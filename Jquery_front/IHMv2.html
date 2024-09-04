@@ -141,6 +141,22 @@ box-sizing: border-box;
     cursor: pointer;
 }
 
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+    background-color: #f0f0f0;
+}
+.pagination button {
+    margin: 0 5px;
+    padding: 5px 10px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
 .accordion { margin-bottom: 20px; background-color: #6a737d; color: white; }
 .filter-bar { margin-bottom: 20px; }
 .column { display: inline-block; vertical-align: top; margin-right: 20px; width: 30%; }
@@ -283,6 +299,51 @@ function displayMessage(data) {
         if (data.agent_name === "CodingAgent" && data.message_type === "NEW inference result recieved") {
             console.log("Handling multiple solutions");
             handleMultipleSolutions(data);
+            // If it's the last solution and there are more than 4 solutions, add pagination
+            if (data.column_id === data.column_max - 1 && data.column_max > 4) {
+                // Add the html code for the pagination
+                let pagination = document.createElement('div');
+                pagination.className = 'pagination';
+                pagination.id = 'pagination';
+                pagination.innerHTML = `<button id="prev-page">Previous</button><span id="page-info">Page 1 of 1</span><button id="next-page">Next</button>`;
+
+                // Add the pagination to the solution columns
+                let solutionColumns = document.querySelector('.solution-columns');
+                solutionColumns.parentNode.insertBefore(pagination, solutionColumns.nextSibling);
+
+                // Add event listeners for the pagination buttons taking in account that there are 4 columns per page
+                let columnMax = data.column_max;
+                let currentPage = 1;
+                let totalPages = Math.ceil(columnMax / 4);
+                let $columns = $('.solution-column');
+                let $pageInfo = $('#page-info');
+
+                $('#next-page').click(function() {
+                    if (currentPage < totalPages) {
+                        currentPage++;
+                        $columns.hide();
+                        $columns.slice((currentPage - 1) * 4, currentPage * 4).show();
+                        $pageInfo.text(`Page ${currentPage} of ${totalPages}`);
+                    }
+                });
+
+                $('#prev-page').click(function() {
+                    if (currentPage > 1) {
+                        currentPage--;
+                        $columns.hide();
+                        $columns.slice((currentPage - 1) * 4, currentPage * 4).show();
+                        $pageInfo.text(`Page ${currentPage} of ${totalPages}`);
+                    }
+                });
+
+                $columns.hide();
+                $columns.slice(0, 4).show();
+                $pageInfo.text(`Page ${currentPage} of ${totalPages}`);
+
+                // Update the pagination info with the total number of pages
+                totalPages = Math.ceil(columnMax / 4);
+                $pageInfo.text(`Page ${currentPage} of ${totalPages}`);
+            }
 
     } else if (data.agent_name === "CodingAgent" && data.message_type === "Scores") {
             /*
@@ -453,6 +514,8 @@ function displayMessage(data) {
 
 
             }
+
+
         }
 
         const targetColumn = document.getElementById(`column-${columnId}`);
@@ -470,12 +533,20 @@ function displayMessage(data) {
             targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="regenallbutton-"${columnId}><i class="fa-solid fa-rotate" aria-hidden="true"></i> Regenerate with all modifications</button></div>`;
             targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="score-"${columnId} class="button">Scoring ...</button></div>`;
         }
+        if (columnMax>4){
+            // Show only the 4 first columns
+            let $columns = $('.solution-column');
+            $columns.hide();
+            $columns.slice(0, 4).show();
+        }
 
 
 
     } catch (error) {
         console.error('Error parsing message:', error);
     }
+
+
 }
 
 // Add a listener to the focus-solutions button that scroll on the solution-columns
