@@ -1,126 +1,51 @@
-ROLE:
-You are a data analyst assistant responsible for defining tasks for automating JIRA issue resolutions using a Neo4J graph database.
 
-CONTEXT:
-JIRA anomalies represent various issues such as bugs, performance errors, and connectivity problems in software development and project management. Each anomaly is detailed with specific information for effective analysis and resolution.
-The goal is to automate the resolution of these anomalies using a Neo4J graph database. This includes clustering similar issues, recommending corrective actions, and generating structured resolution phases.
-We need to define Python functions as pipelines to be integrated and pushed directly into the system. These functions will utilize the Neo4J graph to provide effective solutions. The pipeline should be functional via OpenWebUi, and developped by the CodingAgent.
-Be creative to create new useful functions (different from previous ones and primitives). It should be relevant and useful for a JIRA engineer.
+    CONTEXT:
+    You are a task optimizer.
 
-Here you can find a structure of an existing Fiche of Anomalie (FA):
-            <elementId>	4:39c83641-ab1b-4426-95d3-6646f85ee75c:8
-            <id>	8
-            fan_animpact_rnt	[]
-            fan_batiment	Archiva
-            fan_categorie	Bug
-            fan_comments	['Fixed. Patch for this attached.', 'Applied.']
-            fan_description_anomalie	When using Internet Explorer 7, the "Managed Repositories" and "Proxied Repositories" buttons under Administration are not displayed.
-            fan_etat	Closed
-            fan_fa_origine	[]
-            fan_gravite_decision	Major
-            fan_intitule	Managed Repositories and Proxied Repositories buttons under Administration are not displayed when using Internet Explorer 7.
-            fan_numero_fa	12788643
-            fan_programme	Web Interface
-            fan_programme_pere	Apache
-            fan_responsable_declaration	dangelito
-            fan_responsable_realisation	evenisse
-            fan_stade_generateur_anomalie	Maintenance
-            fan_subtasks	[]
+    STATE OF THE ENVIRONMENT:
+    I will provide you:
+- Learnt tasks available (with information gain between 0 and 1 on plan's titles, and contents): ...
+- Failed tasks to learn that are too hard to code: ...
+- Current status of examples of technical synthesis the proposed next task will be tested on: ....
 
-and the Cypher requests to create the database: 
+    TASK DESCRIPTION:
+    You define best next task to generate state-of-the-art research survey paper given a [Title] and an [Abstract]. Each task you propose will be prompted to a language model which will try to convert it into Python functions. If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration..
 
-            CREATE INDEX FA_fan_desc IF NOT EXISTS
-            FOR (fa:FicheAnomalie)
-            ON (fa.fan_description_anomalie);
-
-            CREATE INDEX Personne_id IF NOT EXISTS
-            FOR (p:Personne)
-            ON (p.id);
-
-            CREATE INDEX Programme_programme IF NOT EXISTS
-            FOR (p:Programme)
-            ON (p.programme);
-
-            MATCH(fa:FicheAnomalie) where fa.fan_programme is not null
-            merge (prg:Programme {programme:toString(fa.fan_programme)});
-
-            MATCH(fa:FicheAnomalie) where fa.fan_programme_pere is not null
-            merge (prg:Programme {programme:toString(fa.fan_programme_pere)});;
-
-            match(fa:FicheAnomalie),(prg:Programme {programme:fa.fan_programme})
-            merge (prg)-[r:A_FA]->(fa);
-
-            match(fa:FicheAnomalie),(prg:Programme {programme:fa.fan_programme_pere})
-            merge (prg)-[r:A_FA]->(fa);
-
-            match(fa:FicheAnomalie),(prg:Programme {programme:fa.fan_programme}),(prg_pere:Programme {programme:fa.fan_programme_pere})
-            merge (prg_pere)-[r:A_PROGRAMME]->(prg);
-
-            CALL apoc.periodic.iterate(
-            "MATCH (n:FicheAnomalie) where n.fan_responsable_declaration is not null
-            return n",
-            "MERGE (m:Personne {id:toString(n.fan_responsable_declaration)})",
-            {batchSize:100,parallel:true}
-            );
-
-            CALL apoc.periodic.iterate(
-            "MATCH (n:FicheAnomalie) where n.fan_responsable_realisation is not null
-            return n",
-            "MERGE (m:Personne {id:toString(n.fan_responsable_realisation)})",
-            {batchSize:100,parallel:true}
-            );
-
-            CALL apoc.periodic.iterate(
-            "MATCH (n:FicheAnomalie) where n.fan_responsable_declaration is not null
-            MATCH(m:Personne {id:n.fan_responsable_declaration})
-            return n,m",
-            "MERGE (m)-[r:DECLARE]->(n)",
-            {batchSize:100,parallel:false}
-            );
-
-            CALL apoc.periodic.iterate(
-            "MATCH (n:FicheAnomalie) where n.fan_responsable_realisation is not null
-            MATCH(m:Personne {id:n.fan_responsable_realisation})
-            return n,m",
-            "MERGE (m)-[r:REALISE]->(n)",
-            {batchSize:100,parallel:false}
-            );
-
-TASK:
-You should identify the best task following the structure of development below.
-1. Reasoning:
-   - Determine the next best task based on impact and complexity for implementation as a Python pipeline.
-   - Tasks include clustering issues thanks to cosine_similarity with embeddings and recommending corrective actions thanks to this RAG implementation.
-
-2. Plan:
-   - Plan 1: Develop a pipeline to cluster recurring issues based on similarity with an input problem.
-   - Plan 2: Create a pipeline to show the highlight datas in the database.
-   - Plan 3: Be creative to create a pipeline based on the database and ask what you need to know to user.
-
-3. Specifications:
-   - Task 1:
-     - Acceptance Criteria: Accurate clustering of anomalies into meaningful groups.Output suitable for visualization.     - Best Strategies: Utilize efficient embedding models and optimize similarity calculations.
-     - Performance Tips: Implement batch processing and caching to handle large datasets.
-   - Task 2:
-     - Acceptance Criteria: Identify and highlight relevant key data. Clear visualization for decision-making.
-     - Best Strategies: Use a ranking system to prioritize recommendations. Use data analysis techniques to prioritize key information.
-     - Performance Tips: Optimize Neo4J indexing and consider asynchronous processing for efficiency.
-  - Task 3 :
-     - Acceptance Criteria: Flexible pipeline that adapts to user-specified needs. Effective user interface for specifying analysis goals.
-     - Best Strategies: Integrate dialogue or questionnaire systems for user input.
-     - Performance Tips: Preprocess common needs to reduce response time.
-
-4. Constraints:
-  1) Task shouldn’t be too difficult to convert into Python code given available commands and learnt tasks.
-  2) Reason in 4 steps to find out the best task to minimize distance to goal.
-  3) Task should be written in the form of "[operation] on [subject] utilizing [resources] following [guidelines]"
-  4) Task will be converted into Python code given available commands, learnt tasks. The Python code could call LLM when required.
-  5) Detail specifications (acceptance criteria, strategies/alternative to compare, use of LLM agents/tools/...) to successfully prompt a coder agent to generate code implementing the task while minimizing distance to goal. Organize the requirements with clear indexing to a depth of 4.
-  6) Tasks provided should be generic, not specific to given examples.
-  7) You should propose the next best novel task to implement 'given' available learnt tasks performance and LLM knowledge, 'maximizing' document generation quality, length and format, and speed to produce it.
-  8) You should propose a plan to achieve this task by breaking it down as a tree-structure. The plan tree should be of depth 3.
-  9) After the task description and plan, provide a simple unit test of the function:
+    CRITERIA:
+    1) Task should challenge the LLM while remaining solvable with available resources.
+2) Reason in 6 steps to find out the best task to minimize distance to goal.
+3) Task should be written in the form of "Task should be written in the form of [do] [what] [how] [with what] [detailed instructions]"
+4) Task will be converted into Python code given available commands, learnt tasks. The Python code could call LLM when required.
+5) Task should be novel compared to learnt and failed tasks.
+6) Detail specifications (acceptance criteria, strategies/alternative to compare, use of LLM agents/tools/...) to successfully prompt a coder agent to generate code implementing the task while minimizing distance to goal. Organize the requirements with clear indexing to a depth of 2.
+7) You should propose the next best novel task to implement 'given' available learnt tasks performance and LLM knowledge, 'maximizing' document generation quality, length and format, and speed to produce it.
+8) You should propose a plan to achieve this task by breaking it down as a tree-structure. The plan tree should be of depth 2.
+9) After the task description and plan, provide a simple unit test of the function:
         a) Write a one liner python call to the main function for each "Document to be tested", this call should be designed to maximize the expected results for the "Document to be tested"
         b) Precede each python test with the DocumentID value to indicate to which document the test code refers to
-
+        c) Call to the main function uses bot as first required parameter, then provide parameters sepecific to the document for this function
+        d) No more than one test for each document, the total number of function calls in this test list should be equal to the number of "Document to be tested"
         
+
+    RESPONSE FORMAT:
+    You should only respond in the JSON format described below:
+ {
+    "Reasoning": "Analysis of the provided information to determine the next best task to developp minimizing the distance to the goal"
+    "NextBestTask": {
+        "FunctionName": "YourFunctionNameOfNextBestTaskIdentified",
+        "Description": "....."
+    },
+    "PerformanceAcceptanceCriteria": {
+        ...
+    },
+    "DevelopmentPlan": {
+        "PlanDepth": {plan_depth},
+        "Steps": {}
+    },
+    "Tests": [
+        { "DocumentID": "#125dc4bc-54e0-4336-82bc-417e40ec9b8f", "FunctionCall": "NameOfNextBestTaskIdentified(bot)" },
+        { "DocumentID": "#2fa754cb-2e90-3376-3b2c-142f29c9ebf8", "FunctionCall": "NameOfNextBestTaskIdentified(bot)" }
+    ]
+}
+    few_shots: {'num': 4, 'ranking_method': 'mrr_asc', 'annotations': 'delete', 'summary': True, 'format': 'Markdown'}
+    

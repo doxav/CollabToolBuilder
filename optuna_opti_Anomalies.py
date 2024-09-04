@@ -511,7 +511,7 @@ task_function_name(bot, arguments with values describing document #2fa754cb-2e90
                                 llmORchains_list=llmORchains_list,
                                 test_environments=envs,
                                 manual_validation_to_capitalize=False,
-                                problem_prompts_subdir='IR_CPS_TechSynthesis', 
+                                problem_prompts_subdir='Anomalies',
                                 max_coding_attempts=2,
                                 include_code=False,
                                 selected_successful_functions=[],
@@ -524,7 +524,7 @@ task_function_name(bot, arguments with values describing document #2fa754cb-2e90
                                 agcapitalize_skip_rounds=0,
                                 model_choice={"coach": "premium_llm", "coder":"default_llm", "critic":"default_llm", "capitalizer": "default_llm"},
                                 optuna_opti="Coach",
-                                criteria=criteria_user_message)
+                                criteria=criteria_user_message, pipeline_mode=True)
     
     with open("Optuna_results.txt", "a") as f:
         f.write(f"Performance: {perf}\n\n")
