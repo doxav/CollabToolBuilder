@@ -5,7 +5,7 @@ import subprocess
 
 from typing import List, Optional, Union
 from dataclasses import dataclass, field
-from jinja2 import Template
+#from jinja2 import Template
 from langchain import LLMChain
 from langchain.llms import OpenAI
 from langchain.prompts import PromptTemplate
