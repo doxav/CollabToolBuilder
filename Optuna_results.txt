@@ -1,3 +1,5 @@
+Trial: 0
+Prompt Coach Chosen: 
 
     CONTEXT:
     You are a task optimizer.

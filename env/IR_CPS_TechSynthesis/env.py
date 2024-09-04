@@ -12,9 +12,10 @@ from dataclasses import asdict
 #from config import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, ELASTICSEARCH_HOST
 from config import *
 #from attr import dataclass, field
-
+import PyPDF2
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+import pdb
 
 import traceback
 
@@ -84,7 +85,7 @@ class DocumentStructure:
                  ): 
         self.embedding_model_query_prefix = embedding_model_query_prefix
         self.embedding_model_name = embedding_model_name
-        if embedding_model_name == "text-embeddings-ada-002":
+        if embedding_model_name == "text-embedding-ada-002":
             if not os.getenv("OPENAI_API_KEY"):
                 raise ValueError("OpenAI API key is required for OpenAI ada-002 model.")
             self.embedding_model = OpenAIEmbeddings(model=embedding_model_name) # , openAIApiKey=os.getenv("OPENAI_API_KEY")
@@ -326,7 +327,8 @@ class SynthesisManager:
                 'websearch_google': SynthesisManager.search_google, #
                 'core': SynthesisManager.search_core, #
                 'websearch_wikipedia': SynthesisManager.search_wikipedia, #
-                'paper_semantic_scholar': SynthesisManager.search_semantic_scholar #
+                'paper_semantic_scholar': SynthesisManager.search_semantic_scholar, #
+                'fiche_anomalie': SynthesisManager.search_fiche_anomalie #
             }
             search_function = search_functions.get(search_type)
             if search_function:
@@ -773,6 +775,60 @@ class SynthesisManager:
 
         return results
 
+    @staticmethod
+    @method_call_counter
+    def extract_text_from_pdf(pdf_path):
+        """
+        Extract text from a PDF file
+        :param pdf_path: path to the PDF file
+        :return: extracted text as a string
+        """
+        text = ""
+        try:
+            with open(pdf_path, "rb") as file:
+                reader = PyPDF2.PdfReader(file)
+                for page_num in range(len(reader.pages)):
+                    page = reader.pages[page_num]
+                    text += page.extract_text()
+        except Exception as e:
+            print(f"Error reading {pdf_path}: {e}")
+        return text
+
+
+
+    @staticmethod
+    @method_call_counter
+    def search_fiche_anomalie(query, directory_path, output_format='json', max_results=20):
+        """
+        Search for anomalies in PDF files within a directory
+        :param query: query string
+        :param directory_path: path to the directory containing PDF files
+        :param output_format: output format (json or text)
+        :param max_results: maximum number of results returned
+        :return: response
+        """
+        
+        results = []
+        for filename in os.listdir(directory_path):
+            if filename.endswith(".pdf"):
+                pdf_path = os.path.join(directory_path, filename)
+                text = extract_text_from_pdf(pdf_path)
+                if query.lower() in text.lower():
+                    results.append({
+                        'filename': filename,
+                        'content': text
+                    })
+                if len(results) >= max_results:
+                    break
+        
+        if output_format == 'json':
+            return json.dumps(results, indent=2)
+        else:
+            return '\n'.join(['Filename: {}\nContent: {}\n'.format(result['filename'], result['content']) for result in results])
+
+
+
+
     # OK: based on search_google
     @staticmethod
     @method_call_counter
@@ -1069,7 +1125,7 @@ class SynthesisManager:
         # Count non empty section's content (not None and len > 1)
         current_plan_non_empty_sections_content_count = sum(1 for section in self.document.document_content.sections_list if section.content and len(section.content) > 1)
         current_plan_non_empty_sections_title_count = sum(1 for section in self.document.document_content.sections_list if section.title and len(section.title) > 1)
-        current_content_length = sum(len(section.content) for section in self.document.document_content.sections_list)
+        current_content_length = sum(len(getattr(section, 'content', 0)) for section in self.document.document_content.sections_list)
 
         plan_embedding = self.document.document_content.sections_list_embedding
         plan_titles_embedding = self.document.document_content.sections_list_title_embedding
