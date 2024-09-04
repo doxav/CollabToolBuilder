@@ -1016,7 +1016,7 @@ class HumanLLMMonitor:
     def changeNumParallelInferences(self):
         try:
             self.num_parallel_inferences = int(
-                smart_input("Enter new value for num_parallel_inferences: ", self.agent_name))
+                smart_input("Enter new value for num_parallel_inferences: ", self.agent_name, "NUM_PARALLEL_INFERENCES"))
         except:
             self.num_parallel_inferences = 1
 
