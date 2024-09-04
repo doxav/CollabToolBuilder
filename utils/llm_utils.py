@@ -1004,19 +1004,19 @@ class HumanLLMMonitor:
 
     def changeNumParallelInferencesAndSynthesize(self):
         try:
-            self.num_parallel_inferences = int(input("Enter new value for num_parallel_inferences: "))
+            self.num_parallel_inferences = int(smart_input("Enter new value for num_parallel_inferences: ", self.agent_name, "NUM_PARALLEL_INFERENCES"))
         except:
             self.num_parallel_inferences = 1
-        synthesize_mode_input = input("Turn synthesis mode on/off (1 for ON, 0 for OFF): ").strip()  # NEW
+        synthesize_mode_input = smart_input("Turn synthesis mode on/off (1 for ON, 0 for OFF): ",self.agent_name,"NUM_PARALLEL_INFERENCES SYNTHESIS MODE CHOICE").strip()  # NEW
         if synthesize_mode_input in ["0", "1"]:  # NEW
             self.synthesize_mode = synthesize_mode_input == "1"  # NEW
         else:  # NEW
-            print("Invalid input. Synthesize mode remains unchanged.")
+            smart_print("Invalid input. Synthesize mode remains unchanged.", self.agent_name, "NUM_PARALLEL_INFERENCES SYNTHESIS MODE CHOICE")  # NEW
 
     def changeNumParallelInferences(self):
         try:
             self.num_parallel_inferences = int(
-                smart_input("Enter new value for num_parallel_inferences: ", self.agent_name))
+                smart_input("Enter new value for num_parallel_inferences: ", self.agent_name, "NUM_PARALLEL_INFERENCES"))
         except:
             self.num_parallel_inferences = 1
 
