@@ -463,13 +463,11 @@ class CodingAgent():
         else:
             path_folder = "primitives"
 
-        smart_print(f"Folder: {path_folder}")
         folder_path = os.path.join(os.path.dirname(__file__), path_folder)
         for root, dirs, files in os.walk(folder_path):
-            smart_print(f"Folder: {folder_path}")
             for file in files:
                 if file.endswith(".py"):
-                    smart_print(f"File: {file}")
+                    smart_print(f"File load: {file}", "Pipeline/Function Mode", "Files loaded")
                     file_path = os.path.join(root, file)
                     with open(file_path, "r") as f:
                         primitives.append(f.read())
@@ -897,12 +895,18 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         choice = smart_input("CONFIG Enter a number for subdirectory (leave empty for default): "+"; ".join(f"{i}. {subdir}" for i, subdir in enumerate(problem_prompts_subdirs, 1))+" ?", "CONFIG")
         # if choise is empty or not a number or not in the range of the list of subdirectories, set it to 1
         problem_prompts_subdir = problem_prompts_subdirs[int(choice) - 1] if choice.isdigit() and 1 <= int(choice) <= len(problem_prompts_subdirs) else default_subdir
-    
-    pipeline_activate = smart_input("Do you want to create a pipeline as a new class (default = false, new function) ? yes/no :  ")
-    if pipeline_activate =="yes" or pipeline_activate == "y":
+   
+    user_input=""
+    user_input = smart_input("Do you want to create a pipeline as a new class (default = false, new function) ? yes/no :  ", "Pipeline/Function Mode", "Pipeline or Function CONFIG")
+    pipeline_activate = user_input.lower()
+    if pipeline_activate in ["yes", "y", "YES","Yes", "Oui", "o", "true", "t"]:
         pipeline_mode = True
     else:
         pipeline_mode = False
+
+
+    # Continuer avec le reste du programme
+    smart_print(f"Pipeline mode is set to: {pipeline_mode}", "Pipeline/Function Mode", "Pipeline or Function CONFIG")
 
     if test_environments is None:
         env_type = "default"
@@ -947,7 +951,6 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             task = task[0]
         smart_print("Identified Task: "+task.content.replace("\\n", "\n"), "orchestrate_agents", "orchestrate_agents RESULT")
         task_description = task.content
-        smart_print("pipeline_mode", pipeline_mode)
         # Extract potential score and state function code from the task
         if allow_custom_score_state_functions:
             # Extract current implementation of get_score and get_state from the first environment
