@@ -282,7 +282,24 @@ class CodingAgent():
 
     def parse_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None):
         import ast, time, re
-        error = None
+        
+        # Convert text to dictionary
+        try:
+            result_dict = ast.literal_eval(message)
+        except Exception as e:
+            result_dict = None
+        # if result_dict is a dictionary and code exists, change message to result_dict["code"]
+        if isinstance(result_dict, dict) and "MainFunction" in result_dict:
+            code = ""
+            if "HelperFunctions" in result_dict:
+                for helper_function in result_dict["HelperFunctionsModel"]:
+                    code += helper_function["code"] + "\n"
+                
+            code += result_dict["MainFunction"]["MainFunctionModel"]["code"]
+
+        else:
+            code = None
+        
         while retry > 0:
             try:
                 if language == "py":  # Python case
@@ -318,6 +335,7 @@ class CodingAgent():
                                 "type": node_type,
                                 "body": ast.get_source_segment(code, node),
                                 "params": [arg.arg for arg in node.args.args],
+                                
                             }
                             functions.append(main_function)
 
@@ -327,6 +345,7 @@ class CodingAgent():
                                 "name": node.name,
                                 "type": node_type,
                                 "body": ast.get_source_segment(code, node),
+                                "params": [arg.arg for arg in node.args.args],
                             }
                             classes.append(class_definition)
 
@@ -364,32 +383,34 @@ class CodingAgent():
                         # Check if the test is a function call
                        # if not isinstance(parsed_test.body[0], ast.Expr):
                         #   return False, f"Error parsing code of Tests (not a function call): {test}"
+                else:
+                    raise ValueError(f"Unsupported language in this version: {language}")
 
                     # Return all necessary information
-                    if self.pipeline_mode:
-                        return True, {
+                if self.pipeline_mode:
+                    self.parsed_code = {
                             "program_code": program_code,
                             "class_name": class_definition["name"],
                             "runnable_code": runnable_code,
                             "tests": tests,
                         }
-                    else:
-                        return True, {
+                else:
+                    self.parsed_code = {
                             "program_code": program_code,
                             "main_function_name": main_function["name"],
                             "runnable_code": runnable_code,
                             "tests": tests,
                         }
+                return True, self.parsed_code
 
-
-                else:
-                    raise ValueError(f"Unsupported language in this version: {language}")
+                
             
             except Exception as e:
                 retry -= 1
                 error = e
                 time.sleep(0.1)
 
+        self.parsed_code = f"Error parsing action response (before program execution): {error}"
         return False, f"Error parsing action response (before program execution): {error}"
 
 
