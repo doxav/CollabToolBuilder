@@ -667,7 +667,7 @@ function displayMessage(data) {
         if (targetColumn) {
             // Add a max heigh to the formated message
             targetColumn.innerHTML += `<div class="message" style="max-height: 450px; overflow-y: auto;">${formatedMessage}</div>`;
-            targetColumn.innerHTML += `<div style="text-align: center; align-content: center; align-items: center;"><p>Evaluate the solution : </p><input type="range" min="0" max="10" value="5" step="1" class="slider" id = "slider-${columnId}"><br><span id="value-${columnId}">5</span></div>`;
+            targetColumn.innerHTML += `<div style="text-align: center; align-content: center; align-items: center;"><p>Score the solution : </p><input type="range" min="0" max="10" value="5" step="1" class="slider" id = "slider-${columnId}"><br><span id="value-${columnId}">5</span></div>`;
             targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="evaluate-"${columnId}><i class="fa-regular fa-paper-plane"></i> Evaluate this solution</button></div><br>`;
             // Refresh score when slider is moved
             $(`#slider-${columnId}`).on('input', function () {
