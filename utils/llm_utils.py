@@ -992,7 +992,7 @@ class HumanLLMMonitor:
                 break
             else:
                 proceed = "y" if optuna else smart_input(
-                    "Proceed to inference (y/n) ? You can also hit 'p' to proceed using a premium llm.",self.agent_name).lower()
+                    "Proceed to inference (y/n) ? You can also hit 'p' to proceed using a premium llm.",self.agent_name,"INFERENCE CHOICE").lower()
                 if proceed in ["y", "p", ""]:
                     if proceed == "p": use_premium_llm = True
                     break
@@ -1165,8 +1165,8 @@ class HumanLLMMonitor:
     def getScoredResults(self, function_name):
         HumanLLMMonitor._check_and_init_vector_db()
         confirm = smart_input(
-            "Do you want see:\n(A) all MODIFIED/SCORED/COMMENTED results.\n(B) INPUT modified only.\n(C) OUTPUT modified only.\n(D) SCORED only.\n(E) COMMENTED only.\nSelect your letter for choice or hit enter for all: ",
-            self.agent_name).upper()
+            "Do you want see:\n[A] all MODIFIED/SCORED/COMMENTED results.\n[B] INPUT modified only.\n[C] OUTPUT modified only.\n[D] SCORED only.\n[E] COMMENTED only.\nSelect your letter for choice or hit enter for all: ",
+            self.agent_name,"BEFORE inference action MENU").upper()
         result = []
         if confirm in ["A", "", "B"]:
             result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
@@ -1228,13 +1228,13 @@ class HumanLLMMonitor:
 
             menu = (f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n{check_display}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")
 
-            menu += ("A. Manually set/modify the answer/output (I don't want to try to improve agent's system prompt).\n")  # je voudrais le corriger uniquement pour demander une suggestion d'amélioration du prompt (d'un autre côté, je peux aussi le faire dans le menu précédent)
-            menu += ("B. Critic this answer/output to get an improved answer/output.\n")
-            menu += ("C. Find a better Prompt by providing critic and ideal answer.\n")
-            menu += ("D. Evaluate & comment answer (Score between 0(worst)-1(top), and explain) to improve future results by using scored/commented examples.\n")
-            menu += ("E. Go back BEFORE inference to improve system prompt or add information to user message.\n")
-            menu += ("G. Skip human actions for N rounds.\n")
-            menu += ("H. Exit program.\n")
+            menu += ("[A] Manually set/modify the answer/output (I don't want to try to improve agent's system prompt).\n")  # je voudrais le corriger uniquement pour demander une suggestion d'amélioration du prompt (d'un autre côté, je peux aussi le faire dans le menu précédent)
+            menu += ("[B] Critic this answer/output to get an improved answer/output.\n")
+            menu += ("[C] Find a better Prompt by providing critic and ideal answer.\n")
+            menu += ("[D] Evaluate & comment answer (Score between 0(worst)-1(top), and explain) to improve future results by using scored/commented examples.\n")
+            menu += ("[E] Go back BEFORE inference to improve system prompt or add information to user message.\n")
+            menu += ("[G] Skip human actions for N rounds.\n")
+            menu += ("[H] Exit program.\n")
 
             smart_print(menu, self.agent_name, "AFTER inference action MENU" + (
                 f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""))
