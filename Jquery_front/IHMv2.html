@@ -144,7 +144,7 @@ box-sizing: border-box;
 .accordion { margin-bottom: 20px; background-color: #6a737d; color: white; }
 .filter-bar { margin-bottom: 20px; }
 .column { display: inline-block; vertical-align: top; margin-right: 20px; width: 30%; }
-.menu-option { display: inline-block; margin: 5px; padding: 5px 10px; border: 1px solid #2e2e2e; border-radius: 15px; cursor: pointer; color: white; background-color: #555555; }
+.menu-option { display: inline-block; margin: 5px; padding: 5px 10px; border: 1px solid #2e2e2e; border-radius: 15px; cursor: pointer; color: white; background-color: #555555; z-index: 99999;}
 #user-input { width: 100%; padding: 10px; margin-top: 10px; box-sizing: border-box; }
 #send-button { margin-top: 10px; }
 .annotation-menu { display: none; position: absolute; background: #636363; border: 1px solid #636363; padding: 10px; z-index: 999999;}
@@ -379,7 +379,9 @@ function displayMessage(data) {
                 let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${content}</div>`);
                 $agentAccordion.children("div").append($messageContainer);
             }
-        }
+        } else if (data.message_type === "BEFORE inference action MENU" || data.message_type === "AFTER inference action MENU" && data.message.includes("Change default") || data.message.includes("Change premium") || data.message.includes("Exit") || data.message.includes("Log comments")) {
+                displayMenuOptions(data.message);
+            }
         else {
             if ($agentAccordion.length === 0) {
                 $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
@@ -393,9 +395,7 @@ function displayMessage(data) {
                 displayInputField();
             }
 
-            if (data.message.includes("BEFORE") || data.message.includes("AFTER")) {
-                displayMenuOptions(data.message);
-            }
+
         }
 
             $("#message-accordion").accordion("refresh");

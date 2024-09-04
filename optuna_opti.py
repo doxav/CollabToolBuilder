@@ -517,13 +517,14 @@ task_function_name(bot, arguments with values describing document #2fa754cb-2e90
                                 selected_successful_functions=[],
                                 selected_failed_functions=[],
                                 agtask_premium_llm_by_default=True,
+                                max_execution_time=900,
                                 agtask_skip_rounds=0,
                                 agcoding_skip_rounds=0,
                                 agvalidation_skip_rounds=0,
                                 agcapitalize_skip_rounds=0,
                                 model_choice={"coach": "premium_llm", "coder":"default_llm", "critic":"default_llm", "capitalizer": "default_llm"},
                                 optuna_opti="Coach",
-                                criteria=criteria_user_message, reset_env_end=reset_env_end)
+                                criteria=criteria_user_message)
     
     with open("Optuna_results.txt", "a") as f:
         f.write(f"Performance: {perf}\n\n")
