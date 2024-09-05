@@ -122,18 +122,19 @@ You can start creating functions or pipelines by using IHMv1.html or IHMv2.html
 
 ### Launch OpenWebUI with Docker 
 
-    => without ollama 
+
+###### without ollama 
 ```bash   
     docker run -d -p 3000:8080 --add-host=host.docker.internal:host-gateway -v open-webui:/app/backend/data --name open-webui --restart always ghcr.io/open-webui/open-webui:main
 ```
-        ===> watch on  http://localhost:3000
+        watch on  http://localhost:3000
 
 
-    => with ollama : 
+###### with ollama : 
 ```bash
     docker run -d   --network=host   -v open-webui:/app/backend/data   --add-host=host.docker.internal:host-gateway   -e PIPELINES_URLS="$(for file in /pipelines/pipelines/*; do echo -n "$file,"; done | sed 's/,$//')"   -e OLLAMA_BASE_URL=http://127.0.0.1:11434   -v /path/to/pipelines:/app/pipelines   --name pipelines-combin   --restart always   ghcr.io/open-webui/pipelines:main
 ```
-        ===> watch on http://localhost:8080        
+        watch on http://localhost:8080        
 
 
 
@@ -150,20 +151,23 @@ bash run_docker.sh
 ### OpenWebUi settings
 
 
-    with ollama : the WebUI docker container may not being able to reach the Ollama server at 127.0.0.1:11434 (host.docker.internal:11434) inside the container . Use the --network=host flag in your docker command to resolve this. Note that the port changes from 3000 to 8080, resulting in the link.
+###### with ollama 
 
-    open localhost:8080, register or login, and then in Admin Panel, set the following mandatory connections: 
+the WebUI docker container may not being able to reach the Ollama server at 127.0.0.1:11434 (host.docker.internal:11434) inside the container . Use the --network=host flag in your docker command to resolve this. Note that the port changes from 3000 to 8080, resulting in the link.
 
-            https://api.openai.com/v1   (add your personnal openai key)
+open localhost:8080, register or login, and then in Admin Panel, set the following mandatory connections: 
 
-            http://localhost:9100   pwd : 0p3n-w3bu!
+    https://api.openai.com/v1   (add your personnal openai key)
 
-                    NB: if you use docker : http://host.docker.internal:9100   pwd : 0p3n-w3bu!
+    http://localhost:9100   pwd : 0p3n-w3bu!
 
-            http://localhost:11434 for ollama
+NB: if you use docker : http://host.docker.internal:9100   pwd : 0p3n-w3bu!
+
+    http://localhost:11434 for ollama
 
     
-        depending on the pipelines valves, you may have to fill the missing connections informations, such as : 
+depending on the pipelines valves, you may have to fill the missing connections informations, such as :
+ 
                 Llamaindex Ollama Base Url              http://localhost:11434
                 Llamaindex Model Name                   llama3_8b
                 Llamaindex Embedding Model Name         nomic-embed-text
