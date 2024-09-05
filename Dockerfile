@@ -47,6 +47,8 @@ RUN python3.10 -m venv /app/.venv && \
     /app/.venv/bin/python -m pip install -r /app/requirements.txt && \
     /app/.venv/bin/python -m pip install aider-chat
 
+# Make the .venv directory writable
+RUN chmod -R 777 /app/.venv
 
 # Use bash shell for subsequent commands
 SHELL ["/bin/bash", "-c"]

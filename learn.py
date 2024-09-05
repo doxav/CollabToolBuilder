@@ -477,7 +477,7 @@ class CodingAgent():
         if successful_tasks and len(successful_tasks) > 0:
             user_message+=f"{dnl}PREVIOUSLY SUCCESSFUL TASKS: [[[{nl}{nl.join(successful_tasks[:5])}{nl}]]]"
         if failed_tasks and len(failed_tasks) > 0:
-            user_message+=f"{dnl}PREVIOUSLY FAILED TASKS: [[[{nl}{nl.join(failed_tasks[:5])}{nl}]]]"
+            user_message+=f"{dnl}PREVIOUSLY FAILED TASKS: [[[{nl}{nl.join(failed_tasks[:3])}{nl}]]]"
         if previous_errors and len(previous_errors) > 0:
             user_message+=f"{dnl}PREVIOUS ATTEMPTS TO CODE THE TASK: [[[{nl}"
             for previous_error, previous_score, previous_code in zip(previous_errors, previous_scores, previous_codes):
@@ -587,21 +587,20 @@ class CapitalizationAgent:
         import socket, uuid, datetime
 
         if self.pipeline_mode:
-            name_file = parsed_code["class_name"]
-            pipeline_file_path = os.path.join("pipelines/pipelines", name_file+".py")
+            function_name = parsed_code["class_name"]
+            pipeline_file_path = os.path.join("pipelines/pipelines", function_name+".py")
             tool_description = str(self.generate_tool_description(parsed_code["class_name"], parsed_code["program_code"]))
             self.tasks_repository[parsed_code["class_name"]] = [tool_description, parsed_code["program_code"]]
             # print last added task
             smart_print(f"************ Last added task ************\n{parsed_code['class_name']}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
         else:
-            name_file = parsed_code["main_function_name"]
+            function_name = parsed_code.get("main_function_name", parsed_code.get("main_function", {}).get("name", "unknown"))
             # save function program_code in a file under the functions directory and add to the function signature the generated dosctring
-            function_file_path = os.path.join("functions", name_file+".py")
-            tool_description = str(self.generate_tool_description(parsed_code["main_function_name"], parsed_code["program_code"]))
-            self.tasks_repository[parsed_code["main_function_name"]] = [tool_description, parsed_code["program_code"]]
+            function_file_path = os.path.join("functions", function_name+".py")
+            tool_description = str(self.generate_tool_description(function_name, parsed_code["program_code"]))
+            self.tasks_repository[function_name] = [tool_description, parsed_code["program_code"]]
             # print last added task
-            smart_print(f"************ Last added task ************\n{parsed_code['main_function_name']}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
-
+            smart_print(f"************ Last added task ************\n{function_name}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
 
         
         if self.pipeline_mode:
@@ -635,7 +634,7 @@ class CapitalizationAgent:
             docstring_matches = docstring_pattern.findall(tool_description)
             docstring = docstring_matches[0] if docstring_matches else f'"""{tool_description}"""'
              # use regex to add docstring to the function parsed_code["main_function_name"] after the def line in parsed_code["program_code"]
-            parsed_code["program_code"] = re.sub(r"(def "+name_file+"\(.*?\):)", r'\1\n    '+docstring, parsed_code["program_code"], count=1)
+            parsed_code["program_code"] = re.sub(r"(def "+function_name+"\(.*?\):)", r'\1\n    '+docstring, parsed_code["program_code"], count=1)
             function_file.write(parsed_code["program_code"])
 
         if self.optuna_opti == None:
@@ -646,7 +645,7 @@ class CapitalizationAgent:
         if self.pipeline_mode:
             serialized_entry = json.dumps({
             "time": datetime.datetime.now().isoformat(),
-            "class_name": name_file,
+            "class_name": function_name,
             "program_code": parsed_code["program_code"],
             "tool_description": tool_description,
             "task_description": task_description,
@@ -654,7 +653,7 @@ class CapitalizationAgent:
         else: 
             serialized_entry = json.dumps({
                 "time": datetime.datetime.now().isoformat(),
-                "main_function_name": name_file,
+                "main_function_name": function_name,
                 "program_code": parsed_code["program_code"],
                 "tool_description": tool_description,
                 "task_description": task_description,
@@ -1098,7 +1097,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
             for i, (parsed_code, feedback, scores) in enumerate(successful_codes):
                 smart_print(f"\033[91mOption {i+1}:\033[0m\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {scores}\033[0m\n", None, "coding_and_validation_loop RESULT")
             if optuna : 
-                highest_score_index = get_highest_score_index([scores for _, _, _, scores in successful_codes], mode='total')
+                highest_score_index = get_highest_score_index([scores for _, _, scores in successful_codes], mode='total')
                 selected_code, _, scores = successful_codes[highest_score_index]
                 all_scores['validated_scores'] = scores
                 return selected_code, "success", all_scores

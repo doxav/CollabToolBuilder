@@ -4,11 +4,11 @@ import seaborn as sns
 import optuna
 import os
 
-#Define the path to the SQLite database
+# Define the path to the SQLite database
 current_folder = os.getcwd()
-sqlite_file = os.path.join(current_folder, "optuna_nuit.db")
+sqlite_file = os.path.join(current_folder, "optuna.db")
 
-#Get all studies in the database
+# Get all studies in the database
 study_summaries = optuna.study.get_all_study_summaries(storage=f"sqlite:///{sqlite_file}")
 
 if len(study_summaries) == 0:
@@ -32,8 +32,6 @@ else:
     for key, value in best_trial.params.items():
         print(f"    {key}: {value}")
 
-# You can insert the analysis code provided earlier here
-
 # Get all trials as a DataFrame
 df = study.trials_dataframe()
 
@@ -47,6 +45,16 @@ try:
     print("\nParameter Importance:")
     for param, imp in importance.items():
         print(f"{param}: {imp:.4f}")
+        
+        # Now analyze which values/options of the parameter contribute to the top score
+        if param in df.columns:
+            # Group by the parameter and calculate the mean score for each value
+            param_value_scores = df.groupby(param)['value'].mean().sort_values()
+
+            # Print the best and worst values for the parameter
+            print(f"  Best contributor: {param_value_scores.idxmax()} (Mean score: {param_value_scores.max():.4f})")
+            print(f"  Worst contributor: {param_value_scores.idxmin()} (Mean score: {param_value_scores.min():.4f})")
+
 except Exception as e:
     print(f"Could not calculate parameter importances: {e}")
 
@@ -57,9 +65,17 @@ try:
 except Exception as e:
     print(f"Could not plot parameter importances: {e}")
 
-# Correlation matrix
+# Handle non-numeric data before computing the correlation matrix
 try:
-    correlation_matrix = df.corr()
+    # Select only non-numeric columns for encoding
+    non_numeric_cols = df.select_dtypes(include=['object']).columns
+    
+    # One-hot encode non-numeric columns (categorical data)
+    df_encoded = pd.get_dummies(df, columns=non_numeric_cols, drop_first=True)
+
+    # Compute correlation matrix on encoded data
+    correlation_matrix = df_encoded.corr()
+
     print("\nCorrelation Matrix:")
     print(correlation_matrix)
 
@@ -68,6 +84,7 @@ try:
     sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm')
     plt.title("Correlation Matrix of Study Parameters")
     plt.show()
+
 except Exception as e:
     print(f"Could not plot correlation matrix: {e}")
 
