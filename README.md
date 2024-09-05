@@ -73,7 +73,7 @@ You can start creating functions or pipelines by using IHMv1.html or IHMv2.html
 
 11. **Change Number of Parallel Inferences (J)**: Adjusts the number of parallel inferences and enables/disables synthesis mode. This optimizes resource usage and processing time.
 
---
+------------------------
 
 ### After Inference
 
@@ -89,7 +89,7 @@ You can start creating functions or pipelines by using IHMv1.html or IHMv2.html
 
 6. **Go Back to Before Inference (E - After)**: Reverts to the state before inference to make changes or corrections. This allows for adjustments without starting from scratch.
 
--- 
+------------------------
 
 ### General Features
 
