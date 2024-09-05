@@ -6,6 +6,7 @@ import subprocess
 import traceback
 import types
 import time
+from config import *
 
 #import openai
 import json
@@ -15,7 +16,6 @@ from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, save_prompt, _visu
     is_vscode_installed, smart_print, smart_input
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import copy
-from config import *
 from pydantic import BaseModel
 import os
 import uuid
@@ -53,7 +53,7 @@ UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002" # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function="intfloat/e5-base-v2" # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
-reset_db_indices=False # Set to True after changing embeddings
+reset_db_indices=True # Set to True after changing embeddings
 
 HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices) 
 
@@ -196,13 +196,12 @@ class EnvironmentManager:
 # Agent 1: Task Identification
 class TaskIdentificationAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
-                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, criteria=None, pipeline_mode=None):
+                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, criteria=None):
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         self.learnt_tasks: Dict[str, str] = {}
         self.failed_tasks: Dict[str, str] = {}
         self.criteria = criteria
-
         self.human_llm_identify_best_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice,
                                                             premium_llm_by_default=premium_llm_by_default,
                                                             llmORchains_list=llmORchains_list)#,output_schema="identify_best_task.schema.py")
@@ -210,7 +209,6 @@ class TaskIdentificationAgent():
         self.envs = envs
         self.optuna_opti = optuna
         self.model_choice = model_choice
-        self.pipeline_mode = pipeline_mode
 
     def update_learnt_tasks(self, tasks: Dict[str, str]) -> None:
         self.learnt_tasks = tasks
@@ -264,7 +262,7 @@ class TaskIdentificationAgent():
 
 # Agent 2: Code Task
 class CodingAgent():
-    def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, pipeline_mode=False):
+    def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None):
         #super().__init__(llm)
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
@@ -276,7 +274,6 @@ class CodingAgent():
         self.envs = envs
         self.optuna_opti = optuna
         self.model_choice = model_choice
-        self.pipeline_mode = pipeline_mode
         self.db_successful_tasks = UnifiedVectorDB( collection_name=db_collection_success, embedding_function=HumanLLMMonitor.common_vectordb_embedding_function, persist_directory=HumanLLMMonitor.common_vectordb_persist_directory+db_collection_success, reset_db_indices=reset_db_indices)
         self.db_failed_tasks = UnifiedVectorDB( collection_name=db_collection_failed, embedding_function=HumanLLMMonitor.common_vectordb_embedding_function, persist_directory=HumanLLMMonitor.common_vectordb_persist_directory+db_collection_failed, reset_db_indices=reset_db_indices)
         self.processed_codes = set()
@@ -449,16 +446,15 @@ class CodingAgent():
     def get_primitives(self):
         primitives = []
         # Add the pipelines folder for the primitives
-        if self.pipeline_mode:
-            path_folder = "pipelines/"
+        if self.problem_prompts_subdir=="Anomalies/":
+            path_folder = "pipelines/pipelines"
         else:
             path_folder = "primitives"
-
         folder_path = os.path.join(os.path.dirname(__file__), path_folder)
         # Utiliser os.listdir pour ne pas parcourir les sous-répertoires
         for file in os.listdir(folder_path):
             if file.endswith(".py"):
-                smart_print(f"File load: {file}", "Pipeline/Function Mode", "Files loaded")
+                smart_print(f"File load: {file}", "CONFIG", "Files loaded")
                 file_path = os.path.join(folder_path, file)
                 with open(file_path, "r") as f:
                     primitives.append(f.read())
@@ -533,7 +529,7 @@ class CodingAgent():
 
 # Agent 3: Code Validation
 class ValidationAgent():
-    def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, pipeline_mode=False):
+    def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None):
         #super().__init__(llm)
         self.name = self.__class__.__name__
         self.human_llm_validate_code = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice, premium_llm_by_default=False, llmORchains_list=llmORchains_list)
@@ -541,7 +537,7 @@ class ValidationAgent():
         self.envs = envs
         self.optuna_opti = optuna
         self.model_choice = model_choice
-        self.pipeline_mode = pipeline_mode
+
 
     def validate_code(self, code: str, no_runtime_error:bool, exec_result:str, task:str=None, human_evaluation_required=False, scores=None, env_states=None) -> str:
         runtime_errors = f'\033[32mno runtime errors at execution - code returned:\n{exec_result}\n\033[0m' if no_runtime_error else f'\033[31mruntime errors at execution - error:{exec_result}\033[0m'
@@ -566,15 +562,15 @@ class ValidationAgent():
 
 # Agent 4: Code Capitalization
 class CapitalizationAgent:
-    def __init__(self, default_llm_choice, premium_llm_choice=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", db_embedding_function=None, db_perist_directory=None, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, pipeline_mode=False):
+    def __init__(self, default_llm_choice, premium_llm_choice=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", db_embedding_function=None, db_perist_directory=None, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, problem_prompts_subdir=None):
         self.name = self.__class__.__name__
         self.tasks_repository: Dict[str, str] = {}
         self.failed_tasks_repository: Dict[str, str] = {}
+        self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         self.human_llm_generate_function_description = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice, premium_llm_by_default=False, llmORchains_list=llmORchains_list)
         self.human_llm_generate_function_description.skip_rounds = skip_rounds
         self.optuna_opti = optuna
         self.model_choice = model_choice
-        self.pipeline_mode = pipeline_mode
         self.db_successful_tasks = UnifiedVectorDB(
             collection_name=db_collection_success,
             embedding_function=db_embedding_function if db_embedding_function else HumanLLMMonitor.common_vectordb_embedding_function,
@@ -587,7 +583,7 @@ class CapitalizationAgent:
     def capitalize_successful_tasks(self, task_description: str, parsed_code: str) -> None:
         import socket, uuid, datetime
 
-        if self.pipeline_mode:
+        if self.problem_prompts_subdir=="Anomalies/":
             function_name = parsed_code["class_name"]
             pipeline_file_path = os.path.join("pipelines/pipelines", function_name+".py")
             tool_description = str(self.generate_tool_description(parsed_code["class_name"], parsed_code["program_code"]))
@@ -604,7 +600,7 @@ class CapitalizationAgent:
             smart_print(f"************ Last added task ************\n{function_name}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
 
         
-        if self.pipeline_mode:
+        if self.problem_prompts_subdir=="Anomalies/":
            if os.path.exists(pipeline_file_path):
                 smart_print(f"Pipeline file {pipeline_file_path} already exists, please provide a new name for the pipeline.", self.name, "capitalize_successful_tasks WARNING")
                 if self.optuna_opti:
@@ -623,7 +619,7 @@ class CapitalizationAgent:
                 else:
                     function_file_path = os.path.join("functions", smart_input("New function name: ")+".py")
         
-        if self.pipeline_mode:
+        if self.problem_prompts_subdir=="Anomalies/":
             new_path = pipeline_file_path
         else:
             new_path = function_file_path
@@ -643,7 +639,7 @@ class CapitalizationAgent:
                 smart_print("Please modify the file opened in vscode if necessary, and save it (Ctrl + W) when you are ok to continue", self.name, "capitalize_successful_tasks INSTRUCTIONS")
                 subprocess.run(["code", "--wait", new_path])
 
-        if self.pipeline_mode:
+        if self.problem_prompts_subdir=="Anomalies/":
             serialized_entry = json.dumps({
             "time": datetime.datetime.now().isoformat(),
             "class_name": function_name,
@@ -669,7 +665,7 @@ class CapitalizationAgent:
     def capitalize_failed_tasks(self, task_description: str, parsed_code: str) -> None:
         import socket, uuid, datetime
 
-        if self.pipeline_mode:
+        if self.problem_prompts_subdir=="Anomalies/":
             name_file = parsed_code["class_name"]
             main_class_name = _visual_input(name_file if parsed_code is not None and "class_name" in parsed_code else "replace this text with a descriptive name of the class")
             task_description_refined = _visual_input(task_description)
@@ -732,7 +728,7 @@ class CapitalizationAgent:
             page_content = result.page_content
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
-            if self.pipeline_mode:
+            if self.problem_prompts_subdir=="Anomalies/":
                 if "class_name" in task_data:
                     smart_print(f"{id}: Pipeline name:{task_data['class_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
             else:
@@ -754,7 +750,7 @@ class CapitalizationAgent:
             page_content = result.page_content
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
-            if self.pipeline_mode:
+            if self.problem_prompts_subdir=="Anomalies/":
                 if "class_name" in task_data:
                     if task_data["class_name"] in self.tasks_repository:
                         smart_print(f"> pipeline/task {task_data['class_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
@@ -790,7 +786,7 @@ class CapitalizationAgent:
             page_content = result.page_content
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
-            if self.pipeline_mode:
+            if self.problem_prompts_subdir=="Anomalies/":
                 if 'class_name' in task_data:
                     smart_print(f"{id}: failed Pipeline name:{task_data['class_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
             else:
@@ -810,7 +806,7 @@ class CapitalizationAgent:
             page_content = result.page_content
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
-            if self.pipeline_mode:
+            if self.problem_prompts_subdir=="Anomalies/":
                 if 'class_name' in task_data:
                     if task_data["class_name"] in self.failed_tasks_repository:
                         smart_print(f"> failed pipeline/task {task_data['class_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
@@ -879,7 +875,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0,
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                               optuna_opti=None, allow_custom_score_state_functions=False,
-                              criteria=None, max_execution_time=900, pipeline_mode=None):
+                              criteria=None, max_execution_time=900):
     time_end = time.time() + max_execution_time
     scores = None
     if problem_prompts_subdir is None:
@@ -891,22 +887,16 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         choice = smart_input("Enter a capital letter for subdirectory (leave empty for default): "+"; ".join(f"\n[{i}] {subdir}" for i, subdir in zip(string.ascii_uppercase,problem_prompts_subdirs))+" ?", "CONFIG")
         # if choise is empty or not a capital letter or not in the range of the list of subdirectories, set it to A
         problem_prompts_subdir = problem_prompts_subdirs[ord(choice)-65] if choice and choice.isupper() and ord(choice)-65 in range(len(problem_prompts_subdirs)) else default_subdir
-   
-    if pipeline_mode is None or not isinstance(pipeline_mode, bool):
-        pipeline_mode = True if smart_input("Do you want to create a pipeline as a new class (default = false, new function) ? yes/no :  ", "Pipeline/Function Mode", "Pipeline or Function CONFIG").lower() in ["yes", "y", "YES","Yes", "Oui", "o", "true", "t"] else False
-
-    # Continuer avec le reste du programme
-    smart_print(f"Pipeline mode is set to: {pipeline_mode}", "Pipeline/Function Mode", "Pipeline or Function CONFIG")
 
     if test_environments is None:
         env_type = "default"
         manager = EnvironmentManager(env_type)
         test_environments = [manager.get_environment()]
 
-    agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, premium_llm_by_default=agtask_premium_llm_by_default, skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(model_choice) == dict else model_choice), pipeline_mode=pipeline_mode, criteria=criteria)
-    agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['coding' if 'coding' in model_choice else 'coder'] if type(model_choice) == dict else model_choice), pipeline_mode=pipeline_mode)
-    agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['validation' if 'validation' in model_choice else 'critic'] if type(model_choice) == dict else model_choice), pipeline_mode=pipeline_mode)
-    agent_capitalize = CapitalizationAgent(default_llm_key, premium_llm_choice=premium_llm_key, skip_rounds=agcapitalize_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(model_choice) == dict else model_choice), pipeline_mode=pipeline_mode)
+    agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, premium_llm_by_default=agtask_premium_llm_by_default, skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(model_choice) == dict else model_choice), criteria=criteria)
+    agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['coding' if 'coding' in model_choice else 'coder'] if type(model_choice) == dict else model_choice))
+    agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['validation' if 'validation' in model_choice else 'critic'] if type(model_choice) == dict else model_choice))
+    agent_capitalize = CapitalizationAgent(default_llm_key, premium_llm_choice=premium_llm_key, skip_rounds=agcapitalize_skip_rounds,problem_prompts_subdir=problem_prompts_subdir, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(model_choice) == dict else model_choice))
 
     agent_capitalize.retrieve_saved_tasks_in_db(include_code=include_code, selected_successful_functions=selected_successful_functions, selected_failed_functions=selected_failed_functions)
     agent_taskreco.update_learnt_tasks(agent_capitalize.tasks_repository)

@@ -81,42 +81,42 @@ def objective(trial):
         
     if coach_format_output_type == "JSON":
         coach_format_output = """You should only respond in the JSON format described below:
- {
-    "Reasoning": "Analysis of the provided information to determine the next best task to developp minimizing the distance to the goal"
-    "NextBestTask": {
-        "FunctionName": "YourFunctionNameOfNextBestTaskIdentified",
-        "Description": "....."
-    },
-    "PerformanceAcceptanceCriteria": {
-        ...
-    },
-    "DevelopmentPlan": {
-        "PlanDepth": {plan_depth},
-        "Steps": {}
-    },
-    "Tests": [
-        { "DocumentID": "#125dc4bc-54e0-4336-82bc-417e40ec9b8f", "FunctionCall": "NameOfNextBestTaskIdentified(bot)" },
-        { "DocumentID": "#2fa754cb-2e90-3376-3b2c-142f29c9ebf8", "FunctionCall": "NameOfNextBestTaskIdentified(bot)" }
-    ]
-}"""
+         {
+            "Reasoning": "Analysis of the provided information to determine the next best task to developp minimizing the distance to the goal"
+            "NextBestTask": {
+                "FunctionName": "YourFunctionNameOfNextBestTaskIdentified",
+                "Description": "....."
+            },
+            "PerformanceAcceptanceCriteria": {
+                ...
+            },
+            "DevelopmentPlan": {
+                "PlanDepth": {plan_depth},
+                "Steps": {}
+            },
+            "Tests": [
+                { "DocumentID": "#125dc4bc-54e0-4336-82bc-417e40ec9b8f", "FunctionCall": "NameOfNextBestTaskIdentified(bot)" },
+                { "DocumentID": "#2fa754cb-2e90-3376-3b2c-142f29c9ebf8", "FunctionCall": "NameOfNextBestTaskIdentified(bot)" }
+            ]
+        }"""
     elif coach_format_output_type == "Markdown":
         coach_format_output = """You should only respond in the Markdown format as described below:
-1. Reasoning: Analysis of the provided information to determine the next best task to develop, minimizing the distance to the goal
-2. Next Best Task:
-    - Function Name: YourFunctionNameOfNextBestTaskIdentified
-    - Description: .....
-3. Performance Acceptance Criteria:
-    ...
-4. Development Plan:
-    - Plan Depth: ...
-    - Steps: ...
-5. Tests:
-```python
-# document #125dc4bc-54e0-4336-82bc-417e40ec9b8f usage test:
-task_function_name(bot, arguments with values describing document #125dc4bc-54e0-4336-82bc-417e40ec9b8f for the given task...)
-# document #2fa754cb-2e90-3376-3b2c-142f29c9ebf8 usage test:
-task_function_name(bot, arguments with values describing document #2fa754cb-2e90-3376-3b2c-142f29c9ebf8 for the given task...)
-```"""
+        1. Reasoning: Analysis of the provided information to determine the next best task to develop, minimizing the distance to the goal
+        2. Next Best Task:
+            - Function Name: YourFunctionNameOfNextBestTaskIdentified
+            - Description: .....
+        3. Performance Acceptance Criteria:
+            ...
+        4. Development Plan:
+            - Plan Depth: ...
+            - Steps: ...
+        5. Tests:
+        ```python
+        # document #125dc4bc-54e0-4336-82bc-417e40ec9b8f usage test:
+        task_function_name(bot, arguments with values describing document #125dc4bc-54e0-4336-82bc-417e40ec9b8f for the given task...)
+        # document #2fa754cb-2e90-3376-3b2c-142f29c9ebf8 usage test:
+        task_function_name(bot, arguments with values describing document #2fa754cb-2e90-3376-3b2c-142f29c9ebf8 for the given task...)
+        ```"""
 
     # Construct the prompt based on the suggested parameters
     criteria_coach = [
@@ -524,7 +524,7 @@ task_function_name(bot, arguments with values describing document #2fa754cb-2e90
                                 agcapitalize_skip_rounds=0,
                                 model_choice={"coach": "premium_llm", "coder":"default_llm", "critic":"default_llm", "capitalizer": "default_llm"},
                                 optuna_opti="Coach",
-                                criteria=criteria_user_message, pipeline_mode=True)
+                                criteria=criteria_user_message)
     
     with open("Optuna_results.txt", "a") as f:
         f.write(f"Performance: {perf}\n\n")

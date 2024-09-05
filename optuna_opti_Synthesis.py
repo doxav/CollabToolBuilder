@@ -301,7 +301,7 @@ task_function_name(bot, arguments with values describing document #2fa754cb-2e90
                                            model_choice={"coach": "premium_llm", "coder": "premium_llm",
                                                          "critic": "default_llm", "capitalizer": "default_llm"},
                                            optuna_opti="Coach",
-                                           criteria=criteria_user_message, pipeline_mode=False)
+                                           criteria=criteria_user_message)
 
     with open("Optuna_results.txt", "a") as f:
         f.write(f"Performance: {perf}\n\n")
