@@ -13,7 +13,6 @@ def objective(trial):
     temperature = trial.suggest_float('temperature', 0.0, 1.0)
     presence_penalty = trial.suggest_float('presence_penalty', -2.0, 2.0)
     reasoning_depth = trial.suggest_int('reasoning_depth', 1, 4)
-    modularity = trial.suggest_categorical("modularity", ["None", "Helper functions", "Modular classes"])
 
     # Reasoning and Task instructions based on file content
     coder_task_description = f"""

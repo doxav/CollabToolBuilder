@@ -1,5 +1,5 @@
 from optuna_opti_Synthesis_coder import objective as objective_coder
-from optuna_opti_Synthesis import objective as objective_coach
+from optuna_opti_Synthesis_coach import objective as objective_coach
 from optuna_opti_Anomalies import objective as objective_anomalies
 from config import MODELS_CONFIG_LIST
 from langchain_openai import ChatOpenAI
@@ -75,7 +75,7 @@ def launch_study(objective, agent_mode : str):
     # get current folder
     current_folder = os.getcwd()
 
-    sqlite_file = os.path.join(current_folder, "optuna.db")
+    sqlite_file = os.path.join(current_folder, f"optuna{agent_mode}.db")
 
     # Create a study and optimize the objective function
     study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}")
