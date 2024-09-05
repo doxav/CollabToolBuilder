@@ -52,7 +52,7 @@ UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002" # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function="intfloat/e5-base-v2" # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
-reset_db_indices=False # Set to True after changing embeddings
+reset_db_indices=True # Set to True after changing embeddings
 
 HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices) 
 
@@ -445,11 +445,10 @@ class CodingAgent():
     def get_primitives(self):
         primitives = []
         # Add the pipelines folder for the primitives
-        if self.problem_prompts_subdir=="Anomalies":
-            path_folder = "pipelines/"
+        if self.problem_prompts_subdir=="Anomalies/":
+            path_folder = "pipelines/pipelines"
         else:
             path_folder = "primitives"
-
         folder_path = os.path.join(os.path.dirname(__file__), path_folder)
         # Utiliser os.listdir pour ne pas parcourir les sous-répertoires
         for file in os.listdir(folder_path):
@@ -583,7 +582,7 @@ class CapitalizationAgent:
     def capitalize_successful_tasks(self, task_description: str, parsed_code: str) -> None:
         import socket, uuid, datetime
 
-        if self.problem_prompts_subdir=="Anomalies":
+        if self.problem_prompts_subdir=="Anomalies/":
             name_file = parsed_code["class_name"]
             pipeline_file_path = os.path.join("pipelines/pipelines", name_file+".py")
             tool_description = str(self.generate_tool_description(parsed_code["class_name"], parsed_code["program_code"]))
@@ -601,7 +600,7 @@ class CapitalizationAgent:
 
 
         
-        if self.problem_prompts_subdir=="Anomalies":
+        if self.problem_prompts_subdir=="Anomalies/":
            if os.path.exists(pipeline_file_path):
                 smart_print(f"Pipeline file {pipeline_file_path} already exists, please provide a new name for the pipeline.", self.name, "capitalize_successful_tasks WARNING")
                 if self.optuna_opti:
@@ -620,7 +619,7 @@ class CapitalizationAgent:
                 else:
                     function_file_path = os.path.join("functions", smart_input("New function name: ")+".py")
         
-        if self.problem_prompts_subdir=="Anomalies":
+        if self.problem_prompts_subdir=="Anomalies/":
             new_path = pipeline_file_path
         else:
             new_path = function_file_path
@@ -640,7 +639,7 @@ class CapitalizationAgent:
                 smart_print("Please modify the file opened in vscode if necessary, and save it (Ctrl + W) when you are ok to continue", self.name, "capitalize_successful_tasks INSTRUCTIONS")
                 subprocess.run(["code", "--wait", new_path])
 
-        if self.problem_prompts_subdir=="Anomalies":
+        if self.problem_prompts_subdir=="Anomalies/":
             serialized_entry = json.dumps({
             "time": datetime.datetime.now().isoformat(),
             "class_name": name_file,
@@ -666,7 +665,7 @@ class CapitalizationAgent:
     def capitalize_failed_tasks(self, task_description: str, parsed_code: str) -> None:
         import socket, uuid, datetime
 
-        if self.problem_prompts_subdir=="Anomalies":
+        if self.problem_prompts_subdir=="Anomalies/":
             name_file = parsed_code["class_name"]
             main_class_name = _visual_input(name_file if parsed_code is not None and "class_name" in parsed_code else "replace this text with a descriptive name of the class")
             task_description_refined = _visual_input(task_description)
@@ -729,7 +728,7 @@ class CapitalizationAgent:
             page_content = result.page_content
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
-            if self.problem_prompts_subdir=="Anomalies":
+            if self.problem_prompts_subdir=="Anomalies/":
                 if "class_name" in task_data:
                     smart_print(f"{id}: Pipeline name:{task_data['class_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
             else:
@@ -751,7 +750,7 @@ class CapitalizationAgent:
             page_content = result.page_content
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
-            if self.problem_prompts_subdir=="Anomalies":
+            if self.problem_prompts_subdir=="Anomalies/":
                 if "class_name" in task_data:
                     if task_data["class_name"] in self.tasks_repository:
                         smart_print(f"> pipeline/task {task_data['class_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
@@ -787,7 +786,7 @@ class CapitalizationAgent:
             page_content = result.page_content
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
-            if self.problem_prompts_subdir=="Anomalies":
+            if self.problem_prompts_subdir=="Anomalies/":
                 if 'class_name' in task_data:
                     smart_print(f"{id}: failed Pipeline name:{task_data['class_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
             else:
@@ -807,7 +806,7 @@ class CapitalizationAgent:
             page_content = result.page_content
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
-            if self.problem_prompts_subdir=="Anomalies":
+            if self.problem_prompts_subdir=="Anomalies/":
                 if 'class_name' in task_data:
                     if task_data["class_name"] in self.failed_tasks_repository:
                         smart_print(f"> failed pipeline/task {task_data['class_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
