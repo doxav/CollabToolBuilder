@@ -45,7 +45,7 @@ You can start creating functions or pipelines by using IHMv1.html or IHMv2.html
 
 ---
 
-## Detailed Functionality*
+## Detailed Functionality
 
 *Human LLM Mechanism*: (TO EDIT CODE OR TEXT: a file is automatically opened in VSCode, it is by closing it that the text is validated and the process continues)
 
@@ -73,6 +73,7 @@ You can start creating functions or pipelines by using IHMv1.html or IHMv2.html
 
 11. **Change Number of Parallel Inferences (J)**: Adjusts the number of parallel inferences and enables/disables synthesis mode. This optimizes resource usage and processing time.
 
+--
 
 ### After Inference
 
@@ -88,6 +89,7 @@ You can start creating functions or pipelines by using IHMv1.html or IHMv2.html
 
 6. **Go Back to Before Inference (E - After)**: Reverts to the state before inference to make changes or corrections. This allows for adjustments without starting from scratch.
 
+-- 
 
 ### General Features
 
@@ -113,7 +115,7 @@ You can start creating functions or pipelines by using IHMv1.html or IHMv2.html
 
 11. **Environment Reset Option**: Resets the environment after completing a task or before starting a new one, providing a fresh context for task execution.
 
-
+---
 
 # Pipeline integration for Anomalies Solver
 
@@ -167,7 +169,7 @@ NB: if you use docker : http://host.docker.internal:9100   pwd : 0p3n-w3bu!
 
     
 depending on the pipelines valves, you may have to fill the missing connections informations, such as :
- 
+
                 Llamaindex Ollama Base Url              http://localhost:11434
                 Llamaindex Model Name                   llama3_8b
                 Llamaindex Embedding Model Name         nomic-embed-text
