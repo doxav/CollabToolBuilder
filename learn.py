@@ -6,6 +6,7 @@ import subprocess
 import traceback
 import types
 import time
+from config import *
 
 #import openai
 import json
@@ -15,7 +16,6 @@ from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, save_prompt, _visu
     is_vscode_installed, smart_print, smart_input
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import copy
-from config import *
 from pydantic import BaseModel
 import os
 import uuid
@@ -208,7 +208,7 @@ class TaskIdentificationAgent():
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         self.envs = envs
         self.optuna_opti = optuna
-        self.model_choice = model_choice    
+        self.model_choice = model_choice
 
     def update_learnt_tasks(self, tasks: Dict[str, str]) -> None:
         self.learnt_tasks = tasks
@@ -474,7 +474,7 @@ class CodingAgent():
         if successful_tasks and len(successful_tasks) > 0:
             user_message+=f"{dnl}PREVIOUSLY SUCCESSFUL TASKS: [[[{nl}{nl.join(successful_tasks[:5])}{nl}]]]"
         if failed_tasks and len(failed_tasks) > 0:
-            user_message+=f"{dnl}PREVIOUSLY FAILED TASKS: [[[{nl}{nl.join(failed_tasks[:5])}{nl}]]]"
+            user_message+=f"{dnl}PREVIOUSLY FAILED TASKS: [[[{nl}{nl.join(failed_tasks[:3])}{nl}]]]"
         if previous_errors and len(previous_errors) > 0:
             user_message+=f"{dnl}PREVIOUS ATTEMPTS TO CODE THE TASK: [[[{nl}"
             for previous_error, previous_score, previous_code in zip(previous_errors, previous_scores, previous_codes):
@@ -537,7 +537,7 @@ class ValidationAgent():
         self.envs = envs
         self.optuna_opti = optuna
         self.model_choice = model_choice
-        
+
 
     def validate_code(self, code: str, no_runtime_error:bool, exec_result:str, task:str=None, human_evaluation_required=False, scores=None, env_states=None) -> str:
         runtime_errors = f'\033[32mno runtime errors at execution - code returned:\n{exec_result}\n\033[0m' if no_runtime_error else f'\033[31mruntime errors at execution - error:{exec_result}\033[0m'
@@ -584,21 +584,20 @@ class CapitalizationAgent:
         import socket, uuid, datetime
 
         if self.problem_prompts_subdir=="Anomalies/":
-            name_file = parsed_code["class_name"]
-            pipeline_file_path = os.path.join("pipelines/pipelines", name_file+".py")
+            function_name = parsed_code["class_name"]
+            pipeline_file_path = os.path.join("pipelines/pipelines", function_name+".py")
             tool_description = str(self.generate_tool_description(parsed_code["class_name"], parsed_code["program_code"]))
             self.tasks_repository[parsed_code["class_name"]] = [tool_description, parsed_code["program_code"]]
             # print last added task
             smart_print(f"************ Last added task ************\n{parsed_code['class_name']}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
         else:
-            name_file = parsed_code["main_function_name"]
+            function_name = parsed_code.get("main_function_name", parsed_code.get("main_function", {}).get("name", "unknown"))
             # save function program_code in a file under the functions directory and add to the function signature the generated dosctring
-            function_file_path = os.path.join("functions", name_file+".py")
-            tool_description = str(self.generate_tool_description(parsed_code["main_function_name"], parsed_code["program_code"]))
-            self.tasks_repository[parsed_code["main_function_name"]] = [tool_description, parsed_code["program_code"]]
+            function_file_path = os.path.join("functions", function_name+".py")
+            tool_description = str(self.generate_tool_description(function_name, parsed_code["program_code"]))
+            self.tasks_repository[function_name] = [tool_description, parsed_code["program_code"]]
             # print last added task
-            smart_print(f"************ Last added task ************\n{parsed_code['main_function_name']}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
-
+            smart_print(f"************ Last added task ************\n{function_name}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
 
         
         if self.problem_prompts_subdir=="Anomalies/":
@@ -632,7 +631,7 @@ class CapitalizationAgent:
             docstring_matches = docstring_pattern.findall(tool_description)
             docstring = docstring_matches[0] if docstring_matches else f'"""{tool_description}"""'
              # use regex to add docstring to the function parsed_code["main_function_name"] after the def line in parsed_code["program_code"]
-            parsed_code["program_code"] = re.sub(r"(def "+name_file+"\(.*?\):)", r'\1\n    '+docstring, parsed_code["program_code"], count=1)
+            parsed_code["program_code"] = re.sub(r"(def "+function_name+"\(.*?\):)", r'\1\n    '+docstring, parsed_code["program_code"], count=1)
             function_file.write(parsed_code["program_code"])
 
         if self.optuna_opti == None:
@@ -643,7 +642,7 @@ class CapitalizationAgent:
         if self.problem_prompts_subdir=="Anomalies/":
             serialized_entry = json.dumps({
             "time": datetime.datetime.now().isoformat(),
-            "class_name": name_file,
+            "class_name": function_name,
             "program_code": parsed_code["program_code"],
             "tool_description": tool_description,
             "task_description": task_description,
@@ -651,7 +650,7 @@ class CapitalizationAgent:
         else: 
             serialized_entry = json.dumps({
                 "time": datetime.datetime.now().isoformat(),
-                "main_function_name": name_file,
+                "main_function_name": function_name,
                 "program_code": parsed_code["program_code"],
                 "tool_description": tool_description,
                 "task_description": task_description,
@@ -888,7 +887,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         choice = smart_input("Enter a capital letter for subdirectory (leave empty for default): "+"; ".join(f"\n[{i}] {subdir}" for i, subdir in zip(string.ascii_uppercase,problem_prompts_subdirs))+" ?", "CONFIG")
         # if choise is empty or not a capital letter or not in the range of the list of subdirectories, set it to A
         problem_prompts_subdir = problem_prompts_subdirs[ord(choice)-65] if choice and choice.isupper() and ord(choice)-65 in range(len(problem_prompts_subdirs)) else default_subdir
-   
+
     if test_environments is None:
         env_type = "default"
         manager = EnvironmentManager(env_type)
@@ -1089,7 +1088,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
             for i, (parsed_code, feedback, scores) in enumerate(successful_codes):
                 smart_print(f"\033[91mOption {i+1}:\033[0m\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {scores}\033[0m\n", None, "coding_and_validation_loop RESULT")
             if optuna : 
-                highest_score_index = get_highest_score_index([scores for _, _, _, scores in successful_codes], mode='total')
+                highest_score_index = get_highest_score_index([scores for _, _, scores in successful_codes], mode='total')
                 selected_code, _, scores = successful_codes[highest_score_index]
                 all_scores['validated_scores'] = scores
                 return selected_code, "success", all_scores

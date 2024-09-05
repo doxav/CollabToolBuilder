@@ -28,6 +28,8 @@ scikit-learn
 numpy~=1.26.4
 optuna~=3.6.1
 einops
+pandas
+seaborn
 
 # Web scraping and APIs
 wikipedia-api
