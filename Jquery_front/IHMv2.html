@@ -793,7 +793,26 @@ function displayMessage(data) {
             console.log('Columns to delete:', columnsToDelete);
         });
 
+        // Add event listener to the regenerate with my modifications button
+        // Send to the server the entire text with the annotation and without the HTML tags of the targetColumn
+        $(`#regenwithmymodifbutton-${columnId}`).click(function () {
+            let targetColumn = document.getElementById(`column-${columnId}`);
+            let text = targetColumn.querySelector('.message').textContent;
+            let textWithoutHtml = text.replace(/<[^>]*>/g, '');
+            socket.send(JSON.stringify({message: textWithoutHtml}));
+        });
 
+        // Add event listener to the regenerate with all modifications button
+        // Send to the server the entire text with the annotation and without the HTML tags of all the columns
+        $(`#regenallbutton-${columnId}`).click(function () {
+            // Get all the columns of the solution columns
+            let columns = document.querySelectorAll('.solution-column .message');
+            let text = '';
+            columns.forEach(column => {
+                text += column.textContent.replace(/<[^>]*>/g, '');
+            });
+            socket.send(JSON.stringify({message: text}));
+        });
 
     } catch (error) {
         console.error('Error parsing message:', error);
