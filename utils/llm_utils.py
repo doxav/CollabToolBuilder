@@ -1326,7 +1326,7 @@ class HumanLLMMonitor:
         ideal_answer = _visual_input(inference_result_msg.content)
         refine_prompt = f"Current system prompt:<<< {self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)} >>>\n\nPrompt's answer:<<< {inference_result_msg.content} >>>\n\nPrompt's answer critic:{comments}\n\nPrompt's ideal Answer:<<< {ideal_answer} >>>"
         smart_print(f"***** PROMPT FOR IMPROVEMENT *****\n{refine_prompt}", self.agent_name, "PROMPT FOR IMPROVEMENT")
-        llm_output = premium_llm_function([SystemMessage(
+        llm_output = premium_llm_function.invoke([SystemMessage(
             content=self.load_prompt(agent_name=self.agent_name, prompt="improve_prompt_from_answer_critic")),
                                            HumanMessage(content=refine_prompt)])
         smart_print(f"***** RECOMMENDATION OPEN FOR EDITION *****\n", self.agent_name,
