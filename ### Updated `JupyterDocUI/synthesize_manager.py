@@ -48,5 +48,3 @@ class SynthesisManager:
 
     def add_event(self, event: str, data: dict):
         print(f"Event: {event}, Data: {data}")
-
-# Other methods remain unchanged...
