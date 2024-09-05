@@ -454,7 +454,7 @@ class CodingAgent():
         # Utiliser os.listdir pour ne pas parcourir les sous-répertoires
         for file in os.listdir(folder_path):
             if file.endswith(".py"):
-                smart_print(f"File load: {file}", "Pipeline/Function Mode", "Files loaded")
+                smart_print(f"File load: {file}", "CONFIG", "Files loaded")
                 file_path = os.path.join(folder_path, file)
                 with open(file_path, "r") as f:
                     primitives.append(f.read())
@@ -889,12 +889,6 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         # if choise is empty or not a capital letter or not in the range of the list of subdirectories, set it to A
         problem_prompts_subdir = problem_prompts_subdirs[ord(choice)-65] if choice and choice.isupper() and ord(choice)-65 in range(len(problem_prompts_subdirs)) else default_subdir
    
-    if pipeline_mode is None or not isinstance(pipeline_mode, bool):
-        pipeline_mode = True if smart_input("Do you want to create a pipeline as a new class (default = false, new function) ? yes/no :  ", "Pipeline/Function Mode", "Pipeline or Function CONFIG").lower() in ["yes", "y", "YES","Yes", "Oui", "o", "true", "t"] else False
-
-    # Continuer avec le reste du programme
-    smart_print(f"Pipeline mode is set to: {pipeline_mode}", "Pipeline/Function Mode", "Pipeline or Function CONFIG")
-
     if test_environments is None:
         env_type = "default"
         manager = EnvironmentManager(env_type)
