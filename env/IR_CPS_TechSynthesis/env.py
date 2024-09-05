@@ -12,7 +12,7 @@ from dataclasses import asdict
 #from config import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, ELASTICSEARCH_HOST
 from config import *
 #from attr import dataclass, field
-import PyPDF2
+#import PyPDF2
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 import pdb
@@ -1206,23 +1206,30 @@ class SynthesisManager:
     def get_resources_status(self, compact_string_format: bool = False):
         resources_status = []
         content_info = {}
+
         for resource in self.document.resources:
-            if resource['document']['content']:
-                for key, value in resource['document']['content'].items():
-                    content_info[f"len(content['{key}'])"] = len(str(value))
-            
-            status_data = [
-                resource['id'],
-                resource['metadatas'].get('search', 'unknown'),
-                resource['document']['name'],
-                len(resource['document']['link']) if (resource['document']['link'] and isinstance(resource['document']['link'], (list, tuple, np.ndarray))) else 0,
-                *content_info.values()
-            ]
-            if compact_string_format:
-                resources_status.append("|".join(map(str, status_data)))
-            else:
-                keys = ["id", "metadatas", "document_name", "document_link_length"] + list(content_info.keys())
-                resources_status.append(dict(zip(keys, status_data)))
+            # Vérifier que resource est un dict et contient la clé 'document'
+            if isinstance(resource, dict) and 'document' in resource and isinstance(resource['document'], dict):
+                # Vérifier que le document contient 'content' et que c'est un dict
+                if 'content' in resource['document'] and isinstance(resource['document']['content'], dict):
+                    for key, value in resource['document']['content'].items():
+                        content_info[f"len(content['{key}'])"] = len(str(value))
+
+                # Vérification des autres éléments
+                status_data = [
+                    resource.get('id', 'unknown'),  # Utiliser 'unknown' si id n'est pas disponible
+                    resource.get('metadatas', {}).get('search', 'unknown'),  # Vérifier que 'metadatas' est un dict
+                    resource['document'].get('name', 'unknown'),  # Utiliser 'unknown' si name n'est pas disponible
+                    len(resource['document'].get('link', [])) if isinstance(resource['document'].get('link'), (list, tuple, np.ndarray)) else 0,  # Vérifier le type de 'link'
+                    *content_info.values()  # Ajouter les longueurs de contenu
+                ]
+
+                # Formater la sortie selon compact_string_format
+                if compact_string_format:
+                    resources_status.append("|".join(map(str, status_data)))
+                else:
+                    keys = ["id", "metadatas", "document_name", "document_link_length"] + list(content_info.keys())
+                    resources_status.append(dict(zip(keys, status_data)))
         
         if compact_string_format:
             # if content_info is empty, it means that there is no resource in the document
