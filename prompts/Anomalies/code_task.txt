@@ -114,7 +114,10 @@ RESPONSE FORMAT:
 
             def pipe()
                     ...
-                    return result
+
+                assert ...
+                assert ...
+                return result
 
         class example_pipeline:
                 @staticmethod
@@ -128,24 +131,14 @@ RESPONSE FORMAT:
     ```
 
   TESTS: 
-    do no test the code at the end with 'if __name__ == "__main__": ==> error because Class_If do not exist
+    Do no test the code at the end with 'if __name__ == "__main__": ==> error because Class_If do not exist
 
-    use this kind of fonction to test the pipeline (adapte it to your proposition of pipeline structure):
+    Use this kind of assert in the pipeline before returning the result:
+        -assert result is not None, "Result can't be None"
+        -assert isinstance(result, str), "result should be str"
+
     All of the assert should be ok!
     You should add new assert depending on the pipeline you have created
-
-    python ```
-        def test_pipeline():
-            pipeline = ExamplePipeline()
-            result = asyncio.run(pipeline.run_pipeline())
-            assert result is not None, "Result can't be None"
-            assert isinstance(result, str), "result should be str"
-
-            # add new assert
-
-            result_json= test_pipeline()
-            print(result_json)
-    ```
 
     # document #72dc469b-63f8-4751-aab5-6db3d16fca3c usage test:
     your_main_function_name(args specific to document #72dc469b-63f8-4751-aab5-6db3d16fca3c...)
