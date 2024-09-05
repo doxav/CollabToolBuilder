@@ -1,6 +1,7 @@
 import inspect
 import pprint
 import random
+import string
 import subprocess
 import traceback
 import types
@@ -888,9 +889,9 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         problem_prompts_subdirs = [name for name in os.listdir("prompts") if os.path.isdir(os.path.join("prompts", name))]
         # get first element of problem_prompts_subdirs if not empty, else set it to empty string
         default_subdir = problem_prompts_subdirs[0] if problem_prompts_subdirs else ""
-        choice = smart_input("CONFIG Enter a number for subdirectory (leave empty for default): "+"; ".join(f"{i}. {subdir}" for i, subdir in enumerate(problem_prompts_subdirs, 1))+" ?", "CONFIG")
-        # if choise is empty or not a number or not in the range of the list of subdirectories, set it to 1
-        problem_prompts_subdir = problem_prompts_subdirs[int(choice) - 1] if choice.isdigit() and 1 <= int(choice) <= len(problem_prompts_subdirs) else default_subdir
+        choice = smart_input("Enter a capital letter for subdirectory (leave empty for default): "+"; ".join(f"\n[{i}] {subdir}" for i, subdir in zip(string.ascii_uppercase,problem_prompts_subdirs))+" ?", "CONFIG")
+        # if choise is empty or not a capital letter or not in the range of the list of subdirectories, set it to A
+        problem_prompts_subdir = problem_prompts_subdirs[ord(choice)-65] if choice and choice.isupper() and ord(choice)-65 in range(len(problem_prompts_subdirs)) else default_subdir
    
     if pipeline_mode is None or not isinstance(pipeline_mode, bool):
         pipeline_mode = True if smart_input("Do you want to create a pipeline as a new class (default = false, new function) ? yes/no :  ", "Pipeline/Function Mode", "Pipeline or Function CONFIG").lower() in ["yes", "y", "YES","Yes", "Oui", "o", "true", "t"] else False

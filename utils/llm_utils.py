@@ -851,9 +851,9 @@ class HumanLLMMonitor:
             [f"RESPONSE {i + 1}: [[\n{response}\n]]" for i, response in enumerate(responses)])  # NEW/UPDATED
         messages = [SystemMessage(content=system), HumanMessage(content=formatted_responses)]  # NEW/UPDATED
         if use_default_llm:
-            return self.default_llm(messages)
+            return self.default_llm.invoke(messages)
         else:
-            return self.premium_llm(messages)
+            return self.premium_llm.invoke(messages)
 
     def _before_inference(self, messages, default_llm_function, premium_llm_function, function_calling,
                           callable_system_message=None, use_premium_llm=None, optuna=None, model_choice=None):

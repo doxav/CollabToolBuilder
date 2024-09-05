@@ -574,8 +574,47 @@ function displayMessage(data) {
             }
         } else if (data.message_type === "BEFORE inference action MENU" || data.message_type === "AFTER inference action MENU" && data.message.includes("Change default") || data.message.includes("Change premium") || data.message.includes("Exit") || data.message.includes("Log comments")) {
                 displayMenuOptions(data.message);
-            }
-        else {
+            } else if(data.agent_name === "CONFIG" && data.message.includes("Enter a capital letter for subdirectory")){
+                // Show a message in a new accordion named "CONFIG"
+                let $configAccordion = $(`#message-accordion > div[data-agent="CONFIG"]`);
+                if ($configAccordion.length === 0) {
+                    $configAccordion = $(`<div data-agent="CONFIG"><h3>CONFIG</h3><div></div></div>`);
+                    $("#message-accordion").append($configAccordion);
+                }
+                let $messageContainer = $(`<h4>${title}</h4><div class="column-container">Please, select a subdirectory </div>`);
+                $configAccordion.children("div").append($messageContainer);
+                displayMenuOptions(data.message);
+
+    } else if(data.agent_name === "Pipeline/Function Mode" && data.message_type === "Pipeline or Function CONFIG" && data.message.includes("Do you want to create a pipeline as a new class")){
+        // Show a message in a new accordion named "Pipeline/Function Mode" with "Do you want to create a pipeline as a new class (default = false, new function) ?" as content
+        let $pipelineFunctionAccordion = $(`#message-accordion > div[data-agent="Pipeline/Function Mode"]`);
+        if ($pipelineFunctionAccordion.length === 0) {
+            $pipelineFunctionAccordion = $(`<div data-agent="Pipeline/Function Mode"><h3>Pipeline/Function Mode</h3><div></div></div>`);
+            $("#message-accordion").append($pipelineFunctionAccordion);
+        }
+        let $messageContainer = $(`<h4>${title}</h4><div class="column-container">Do you want to create a pipeline as a new class (default = false, new function) ?</div>`);
+        $pipelineFunctionAccordion.children("div").append($messageContainer);
+
+        // Show two buttons "Yes" and "No" below the accordion and send the answer to the server as "yes" or "no"
+        let $yesButton = $(`<button id="yes-button">Yes</button>`);
+        let $noButton = $(`<button id="no-button">No</button>`);
+        let $container = $(`<div></div>`);
+        $container.append($yesButton);
+        $container.append($noButton);
+        // Add the buttons below the Accordion
+        $("#message-accordion").append($container);
+        // Add an event listener to the buttons to send the answer to the server
+        $yesButton.click(function () {
+            socket.send(JSON.stringify({message: "yes"}));
+            $container.remove();
+        });
+        $noButton.click(function () {
+            socket.send(JSON.stringify({message: "no"}));
+            $container.remove();
+        });
+
+
+    } else {
             if ($agentAccordion.length === 0) {
                 $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
                 $("#message-accordion").append($agentAccordion);
@@ -757,14 +796,17 @@ function displayMessage(data) {
 
             function displayMenuOptions(message) {
                 $("#menu-options").empty();
-                let options = message.split('\n').filter(line => line.startsWith('['));
+                // Split the message into lines and filter for those starting with a bracket and a capital letter and a closing bracket
+                let options = message.split("\n").filter(line => /^\[[A-Z]\]/.test(line));
                 options.forEach(option => {
-                    let match = option.match(/\[(.)\](.*)/);
-                    letter = match[1].toUpperCase();
-                    // Si la ligne contient le mot "Change" on l'ignore
-                    if (match && !match[2].includes("Change default") && !match[2].includes("Change premium") && !match[2].includes("Exit") && !match[2].includes("Log comments")){
-                        let $option = $(`<div class="menu-option" data-option="${match[1]}">${match[2]}</div>`);
-                        $("#menu-options").append($option);
+                    let match = option.match(/\[(.)\](.*)/ );
+                    if (match && match[1]) {
+                        let letter = match[1].toUpperCase();
+                        // Si la ligne contient le mot "Change" on l'ignore
+                        if (!match[2].includes("Change default") && !match[2].includes("Change premium") && !match[2].includes("Exit") && !match[2].includes("Log comments")) {
+                            let $option = $(`<div class="menu-option" data-option="${match[1]}">${match[2]}</div>`);
+                            $("#menu-options").append($option);
+                        }
                     }
                 });
             }
