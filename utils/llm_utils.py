@@ -5,7 +5,7 @@ import subprocess
 
 from typing import List, Optional, Union
 from dataclasses import dataclass, field
-from jinja2 import Template
+#from jinja2 import Template
 from langchain import LLMChain
 from langchain.llms import OpenAI
 from langchain.prompts import PromptTemplate
@@ -15,7 +15,6 @@ import time
 import json
 from elasticsearch import Elasticsearch
 import requests
-from requests.auth import HTTPBasicAuth
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
@@ -29,8 +28,6 @@ from langchain_core.messages.function import FunctionMessage
 
 import tkinter as tk
 from tkinter import scrolledtext
-
-from requests.auth import HTTPBasicAuth
 
 from utils.file_utils import *
 import concurrent.futures

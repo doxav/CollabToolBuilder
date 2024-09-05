@@ -1,3 +1,159 @@
+TASK DEFINITION:
+Write a Python function pipeline to accomplish the following task. The pipeline should consist of modular and reusable functions, following the principles of functional composition. Each function in the pipeline should be independently executable and reusable in other contexts. Use examples from the primitives folder as a reference where applicable.
+Ensure that the pipeline adheres to the constraints provided. The functions should embed all required package imports inside their definitions, avoid recursion, and prevent infinite loops. The final output of the pipeline must be returned in string or JSON format, and the success of the task will be evaluated based on this output.
+The pipeline should be ready to use on OpenWebUi.
+
+CURRENT STATE OF THE ENVIRONMENT USED TO TEST TASK:
+Document #xxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx: 
+{
+    "id": "...",
+    "title": "...",
+    "abstract": "...",
+    "comment": "...",
+    "target_file_path": "..."
+}
+
+- General code for re-use or demonstration purpose: ...
+- Code from the last round with attempts to implement task with its performance (e.g., 'previous anomaly': x, 'estimated duration': y): ...
+- Execution error: ...
+
+STRUCTURE OF FICHE D'ANOMALIE (FA):
+    <elementId>    4:39c83641-ab1b-4426-95d3-6646f85ee75c:8
+    <id>    8
+    fan_animpact_rnt    []
+    fan_batiment    Archiva
+    fan_categorie    Bug
+    fan_comments    ['Fixed. Patch for this attached.', 'Applied.']
+    fan_description_anomalie    When using Internet Explorer 7, the "Managed Repositories" and "Proxied Repositories" buttons under Administration are not displayed.
+    fan_etat    Closed
+    fan_fa_origine    []
+    fan_gravite_decision    Major
+    fan_intitule    Managed Repositories and Proxied Repositories buttons under Administration are not displayed when using Internet Explorer 7.
+    fan_numero_fa    12788643
+    fan_programme    Web Interface
+    fan_programme_pere    Apache
+    fan_responsable_declaration    dangelito
+    fan_responsable_realisation    evenisse
+    fan_stade_generateur_anomalie    Maintenance
+    fan_subtasks    []
+
+CYBPER REQUEST USED TO CREATE THE DATABASE:
+    CREATE INDEX FA_fan_desc IF NOT EXISTS FOR (fa:FicheAnomalie) ON (fa.fan_description_anomalie);
+    CREATE INDEX Personne_id IF NOT EXISTS FOR (p:Personne) ON (p.id);
+    CREATE INDEX Programme_programme IF NOT EXISTS FOR (p:Programme) ON (p.programme);
+
+    MATCH (fa:FicheAnomalie) WHERE fa.fan_programme IS NOT NULL
+    MERGE (prg:Programme {programme: toString(fa.fan_programme)});
+
+    MATCH (fa:FicheAnomalie) WHERE fa.fan_programme_pere IS NOT NULL
+    MERGE (prg:Programme {programme: toString(fa.fan_programme_pere)});
+
+    MATCH (fa:FicheAnomalie), (prg:Programme {programme: fa.fan_programme})
+    MERGE (prg)-[r:A_FA]->(fa);
+
+    MATCH (fa:FicheAnomalie), (prg:Programme {programme: fa.fan_programme_pere})
+    MERGE (prg)-[r:A_FA]->(fa);
+
+    MATCH (fa:FicheAnomalie), (prg:Programme {programme: fa.fan_programme}), (prg_pere:Programme {programme: fa.fan_programme_pere})
+    MERGE (prg_pere)-[r:A_PROGRAMME]->(prg);
+
+    CALL apoc.periodic.iterate(
+        "MATCH (n:FicheAnomalie) WHERE n.fan_responsable_declaration IS NOT NULL RETURN n",
+        "MERGE (m:Personne {id: toString(n.fan_responsable_declaration)})",
+        {batchSize: 100, parallel: true}
+    );
+
+    CALL apoc.periodic.iterate(
+        "MATCH (n:FicheAnomalie) WHERE n.fan_responsable_realisation IS NOT NULL RETURN n",
+        "MERGE (m:Personne {id: toString(n.fan_responsable_realisation)})",
+        {batchSize: 100, parallel: true}
+    );
+
+    CALL apoc.periodic.iterate(
+        "MATCH (n:FicheAnomalie) WHERE n.fan_responsable_declaration IS NOT NULL MATCH (m:Personne {id: n.fan_responsable_declaration}) RETURN n, m",
+        "MERGE (m)-[r:DECLARE]->(n)",
+        {batchSize: 100, parallel: false}
+    );
+
+    CALL apoc.periodic.iterate(
+        "MATCH (n:FicheAnomalie) WHERE n.fan_responsable_realisation IS NOT NULL MATCH (m:Personne {id: n.fan_responsable_realisation}) RETURN n, m",
+        "MERGE (m)-[r:REALISE]->(n)",
+        {batchSize: 100, parallel: false}
+    );
+
+CONSTRAINTS:
+    1) The first function in the pipeline should establish the Neo4J graph connection using the following details:
+        URI="bolt://127.0.0.1:7687"
+        AUTH = auth=("neo4j", "password")
+    2) Ensure that each function in the pipeline is modular, reusable, and does not hard-code any strings or variables. Parameters should be passed as arguments.
+    3) Refer to examples from the primitives folder when constructing functions in the pipeline.
+    4) Each function should have a meaningful name that reflects its task.
+    5) Functions should be generic and avoid including specific queries or information directly; these should be provided as arguments.
+    6) All variables and classes must be defined within the functions; nothing should be outside.
+    7) Ensure the code is fully executable and does not contain placeholders or unimplemented sections.
+    8) Avoid infinite loops, recursion, Matplotlib, and clustering methods. Use graph-based techniques for proximity analysis.
+    9) Import all necessary packages within each function.
+    10) Do not create new columns, rows, or time ranges.
+    11) Ignore the `fan_date_declaration` field.
+    12) Follow the structure and style of existing code in `generateNeo4J.py`.
+    13) Avoid known errors:
+        - "Error: 'SynthesisManager' object has no attribute 'min_plan_cosine_similarity'"
+        - "analyze_similar_anomalies() got an unexpected keyword argument 'problem'"
+        -  No module named "llama_index.core.data_structs.node"  ==> Do not use it, there is no module!!!!
+        - Error parsing code of Tests:
+                ERROR: '(' was never closed (<unknown>, line 1)
+        -do no test the code at the end with 'if __name__ == "__main__":
+        -use same structure as anomaly_retrieval_pipeline.py
+        -avoid indentation error
+
+RESPONSE FORMAT:
+    python ```
+        class your_pipeline_name:
+            # detailed content of the function pipeline...
+            ... 
+
+            def pipe()
+                    ...
+                    return result
+
+        class example_pipeline:
+                @staticmethod
+                async def run_pipeline(user_message: str, model_id: str, messages: List[dict], body: dict) -> str:
+            
+                    pipeline = your_pipeline_name()
+                    await pipeline.on_startup()
+                    pipe_result =  pipeline.pipe(user_message, model_id, messages, body)
+                    await pipeline.on_shutdown()
+                return pipe_result
+    ```
+
+  TESTS: 
+    do no test the code at the end with 'if __name__ == "__main__": ==> error because Class_If do not exist
+
+    use this kind of fonction to test the pipeline (adapte it to your proposition of pipeline structure):
+    All of the assert should be ok!
+    You should add new assert depending on the pipeline you have created
+
+    python ```
+        def test_pipeline():
+            pipeline = ExamplePipeline()
+            result = asyncio.run(pipeline.run_pipeline())
+            assert result is not None, "Result can't be None"
+            assert isinstance(result, str), "result should be str"
+
+            # add new assert
+
+            result_json= test_pipeline()
+            print(result_json)
+    ```
+
+    # document #72dc469b-63f8-4751-aab5-6db3d16fca3c usage test:
+    your_main_function_name(args specific to document #72dc469b-63f8-4751-aab5-6db3d16fca3c...)
+
+    # document #c0533337-1c5e-4091-ba7d-061ae409cda4 usage test:
+    your_main_function_name(args specific to document #c0533337-1c5e-4091-ba7d-061ae409cda4...)
+    
+
 CONTEXT: {{{
 You are a helpful assistant that writes Python code to be executed using a restricted list of packages (Langchain, RegEx, langchain_openai, Sklearn, BeautifulSoap) to complete the task specified by me.
 At each round of conversation, I will give you:
@@ -57,14 +213,14 @@ class SynthesisManager:
         else:
             print('Invalid section format.')
         return self
-
+    
     def create_and_add_section_then_return_id(self, title: str, content: str, section_id: int = None, parent_id: int = None) -> int:
         ...
         return section_id
 
     def get_sections(self, ids: List[int]) -> List[Section]:
         return [s for s in self.document.document_content.sections_list if s.section_id in ids]
-
+    
     def get_all_sections(self) -> List[Section]:
         return self.document.document_content.sections_list
 
@@ -80,7 +236,7 @@ class SynthesisManager:
         ...
         return True
 
-
+   
 
     def get_and_store_link_content(self, link: str = None, parent_id = None, chaining: bool = True):
         ...

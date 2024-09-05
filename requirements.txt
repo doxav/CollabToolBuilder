@@ -64,4 +64,4 @@ nbformat~=5.10.4
 # LLaMA index and embeddings
 llama-index
 llama-index-llms-ollama
-llama-index.embeddings.ollama
+llama-index-embeddings-ollama
