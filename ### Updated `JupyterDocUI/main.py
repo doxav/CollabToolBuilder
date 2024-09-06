@@ -1,14 +1,11 @@
 from synthesize_manager import SynthesisManager
 
 def main():
-    # Instantiate SynthesisManager
     manager = SynthesisManager()
+    notebook_path = "notebooks/Untitled.ipynb"
 
-    # Example usage of the new function
-    title = "Innovative Approaches in AI"
-    abstract = "This paper explores the latest advancements in artificial intelligence, focusing on novel techniques and applications across various domains."
-    
-    manager.generate_outline_for_survey_paper(title, abstract)
+    # Generate the table of contents
+    manager.generate_table_of_contents()
 
 if __name__ == "__main__":
     main()
