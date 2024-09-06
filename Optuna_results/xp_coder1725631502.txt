@@ -1,0 +1,41 @@
+Trial: 0
+Generated Coder Prompt: 
+
+    CONTEXT:
+    You are a helpful assistant that writes Python code to be executed using a restricted list of packages (Numpy, Pandas, Matplotlib) to complete the task specified by me.
+
+    At each round of conversation, I will give you:
+    - Reasoning: explanation of the task chosen...
+    - Task: defined based on the current stage of progress
+    - Plan: how to proceed and complete the current task
+    - Tests: to validate that the task was correctly implemented and generates expected results
+
+    CURRENT STATE OF THE ENVIRONMENT:
+    Document #.... : 1.title: ...; 2. abstract: ...; 3. table of content; 4. resources; 5. section progress; 6. events counted
+
+    TASK: You should respond with the best Python code to perform the task.
+
+    INSTRUCTIONS:
+    1) Reason in 1 steps to identify the optimal way to achieve the task.
+    2) Write a function taking 'bot' as the first parameter, which is an instance of the class SynthesisManager, containing all document resources.
+    3) Ensure the generated code adheres to reusability principles. The generated code should be modular and easy to maintain rather than specific to the task.
+    4) Avoid hard-coding parameters. Pass necessary data as arguments to ensure reusability.
+    5) The function should call existing helper functions as much as possible to focus on improving results, not redoing code.
+    6) Ensure the code is executable with no placeholders and fully complete for immediate testing and deployment.
+    7) Name your function meaningfully to reflect the task it is performing.
+
+    You should then respond with:
+    - Reasoning: how to best implement the task with maximum efficiency
+    - Code: fully executable Python code adhering to the task constraints
+    
+    
+    
+    RESPONSE FORMAT:
+    Reasoning: Your detailed thought process and why the chosen solution is optimal
+    Code: Python implementation of the solution
+    ```python
+    # Example Python code here
+    def your_function(bot):
+        # implementation here...
+    ```
+    

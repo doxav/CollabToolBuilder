@@ -647,9 +647,11 @@ class HumanLLMMonitor:
 
     def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_max_context_size=16000, default_llmORchain=None,
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1, llmORchains_list=None,
-                 synthesize_mode=False, inference_checks=None, output_schema=None):
+                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature=0.7, optuna=False):
         if llmORchains_list is None: raise ValueError("llmORchains_list must be provided")
         self.llmORchains_list = llmORchains_list
+        self.temperature = temperature
+        self.optuna = optuna
         self.system_prompt = system_prompt
         self.set_output_schema(output_schema)
         self.set_default_llmORchain(default_llmORchain if default_llmORchain else "default_llm") #.default_llm = default_llmORchain if default_llmORchain else self.llmORchains_list.get("default_llm")
@@ -679,7 +681,7 @@ class HumanLLMMonitor:
 
         :param function_name: The name of the function calling the prompt.
         :param agent_name: The name of the agent requesting the prompt.
-        :param few_shots_tag: A dictionary containing parameters to customize few_shots example retrieval.
+        :param prompt: The name of the prompt file to load.
         :return: A formatted string including the main prompt and few_shots examples.
         """
         function_name = function_name if function_name else inspect.stack()[2].function
@@ -791,7 +793,7 @@ class HumanLLMMonitor:
        :return: A string containing the generated summary.
        """
        # Set up the language model and prompt
-       llm = OpenAI(temperature=0.7)
+       llm = OpenAI(temperature=self.temperature)
        prompt = PromptTemplate(
           input_variables=["examples"],
           template="Summarize the following examples in {char_limit} characters or less:\n\n{examples}"
@@ -886,8 +888,8 @@ class HumanLLMMonitor:
 
             smart_print(before_menu+menu, self.agent_name, "BEFORE inference action MENU")
             menu_start_time = time.time()
-            match (optuna):
-                case "Coach":
+            match (optuna.lower() if optuna else ""):
+                case "coach":
                     llm_keys = list(self.llmORchains_list.keys())
                     if type(model_choice) == int:
                         # Model change from choice of optuna
@@ -904,6 +906,8 @@ class HumanLLMMonitor:
                     premium_llm_function = self.premium_llm
                     self.synthesize_mode = False
                     # Default actions for all agents while running with optuna
+                    action = ""
+                case "coder":
                     action = ""
                 case _: # Default case
                     action = smart_input(

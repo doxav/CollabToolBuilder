@@ -1,7 +1,9 @@
-from optuna_main import launch_run
+import os
+import time
+from optimisation.optuna_main import launch_study, launch_run, definition_few_shots
 
 
-def objective(trial):
+def objective(trial, timestamp_exp: int):
 
     # Define parameters for Coach
 
@@ -9,16 +11,7 @@ def objective(trial):
     reset_env_end = trial.suggest_categorical("reset_env_end", [True])
 
     # Define the few shots parameters and if they are used
-    few_shots_tags = trial.suggest_categorical("few_shots_tags", [True, False])
-    if few_shots_tags:
-        number_of_shots = trial.suggest_int("number_of_shots", 1, 5)
-        #filter_tags = trial.suggest_categorical("filter_tags", "")
-        ranking_tags = trial.suggest_categorical("ranking_tags", ["by_score_asc", "by_date_asc", "mrr_asc", "cosine_asc", "random", "accuracy", "relevance"])
-        annotations = trial.suggest_categorical("annotations", ["fix", "delete", "approve", "variants"])
-        summary = trial.suggest_categorical("summary", [True, False])
-        format = trial.suggest_categorical("format", ["JSON", "Markdown", "Jinja2"])
-        few_shots = f"few_shots: {{'num': {number_of_shots}, 'ranking_method': '{ranking_tags}', 'annotations': '{annotations}', 'summary': {summary}, 'format': '{format}'}}"
-
+    few_shots = definition_few_shots(trial)
     # Definition of the coach's prompt
     coach_agent_role = trial.suggest_categorical("role_priming", [ "You are a research assistant", "You are an AI coach", "You are a task optimizer", "You are a technical synthesis expert"])
     #coach_user_input_failed_tasks = trial.suggest_categorical("coach_user_input_failed_tasks", [True, False])
@@ -218,7 +211,7 @@ def objective(trial):
     # Write the prompt in the file readed after by the coach
     with open("./prompts/identify_best_task.txt", "w") as f:
         f.write(prompt_coach[0])
-    with open("./prompts/IR_CPS_TechSynthesis/identify_best_task.txt", "w") as f: f.write(prompt_coach)
+    with open("./prompts/Anomalies/identify_best_task.txt", "w") as f: f.write(prompt_coach)
 
     # Define parameters for Coder
 
@@ -497,7 +490,7 @@ def objective(trial):
     #         f.write(prompt_critic)
 
     # Save the parameters chosen by the trial
-    with open("Optuna_results_anomalies.txt", "a") as f:
+    with open(f"Optuna_results/xp_anomalies{timestamp_exp}.txt", "a") as f:
         f.write(f"Trial: {trial.number}\nPrompt Coach Chosen: \n{prompt_coach}")
 
 
@@ -512,6 +505,12 @@ def objective(trial):
         criteria=criteria_user_message
     )
 
-    with open("Optuna_results_anomalies.txt", "a") as f:
+    with open(f"Optuna_results/xp_anomalies{timestamp_exp}.txt", "a") as f:
         f.write(f"Performance: {perf}\n\n")
     return perf
+
+
+if __name__ == "__main__":
+    os.chdir("../")
+    timestamp_xp = int(time.time())
+    launch_study(lambda trial: objective(trial, timestamp_xp), "anomalies", timestamp_xp)

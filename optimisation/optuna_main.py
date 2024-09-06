@@ -1,21 +1,35 @@
-from optuna_opti_Synthesis_coder import objective as objective_coder
-from optuna_opti_Synthesis_coach import objective as objective_coach
-from optuna_opti_Anomalies import objective as objective_anomalies
-from config import MODELS_CONFIG_LIST
-from langchain_openai import ChatOpenAI
-from learn import EnvironmentManager, run_4agents_learning_loop
 import optuna as opt
 import time
 import os
 
-def definition_global_parameters():
+from langchain_openai import ChatOpenAI
+from config import MODELS_CONFIG_LIST
+from learn import EnvironmentManager, run_4agents_learning_loop
+
+
+def definition_few_shots(trial):
+    few_shots = ""
+    few_shots_tags = trial.suggest_categorical("few_shots_tags", [True, False])
+    if few_shots_tags:
+        number_of_shots = trial.suggest_int("number_of_shots", 1, 5)
+        # filter_tags = trial.suggest_categorical("filter_tags", "")
+        ranking_tags = trial.suggest_categorical("ranking_tags",
+                                                 ["by_score_asc", "by_date_asc", "mrr_asc", "cosine_asc", "random",
+                                                  "accuracy", "relevance"])
+        annotations = trial.suggest_categorical("annotations", ["fix", "delete", "approve", "variants"])
+        summary = trial.suggest_categorical("summary", [True, False])
+        format = trial.suggest_categorical("format", ["JSON", "Markdown", "Jinja2"])
+        few_shots = f"few_shots: {{'num': {number_of_shots}, 'ranking_method': '{ranking_tags}', 'annotations': '{annotations}', 'summary': {summary}, 'format': '{format}'}}"
+    return few_shots
+
+def definition_global_parameters(temperature : float = None, presence_penalty : float = None):
     # Initialize the default and premium LLMs
     # default_llm = ChatOpenAI(model_name="gpt-3.5-turbo-1106") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
     # default_llm = create_Nmajority_chain(num_models=3)
     # premium_llm = ChatOpenAI(model_name="gpt-4o") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
     llmORchains_list = {
-        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt"]),
-        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"]),
+        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt"], **{k: v for k, v in {"temperature": temperature, "presence_penalty": presence_penalty}.items() if v is not None}),
+        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"], **{k: v for k, v in {"temperature": temperature, "presence_penalty": presence_penalty}.items() if v is not None}),
         # "3_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"] , num_models=3),
         # "10_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"], num_models=10)
     }
@@ -39,11 +53,16 @@ def definition_global_parameters():
     return llmORchains_list, envs
 
 def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "premium_llm", problem_prompts_subdir : str = None, max_coding_attempts : int = 2, max_execution_time : int = 900,
-               model_choice=None, optuna_opti : str = "coach", criteria : str = None):
+               model_choice=None, optuna_opti : str = "coach", criteria : str = None, special_criteria : dict = None):
     if model_choice is None:
         model_choice = {"coach": "default", "coder": "premium_llm", "critic": "default_llm",
                         "capitalizer": "default_llm"}
-    llmORchains_list, envs = definition_global_parameters()
+    if special_criteria is None:
+        llmORchains_list, envs = definition_global_parameters()
+    else:
+        llmORchains_list, envs = definition_global_parameters(special_criteria["temperature"], special_criteria["presence_penalty"])
+        # Delete the presence_penalty from the special_criteria
+        del special_criteria["presence_penalty"]
     performance = run_4agents_learning_loop(default_llm_key=default_llm_key,
                                            premium_llm_key=premium_llm_key,
                                            llmORchains_list=llmORchains_list,
@@ -62,34 +81,22 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
                                            agcapitalize_skip_rounds=0,
                                            model_choice=model_choice,
                                            optuna_opti=optuna_opti,
-                                           criteria=criteria)
+                                           criteria=criteria,
+                                           special_criteria=special_criteria)
 
     return performance
 
-
-def launch_study(objective, agent_mode : str):
-    with open(f"Optuna_results_{agent_mode}.txt", "w") as f:
+def launch_study(objective, agent_mode : str, timestamp_xp : int = None):
+    name_exp = f"xp_{agent_mode}{timestamp_xp}"
+    with open(f"Optuna_results/{name_exp}.txt", "w") as f:
         f.write("")
     # Wait for 10s
     time.sleep(10)
     # get current folder
     current_folder = os.getcwd()
 
-    sqlite_file = os.path.join(current_folder, f"optuna{agent_mode}.db")
+    sqlite_file = os.path.join(current_folder, f"Optuna_db/{name_exp}.db")
 
     # Create a study and optimize the objective function
-    study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}")
+    study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}", study_name=name_exp)
     study.optimize(objective, n_trials=200)
-
-if __name__ == "__main__":
-    agent = input("Enter the agent/mode to optimize (coder, coach or anomalies): ")
-    match agent:
-        case "coder":
-            launch_study(objective_coder, agent)
-        case "coach":
-            launch_study(objective_coach, agent)
-        case "anomalies":
-            launch_study(objective_anomalies, agent)
-        case _:
-            print("Invalid agent/model. Please enter either 'coder', 'coach' or 'anomalies'.")
-            exit(1)
