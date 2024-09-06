@@ -7,9 +7,9 @@ from typing import List, Optional, Union
 from dataclasses import dataclass, field
 #from jinja2 import Template
 from langchain import LLMChain
-from langchain.llms import OpenAI
-from langchain.prompts import PromptTemplate
 
+from langchain.prompts import PromptTemplate
+from langchain_community.llms import OpenAI
 
 import time
 import json
@@ -39,6 +39,7 @@ import openai
 from requests.auth import HTTPBasicAuth
 
 openai.api_key = os.environ['OPENAI_API_KEY']
+
 if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
 
 ON_INPUT = False

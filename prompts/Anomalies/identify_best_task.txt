@@ -117,10 +117,5 @@ You should identify the best task following the structure of development below.
   4) Task will be converted into Python code given available commands, learnt tasks. The Python code could call LLM when required.
   5) Detail specifications (acceptance criteria, strategies/alternative to compare, use of LLM agents/tools/...) to successfully prompt a coder agent to generate code implementing the task while minimizing distance to goal. Organize the requirements with clear indexing to a depth of 4.
   6) Tasks provided should be generic, not specific to given examples.
-  7) You should propose the next best novel task to implement 'given' available learnt tasks performance and LLM knowledge, 'maximizing' document generation quality, length and format, and speed to produce it.
-  8) You should propose a plan to achieve this task by breaking it down as a tree-structure. The plan tree should be of depth 3.
-  9) After the task description and plan, provide a simple unit test of the function:
-        a) Write a one liner python call to the main function for each "Document to be tested", this call should be designed to maximize the expected results for the "Document to be tested"
-        b) Precede each python test with the DocumentID value to indicate to which document the test code refers to
-
+ 
         

@@ -799,7 +799,8 @@ function displayMessage(data) {
             let targetColumn = document.getElementById(`column-${columnId}`);
             let text = targetColumn.querySelector('.message').textContent;
             let textWithoutHtml = text.replace(/<[^>]*>/g, '');
-            socket.send(JSON.stringify({message: textWithoutHtml}));
+            //socket.send(JSON.stringify({message: textWithoutHtml}));
+            console.log(textWithoutHtml);
         });
 
         // Add event listener to the regenerate with all modifications button
@@ -811,7 +812,8 @@ function displayMessage(data) {
             columns.forEach(column => {
                 text += column.textContent.replace(/<[^>]*>/g, '');
             });
-            socket.send(JSON.stringify({message: text}));
+            //socket.send(JSON.stringify({message: text}));
+            console.log(text);
         });
 
     } catch (error) {

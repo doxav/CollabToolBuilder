@@ -30,7 +30,9 @@ Instructions: {{{
 13) Your function should manipulate the 'bot' document object and must provide substantial modification to sections to be able to measure task success. Main functions are:
 - class Section(section_id: int, title: str, content: str, parent_id: int)
 - please note that 'DocumentStructure' has no attribute 'abstract', you should use 'context'
+- avoid  TypeError: create_initial_table_of_contents() missing 2 required positional arguments: 'title' and 'abstract' !! 
 14) Before returning result in the main function, ensure to store your results or text generated in sections from bot, it is the only permanent storage. Also, ensure that results are returned for future reuse of the function.
+15) be sure to call the right param to test the function
 }}}
 
 DOCUMENTATION ABOUT bot document object: {{{

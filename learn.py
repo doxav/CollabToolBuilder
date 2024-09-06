@@ -8,7 +8,7 @@ import types
 import time
 from config import *
 
-#import openai
+import openai
 import json
 from typing import Dict, Optional
 
@@ -43,8 +43,8 @@ from langchain_community.cache import SQLiteCache
 
 set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
 
-#openai.api_key = os.environ['OPENAI_API_KEY']
-#if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
+openai.api_key = os.environ['OPENAI_API_KEY']
+if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
 
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
@@ -306,6 +306,7 @@ class CodingAgent():
                     parsed = ast.parse(code)
                     functions = []
                     imports = []
+                    classes =[]
                     
                     if len(code) == 0 or len(list(parsed.body)) == 0:
                         return False, f"Error parsing action response (No Code found): {parsed.body}"
@@ -320,6 +321,14 @@ class CodingAgent():
                                     "type": node_type,
                                     "body": ast.get_source_segment(code, node),
                                     "params": [arg.arg for arg in node.args.args],
+                                }
+                            functions.append(main_function)
+                        elif isinstance(node, ast.ClassDef):
+                            node_type = "ClassDef"
+                            main_function = {
+                                    "name": node.name +".run_pipeline",
+                                    "type": node_type,
+                                    "body": ast.get_source_segment(code, node),        
                                 }
                             functions.append(main_function)
                         elif isinstance(node, ast.Expr) or isinstance(node, ast.Expression) or isinstance(node, ast.Assign):
@@ -494,7 +503,7 @@ class CodingAgent():
                 test_results = check_results.get("Run Tests", None)
                 if test_results:
                     results.append(test_results)
-            
+        smart_print(f"************ Code results ************\n{results}\n************************".replace("\\n", "\n"), self.name, "code_task_and_run_test RESULT")
         # test if more than one code is returned, so ask to select or 
         if len(results) > 1:
             # display the list of results with success, exception and code
