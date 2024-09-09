@@ -274,10 +274,9 @@ class Pipeline:
 
 class AnomalyRetrievalAndRecommendationPipeline:
     @staticmethod
-    async def run_pipeline(user_message: str) -> str:
+    async def run_pipeline(user_message: strt) -> str:
         pipeline = Pipeline()
         await pipeline.on_startup()
-        pipe_result = pipeline.pipe(user_message)
+        pipe_result = pipeline.pipe(user_message, model_id, messages, body)
         await pipeline.on_shutdown()
         return pipe_result
-    

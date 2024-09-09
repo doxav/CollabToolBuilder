@@ -7,7 +7,7 @@ from config import MODELS_CONFIG_LIST
 
 def objective(trial):
 
-    # Define parameters for Coach
+    # Define parameters for Coach###############################################################################
 
     # Define the reset environment at the end of the learning loop
     reset_env_end = trial.suggest_categorical("reset_env_end", [True])
@@ -24,7 +24,7 @@ def objective(trial):
         few_shots = f"few_shots: {{'num': {number_of_shots}, 'ranking_method': '{ranking_tags}', 'annotations': '{annotations}', 'summary': {summary}, 'format': '{format}'}}"
 
     # Definition of the coach's prompt
-    coach_agent_role = trial.suggest_categorical("role_priming", [ "You are a research assistant", "You are an AI coach", "You are a task optimizer", "You are a technical synthesis expert"])
+    coach_agent_role = trial.suggest_categorical("role", [ "You are a research assistant", "You are an AI coach", "You are a task optimizer", "You are a technical synthesis expert"])
     #coach_user_input_failed_tasks = trial.suggest_categorical("coach_user_input_failed_tasks", [True, False])
     coach_user_input = "I will provide you:\n- Learnt tasks available (with information gain between 0 and 1 on plan's titles, and contents): ...\n- Failed tasks to learn that are too hard to code: ...\n- Current status of examples of technical synthesis the proposed next task will be tested on: ..."
     coach_task_description = "You define best next task to generate state-of-the-art research survey paper given a [Title] and an [Abstract]. Each task you propose will be prompted to a language model which will try to convert it into Python functions. If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration."
@@ -48,7 +48,7 @@ def objective(trial):
         coach_instructions_reasoning_steps = trial.suggest_int("reasoning_steps", 3, 10)
         criteria_coach.append(f"{len(criteria_coach)+1}) Reason in {coach_instructions_reasoning_steps} steps to find out the best task to minimize distance to goal.")
     if criteria_to_remove != "task_format":
-        coach_task_criteria_description_format = trial.suggest_categorical("task_format", [
+        coach_task_criteria_description_format = trial.suggest_categorical("task_format_descr", [
             "Task should be written in the form of [verb] [quantity if applicable] [object] [tools] [detailed instructions and parameters]",
             "Task should be written in the form of [action] [target] using [method] with [specifications]",
             "Task should be written in the form of [operation] on [subject] utilizing [resources] following [guidelines]",
@@ -117,27 +117,147 @@ def objective(trial):
         # document #2fa754cb-2e90-3376-3b2c-142f29c9ebf8 usage test:
         task_function_name(bot, arguments with values describing document #2fa754cb-2e90-3376-3b2c-142f29c9ebf8 for the given task...)
         ```"""
-
+    reasoning_steps = trial.suggest_int("reasoning_steps", 3, 10)
     # Construct the prompt based on the suggested parameters
-    criteria_coach = [
-        f"1) Reason in {reasoning_steps} steps to find out the best task to minimize distance to goal.",
-        f"2) Task should be written in the form of '{task_format}'",
-        f"3) Task will be converted into Python code given available commands, learnt tasks, use of LLM if required.",
-        f"4) Task should be novel compared to learnt {f'and failed ' if include_failed_tasks else ''}tasks.",
-        f"5) Develop key minimal elements of specification (acceptance criteria, best strategies to compare, performance tips to beat a LLM) to successfully prompt a coder agent to generate code implementing the task while minimizing distance to goal. Organize the requirements with clear indexing to a depth of {specification_depth}.",
-        f"6) Tasks provided should be generic, not specific to given examples{', so the reasoning can mention examples but proposed task and plan should not mention any information related to examples' if use_examples else ''}.",
-        f"7) After proposing the task, you should provide a test case of the function corresponding to this task for each example:",
-            f"a) Write a one liner python call to the main function for each 'Document to be tested', this call should be designed to maximize the expected results for the 'Document to be tested'",
-            f"b) Precede each one liner call with a line of comment in this form '# document #uuid usage test' (e.g. '#document #125dc4bc-54e0-4336-82bc-417e40ec9b8f usage test'...) to indicate to which document the code of the next line applies to given its unique id",
-            f"c) Call to the main function uses 'problem' as first required parameter, then provide parameters sepecific to the document for this function (do not provide document #uuid as parameter but title and context instead)",
-            f"d) Generate only one test for each document, so the total number of function calls in this test list should be equal to the number of 'Document to be tested'",
-            f"e) Your only source of data will be the Neo4j graph provide in the primitives. Do not use the date."
-        ]
+    
 
-    del criteria_coach[criteria_to_remove - 1]
+    #del criteria_coach[criteria_to_remove - 1]
 
     for i in range(len(criteria_coach)):
         coach_text = "\n".join(criteria_coach[i])
+
+    role_priming = trial.suggest_categorical("role_priming", [
+        "research assistant",
+        "AI coach",
+        "task optimizer",
+        "technical synthesis expert",
+        "knowledge engineer",
+        "content curator", 
+        "data analyst assistant"
+    ])
+    goal_definition= trial.suggest_categorical("goal_description", [
+        "produce high quality technical synthesis",
+        "analyse complex data sets",
+        "analyse a a Neo4J graph",
+        "solve JIRA issue, given a graph of a complete dataset of JIRA anomalies from Neo4J and embeddings"
+    ])
+
+    goal_function = trial.suggest_categorical("goal_function", [
+        "Assist users in their situation analysis and decision making with situation assesment",
+        "Show same issues depending on semantic similarity with the current issue from the graph",
+        "Propose different resolutions depending on the graph",
+        "Generate structred phases to solve this issue",
+        "Propose actions to avoid this issue in the future"
+    ])
+
+    task_format = trial.suggest_categorical("task_format", [
+        "[verb] [quantity if applicable] [object] [tools] [detailed instructions and parameters]",
+        "[action] [target] using [method] with [specifications]",
+        "[operation] on [subject] utilizing [resources] following [guidelines]",
+        "[do] [what] [how] [with what] [detailed instructions]"
+    ])
+    
+    specification_depth = trial.suggest_int("specification_depth", 2, 5)
+    use_examples = trial.suggest_categorical("use_examples", [True, False])
+    include_failed_tasks = trial.suggest_categorical("include_failed_tasks", [True, False])
+    plan_depth = trial.suggest_int("plan_depth", 2, 4)
+    available_commands_detail = trial.suggest_categorical("available_commands_detail", [
+        "minimal",
+        "moderate",
+        "comprehensive",
+        "detailed"
+    ])
+    task_complexity = trial.suggest_categorical("task_complexity", [
+        "Task shouldn’t be too difficult to convert into Python code given available commands and learnt tasks.",
+        "Task should balance complexity and feasibility for effective implementation.",
+        "Task should challenge the LLM while remaining solvable with available resources.",
+        "Task should involve multiple steps that require coordination among different functions.",
+        "Task should leverage advanced features of the LLM to achieve superior results.",
+        "Task should be modular, allowing parts of the solution to be reused in other contexts.",
+        "Task should be scalable, capable of being applied to larger datasets or more complex scenarios."
+    ])
+
+    structure_FA= trial.suggest_categorical( """
+                        <elementId>	4:39c83641-ab1b-4426-95d3-6646f85ee75c:8
+                        <id>	8
+                        fan_animpact_rnt	[]
+                        fan_batiment	Archiva
+                        fan_categorie	Bug
+                        fan_comments	['Fixed. Patch for this attached.', 'Applied.']
+                        fan_description_anomalie	When using Internet Explorer 7, the "Managed Repositories" and "Proxied Repositories" buttons under Administration are not displayed.
+                        fan_etat	Closed
+                        fan_fa_origine	[]
+                        fan_gravite_decision	Major
+                        fan_intitule	Managed Repositories and Proxied Repositories buttons under Administration are not displayed when using Internet Explorer 7.
+                        fan_numero_fa	12788643
+                        fan_programme	Web Interface
+                        fan_programme_pere	Apache
+                        fan_responsable_declaration	dangelito
+                        fan_responsable_realisation	evenisse
+                        fan_stade_generateur_anomalie	Maintenance
+                        fan_subtasks	[]
+                """, [True, False])
+    
+
+    cypher_request = trial.suggest_categorical(""" CREATE INDEX FA_fan_desc IF NOT EXISTS FOR (fa:FicheAnomalie) ON (fa.fan_description_anomalie);
+                CREATE INDEX Personne_id IF NOT EXISTS FOR (p:Personne) ON (p.id);
+                CREATE INDEX Programme_programme IF NOT EXISTS FOR (p:Programme) ON (p.programme);
+
+        // Créer des programmes
+                MATCH (fa:FicheAnomalie) WHERE fa.fan_programme IS NOT NULL
+                MERGE (prg:Programme {'programme: toString(fa.fan_programme)'});
+
+                MATCH (fa:FicheAnomalie) WHERE fa.fan_programme_pere IS NOT NULL
+                MERGE (prg:Programme {'programme: toString(fa.fan_programme_pere)'});
+
+        // Associer les programmes aux fiches d'anomalie
+                MATCH (fa:FicheAnomalie), (prg:Programme {'programme: fa.fan_programme'})
+                MERGE (prg)-[r:A_FA]->(fa);
+
+                MATCH (fa:FicheAnomalie), (prg:Programme {'programme: fa.fan_programme_pere'})
+                MERGE (prg)-[r:A_FA]->(fa);
+
+        // Créer des relations entre les programmes
+                MATCH (fa:FicheAnomalie), (prg:Programme {'programme: fa.fan_programme'}), (prg_pere:Programme {'programme: fa.fan_programme_pere'})
+                MERGE (prg_pere)-[r:A_PROGRAMME]->(prg);
+
+
+        // Créer des personnes responsables
+                CALL apoc.periodic.iterate(
+                'MATCH (n:FicheAnomalie) WHERE n.fan_responsable_declaration IS NOT NULL RETURN n',
+                'MERGE (m:Personne {'id: toString(n.fan_responsable_declaration)'})',
+                {'batchSize: 100, parallel: true'}
+                );
+
+                CALL apoc.periodic.iterate(
+                'MATCH (n:FicheAnomalie) WHERE n.fan_responsable_realisation IS NOT NULL RETURN n',
+                'MERGE (m:Personne {'id: toString(n.fan_responsable_realisation)'})',
+                {'batchSize: 100, parallel: true'}
+                );
+
+        // Associer les personnes aux fiches d'anomalie
+                CALL apoc.periodic.iterate(
+                'MATCH (n:FicheAnomalie) WHERE n.fan_responsable_declaration IS NOT NULL MATCH (m:Personne {'id: n.fan_responsable_declaration'}) RETURN n, m',
+                'MERGE (m)-[r:DECLARE]->(n)',
+                {'batchSize: 100, parallel: false'}
+                );
+
+                CALL apoc.periodic.iterate(
+                'MATCH (n:FicheAnomalie) WHERE n.fan_responsable_realisation IS NOT NULL MATCH (m:Personne {'id: n.fan_responsable_realisation'}) RETURN n, m',
+                'MERGE (m)-[r:REALISE]->(n)',
+                {'batchSize: 100, parallel: false'}
+                );
+            """, [True, False])
+
+    test_example = """5. Tests:
+        ```python
+        #document #72dc469b-63f8-4751-aab5-6db3d16fca3c usage test:
+        your_main_function_name(args specific to document #72dc469b-63f8-4751-aab5-6db3d16fca3c...)
+
+        # document #c0533337-1c5e-4091-ba7d-061ae409cda4 usage test:
+        your_main_function_name(args specific to document #c0533337-1c5e-4091-ba7d-061ae409cda4...)``` """ 
+
+
     
     prompt_coach = [f"""
             ROLE: 
@@ -222,7 +342,7 @@ def objective(trial):
     # Write the prompt in the file readed after by the coach
     with open("./prompts/identify_best_task.txt", "w") as f:
             f.write(prompt_coach[0])
-    with open("./prompts/IR_CPS_TechSynthesis/identify_best_task.txt", "w") as f: f.write(prompt_coach)
+    with open("./prompts/Anomalies/identify_best_task.txt", "w") as f: f.write(prompt_coach)
 
     # Define parameters for Coder
 
@@ -266,7 +386,24 @@ def objective(trial):
         Clearing Cache & Cookies: Sometimes, cache buildup in the browser can cause certain functionalities to stop working. Guiding users to clear their cache or try using the software in an incognito window or a different browser might solve the problem.
         Reach out to Support: If the problem persists despite trying these solutions, it may be best to reach out to Atlassian Support.
         Remember to follow up with users to ensure the anomaly has been resolved and users can communicate in the software without issue."""])
-
+    
+    criteria_coach = [
+        f"1) Reason in {reasoning_steps} steps to find out the best task to minimize distance to goal.",
+        f"2) Task should be written in the form of '{task_format}'",
+        f"3) Task will be converted into Python code given available commands, learnt tasks, use of LLM if required.",
+        f"4) Task should be novel compared to learnt {f'and failed ' if include_failed_tasks else ''}tasks.",
+        f"5) Develop key minimal elements of specification (acceptance criteria, best strategies to compare, performance tips to beat a LLM) to successfully prompt a coder agent to generate code implementing the task while minimizing distance to goal. Organize the requirements with clear indexing to a depth of {specification_depth}.",
+        f"6) Tasks provided should be generic, not specific to given examples{', so the reasoning can mention examples but proposed task and plan should not mention any information related to examples' if use_examples else ''}.",
+        f"7) After proposing the task, you should provide a test case of the function corresponding to this task for each example:",
+            f"a) Write a one liner python call to the main function for each 'Document to be tested', this call should be designed to maximize the expected results for the 'Document to be tested'",
+            f"b) Precede each one liner call with a line of comment in this form '# document #uuid usage test' (e.g. '#document #125dc4bc-54e0-4336-82bc-417e40ec9b8f usage test'...) to indicate to which document the code of the next line applies to given its unique id",
+            f"c) Call to the main function uses 'problem' as first required parameter, then provide parameters sepecific to the document for this function (do not provide document #uuid as parameter but title and context instead)",
+            f"d) Generate only one test for each document, so the total number of function calls in this test list should be equal to the number of 'Document to be tested'",
+            f"e) Your only source of data will be the Neo4j graph provide in the primitives. Do not use the date."
+        ]
+ 
+ 
+ ##############################################################################
     prompt_template = trial.suggest_categorical("prompt_template", ["Extensive", "Minimal"])
     libraries_restriction = trial.suggest_categorical("libraries_restriction", [
         "BeautifulSoap, RegEx, Sklearn, Huggingface, Langchain, Voyager",
@@ -308,6 +445,32 @@ def objective(trial):
 
     modularity_final = f"16) Ensure that the generated code adheres to principles of reusability and modularity as {modularity}." if modularity != "None" else "3) Ensure that the generated code adheres to principles of reusability." 
 
+    if prompt_template == "Extensive":
+        prompt_critic = f"""
+        You are a Python expert and domain expert in the field of the task, you should validate the Python code provided and its result regarding the code implementing the task and feedback.
+        I will provide you:
+        TASK: {{task}}
+        CODE: {{code}}
+        Some additional information to evaluate code: {{runtime_errors}}
+        Execution result returned by exec command of code provided: {{exec_result}}
+        RESPONSE FORMAT: you should only respond in the format as described below:
+        {{critic_text}}
+        EXAMPLES:
+        Reasoning: The initial task was to list all GPS points of vessels in the zone. The code is aligned with this task, it ran without errors, your confirmed what I could not check.
+        Success: "True"
+        Explain: code generated result expected by task without errors.
+        """
+    else:
+        prompt_critic = f"""
+        You are a Python expert and domain expert in the field of the task, you should validate the Python code provided and its result regarding the code implementing the task and feedback.
+        I will provide you:
+        TASK: {{task}}
+        CODE: {{code}}
+        Some additional information to evaluate code: {{runtime_errors}}
+        Execution result returned by exec command of code provided: {{exec_result}}
+        RESPONSE FORMAT: you should only respond in the format as described below:
+        {{critic_text}}
+        """
 
     # Construct the prompt based on the suggested parameters
     criteria_coder = [
@@ -357,7 +520,7 @@ def objective(trial):
     #     "14) Before the return of the main function, ensure to store your results or text generated in resources or sections which are the only permanent storage. Also, ensure that results are returned for future reuse of the function."
     # ]
     
-    del criteria_coder[instruction_to_remove - 1]
+    #del criteria_coder[instruction_to_remove - 1]
     for i in range(len(criteria_coder)):
         coder_text = "\n".join(criteria_coder[i])
     # del criteria_coder[instruction_to_remove - 1]
@@ -417,7 +580,7 @@ def objective(trial):
     """]
 
     # Write the prompt in the file readed after by the coder
-    with open("./prompts/code_task.txt", "w") as f:
+    with open("./prompts/Anomalies/code_task.txt", "w") as f:
             f.write(prompt_coder[0])
     # prompt_coder = f"""
     # You are a helpful assistant that writes Python code to be executed using a restricted list of packages ({libraries_restriction}) to complete the task specified by me.

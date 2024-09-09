@@ -122,7 +122,7 @@ class Pipeline:
         return menu
 
     def pipe(self, user_message: str, model_id: str, messages: List[dict], body: dict) -> str:
-        choice = user_message.strip()
+        choice = user_message
         menu = self.display_menu()
         if choice not in [str(i) for i in range(1, 8)]:
             # Invalid choice or first interaction, show menu

@@ -503,7 +503,7 @@ class CodingAgent():
                 test_results = check_results.get("Run Tests", None)
                 if test_results:
                     results.append(test_results)
-        smart_print(f"************ Code results ************\n{results}\n************************".replace("\\n", "\n"), self.name, "code_task_and_run_test RESULT")
+        smart_print(f"************ Code tests results ************\n{test_results}\n************************".replace("\\n", "\n"), self.name, "code_task_and_run_test RESULT")
         # test if more than one code is returned, so ask to select or 
         if len(results) > 1:
             # display the list of results with success, exception and code
@@ -593,12 +593,12 @@ class CapitalizationAgent:
         import socket, uuid, datetime
 
         if self.problem_prompts_subdir=="Anomalies/":
-            function_name = parsed_code["class_name"]
+            function_name = parsed_code.get("main_function_name", parsed_code.get("main_function", {}).get("name", "unknown"))
             pipeline_file_path = os.path.join("pipelines/pipelines", function_name+".py")
-            tool_description = str(self.generate_tool_description(parsed_code["class_name"], parsed_code["program_code"]))
-            self.tasks_repository[parsed_code["class_name"]] = [tool_description, parsed_code["program_code"]]
+            tool_description = str(self.generate_tool_description(function_name, parsed_code["program_code"]))
+            self.tasks_repository[function_name] = [tool_description, parsed_code["program_code"]]
             # print last added task
-            smart_print(f"************ Last added task ************\n{parsed_code['class_name']}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
+            smart_print(f"************ Last added task ************\n{function_name}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
         else:
             function_name = parsed_code.get("main_function_name", parsed_code.get("main_function", {}).get("name", "unknown"))
             # save function program_code in a file under the functions directory and add to the function signature the generated dosctring
@@ -675,7 +675,7 @@ class CapitalizationAgent:
         import socket, uuid, datetime
 
         if self.problem_prompts_subdir=="Anomalies/":
-            name_file = parsed_code["class_name"]
+            name_file = parsed_code["class_name"] if parsed_code is not None and "class_name" in parsed_code else "replace this text with a descriptive name of the class"
             main_class_name = _visual_input(name_file if parsed_code is not None and "class_name" in parsed_code else "replace this text with a descriptive name of the class")
             task_description_refined = _visual_input(task_description)
             self.failed_tasks_repository[main_class_name] = task_description_refined

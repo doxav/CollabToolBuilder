@@ -97,7 +97,7 @@ CONSTRAINTS:
     11) Ignore the `fan_date_declaration` field.
     12) Do somme assert inside the class pipeline, do not create a test_function after the pipeline class.
     13) assert sentence should be inside the pipe() NOT in the run_pipeline()
-    14) function run_pipeline() should only take one argument "user_message" not other ones such as model_id: str, messages: List[dict], body: dict
+    14) function run_pipeline() should  take only one argument "user_message". DO NOT use other ones such as model_id: str, messages: List[dict], body: dict
     15) Avoid known errors:
         - "Error: 'SynthesisManager' object has no attribute 'min_plan_cosine_similarity'"
         - "analyze_similar_anomalies() got an unexpected keyword argument 'problem'"
@@ -108,10 +108,11 @@ CONSTRAINTS:
         -use same structure as anomaly_retrieval_pipeline.py
         -avoid indentation error
         - AnomalyClusteringAndRecommendation() takes no arguments 
+        -class Pipeline is mandatory to have a functional pipeline
         
 RESPONSE FORMAT:
     python ```
-        class your_pipeline_name:
+        class Pipeline:
             # detailed content of the function pipeline...
             ... 
 
