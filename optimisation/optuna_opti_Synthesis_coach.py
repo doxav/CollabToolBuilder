@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 from optimisation.optuna_main import launch_run, definition_few_shots, launch_study
 
@@ -173,5 +174,10 @@ def objective(trial, timestamp_exp: int):
 
 if __name__ == "__main__":
     os.chdir("../")
-    timestamp_xp = int(time.time())
-    launch_study(lambda trial: objective(trial, timestamp_xp), "coach", timestamp_xp)
+    # Recuperate name_exp from terminal argument:
+    if len(sys.argv) > 1:
+        name_exp = sys.argv[1]
+    else:
+        timestamp_xp = int(time.time())
+        name_exp = f"xp_coder{timestamp_xp}"
+    launch_study(lambda trial: objective(trial, timestamp_xp), name_exp)

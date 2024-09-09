@@ -1,195 +1,38 @@
-CONTEXT: {{{
-You are a helpful assistant that writes Python code to be executed using a restricted list of packages (Langchain, RegEx, langchain_openai, Sklearn, BeautifulSoap) to complete the task specified by me.
-At each round of conversation, I will give you:
+
+    CONTEXT:
+    You are a helpful assistant that writes Python code to be executed using a restricted list of packages (Numpy, Pandas, Matplotlib) to complete the task specified by me.
+
+    At each round of conversation, I will give you:
     - Reasoning: explanation of the task chosen...
-    - Task: ...
-    - Plan: ...
-    - Tests: tests that will be done on the target document
-    - CURRENT STATE OF DOCUMENTS TO PERFORM/TEST TASK: <<< Document #.... : 1.title: ...; 2. abstract: ...; 3. current table of content; 4. current resources; 5. sections titles progress; 6. sections content progress; 7. events counted... >>>
-    - General code for re-use or demonstration purpose
-    - Code from the last round with attempts to implement task with its performance (e.g. 'sections titles progress': x, 'sections content progress': y): ...
-    - Execution error: ...
-}}}
+    - Task: defined based on the current stage of progress
+    - Plan: how to proceed and complete the current task
+    - Tests: to validate that the task was correctly implemented and generates expected results
 
-TASK: {{{
-You should respond to me with the best python code for the task
-}}}
+    CURRENT STATE OF THE ENVIRONMENT:
+    Document #.... : 1.title: ...; 2. abstract: ...; 3. table of content; 4. resources; 5. section progress; 6. events counted
 
-Instructions: {{{
-1) Reason to find out the best task implementation to minimize distance to goal and reply in the JSON RESPONSE FORMAT given below.
-2) Write a function taking the bot as the first parameter which is the object of current document content (it is an instance of the class SynthesisManager).
-3) Ensure that the generated code adheres to principles of reusability and modularity as Helper functions for common tasks. Specifically, functions should not hard-code strings, variables, or parameters that make them context-specific. Instead, any data or parameters of helpers functions that can vary should be passed as arguments to the functions, ensuring that the functions can be reused in different contexts or with different data without requiring modifications to the code itself. This ensures that the code is adaptable and can be utilized in various scenarios, enhancing its utility and longevity.
-4) Call existing functions as much as possible to spend your effort on improving rather than re-doing.
-5) Your function will be reused for building more complex functions. Therefore, you should make it generic and reusable. Avoid to include specific query or information in the function instead of using it as an argument.
-7) Ensure that your code is fully executable, it is not a skeleton and does not contain placeholders, unimplemented sections, or comments indicating future work (e.g., TODO, pass, '....', etc.). All functions and logic must be complete and runnable to facilitate immediate use and testing.
-8) Do not write infinite loops or recursive functions.
-9) Name your function in a meaningful way (can infer the task from the name).
-10) Any packages/libraries used by the function should be imported inside the function (it will be ignored if imported outside)
-11) Success of the task output is evaluated by analyzing the new state of sections, and events.
-12) If some content is generated for the task and that its quality impacts task's success, you must log an event using `bot.add_event(event: str, data: dict)` to enable the critic agent to evaluate this content it through the events' list. The `event` should describe the type of event to help the critic to understand what to check, and `data` should include all information to be analyzed. If this event is in a loop/for, just fully log the event 1 time to avoid too much logging and allow sampling evaluation.
-13) Your function should manipulate the 'bot' document object and must provide substantial modification to sections to be able to measure task success. Main functions are:
-- class Section(section_id: int, title: str, content: str, parent_id: int)
-- please note that 'DocumentStructure' has no attribute 'abstract', you should use 'context'
-14) Before returning result in the main function, ensure to store your results or text generated in sections from bot, it is the only permanent storage. Also, ensure that results are returned for future reuse of the function.
-}}}
+    TASK: You should respond with the best Python code to perform the task.
 
-DOCUMENTATION ABOUT bot document object: {{{
+    INSTRUCTIONS:
+    1) Reason in 1 steps to identify the optimal way to achieve the task.
+    2) Write a function taking 'bot' as the first parameter, which is an instance of the class SynthesisManager, containing all document resources.
+    3) Ensure the generated code adheres to reusability principles. The generated code should be modular and easy to maintain rather than specific to the task.
+    4) Avoid hard-coding parameters. Pass necessary data as arguments to ensure reusability.
+    5) The function should call existing helper functions as much as possible to focus on improving results, not redoing code.
+    6) Ensure the code is executable with no placeholders and fully complete for immediate testing and deployment.
+    7) Name your function meaningfully to reflect the task it is performing.
 
-class SynthesisManager:
-    def __init__(self, document: DocumentStructure, target_file_path: str = None):
-        self.document = document
-        self.min_cosine_similarity = cosine_similarity([self.document.embedding_model.embed_query(".")], [self.document.embedding_model.embed_query("If you can keep your head when all about you are losing theirs and blaming it on you, If you can trust yourself when all men doubt you, But make allowance for their doubting too ; If you can wait and not be tired by waiting, Or being lied about, don’t deal in lies, Or being hated, don’t give way to hating, And yet don’t look too good, nor talk too wise")])[0][0]
-        if target_file_path:
-            self.target_file_path = target_file_path
-
-    @staticmethod
-    def validate_section_format(section: Dict[str, Any]) -> bool:
-        ...
-
-    def normalized_cosine_similarity(self, a: List[float], b: List[float], min_cs: float = None) -> float:
-        ...
-
-    def add_section(self, section: Section):
-        if self.validate_section_format(asdict(section)):  # Convert dataclass to dict for validation
-            self.document.document_content.sections_list.append(section)
-            self.document.update_sections_embeddings([section.section_id])
-            self.document.add_event({'action': 'add_section', 'section_id': section.section_id})
-        else:
-            print('Invalid section format.')
-        return self
-
-    def create_and_add_section_then_return_id(self, title: str, content: str, section_id: int = None, parent_id: int = None) -> int:
-        ...
-        return section_id
-
-    def get_sections(self, ids: List[int]) -> List[Section]:
-        return [s for s in self.document.document_content.sections_list if s.section_id in ids]
-
-    def get_all_sections(self) -> List[Section]:
-        return self.document.document_content.sections_list
-
-    def remove_section(self, section_id: int) -> bool:
-        ...
-        return True
-
-    def edit_section(self, section_id: int, new_content: str = None, new_title: str = None, new_parent_id: int = None) -> bool:
-        ...
-        return True
-
-    def swap_sections(self, section_id_1: int, section_id_2: int) -> bool:
-        ...
-        return True
-
-
-
-    def get_and_store_link_content(self, link: str = None, parent_id = None, chaining: bool = True):
-        ...
-            if chaining:
-                return self
-            else:
-                return splits_ids
-
-
-    def restore_last_state(self):
-        return self.document.restore_state()
-
-    def list_all_previous_document_events(self) -> List[Any]:
-        return self.document.events
-
-    def get_distance_to_targetJSON(self, target_section_title_embedding_label: str = "section_embedding_2", target_section_content_embedding_label: str = "content_embedding_2", target_plan_embedding_label: str = "plan_embedding_2", get_progress: bool = True):
-        # if self does not have target_file_path
-        if not hasattr(self, 'target_file_path'):
-            raise ValueError("Please set target_file_path using set_targetJSON_comparison method")
-        if not hasattr(self, 'target_data'):
-            section_embedding_key, content_embedding_key, plan_embedding_key = "content_embedding_2", "section_embedding_2", "plan_embedding_2"
-            self.set_targetJSON_comparison(self.target_file_path, target_section_title_embedding_label = section_embedding_key, target_section_content_embedding_label = content_embedding_key, target_plan_embedding_label = plan_embedding_key)
-            self.document.update_plan_embedding()
-        elif not hasattr(self.document.document_content, 'sections_list_title_embedding'):
-            self.document.update_plan_embedding()
-        # Similar to what you did in the test
-        current_sections_count = len(self.document.document_content.sections_list)
-        # Count non empty section's content (not None and len > 1)
-        current_plan_non_empty_sections_content_count = sum(1 for section in self.document.document_content.sections_list if section.content and len(section.content) > 1)
-        current_plan_non_empty_sections_title_count = sum(1 for section in self.document.document_content.sections_list if section.title and len(section.title) > 1)
-        current_content_length = sum(len(section.content) for section in self.document.document_content.sections_list)
-
-        plan_embedding = self.document.document_content.sections_list_embedding
-        plan_titles_embedding = self.document.document_content.sections_list_title_embedding
-        plan_contents_embedding = self.document.document_content.sections_list_content_embedding
-        # compute embedding mean of all "title" in self.target_data["plan"]
-
-        # Compute the similarity and content length percentage
-        plan_embedding_similarity = self.normalized_cosine_similarity(plan_embedding, self.target_plan_embedding, self.min_plan_cosine_similarity)
-        plan_titles_embedding_similarity = self.normalized_cosine_similarity(plan_titles_embedding, self.target_plan_titles_embedding, self.min_plan_titles_cosine_similarity)
-        plan_contents_embedding_similarity = self.normalized_cosine_similarity(plan_contents_embedding, self.target_plan_contents_embedding, self.min_plan_contents_cosine_similarity)
-
-        content_length_ratio_to_target = round(current_content_length / self.target_total_content_length, 2)
-        sections_count_ratio_to_target = round(current_sections_count / self.target_total_sections_count, 2)
-        sections_content_non_empty_count_ratio_to_target = round(current_plan_non_empty_sections_content_count / self.target_total_sections_count, 2)
-        sections_title_non_empty_count_ratio_to_target = round(current_plan_non_empty_sections_title_count / self.target_total_sections_count, 2)
-
-        distance_to_targetJSON = {
-            "plan_embedding_similarity": round(plan_embedding_similarity, 6),
-            "plan_titles_embedding_similarity": round(plan_titles_embedding_similarity, 6),
-            "plan_contents_embedding_similarity": round(plan_contents_embedding_similarity, 6),
-
-            "current_sections_count": current_sections_count,
-            "sections_count_ratio_to_target": sections_count_ratio_to_target,
-
-            "title_non_empty_count_ratio_to_target": sections_title_non_empty_count_ratio_to_target,
-
-            "current_content_length": current_content_length,
-            "content_length_ratio_to_target": content_length_ratio_to_target,
-
-            "content_non_empty_count_ratio_to_target": sections_content_non_empty_count_ratio_to_target,
-        }
-
-        if get_progress:
-            # get ratio between same previous values and current values
-            def get_ratio(previous_value, current_value):
-                return round((previous_value - current_value) / (previous_value + 0.0000001)*100, 2) if previous_value else 0
-            if hasattr(self, 'distance_to_targetJSON'):
-                distance_to_targetJSON['plan_embedding_similarity_progress'] = get_ratio(plan_embedding_similarity, self.distance_to_targetJSON['plan_embedding_similarity'])
-                distance_to_targetJSON['plan_titles_embedding_similarity_progress'] = get_ratio(plan_titles_embedding_similarity, self.distance_to_targetJSON['plan_titles_embedding_similarity'])
-                distance_to_targetJSON['plan_contents_embedding_similarity_progress'] = get_ratio(plan_contents_embedding_similarity, self.distance_to_targetJSON['plan_contents_embedding_similarity'])
-                distance_to_targetJSON['sections_count_ratio_to_target_progress'] = get_ratio(sections_count_ratio_to_target, self.distance_to_targetJSON['sections_count_ratio_to_target'])
-                distance_to_targetJSON['title_non_empty_count_ratio_to_target_progress'] = get_ratio(sections_title_non_empty_count_ratio_to_target, self.distance_to_targetJSON['title_non_empty_count_ratio_to_target'])
-                distance_to_targetJSON['content_length_ratio_to_target_progress'] = get_ratio(content_length_ratio_to_target, self.distance_to_targetJSON['content_length_ratio_to_target'])
-                distance_to_targetJSON['content_non_empty_count_ratio_to_target_progress'] = get_ratio(sections_content_non_empty_count_ratio_to_target, self.distance_to_targetJSON['content_non_empty_count_ratio_to_target'])
-
-        self.distance_to_targetJSON = distance_to_targetJSON
-
-        return self.distance_to_targetJSON
-
-    def get_plan_status(self, compact_string_format: bool = False, keys = ["section_id", "title", "content_length"]):
-        ...
-        return plan_status
-
-}}}
-
-RESPONSE FORMAT (You must answer in Python as per the format below): {{{
-```python
-# Reasoning: Explain your implementation assumptions and choices
-
-# implement any required helper functions not yet available in other code available for re-use
-def ...
-    import ....
-    ...
-
-# main function after the helper functions
-def your_main_function_name(bot):
-    import ....
-    title = bot.document.title
-    context = bot.document.context # could be the equivalent of abstract
-    # detailed content of the function...
-    ...
-    ...
-    ...
-    ...
-    ...
-    ...
-    ...
-    return bot
-```
-
-}}}
+    You should then respond with:
+    - Reasoning: how to best implement the task with maximum efficiency
+    - Code: fully executable Python code adhering to the task constraints
+    
+    RESPONSE FORMAT:
+    Reasoning: Your detailed thought process and why the chosen solution is optimal
+    Code: Python implementation of the solution
+    ```python
+    # Example Python code here
+    def your_function(bot):
+        # implementation here...
+    ```
+    
+    

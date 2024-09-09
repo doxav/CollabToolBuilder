@@ -6,6 +6,7 @@ import subprocess
 import traceback
 import types
 import time
+import torch
 
 from sympy.physics.units import temperature
 
@@ -45,7 +46,7 @@ from langchain.globals import set_llm_cache
 from langchain_community.cache import SQLiteCache
 
 set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
-
+torch.cuda.empty_cache()
 #openai.api_key = os.environ['OPENAI_API_KEY']
 #if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
 
@@ -414,6 +415,9 @@ class CodingAgent():
         common_code += "\n".join(primitives) + "\n"
 
         # Run the code & tests in each environment
+        max_autofix = None
+        if hasattr(self, 'max_autofix'):
+            max_autofix = self.max_autofix
         for env in self.envs:
             env.backup_state()
             # Determine tests to run or set default runnable code
@@ -426,10 +430,10 @@ class CodingAgent():
                 no_runtime_error, exec_result = env.step(code_to_run)
                 while not no_runtime_error and current_skip_rounds <= 0:
                     smart_print("\033[31mCODE ERROR\033[0m: "+exec_result, self.name, "code_task_and_run_test SystemMessage")
-                    if self.optuna_opti:
-                        decision = "a" if self.max_autofix > 1 else "no"
+                    if self.optuna_opti and max_autofix is not None:
+                        decision = "a" if max_autofix > 1 else "no"
                         if decision == "a":
-                            self.max_autofix -= 1
+                            max_autofix -= 1
                     else:
                         decision = smart_input("Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ", self.name).strip().lower()
                     if decision in ("no", "n", ""):

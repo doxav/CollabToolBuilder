@@ -86,8 +86,7 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
 
     return performance
 
-def launch_study(objective, agent_mode : str, timestamp_xp : int = None):
-    name_exp = f"xp_{agent_mode}{timestamp_xp}"
+def launch_study(objective, name_exp : str):
     with open(f"Optuna_results/{name_exp}.txt", "w") as f:
         f.write("")
     # Wait for 10s

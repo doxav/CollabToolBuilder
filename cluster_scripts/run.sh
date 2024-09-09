@@ -21,7 +21,7 @@ LOG_IDENTIFIER=${JOB_ID:-$start_time}
 EMAIL="xavier.daull@lis-lab.fr"
 
 # Environment variables for repeated paths
-DOCKER_IMAGE="docker://jitaross/ollamawithpython:latest"
+DOCKER_IMAGE="docker://doxav/ollamawithpython:latest"
 CONTAINER_IMAGE="/home/$USER/jitaross+ollamawithpython+latest.sqsh"
 MOUNT_PATHS="/home/$USER/.ollama:/home/$USER/.ollama,/home/$USER/CollabFunctionsGPTCreator:/home/$USER/CollabFunctionsGPTCreator,/home/$USER/.cache:/home/$USER/.cache"
 SCRIPT_PATH="/home/$USER/CollabFunctionsGPTCreator/cluster_scripts/run_indocker.sh"
@@ -32,6 +32,7 @@ FIRST_EMAIL_INTERVAL=2 # First email interval in minutes
 EMAIL_INTERVAL=30 # Interval in minutes for sending subsequent updates
 ZIP_FILE="/home/$USER/CollabFunctionsGPTCreator/optuna.zip"
 GZ_FILE="/home/$USER/CollabFunctionsGPTCreator/optuna.db.gz"
+NAME_EXP = "xp_coder$(date +"%Y%m%d_%H%M%S")"
 
 # Ensure the log directory exists
 mkdir -p $LOG_DIR
@@ -39,15 +40,15 @@ touch $ERROR_LOG
 touch $OUTPUT_LOG
 
 # Get SHA of optuna_opti.py
-OPTUNA_OPTI_SHA=$(sha256sum /home/$USER/CollabFunctionsGPTCreator/optuna_opti_Synthesis.py | awk '{ print $1 }')
+OPTUNA_OPTI_SHA=$(sha256sum /home/$USER/CollabFunctionsGPTCreator/optimisation/optuna_opti_Synthesis_coder.py | awk '{ print $1 }')
 
 # Check if zip or gzip is installed
 if command -v zip &> /dev/null; then
-  COMPRESS_CMD="zip -j $ZIP_FILE /home/$USER/CollabFunctionsGPTCreator/optuna.db"
+  COMPRESS_CMD="zip -j $ZIP_FILE /home/$USER/CollabFunctionsGPTCreator/Optuna_db/$NAME_EXP.db"
   COMPRESSED_FILE=$ZIP_FILE
   echo "Zip is available. Will use zip for compressing." | tee -a $OUTPUT_LOG
 elif command -v gzip &> /dev/null; then
-  COMPRESS_CMD="gzip -c /home/$USER/CollabFunctionsGPTCreator/optuna.db > $GZ_FILE"
+  COMPRESS_CMD="gzip -c /home/$USER/CollabFunctionsGPTCreator/Optuna_db/$NAME_EXP.db > $GZ_FILE"
   COMPRESSED_FILE=$GZ_FILE
   echo "Zip is not available. Gzip is available. Will use gzip for compressing." | tee -a $OUTPUT_LOG
 else
@@ -62,16 +63,16 @@ send_email_update() {
   current_time=$(date +%s)
   duration=$(( (current_time - start_time) / 60 ))
 
-  if [ -f /home/$USER/CollabFunctionsGPTCreator/optuna.db ]; then
+  if [ -f /home/$USER/CollabFunctionsGPTCreator/Optuna_db/optuna.db ]; then
     if [ -n "$COMPRESS_CMD" ]; then
       eval $COMPRESS_CMD
-      attachments="-a $COMPRESSED_FILE -a /home/$USER/CollabFunctionsGPTCreator/optuna_opti_Synthesis.py"
+      attachments="-a $COMPRESSED_FILE -a /home/$USER/CollabFunctionsGPTCreator/optimisation/optuna_opti_Synthesis_coder.py"
     else
-      attachments="-a /home/$USER/CollabFunctionsGPTCreator/optuna_opti_Synthesis.py"
+      attachments="-a /home/$USER/CollabFunctionsGPTCreator/optimisation/optuna_opti_Synthesis_coder.py"
     fi
   else
     echo "No optuna.db file to attach" > $LOG_DIR/no_optuna_db.txt
-    attachments="-a $LOG_DIR/no_optuna_db.txt -a /home/$USER/CollabFunctionsGPTCreator/optuna_opti_Synthesis.py"
+    attachments="-a $LOG_DIR/no_optuna_db.txt -a /home/$USER/CollabFunctionsGPTCreator/optimisation/optuna_opti_Synthesis_coder.py"
   fi
 
   subject="Cluster experiment progress update (JobID: $JOB_ID, SrunPID: $SRUN_PID, Duration: $duration mins, SHA: $OPTUNA_OPTI_SHA)"
@@ -113,7 +114,7 @@ cd /home/$USER || handle_error
 
 # Run the container and experiment in the background
 srun --container-image=$CONTAINER_IMAGE --gres=gpu:1 --partition=ouranos \
-     --container-mounts=$MOUNT_PATHS $SCRIPT_PATH &
+     --container-mounts=$MOUNT_PATHS $SCRIPT_PATH $NAME_EXP &
 SRUN_PID=$!
 
 # Ensure SRUN_PID is logged
