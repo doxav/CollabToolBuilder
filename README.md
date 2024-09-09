@@ -181,7 +181,7 @@ watch on: ```http://localhost:8080```
 
 the WebUI docker container may not being able to reach the Ollama server at 127.0.0.1:11434 (host.docker.internal:11434) inside the container . Use the --network=host flag in your docker command to resolve this. Note that the port changes from 3000 to 8080, resulting in the link.
 
-open localhost:8080, register or login, and then in Admin Panel, set the following mandatory connections: 
+open http://localhost:8080, register or login, and then in Admin Panel, set the following mandatory connections: 
 
     https://api.openai.com/v1   (add your personnal openai key)
 
