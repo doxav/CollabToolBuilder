@@ -35,7 +35,7 @@ To start the collaborative development process on local IHM for new commands, ex
 python websocket_server.py
 python learn.py
 ```
-You can start creating functions or pipelines by using Jquery_fonts/IHMv1.html or Jquery_fonts/IHMv2.html
+You can start creating functions or pipelines by using **Jquery_fonts/IHMv1.html** or **Jquery_fonts/IHMv2.html**
 
 ![IMH](IHM.png)
 
@@ -161,21 +161,25 @@ git clone https://github.com/open-webui/pipelines.git
 ```bash   
     docker run -d -p 3000:8080 --add-host=host.docker.internal:host-gateway -v open-webui:/app/backend/data --name open-webui --restart always ghcr.io/open-webui/open-webui:main
 ```
-        watch on  http://localhost:3000 
-        NB: if --add-host=host.docker.internal:host-gateway does not work, please use host IP to connect OpenWebUI interface.
+watch on :  
+```http://localhost:3000 ```
+        
+NB: if --add-host=host.docker.internal:host-gateway does not work, please use host IP to connect OpenWebUI interface.
 
 
 ##### Launch it manually with ollama : 
 ```bash
     docker run -d   --network=host   -v open-webui:/app/backend/data   --add-host=host.docker.internal:host-gateway   -e PIPELINES_URLS="$(for file in /pipelines/pipelines/*; do echo -n "$file,"; done | sed 's/,$//')"   -e OLLAMA_BASE_URL=http://127.0.0.1:11434   -v /path/to/pipelines:/app/pipelines   --name pipelines-combin   --restart always   ghcr.io/open-webui/pipelines:main
 ```
-        watch on http://localhost:8080        
+
+watch on:
+```http://localhost:8080```     
 
 
 ### OpenWebUi settings
 
 
-###### with ollama 
+###### With Ollama 
 
 the WebUI docker container may not being able to reach the Ollama server at 127.0.0.1:11434 (host.docker.internal:11434) inside the container . Use the --network=host flag in your docker command to resolve this. Note that the port changes from 3000 to 8080, resulting in the link.
 
