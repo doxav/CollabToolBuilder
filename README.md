@@ -2,6 +2,9 @@
 
 ## Basic Architecture
 
+This project enables the collaborative development of new functions using a language models loop (LLMs). It integrates human-LLM interaction mechanisms to track results, and provides feedbacks at each step of the loop to creat the best new functions, and pipelines possible. The system facilitates the iterative process of task proposal, coding, validation, and refinement, helping users to create advanced features through a mix of human and AI collaboration.
+
+
 - **Database (Documentary and Vectorial)**: ElasticSearch stores trial results, new functions, and pipelines, integrating with Kibana for visualization.
 - **Capacity/Functions Development Agent System**: `learn.py` manages the iterative process of task proposal, coding, validation, and capitalization.
 
@@ -29,12 +32,12 @@ MODIFY CONFIG.PY with the IP that will be given to be able to access the local E
 To start the collaborative development process on local IHM for new commands, execute the command:
 
 ```bash
-python learn.py
 python websocket_server.py
+python learn.py
 ```
-You can start creating functions or pipelines by using IHMv1.html or IHMv2.html
+You can start creating functions or pipelines by using Jquery_fonts/IHMv1.html or Jquery_fonts/IHMv2.html
 
-
+![IMH](IHM.png)
 
 ### Principles
 
@@ -47,6 +50,13 @@ You can start creating functions or pipelines by using IHMv1.html or IHMv2.html
 
 ## Detailed Functionality
 
+The system allows human interaction both BEFORE and AFTER each inference to refine the collaboration with the LLM.
+ - Before inference, users can adjust prompts, provide additional context, and set specific instructions to guide the model’s output.
+
+ - After inference, humans can review the generated results, critique them, and make adjustments to improve the quality and relevance of the responses. 
+ 
+This continuous feedback loop ensures that the model’s outputs align more closely with the user’s objectives, enabling a more tailored and effective collaboration between human input and AI processing.
+
 *Human LLM Mechanism*: (TO EDIT CODE OR TEXT: a file is automatically opened in VSCode, it is by closing it that the text is validated and the process continues)
 
 ### Before Inference
@@ -57,7 +67,7 @@ You can start creating functions or pipelines by using IHMv1.html or IHMv2.html
 
 3. **Add Instruction to Agent (B)**: Enables adding additional instructions or information to the agent. This helps in refining the agent’s output by providing it with more context or specific directions.
 
-4. **Reuse Past Outputs (C)**: Set LLM output by reusing past outputs or defining it manually. This maintains consistency and leverages previous responses to improve current tasks.
+4. **Reuse Past Outputs (C)**: Set the new LLM output inference by reusing past outputs or defining it manually as example. This maintains consistency and leverages previous responses to improve current tasks.
 
 5. **Log Comments (D)**: Logs comments about the current interaction for future reference. This helps in tracking feedback and making necessary adjustments.
 
@@ -119,36 +129,48 @@ You can start creating functions or pipelines by using IHMv1.html or IHMv2.html
 
 # Pipeline integration for Anomalies Solver
 
+A special environnement has recently been add to the current loop. By creating pipelines instead of functions, and by loading it immediatly on OpenWebUI plateform, it will allow users to solve Anomalies dependning on its personnal labels such as : title, abstract, comments...
+Thanks to the connection to a Neo4j database which containts all of the previous anomalies, pipelines are able to solve new anomalies by using RAG method (Retrieve Augmeneted Generation)
+
+
+![RAG](rag_rm.png)
+
+
+## Requirement
+
+Download the pipelines repository from GitHub: 
+
+```bash
+git clone https://github.com/open-webui/pipelines.git
+```
+
 ###  Launch Neo4J database load on your machine 
 ![graph neo4j](graph_readme.png)
 
 ### Launch OpenWebUI with Docker 
 
+#### Launch it automaticcaly by shell script :
 
-###### without ollama 
+```bash run_docker.sh ```
+
+(it launches the OpenWebUI Docker container, the `start.sh` script which loads the pipelines, and the Uvicorn servers that monitor any modifications made to `/pipelines/pipelines` directly).
+
+![maj pipe](v2.png)
+
+#### Launch it manually without ollama :
 ```bash   
     docker run -d -p 3000:8080 --add-host=host.docker.internal:host-gateway -v open-webui:/app/backend/data --name open-webui --restart always ghcr.io/open-webui/open-webui:main
 ```
-        watch on  http://localhost:3000
+        watch on  http://localhost:3000 
+        NB: if --add-host=host.docker.internal:host-gateway does not work, please use host IP to connect OpenWebUI interface.
 
 
-###### with ollama : 
+##### Launch it manually with ollama : 
 ```bash
     docker run -d   --network=host   -v open-webui:/app/backend/data   --add-host=host.docker.internal:host-gateway   -e PIPELINES_URLS="$(for file in /pipelines/pipelines/*; do echo -n "$file,"; done | sed 's/,$//')"   -e OLLAMA_BASE_URL=http://127.0.0.1:11434   -v /path/to/pipelines:/app/pipelines   --name pipelines-combin   --restart always   ghcr.io/open-webui/pipelines:main
 ```
         watch on http://localhost:8080        
 
-
-
-#### But it's easier to run using `$run_docker.sh` (it launches the OpenWebUI Docker container, the `start.sh` script which loads the pipelines, and the Uvicorn servers that monitor any modifications made to `/pipelines/pipelines` directly).
-
-
-![maj pipe](v2.png)
-
-```bash
-git clone https://github.com/open-webui/pipelines.git
-bash run_docker.sh
-```
 
 ### OpenWebUi settings
 
