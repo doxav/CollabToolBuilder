@@ -51,9 +51,9 @@ You can start creating functions or pipelines by using **Jquery_fonts/IHMv1.html
 ## Detailed Functionality
 
 The system allows human interaction both BEFORE and AFTER each inference to refine the collaboration with the LLM.
- - Before inference, users can adjust prompts, provide additional context, and set specific instructions to guide the model’s output.
+ - **Before** inference, users can adjust prompts, provide additional context, and set specific instructions to guide the model’s output.
 
- - After inference, humans can review the generated results, critique them, and make adjustments to improve the quality and relevance of the responses. 
+ - **After** inference, humans can review the generated results, critique them, and make adjustments to improve the quality and relevance of the responses. 
  
 This continuous feedback loop ensures that the model’s outputs align more closely with the user’s objectives, enabling a more tailored and effective collaboration between human input and AI processing.
 
@@ -136,7 +136,7 @@ Thanks to the connection to a Neo4j database which containts all of the previous
 ![RAG](rag_rm.png)
 
 
-## Requirement
+### Requirements
 
 Download the pipelines repository from GitHub: 
 
@@ -149,9 +149,7 @@ git clone https://github.com/open-webui/pipelines.git
 
 ### Launch OpenWebUI with Docker 
 
-#### Launch it automaticcaly by shell script :
-
-```bash run_docker.sh ```
+#### Launch it automaticcaly by shell script : ```bash run_docker.sh ```
 
 (it launches the OpenWebUI Docker container, the `start.sh` script which loads the pipelines, and the Uvicorn servers that monitor any modifications made to `/pipelines/pipelines` directly).
 
@@ -161,19 +159,19 @@ git clone https://github.com/open-webui/pipelines.git
 ```bash   
     docker run -d -p 3000:8080 --add-host=host.docker.internal:host-gateway -v open-webui:/app/backend/data --name open-webui --restart always ghcr.io/open-webui/open-webui:main
 ```
-watch on :  
-```http://localhost:3000 ```
+watch on : ```http://localhost:3000 ```
         
-NB: if --add-host=host.docker.internal:host-gateway does not work, please use host IP to connect OpenWebUI interface.
+NB: if ```--add-host=host.docker.internal:host-gateway``` does not work, please use host IP to connect OpenWebUI interface.
 
 
-##### Launch it manually with ollama : 
+
+
+#### Launch it manually with ollama : 
 ```bash
     docker run -d   --network=host   -v open-webui:/app/backend/data   --add-host=host.docker.internal:host-gateway   -e PIPELINES_URLS="$(for file in /pipelines/pipelines/*; do echo -n "$file,"; done | sed 's/,$//')"   -e OLLAMA_BASE_URL=http://127.0.0.1:11434   -v /path/to/pipelines:/app/pipelines   --name pipelines-combin   --restart always   ghcr.io/open-webui/pipelines:main
 ```
 
-watch on:
-```http://localhost:8080```     
+watch on: ```http://localhost:8080```     
 
 
 ### OpenWebUi settings
