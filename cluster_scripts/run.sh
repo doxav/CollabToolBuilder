@@ -30,9 +30,9 @@ OUTPUT_LOG="$LOG_DIR/script_output_$LOG_IDENTIFIER.log"
 ERROR_LOG="$LOG_DIR/script_error_$LOG_IDENTIFIER.log"
 FIRST_EMAIL_INTERVAL=2 # First email interval in minutes
 EMAIL_INTERVAL=30 # Interval in minutes for sending subsequent updates
-ZIP_FILE="/home/$USER/CollabFunctionsGPTCreator/optuna.zip"
-GZ_FILE="/home/$USER/CollabFunctionsGPTCreator/optuna.db.gz"
-NAME_EXP = "xp_coder$(date +"%Y%m%d_%H%M%S")"
+NAME_EXP="xp_coder$(date +"%Y%m%d_%H%M%S")"
+ZIP_FILE="/home/$USER/CollabFunctionsGPTCreator/$NAME_EXP.zip"
+GZ_FILE="/home/$USER/CollabFunctionsGPTCreator/$NAME_EXP.db.gz"
 
 # Ensure the log directory exists
 mkdir -p $LOG_DIR
