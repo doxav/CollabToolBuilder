@@ -34,8 +34,9 @@ create_x0k_model() {
 }
 
 print_message "34" "Starting ollama serve..."
-export OLLAMA_FLASH_ATTENTION=1
+export OLLAMA_FLASH_ATTENTION=true
 export OLLAMA_NUM_PARALLEL=10
+export OLLAMA_INTEL_GPU=true
 ollama serve &
 
 sleep 5
