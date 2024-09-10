@@ -3,8 +3,7 @@
 #SBATCH --output=/home/%u/CollabFunctionsGPTCreator/logs/ollama_experiment_%j.out
 #SBATCH --error=/home/%u/CollabFunctionsGPTCreator/logs/ollama_experiment_%j.err
 #SBATCH --partition=ouranos
-#SBATCH --cpus-per-task=1
-#SBATCH --gres=none
+#SBATCH --gres=gpu:0
 #SBATCH --mail-type=all
 #SBATCH --mail-user=xavier.daull@lis-lab.fr
 #SBATCH --time=96:00:00
@@ -23,7 +22,7 @@ EMAIL="xavier.daull@lis-lab.fr"
 # Environment variables for repeated paths
 DOCKER_IMAGE="docker://doxav/ollamawithpython:latest"
 CONTAINER_IMAGE="/home/$USER/doxav+ollamawithpython+latest.sqsh"
-MOUNT_PATHS="/home/$USER/.ollama:/home/$USER/.ollama,/home/$USER/CollabFunctionsGPTCreator:/home/$USER/CollabFunctionsGPTCreator,/home/$USER/.cache:/home/$USER/.cache"
+MOUNT_PATHS="/home/$USER:/home/$USER,/home/$USER/CollabFunctionsGPTCreator:/home/$USER/CollabFunctionsGPTCreator,/home/$USER/.cache:/home/$USER/.cache"
 SCRIPT_PATH="/home/$USER/CollabFunctionsGPTCreator/cluster_scripts/run_indocker_macstudio.sh"
 LOG_DIR="/home/$USER/CollabFunctionsGPTCreator/logs"
 OUTPUT_LOG="$LOG_DIR/script_output_$LOG_IDENTIFIER.log"
