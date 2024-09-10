@@ -89,7 +89,13 @@ def launch_study(objective, name_exp : str):
     # get current folder
     current_folder = os.getcwd()
 
-    sqlite_file = os.path.join(current_folder, f"Optuna_db/{name_exp}.db")
+    # Define the directory and file path
+    sqlite_dir = os.path.join(current_folder, "Optuna_db")
+    sqlite_file = os.path.join(sqlite_dir, f"{name_exp}.db")
+
+    # Create the directory if it does not exist
+    if not os.path.exists(sqlite_dir):
+        os.makedirs(sqlite_dir)
 
     # Create a study and optimize the objective function
     study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}", study_name=name_exp)
