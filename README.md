@@ -159,7 +159,7 @@ git clone https://github.com/open-webui/pipelines.git
 ```bash   
     docker run -d -p 3000:8080 --add-host=host.docker.internal:host-gateway -v open-webui:/app/backend/data --name open-webui --restart always ghcr.io/open-webui/open-webui:main
 ```
-watch on : ```http://localhost:3000 ```
+Watch on : ```http://localhost:3000 ```
         
 NB: if ```--add-host=host.docker.internal:host-gateway``` does not work, please use host IP to connect OpenWebUI interface.
 
@@ -171,7 +171,7 @@ NB: if ```--add-host=host.docker.internal:host-gateway``` does not work, please 
     docker run -d   --network=host   -v open-webui:/app/backend/data   --add-host=host.docker.internal:host-gateway   -e PIPELINES_URLS="$(for file in /pipelines/pipelines/*; do echo -n "$file,"; done | sed 's/,$//')"   -e OLLAMA_BASE_URL=http://127.0.0.1:11434   -v /path/to/pipelines:/app/pipelines   --name pipelines-combin   --restart always   ghcr.io/open-webui/pipelines:main
 ```
 
-watch on: ```http://localhost:8080```     
+Watch on : ```http://localhost:8080```     
 
 
 ### OpenWebUi settings
@@ -187,7 +187,7 @@ open http://localhost:8080, register or login, and then in Admin Panel, set the 
 
     http://localhost:9100   pwd : 0p3n-w3bu!
 
-NB: if you use docker : http://host.docker.internal:9100   pwd : 0p3n-w3bu!
+NB: if you use docker  : http://host.docker.internal:9100   pwd : 0p3n-w3bu!
 
     http://localhost:11434 for ollama
 

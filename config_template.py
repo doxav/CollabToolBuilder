@@ -18,7 +18,7 @@ elastic_url_port = 'http://127.0.0.1:9200' # not used in our case
 kibana_url_port = 'http://127.0.0.1:5601'
 elastic_user=None
 elastic_password=None
-PickleCacheActivated = False
+PickleCacheActivated = False 
 
 NEO4J_URI = 'neo4j+s://4fb62461.databases.neo4j.io:7687'
 NEO4J_USER = 'neo4j'
