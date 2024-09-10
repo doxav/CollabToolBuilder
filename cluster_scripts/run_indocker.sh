@@ -41,7 +41,7 @@ ollama serve &
 sleep 5
 
 print_message "34" "Pulling models"
-for model in "phi3:medium-128k" "llama3.1:70b-instruct-q2_K"; do
+for model in "phi3:medium-128k" "llama3.1:70b-instruct-q2_K-40K"; do
   ollama pull "$model"
   print_message "32" "Creating $ext_context_tag versions of models if applicable"
   create_x0k_model "$model"
@@ -62,5 +62,5 @@ cd $code_directory || { print_message "31" "Failed to change directory to $code_
 print_message "32" "Activating virtual environment..."
 source /app/.venv/bin/activate || { print_message "31" "Failed to activate virtual environment."; exit 1; }
 
-
+cd optimisation
 python optuna_opti_Synthesis_coder.py $1

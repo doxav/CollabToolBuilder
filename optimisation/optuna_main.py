@@ -1,7 +1,6 @@
 import optuna as opt
 import time
 import os
-
 from langchain_openai import ChatOpenAI
 from config import MODELS_CONFIG_LIST
 from learn import EnvironmentManager, run_4agents_learning_loop
@@ -87,10 +86,6 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
     return performance
 
 def launch_study(objective, name_exp : str):
-    with open(f"Optuna_results/{name_exp}.txt", "w") as f:
-        f.write("")
-    # Wait for 10s
-    time.sleep(10)
     # get current folder
     current_folder = os.getcwd()
 

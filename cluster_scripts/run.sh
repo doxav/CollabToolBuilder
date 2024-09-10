@@ -22,7 +22,7 @@ EMAIL="xavier.daull@lis-lab.fr"
 
 # Environment variables for repeated paths
 DOCKER_IMAGE="docker://doxav/ollamawithpython:latest"
-CONTAINER_IMAGE="/home/$USER/jitaross+ollamawithpython+latest.sqsh"
+CONTAINER_IMAGE="/home/$USER/doxav+ollamawithpython+latest.sqsh"
 MOUNT_PATHS="/home/$USER/.ollama:/home/$USER/.ollama,/home/$USER/CollabFunctionsGPTCreator:/home/$USER/CollabFunctionsGPTCreator,/home/$USER/.cache:/home/$USER/.cache"
 SCRIPT_PATH="/home/$USER/CollabFunctionsGPTCreator/cluster_scripts/run_indocker.sh"
 LOG_DIR="/home/$USER/CollabFunctionsGPTCreator/logs"
@@ -63,7 +63,7 @@ send_email_update() {
   current_time=$(date +%s)
   duration=$(( (current_time - start_time) / 60 ))
 
-  if [ -f /home/$USER/CollabFunctionsGPTCreator/Optuna_db/optuna.db ]; then
+  if [ -f /home/$USER/CollabFunctionsGPTCreator/Optuna_db/$NAME_EXP.db ]; then
     if [ -n "$COMPRESS_CMD" ]; then
       eval $COMPRESS_CMD
       attachments="-a $COMPRESSED_FILE -a /home/$USER/CollabFunctionsGPTCreator/optimisation/optuna_opti_Synthesis_coder.py"
@@ -71,7 +71,7 @@ send_email_update() {
       attachments="-a /home/$USER/CollabFunctionsGPTCreator/optimisation/optuna_opti_Synthesis_coder.py"
     fi
   else
-    echo "No optuna.db file to attach" > $LOG_DIR/no_optuna_db.txt
+    echo "No $NAME_EXP.db file to attach" > $LOG_DIR/no_optuna_db.txt
     attachments="-a $LOG_DIR/no_optuna_db.txt -a /home/$USER/CollabFunctionsGPTCreator/optimisation/optuna_opti_Synthesis_coder.py"
   fi
 
