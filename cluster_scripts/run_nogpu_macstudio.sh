@@ -5,7 +5,7 @@
 #SBATCH --partition=ouranos
 #SBATCH --gres=gpu:0
 #SBATCH --mail-type=all
-#SBATCH --mail-user=xavier.daull@lis-lab.fr
+#SBATCH --mail-user=xavier.daull@lis-lab.fr,thomas-gouttebel@etud.univ-tln.fr
 #SBATCH --time=96:00:00
 
 # Start time
@@ -16,7 +16,7 @@ SRUN_PID="not started"
 LOG_IDENTIFIER=${JOB_ID:-$start_time}
 
 # Email address
-EMAIL="xavier.daull@lis-lab.fr"
+EMAIL="xavier.daull@lis-lab.fr,thomas-gouttebel@etud.univ-tln.fr"
 
 # Environment variables for repeated paths
 DOCKER_IMAGE="docker://doxav/ollamawithpython:latest"
@@ -62,10 +62,6 @@ send_email_update() {
   # Recompress all relevant files into a single gzip archive
   DB_FILE="/home/$USER/CollabFunctionsGPTCreator/Optuna_db/$NAME_EXP.db"
   FILES_TO_ARCHIVE="$BASE_DIR/optimisation/optuna_opti_Synthesis_coder.py $OUTPUT_LOG $ERROR_LOG"
-
-  # Add analysis database file to the list of files to send by email
-  python -m optimisation.optuna_analysis $DB_FILE
-  ANALYSIS_FILE="/home/$USER/CollabFunctionsGPTCreator/Optuna_db/study_analysis_results.txt"
 
   # Change directory to home to use relative paths
   cd /home/$USER || handle_error

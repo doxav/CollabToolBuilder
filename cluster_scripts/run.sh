@@ -1,4 +1,3 @@
-
 #!/bin/bash
 #SBATCH --job-name=XPCollabFunctionsGPTCreator
 #SBATCH --output=/home/%u/CollabFunctionsGPTCreator/logs/ollama_experiment_%j.out
@@ -6,7 +5,7 @@
 #SBATCH --partition=ouranos
 #SBATCH --gres=gpu:1
 #SBATCH --mail-type=all
-#SBATCH --mail-user=xavier.daull@lis-lab.fr
+#SBATCH --mail-user=xavier.daull@lis-lab.fr,thomas-gouttebel@etud.univ-tln.fr
 #SBATCH --time=96:00:00
 
 # Start time
@@ -18,7 +17,7 @@ LOG_IDENTIFIER=${JOB_ID:-$start_time}
 
 
 # Email address
-EMAIL="xavier.daull@lis-lab.fr"
+EMAIL="xavier.daull@lis-lab.fr,thomas-gouttebel@etud.univ-tln.fr"
 
 # Environment variables for repeated paths
 DOCKER_IMAGE="docker://doxav/ollamawithpython:latest"
