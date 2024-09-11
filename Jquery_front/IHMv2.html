@@ -308,6 +308,11 @@ function displayMessage(data) {
     }
     let content = `<div class='message'>${formatMessage(data.message)}</div>`;
 
+    // If the message_type is null, set it to " "
+    if (data.message_type === null) {
+        data.message_type = " ";
+    }
+
     let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
     if (data.agent_name === "CodingAgent" && data.message_type === "NEW inference result recieved") {
         console.log("Handling multiple solutions");
@@ -594,21 +599,20 @@ function displayMessage(data) {
 
         } else if(data.agent_name === "CodingAgent" && (data.message_type === "LLM ANSWER content" || data.message_type === "POST INFERENCE" || data.message_type === "process_ai_generated_code SystemMessage" || data.message_type === "Multiple LLM ANSWERS" || data.message_type === "MULTIPLE inferences received") ){
             // Do nothing
-        } else if (data.message_type === "Inference streaming output"){
-            // Add message to previous “Inference streaming output” message content of the same agent_name for streaming display unless it is the first message, create a new message
-            let $lastMessage = $agentAccordion.children("div").children().last();
-            const h4Elements = document.querySelectorAll('h4');
-            // If the last message is preceded by a h4 with the text "Inference streaming output", append the new message to the previous message
-            if ($lastMessage.length > 0 && h4Elements[h4Elements.length - 1].textContent.includes( "Inference streaming output")) {
-                $lastMessage.append(formatMessage(data.message));
-            } else {
-                if ($agentAccordion.length === 0) {
-                    $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
-                    $("#message-accordion").append($agentAccordion);
-                }
-                let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${formatMessage(content)}</div>`);
-                $agentAccordion.children("div").append($messageContainer);
+        } else if (data.message_type.includes("Inference streaming output") && agentName === "TaskIdentificationAgent") {
+            let inference_id = data.message_type.split(" ")[-1];
+            let $inferenceOutput = $(`#message-accordion > div[data-agent="TaskIdentificationAgent"] > div > div[data-inference-id="${inference_id}"]`);
+            if ($inferenceOutput.length === 0) {
+                $inferenceOutput = $(`<div data-inference-id="${inference_id}"></div>`);
+                $("#message-accordion > div[data-agent=\"TaskIdentificationAgent\"] > div").append($inferenceOutput);
             }
+            let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${content}</div>`);
+            $inferenceOutput.append($messageContainer);
+
+            // Add the inferenceOutput to the TaskIdentificationAgent accordion
+            $("#message-accordion").accordion("refresh");
+
+
         } else if (data.message_type === "BEFORE inference action MENU" || data.message_type === "AFTER inference action MENU" && data.message.includes("Change default") || data.message.includes("Change premium") || data.message.includes("Exit") || data.message.includes("Log comments")) {
                 displayMenuOptions(data.message);
             } else if(data.agent_name === "CONFIG" && data.message.includes("Enter a capital letter for subdirectory")){
@@ -771,15 +775,7 @@ function displayMessage(data) {
             // Score is the value of the slider divided by 10
             let score = $(`#slider-${columnId}`).val() / 10;
             let comment = $(`#comment-${columnId}`).val();
-            socket.send(JSON.stringify({message: `d`}));
-            // Wait a second for the message to be sent before sending the score
-            setTimeout(() => {
-                socket.send(JSON.stringify({message: `${score}`}));
-            }, 1000);
-            // Wait another second before sending the comment
-            setTimeout(() => {
-                socket.send(JSON.stringify({message: `${comment}`}));
-            }, 1000);
+            sendFunctionCall(currentAgent, "setCommentsAndScore", {comment: comment, score: score, output_id: columnId});
         });
 
         // Add event listener to the delete button
@@ -1063,9 +1059,9 @@ function displayMessage(data) {
                     premiumLLM: $("#premium-llm").val(),
                     temperature: $("#temperature").val()
                 };
-                sendFunctionCall(currentAgent,"set_default_llmORchain", settings["defaultLLM"]);
-                sendFunctionCall(currentAgent,"set_premium_llmORchain", settings["premiumLLM"]);
-                sendFunctionCall(currentAgent,"set_temperature", settings["temperature"]);
+                sendFunctionCall(currentAgent,"set_default_llmORchain", [settings["defaultLLM"], settings["temperature"]]);
+                sendFunctionCall(currentAgent,"set_premium_llmORchain", [settings["premiumLLM"], settings["temperature"]]);
+                //sendFunctionCall(currentAgent,"set_temperature", settings["temperature"]);
                 console.log("Settings applied:", settings);
             });
 

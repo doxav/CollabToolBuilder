@@ -41,7 +41,7 @@ import json
 from langchain.globals import set_llm_cache
 from langchain_community.cache import SQLiteCache
 
-set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
+#set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
 
 openai.api_key = os.environ['OPENAI_API_KEY']
 if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
@@ -887,9 +887,11 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               criteria=None, max_execution_time=900):
     time_end = time.time() + max_execution_time
     scores = None
+
     if HumanLLMMonitor.use_websocket:
         if HumanLLMMonitor.websocket_server is None:
             HumanLLMMonitor.initialize_websocket_server()
+
     if problem_prompts_subdir is None:
         # menu to choose the problem prompts subdirectory
         # get the list of subdirectories in the problem prompts directory
