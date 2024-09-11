@@ -1,7 +1,7 @@
 TASK DEFINITION:
 Write a Python function pipeline to accomplish the following task. The pipeline should consist of modular and reusable functions, following the principles of functional composition. Each function in the pipeline should be independently executable and reusable in other contexts. Use examples from the primitives folder as a reference where applicable.
 Ensure that the pipeline adheres to the constraints provided. The functions should embed all required package imports inside their definitions, avoid recursion, and prevent infinite loops. The final output of the pipeline must be returned in string or JSON format, and the success of the task will be evaluated based on this output.
-The pipeline should be ready to use on OpenWebUi.
+The pipeline should be ready to use on OpenWebUi. Be creative with news fonctions and different from the primitives.
 
 CURRENT STATE OF THE ENVIRONMENT USED TO TEST TASK:
 Document #xxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx: 
@@ -114,7 +114,9 @@ RESPONSE FORMAT:
     python ```
         class Pipeline:
             # detailed content of the function pipeline...
-            ... 
+            ...
+            #add new funny and innovative functions
+ 
 
             def pipe()
                     ...
@@ -173,7 +175,9 @@ Instructions: {{{
 3) Ensure that the generated code adheres to principles of reusability and modularity as Helper functions for common tasks. Specifically, functions should not hard-code strings, variables, or parameters that make them context-specific. Instead, any data or parameters of helpers functions that can vary should be passed as arguments to the functions, ensuring that the functions can be reused in different contexts or with different data without requiring modifications to the code itself. This ensures that the code is adaptable and can be utilized in various scenarios, enhancing its utility and longevity.
 4) Call existing functions as much as possible to spend your effort on improving rather than re-doing.
 5) Your function will be reused for building more complex functions. Therefore, you should make it generic and reusable. Avoid to include specific query or information in the function instead of using it as an argument.
-7) Ensure that your code is fully executable, it is not a skeleton and does not contain placeholders, unimplemented sections, or comments indicating future work (e.g., TODO, pass, '....', etc.). All functions and logic must be complete and runnable to facilitate immediate use and testing.
+7) Ensure that your code is fully executaban re-doing.
+5) Your function will be reused for building more complex functions. Therefore, you should make it generic and reusable. Avoid to include specific query or information in the function instead of using it as an argument.
+7) Ensure that your code is fully executable, it is not a skeleton and does not contain placeholdle, it is not a skeleton and does not contain placeholders, unimplemented sections, or comments indicating future work (e.g., TODO, pass, '....', etc.). All functions and logic must be complete and runnable to facilitate immediate use and testing.
 8) Do not write infinite loops or recursive functions.
 9) Name your function in a meaningful way (can infer the task from the name).
 10) Any packages/libraries used by the function should be imported inside the function (it will be ignored if imported outside)
@@ -183,4 +187,5 @@ Instructions: {{{
 - class Section(section_id: int, title: str, content: str, parent_id: int)
 - please note that 'DocumentStructure' has no attribute 'abstract', you should use 'context'
 14) Before returning result in the main function, ensure to store your results or text generated in sections from bot, it is the only permanent storage. Also, ensure that results are returned for future reuse of the function.
+15) be creative with the NEW functions in the pipeline. Do NOT use function from primitives such as "Top 3 ...".
 }}}
