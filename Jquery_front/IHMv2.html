@@ -599,19 +599,24 @@ function displayMessage(data) {
 
         } else if(data.agent_name === "CodingAgent" && (data.message_type === "LLM ANSWER content" || data.message_type === "POST INFERENCE" || data.message_type === "process_ai_generated_code SystemMessage" || data.message_type === "Multiple LLM ANSWERS" || data.message_type === "MULTIPLE inferences received") ){
             // Do nothing
-        } else if (data.message_type.includes("Inference streaming output") && agentName === "TaskIdentificationAgent") {
-            let inference_id = data.message_type.split(" ")[-1];
-            let $inferenceOutput = $(`#message-accordion > div[data-agent="TaskIdentificationAgent"] > div > div[data-inference-id="${inference_id}"]`);
-            if ($inferenceOutput.length === 0) {
-                $inferenceOutput = $(`<div data-inference-id="${inference_id}"></div>`);
-                $("#message-accordion > div[data-agent=\"TaskIdentificationAgent\"] > div").append($inferenceOutput);
+        } else if (data.message_type.includes("Inference streaming output") && data.agent_name === "TaskIdentificationAgent") {
+            console.log("Inference streaming output");
+            // For each inference the last caracter of the messa_type is the inference number, so we can create a new message-container inside the TaskIdentificationAgent accordion for each inference and add the message OR append the message to the accordion if it already exists
+            let inferenceNumber = data.message_type.slice(-1);
+            // Check if the inferenceNumber is a number
+            if (isNaN(inferenceNumber)) {
+                return;
             }
-            let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${content}</div>`);
-            $inferenceOutput.append($messageContainer);
-
-            // Add the inferenceOutput to the TaskIdentificationAgent accordion
+            let $inferenceAccordion = $(`#message-accordion > div[data-agent="TaskIdentificationAgent"] > div > div[data-inference="${inferenceNumber}"]`);
+            if ($inferenceAccordion.length === 0) {
+                $inferenceAccordion = $(`<div data-inference="${inferenceNumber}"><h4>Inference ${inferenceNumber}</h4><div class="column-container"></div></div>`);
+                $(`#message-accordion > div[data-agent="TaskIdentificationAgent"] > div`).append($inferenceAccordion);
+            }
+            let $messageContainer = $(`<div class="message">${content}</div>`);
+            $inferenceAccordion.children("div").append($messageContainer);
+            // Add the accordion to the TaskIdentificationAgent accordion
             $("#message-accordion").accordion("refresh");
-
+            updateFilters(data);
 
         } else if (data.message_type === "BEFORE inference action MENU" || data.message_type === "AFTER inference action MENU" && data.message.includes("Change default") || data.message.includes("Change premium") || data.message.includes("Exit") || data.message.includes("Log comments")) {
                 displayMenuOptions(data.message);

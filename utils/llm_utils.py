@@ -951,6 +951,7 @@ class HumanLLMMonitor:
                 f"[J] Change num of parallel inferences - Current value={self.num_parallel_inferences}, Synthesize mode=\033[32m{'ON' if self.synthesize_mode else 'OFF'}\033[0m\n")  # UPDATED
             menu += ("[K] Exit program.\n")
             menu += (f"[P] Proceed to inference using a PREMIUM LLM - Current value={use_premium_llm}\n")
+            menu += (f"[Z] Continue\n")
 
             smart_print(before_menu+menu, self.agent_name, "BEFORE inference action MENU")
             menu_start_time = time.time()
@@ -1052,7 +1053,7 @@ class HumanLLMMonitor:
             start_time, menu_start_time = None, None
 
             if action in [None, "", "P",
-                          "C"]:  # P: Proceed to inference using a PREMIUM LLM; C: Set LLM output by re-using past
+                          "C","Z"]:  # P: Proceed to inference using a PREMIUM LLM; C: Set LLM output by re-using past
                 if action == "P": use_premium_llm = True
                 break
             else:
@@ -1299,6 +1300,7 @@ class HumanLLMMonitor:
             menu += ("[D] Evaluate & comment answer (Score between 0(worst)-1(top), and explain) to improve future results by using scored/commented examples.\n")
             menu += ("[E] Go back BEFORE inference to improve system prompt or add information to user message.\n")
             menu += ("[G] Skip human actions for N rounds.\n")
+            menu += ("[Z] Continue\n")
             menu += ("[H] Exit program.\n")
 
             smart_print(menu, self.agent_name, "AFTER inference action MENU" + (
@@ -1346,7 +1348,7 @@ class HumanLLMMonitor:
             start_time, menu_start_time = None, None
 
             if action in [None, "",
-                          "E"]: break  # E: Go back BEFORE inference to improve system prompt or add information to user message
+                          "E", "Z"]: break  # E: Go back BEFORE inference to improve system prompt or add information to user message
 
             proceed = smart_input("Continue 'y' (or 'n' to go back to menu) ? ",self.agent_name).lower()
             if proceed in ["y", ""]:
