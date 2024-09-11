@@ -2,9 +2,10 @@ import os
 import sys
 import time
 from optimisation.optuna_main import launch_study, launch_run, definition_few_shots
+from optuna_analysis import analysis
 
 
-def objective(trial, timestamp_exp : int):
+def objective(trial, name_xp : str):
     # Define parameters for Coder
     libraries_restriction = trial.suggest_categorical("libraries_restriction", [
         "Langchain, BeautifulSoap, RegEx, Sklearn",
@@ -69,7 +70,7 @@ def objective(trial, timestamp_exp : int):
         f.write(full_prompt)
 
     # Log the prompt and parameters for this trial
-    with open(f"Optuna_results/{timestamp_exp}.txt", "a") as f:
+    with open(f"Optuna_results/{name_xp}.txt", "a") as f:
         f.write(f"Trial: {trial.number}\nGenerated Coder Prompt: \n{full_prompt}\n")
 
     performance = launch_run(
@@ -84,8 +85,10 @@ def objective(trial, timestamp_exp : int):
     )
 
     # Log performance for analysis
-    with open(f"Optuna_results/{timestamp_exp}.txt", "a") as f:
+    with open(f"Optuna_results/{name_xp}.txt", "a") as f:
         f.write(f"Performance: {performance}\n\n")
+
+    analysis(name_xp)
 
     return performance
 

@@ -63,10 +63,6 @@ send_email_update() {
   DB_FILE="/home/$USER/CollabFunctionsGPTCreator/Optuna_db/$NAME_EXP.db"
   FILES_TO_ARCHIVE="$BASE_DIR/optimisation/optuna_opti_Synthesis_coder.py $OUTPUT_LOG $ERROR_LOG"
 
-  # Add analysis database file to the list of files to send by email
-  python -m optimisation.optuna_analysis $DB_FILE
-  ANALYSIS_FILE="/home/$USER/CollabFunctionsGPTCreator/Optuna_db/study_analysis_results.txt"
-
   # Change directory to home to use relative paths
   cd /home/$USER || handle_error
   if [ -f "$DB_FILE" ]; then
