@@ -19,7 +19,7 @@ This project enables the collaborative development of new functions using a lang
 
 ## Installation
 
-```
+```bash
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -32,7 +32,6 @@ MODIFY CONFIG.PY with the IP that will be given to be able to access the local E
 To start the collaborative development process on local IHM for new commands, execute the command:
 
 ```bash
-python websocket_server.py
 python learn.py
 ```
 You can start creating functions or pipelines by using **Jquery_fonts/IHMv1.html** or **Jquery_fonts/IHMv2.html**
