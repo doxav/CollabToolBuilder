@@ -547,7 +547,7 @@ class HumanLLMMonitor:
         few_shots_data = json.loads(few_shots_match.group(1)) if few_shots_match and few_shots_match.group(1) else {}
         return few_shots_data
 
-    def set_llmORchain(self, llm_name, is_premium=False):
+    def set_llmORchain(self, llm_name, is_premium=False, temperature=0.7):
         if llm_name in self.llmORchains_list:
             if is_premium:
                 self.premium_llm_name = llm_name
@@ -572,7 +572,7 @@ class HumanLLMMonitor:
                                             name="LLM Temperature",
                                             description="The temperature of the LLM"
                                         )
-                                    ).with_config(configurable={"llm_temperature": 0.7})  # Replace with desired default temperature
+                                    ).with_config(configurable={"llm_temperature": temperature})  # Replace with desired default temperature
                                 except ValueError as e:
                                     smart_print(f"Sub-step {key} in step {step} does not support temperature configuration: {e}", self.agent_name)
                             modified_dict[key] = sub_step
@@ -586,9 +586,9 @@ class HumanLLMMonitor:
                                     name="LLM Temperature",
                                     description="The temperature of the LLM"
                                 )
-                            ).with_config(configurable={"llm_temperature": 0.7})  # Replace with desired default temperature
+                            ).with_config(configurable={"llm_temperature": temperature})  # Replace with desired default temperature
                         except ValueError as e:
-                            smart_print(f"Step {step} does not support temperature configuration: {e}", self.agent_name)
+                            print(f"Step {step} does not support temperature configuration: {e}", self.agent_name)
                         modified_steps.append(step)
                     else:
                         modified_steps.append(step)
@@ -608,7 +608,7 @@ class HumanLLMMonitor:
                             name="LLM Temperature",
                             description="The temperature of the LLM"
                         )
-                    ).with_config(configurable={"llm_temperature": 0.7})  # Replace with desired default temperature
+                    ).with_config(configurable={"llm_temperature": temperature})  # Replace with desired default temperature
                 except ValueError as e:
                     smart_print(f"LLM/Chain '{llm_name}' does not support temperature configuration: {e}", self.agent_name)
 
@@ -647,35 +647,11 @@ class HumanLLMMonitor:
             smart_print(f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}", self.agent_name)
             return False
 
-    def set_default_llmORchain(self, llm_name):
-        return self.set_llmORchain(llm_name, is_premium=False)
+    def set_default_llmORchain(self, llm_name, temperature=0.7):
+        return self.set_llmORchain(llm_name, is_premium=False, temperature=temperature)
 
-    def set_premium_llmORchain(self, llm_name):
-        return self.set_llmORchain(llm_name, is_premium=True)
-
-    def set_temperature(self, temperature):
-        if hasattr(self.default_llm, 'configurable_fields'):
-            try:
-                self.default_llm = self.default_llm.configurable_fields(
-                    temperature=ConfigurableField(
-                        id="llm_temperature",
-                        name="LLM Temperature",
-                        description="The temperature of the LLM"
-                    )
-                ).with_config(configurable={"llm_temperature": temperature})
-            except ValueError as e:
-                smart_print(f"Default LLM does not support temperature configuration: {e}", self.agent_name)
-        if hasattr(self.premium_llm, 'configurable_fields'):
-            try:
-                self.premium_llm = self.premium_llm.configurable_fields(
-                    temperature=ConfigurableField(
-                        id="llm_temperature",
-                        name="LLM Temperature",
-                        description="The temperature of the LLM"
-                    )
-                ).with_config(configurable={"llm_temperature": temperature})
-            except ValueError as e:
-                smart_print(f"Premium LLM does not support temperature configuration: {e}", self.agent_name)
+    def set_premium_llmORchain(self, llm_name, temperature=0.7):
+        return self.set_llmORchain(llm_name, is_premium=True, temperature=temperature)
 
     def set_output_schema(self, output_schema, package_path = "."):
         # test if output_schema is a string, then it means it is a filename located in the prompt repo, load it and set it as output_schema
@@ -1412,6 +1388,12 @@ class HumanLLMMonitor:
         comments = smart_input("Comment on the result: ", self.agent_name)
         return comments, score
 
+    def setCommentsAndScore(self, comment, score, output_id):
+        score = float(score) if score else None
+        comment = comment if comment else None
+        if comment or score:
+            print(f"Comment and score for output {output_id}: {comment} - {score}")
+
     def findBetterPrompt(self, comments, inference_result_msg, premium_llm_function):
         comments = smart_input("First enter your critic here (then modify answer to get ideal answer): ",
                                self.agent_name)
@@ -1618,16 +1600,17 @@ The following annotations are provided to guide the refinement process. Each ann
     #    def CallHumanLLM(self, original_input_messages=None, llm_function=None, premium_llm_function=None, callable_system_message=None, system_prompt_template=None, user_message=None, return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=90, stream_output=True):
     def CallHumanLLM(self, original_input_messages=None, default_llm_function=None, premium_llm_function=None,
                      callable_system_message=None, system_prompt_template=None, user_message=None,
-                     return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=300,
-                     stream_output=False, use_default_llm=True, optuna=None, model_choice=None):
+                     return_message_content_only=True, function_calling=False, temperature=None, timeout_seconds=300,
+                     stream_output=False, use_default_llm=True, optuna=None, model_choice=None, temperature_increase=0.05):
         #if not self.selected_llm_or_chain: raise ValueError("No LLM or chain selected for use.")
         # Define a helper function to perform the LLM calls for parallel inference.
-        def perform_llm_call(input_msg, use_premium, func_calling, temperature, stream_output=True, color_id=None):
+        def perform_llm_call(input_msg, use_premium, func_calling, temperature=None, stream_output=True, color_id=None):
             if use_premium:
                 func = premium_llm_function if not func_calling else HumanLLMMonitor.call_llm_function_with_function_call
             else:
                 func = default_llm_function if not func_calling else HumanLLMMonitor.call_llm_function_with_function_call
-            func = func.with_config(configurable={"llm_temperature": temperature})
+            if temperature:
+                func = func.with_config(configurable={"llm_temperature": temperature})
 
             if stream_output:
                 if color_id is None or color_id <= 0:
@@ -1658,7 +1641,7 @@ The following annotations are provided to guide the refinement process. Each ann
                         # Store the current chunk as the previous one for the next iteration
                         previous_chunk_str = current_chunk_str
                         final_output = str(chunk)
-                    smart_print(start_color + chunk_content + end_color, self.agent_name, "Inference streaming output", append=True)
+                    smart_print(start_color + chunk_content + end_color, self.agent_name, "Inference streaming output "+str(color_id), append=True)
                 return AIMessage(content=final_output)  # Return the concatenated full respons
             else:
                 value = func.invoke(input_msg)
@@ -1702,7 +1685,7 @@ The following annotations are provided to guide the refinement process. Each ann
                     if type(self.premium_llm if use_premium_llm else self.default_llm) == type(self.llmORchains_list.get('3_majority_chain')):
                         stream_output = True
                     futures = [executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling,
-                                               temperature+(i*0.05), stream_output, i) for i in
+                                               ((temperature+(i*temperature_increase) if temperature>0 else 0) if temperature else None), stream_output, i) for i in
                                range(self.num_parallel_inferences)]
                     for idx, future in enumerate(futures):
                         try:

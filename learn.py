@@ -41,7 +41,7 @@ import json
 from langchain.globals import set_llm_cache
 from langchain_community.cache import SQLiteCache
 
-set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
+#set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
 
 #openai.api_key = os.environ['OPENAI_API_KEY']
 #if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
