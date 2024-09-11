@@ -1,5 +1,6 @@
 import inspect
 import re
+import threading
 import urllib.request
 import subprocess
 
@@ -7,9 +8,9 @@ from typing import List, Optional, Union
 from dataclasses import dataclass, field
 #from jinja2 import Template
 from langchain import LLMChain
-
+from langchain.llms import OpenAI
 from langchain.prompts import PromptTemplate
-from langchain_community.llms import OpenAI
+
 
 import time
 import json
@@ -38,8 +39,9 @@ import os
 import openai
 from requests.auth import HTTPBasicAuth
 
-openai.api_key = os.environ['OPENAI_API_KEY']
+from websocket_server import WebsocketServer
 
+openai.api_key = os.environ['OPENAI_API_KEY']
 if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
 
 ON_INPUT = False
@@ -52,9 +54,10 @@ import websockets
 ws_url = "ws://localhost:6789"
 
 
-async def send_message(message):
+async def send_messageeeee(message):
     async with websockets.connect(ws_url) as websocket:
-        await websocket.send(message)
+        po = await websocket.send(message)
+        print("nb bytes sent: ", po)
 
 
 def is_websocket_running():
@@ -87,11 +90,11 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
     else:
         IN_WEBSOCKET = globals()['IN_WEBSOCKET']
 
-    if IN_WEBSOCKET:
+    if True or IN_WEBSOCKET:
         message_dict = {'message':message, 'agent_name':agent_name, 'message_type':message_type, 'append':append, 'column_id':column_id, 'column_max':column_max}
         # convert message_dict to json
         message = json.dumps(message_dict)
-        asyncio.run(send_message(message))
+        HumanLLMMonitor.websocket_server.send_message(message)
 
     elif IN_NOTEBOOK and agent_name:
         # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
@@ -132,11 +135,18 @@ def smart_input(message: str, agent_name=None, message_type=None):
             globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = False
     else:
         IN_WEBSOCKET = globals()['IN_WEBSOCKET']
-    if IN_WEBSOCKET:
+    if True or IN_WEBSOCKET:
         structured_message = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'input': True}
         # convert structured_message to json
         message = json.dumps(structured_message)
-        asyncio.run(send_message(message))
+        no_client = True
+        while no_client:
+            HumanLLMMonitor.websocket_server.send_message(message)
+            if len(HumanLLMMonitor.websocket_server.connected_clients) > 0:
+                no_client = False
+            else:
+                print("Waiting for WebSocket client to connect")
+                time.sleep(1)
 
         # Wait and receive response from WebSocket
         async def receive_message():
@@ -470,6 +480,31 @@ class HumanLLMMonitor:
 
     common_vectordb_collection_name = "human_llm_monitor_logs"
     common_vectordb_persist_directory = "human_llm_monitor_vectordb"
+    websocket_server = None
+    use_websocket = True
+    ws_thread = None
+    stop_event = threading.Event()
+
+    @classmethod
+    def initialize_websocket_server(cls):
+        if cls.use_websocket and cls.websocket_server is None:
+            cls.websocket_server = WebsocketServer()
+            cls.stop_event.clear()
+            cls.ws_thread = threading.Thread(target=cls.run_websocket_server)
+            cls.ws_thread.daemon = True  # Run the WebSocket server in a daemon thread
+            cls.ws_thread.start()
+
+    @classmethod
+    def run_websocket_server(cls):
+        asyncio.run(cls.websocket_server.main(cls.stop_event))
+
+    @classmethod
+    def stop_websocket_server(cls):
+        if cls.websocket_server:
+            cls.stop_event.set()
+            cls.ws_thread.join(timeout=5)  # Wait for 5 seconds to join the thread
+            cls.websocket_server = None
+            cls.ws_thread = None
 
     # static method to change common_vectordb_embedding_function which can be either OpenAIEmbeddings or HuggingFaceEmbeddings
     @staticmethod
@@ -618,6 +653,30 @@ class HumanLLMMonitor:
     def set_premium_llmORchain(self, llm_name):
         return self.set_llmORchain(llm_name, is_premium=True)
 
+    def set_temperature(self, temperature):
+        if hasattr(self.default_llm, 'configurable_fields'):
+            try:
+                self.default_llm = self.default_llm.configurable_fields(
+                    temperature=ConfigurableField(
+                        id="llm_temperature",
+                        name="LLM Temperature",
+                        description="The temperature of the LLM"
+                    )
+                ).with_config(configurable={"llm_temperature": temperature})
+            except ValueError as e:
+                smart_print(f"Default LLM does not support temperature configuration: {e}", self.agent_name)
+        if hasattr(self.premium_llm, 'configurable_fields'):
+            try:
+                self.premium_llm = self.premium_llm.configurable_fields(
+                    temperature=ConfigurableField(
+                        id="llm_temperature",
+                        name="LLM Temperature",
+                        description="The temperature of the LLM"
+                    )
+                ).with_config(configurable={"llm_temperature": temperature})
+            except ValueError as e:
+                smart_print(f"Premium LLM does not support temperature configuration: {e}", self.agent_name)
+
     def set_output_schema(self, output_schema, package_path = "."):
         # test if output_schema is a string, then it means it is a filename located in the prompt repo, load it and set it as output_schema
         if isinstance(output_schema, str):
@@ -657,6 +716,10 @@ class HumanLLMMonitor:
         self.set_premium_llmORchain(premium_llmORchain if premium_llmORchain else "premium_llm") #premium_llm = premium_llmORchain if premium_llmORchain else self.llmORchains_list.get("premium_llm")
         self.CPS_env_type = CPS_env_type
         self.agent_name = agent_name or self.get_caller_class_name()
+        if HumanLLMMonitor.use_websocket:
+            if HumanLLMMonitor.websocket_server is None:
+                HumanLLMMonitor.initialize_websocket_server()
+            HumanLLMMonitor.websocket_server.add_monitor(self)
         # set in 1 line self.print_color is 32 for ActionAgent, 35 for CurriculumAgent, 31 for CriticAgent, 33 for SkillManager, 37 for else
         self.print_color = "32" if self.agent_name in ["ActionAgent", "CodingAgent"] else "35" if self.agent_name in [
             "CurriculumAgent", "TaskIdentificationAgent"] else "31" if self.agent_name in ["CriticAgent",
@@ -674,6 +737,34 @@ class HumanLLMMonitor:
         self.inference_checks = inference_checks if inference_checks else {}
         self.last_inference_check_results = None
 
+    # New: Handling function calls via WebSocket
+    def execute_function(self, function_name, params):
+        if hasattr(self, function_name):
+            func = getattr(self, function_name)
+            
+            if callable(func):
+                # Récupérer les informations de la signature de la fonction
+                func_signature = inspect.signature(func)
+                param_count = len(func_signature.parameters)
+                
+                # Si la fonction attend un seul argument positionnel
+                if param_count == 1 and not isinstance(params, dict):
+                    return func(params)
+                
+                # Si la fonction attend plusieurs arguments positionnels
+                elif param_count > 1 and isinstance(params, (list, tuple)):
+                    return func(*params)
+                
+                # Si la fonction attend des mots-clés et `params` est un dictionnaire
+                elif isinstance(params, dict):
+                    return func(**params)
+                
+                else:
+                    raise TypeError(f"Cannot match parameters to function signature. Expected {param_count} parameters but received {type(params).__name__}.")
+        
+        # Retourner une valeur par défaut si la fonction n'existe pas ou n'est pas callable
+        return None
+    
     def load_prompt(self, function_name: str = None, agent_name: str = None, prompt: str = None) -> str:
         """
         Load a prompt with the ability to retrieve few_shots examples based on the provided tag parameters.
@@ -1713,3 +1804,4 @@ The following annotations are provided to guide the refinement process. Each ann
         )
 
         return [message.content for message in output_messages] if return_message_content_only else output_messages
+    

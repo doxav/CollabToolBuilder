@@ -232,15 +232,18 @@ color: white;
         <center>
             <label for="default-llm">Default LLM:</label><br><br>
             <select id="default-llm">
-                <option value="0">GPT-3.5</option>
-                <option value="1">GPT-4</option>
-                <option value="2">Sonnet 3.5</option>
+                <option value="default_llm">default_llm</option>
+                <option value="premium_llm">premium_llm</option>
+                <option value="3_majority_chain">3_majority_chain</option>
+                <option value="10_majority_chain">10_majority_chain</option>
             </select><br><br><br>
 
             <label for="premium-llm">Premium LLM:</label><br><br>
             <select id="premium-llm">
-                <option value="0">GPT-4</option>
-                <option value="1">Sonnet 3.5</option>
+                <option value="default_llm">default_llm</option>
+                <option value="premium_llm">premium_llm</option>
+                <option value="3_majority_chain">3_majority_chain</option>
+                <option value="10_majority_chain">10_majority_chain</option>
             </select><br><br><br>
 
             <label for="temperature">Temperature:</label><br><br>
@@ -288,7 +291,17 @@ socket.onclose = function() {
 console.log('WebSocket connection closed');
 };
 
+function sendFunctionCall(agentName, functionName, params) {
+    let message = {
+        agent_name: agentName,
+        function: functionName,
+        params: params
+    };
+    socket.send(JSON.stringify(message));
+}
+
 function displayMessage(data) {
+    currentAgent = data.agent_name;
     let title = `${data.agent_name} | ${data.message_type} | ${new Date().toLocaleTimeString()}`;
     if (data.message_type === null) {
         title = `${data.agent_name} | ${new Date().toLocaleTimeString()}`;
@@ -1050,7 +1063,10 @@ function displayMessage(data) {
                     premiumLLM: $("#premium-llm").val(),
                     temperature: $("#temperature").val()
                 };
-                socket.send(JSON.stringify({ type: "settings", data: settings }));
+                sendFunctionCall(currentAgent,"set_default_llmORchain", settings["defaultLLM"]);
+                sendFunctionCall(currentAgent,"set_premium_llmORchain", settings["premiumLLM"]);
+                sendFunctionCall(currentAgent,"set_temperature", settings["temperature"]);
+                console.log("Settings applied:", settings);
             });
 
         function saveSelection() {
