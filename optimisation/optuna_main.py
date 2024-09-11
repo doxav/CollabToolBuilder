@@ -4,7 +4,7 @@ import os
 from langchain_openai import ChatOpenAI
 from config import MODELS_CONFIG_LIST
 from learn import EnvironmentManager, run_4agents_learning_loop
-
+from optimisation.optuna_analysis import analysis
 
 def definition_few_shots(trial):
     few_shots = ""
@@ -100,3 +100,5 @@ def launch_study(objective, name_exp : str):
     # Create a study and optimize the objective function
     study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}", study_name=name_exp)
     study.optimize(objective, n_trials=200)
+
+    analysis(name_exp)

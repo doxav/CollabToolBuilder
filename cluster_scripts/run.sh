@@ -5,8 +5,7 @@
 #SBATCH --partition=ouranos
 #SBATCH --gres=gpu:1
 #SBATCH --mail-type=all
-#SBATCH --mail-user=xavier.daull@lis-lab.fr,thomas-gouttebel@etud.univ-tln.fr
-#SBATCH --time=96:00:00
+#SBATCH --mail-user=xavier.daull@lis-lab.fr
 
 # Start time
 start_time=$(date +%s)
@@ -17,7 +16,7 @@ LOG_IDENTIFIER=${JOB_ID:-$start_time}
 
 
 # Email address
-EMAIL="xavier.daull@lis-lab.fr,thomas-gouttebel@etud.univ-tln.fr"
+EMAIL="xavier.daull@lis-lab.fr"
 
 # Environment variables for repeated paths
 DOCKER_IMAGE="docker://doxav/ollamawithpython:latest"
@@ -71,7 +70,7 @@ send_email_update() {
     fi
   else
     echo "No $NAME_EXP.db file to attach" > $LOG_DIR/no_optuna_db.txt
-    attachments="-a $LOG_DIR/no_optuna_db.txt -a /home/$USER/CollabFunctionsGPTCreator/optimisation/optuna_opti_Synthesis_coder.py"
+    attachments="-a $LOG_DIR/no_optuna_db.txt -a /home/$USER/CollabFunctionsGPTCreator/optimisation/optuna_opti_Synthesis_coder.py -a /home/$USER/CollabFunctionsGPTCreator/optimisation/$NAME_EXP.txt"
   fi
 
   subject="Cluster experiment progress update (JobID: $JOB_ID, SrunPID: $SRUN_PID, Duration: $duration mins, SHA: $OPTUNA_OPTI_SHA)"

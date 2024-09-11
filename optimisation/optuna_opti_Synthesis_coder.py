@@ -2,7 +2,6 @@ import os
 import sys
 import time
 from optimisation.optuna_main import launch_study, launch_run, definition_few_shots
-from optuna_analysis import analysis
 
 
 def objective(trial, name_xp : str):
@@ -87,8 +86,6 @@ def objective(trial, name_xp : str):
     # Log performance for analysis
     with open(f"Optuna_results/{name_xp}.txt", "a") as f:
         f.write(f"Performance: {performance}\n\n")
-
-    analysis(name_xp)
 
     return performance
 

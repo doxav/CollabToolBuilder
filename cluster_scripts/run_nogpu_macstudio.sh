@@ -1,22 +1,24 @@
 #!/bin/bash
 #SBATCH --job-name=XPCollabFunctionsGPTCreator
-#SBATCH --output=/home/%u/CollabFunctionsGPTCreator/logs/ollama_experiment_%j.out
-#SBATCH --error=/home/%u/CollabFunctionsGPTCreator/logs/ollama_experiment_%j.err
 #SBATCH --partition=ouranos
 #SBATCH --gres=gpu:0
+#SBATCH --nodes=1   # Demande d'un noeud
+#SBATCH --ntasks=1     #Nombre de taches
+#SBATCH --cpus-per-task=2   #Nombre de cpu par tache
+#SBATCH --mem=1G   # Ressource memoire RAM
+#SBATCH --output="./OutFiles/outJobCPU%j.log"  # Nom du fichier  de sortie  avec JobId
+#SBATCH --error="./OutFiles/errJobCPU%j.log"   # Nom du fichier erreur avec JobId
 #SBATCH --mail-type=all
-#SBATCH --mail-user=xavier.daull@lis-lab.fr,thomas-gouttebel@etud.univ-tln.fr
-#SBATCH --time=96:00:00
-
+#SBATCH --mail-user=xavier.daull@lis-lab.fr
 # Start time
 start_time=$(date +%s)
 start_datetime=$(date +"%Y-%m-%d %H:%M:%S")
-JOB_ID=${SLURM_JOB_ID:-"unknown"}
+JOB_ID={SLURM_JOB_ID:-"bashID_(date +%Y%m%d_%H%M%S)"}
 SRUN_PID="not started"
 LOG_IDENTIFIER=${JOB_ID:-$start_time}
 
 # Email address
-EMAIL="xavier.daull@lis-lab.fr,thomas-gouttebel@etud.univ-tln.fr"
+EMAIL="xavier.daull@lis-lab.fr"
 
 # Environment variables for repeated paths
 DOCKER_IMAGE="docker://doxav/ollamawithpython:latest"
@@ -33,7 +35,6 @@ FIRST_EMAIL_INTERVAL=2 # First email interval in minutes
 EMAIL_INTERVAL=30 # Interval in minutes for sending subsequent updates
 NAME_EXP="xp_coder$(date +"%Y%m%d_%H%M%S")"
 GZ_FILE="$LOG_DIR/$NAME_EXP.tar.gz"
-
 # Ensure the log directory exists
 mkdir -p $LOG_DIR
 touch $ERROR_LOG
@@ -52,17 +53,14 @@ truncate_log() {
     cat "$OUTPUT_LOG"
   fi
 }
-
 # Function to send email with log updates
 send_email_update() {
   local final_update=$1
   current_time=$(date +%s)
   duration=$(( (current_time - start_time) / 60 ))
-
   # Recompress all relevant files into a single gzip archive
   DB_FILE="/home/$USER/CollabFunctionsGPTCreator/Optuna_db/$NAME_EXP.db"
   FILES_TO_ARCHIVE="$BASE_DIR/optimisation/optuna_opti_Synthesis_coder.py $OUTPUT_LOG $ERROR_LOG"
-
   # Change directory to home to use relative paths
   cd /home/$USER || handle_error
   if [ -f "$DB_FILE" ]; then
@@ -76,14 +74,19 @@ send_email_update() {
   fi
   # Create new gzip archive using relative paths
   tar -czf $GZ_FILE -C /home/$USER $(echo $FILES_TO_ARCHIVE | sed "s|/home/$USER/||g")
-
+	echo 7
   subject="Cluster experiment progress update (JobID: $JOB_ID, SrunPID: $SRUN_PID, Duration: $duration mins, SHA: $OPTUNA_OPTI_SHA)"
   [ "$final_update" == "true" ] && subject="Cluster experiments result (JobID: $JOB_ID, SrunPID: $SRUN_PID, START: $start_datetime, END: $(date +"%Y-%m-%d %H:%M:%S"), Duration: $duration mins, SHA: $OPTUNA_OPTI_SHA)"
-
   truncated_content=$(truncate_log)
-  echo -e "$truncated_content" | mailx -S charset=utf-8 -s "$subject" -a $GZ_FILE -a "$ANALYSIS_FILE" "$EMAIL"
-}
 
+  ANALYSIS_FILE="$BASE_DIR/optimisation/$NAME_EXP.txt"
+
+  TEMP_LOG=$(mktemp)
+  iconv -f utf-8 -t utf-8 "$OUTPUT_LOG" > "$TEMP_LOG"
+  mailx -S charset=utf-8 -s "$subject" -a $GZ_FILE -a $ANALYSIS_FILE "$EMAIL" < "$TEMP_LOG"
+  rm -f "$TEMP_LOG"
+
+}
 # Function to handle errors and send detailed email
 handle_error() {
   local exit_code=$?
@@ -94,7 +97,6 @@ handle_error() {
   mailx -S charset=utf-8 -s "Cluster experiment FAILED (JobID: $JOB_ID, SrunPID: $SRUN_PID, SHA: $OPTUNA_OPTI_SHA)" -a $GZ_FILE "$EMAIL" < $ERROR_LOG
   exit $exit_code
 }
-
 # Trap errors and script exit to trigger handle_error
 trap 'handle_error' ERR EXIT
 
@@ -113,7 +115,7 @@ cd /home/$USER || handle_error
 [ -f "$CONTAINER_IMAGE" ] || enroot import $DOCKER_IMAGE || handle_error
 
 # Run the container and experiment in the background
-srun --container-image=$CONTAINER_IMAGE --gres=gpu:1 --partition=ouranos \
+srun --container-image=$CONTAINER_IMAGE --gres=gpu:0 --partition=ouranos \
      --container-mounts=$MOUNT_PATHS $SCRIPT_PATH $NAME_EXP &
 SRUN_PID=$!
 
@@ -135,6 +137,7 @@ done
 
 # Wait for the srun command to finish
 wait $SRUN_PID
+
 srun_exit_code=$?
 
 # Send final email update
@@ -143,4 +146,3 @@ if [ $srun_exit_code -ne 0 ]; then
 else
   send_email_update "true"
 fi
-
