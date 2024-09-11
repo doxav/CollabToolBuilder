@@ -62,6 +62,11 @@ send_email_update() {
   # Recompress all relevant files into a single gzip archive
   DB_FILE="/home/$USER/CollabFunctionsGPTCreator/Optuna_db/$NAME_EXP.db"
   FILES_TO_ARCHIVE="$BASE_DIR/optimisation/optuna_opti_Synthesis_coder.py $OUTPUT_LOG $ERROR_LOG"
+
+  # Add analysis database file to the list of files to send by email
+  python -m optimisation.optuna_analysis $DB_FILE
+  ANALYSIS_FILE="/home/$USER/CollabFunctionsGPTCreator/Optuna_db/study_analysis_results.txt"
+
   # Change directory to home to use relative paths
   cd /home/$USER || handle_error
   if [ -f "$DB_FILE" ]; then
@@ -80,7 +85,7 @@ send_email_update() {
   [ "$final_update" == "true" ] && subject="Cluster experiments result (JobID: $JOB_ID, SrunPID: $SRUN_PID, START: $start_datetime, END: $(date +"%Y-%m-%d %H:%M:%S"), Duration: $duration mins, SHA: $OPTUNA_OPTI_SHA)"
 
   truncated_content=$(truncate_log)
-  echo -e "$truncated_content" | mailx -S charset=utf-8 -s "$subject" -a $GZ_FILE "$EMAIL"
+  echo -e "$truncated_content" | mailx -S charset=utf-8 -s "$subject" -a $GZ_FILE -a "$ANALYSIS_FILE" "$EMAIL"
 }
 
 # Function to handle errors and send detailed email

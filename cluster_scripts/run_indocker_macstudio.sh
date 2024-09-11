@@ -65,6 +65,4 @@ cd $code_directory || { print_message "31" "Failed to change directory to $code_
 print_message "32" "Activating virtual environment..."
 source /app/.venv/bin/activate || { print_message "31" "Failed to activate virtual environment."; exit 1; }
 
-
-NAME_EXP = "xp_coder$(date +"%Y%m%d_%H%M%S")"
 python optuna_opti_Synthesis_coder.py $1
