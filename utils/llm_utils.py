@@ -653,6 +653,30 @@ class HumanLLMMonitor:
     def set_premium_llmORchain(self, llm_name):
         return self.set_llmORchain(llm_name, is_premium=True)
 
+    def set_temperature(self, temperature):
+        if hasattr(self.default_llm, 'configurable_fields'):
+            try:
+                self.default_llm = self.default_llm.configurable_fields(
+                    temperature=ConfigurableField(
+                        id="llm_temperature",
+                        name="LLM Temperature",
+                        description="The temperature of the LLM"
+                    )
+                ).with_config(configurable={"llm_temperature": temperature})
+            except ValueError as e:
+                smart_print(f"Default LLM does not support temperature configuration: {e}", self.agent_name)
+        if hasattr(self.premium_llm, 'configurable_fields'):
+            try:
+                self.premium_llm = self.premium_llm.configurable_fields(
+                    temperature=ConfigurableField(
+                        id="llm_temperature",
+                        name="LLM Temperature",
+                        description="The temperature of the LLM"
+                    )
+                ).with_config(configurable={"llm_temperature": temperature})
+            except ValueError as e:
+                smart_print(f"Premium LLM does not support temperature configuration: {e}", self.agent_name)
+
     def set_output_schema(self, output_schema, package_path = "."):
         # test if output_schema is a string, then it means it is a filename located in the prompt repo, load it and set it as output_schema
         if isinstance(output_schema, str):

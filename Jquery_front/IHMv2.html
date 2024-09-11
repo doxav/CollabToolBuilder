@@ -1065,6 +1065,8 @@ function displayMessage(data) {
                 };
                 sendFunctionCall(currentAgent,"set_default_llmORchain", settings["defaultLLM"]);
                 sendFunctionCall(currentAgent,"set_premium_llmORchain", settings["premiumLLM"]);
+                sendFunctionCall(currentAgent,"set_temperature", settings["temperature"]);
+                console.log("Settings applied:", settings);
             });
 
         function saveSelection() {
