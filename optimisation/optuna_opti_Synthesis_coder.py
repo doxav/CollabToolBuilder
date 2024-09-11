@@ -69,7 +69,7 @@ def objective(trial, timestamp_exp : int):
         f.write(full_prompt)
 
     # Log the prompt and parameters for this trial
-    with open(f"Optuna_results/xp_coder{timestamp_exp}.txt", "a") as f:
+    with open(f"Optuna_results/{timestamp_exp}.txt", "a") as f:
         f.write(f"Trial: {trial.number}\nGenerated Coder Prompt: \n{full_prompt}\n")
 
     performance = launch_run(
@@ -84,7 +84,7 @@ def objective(trial, timestamp_exp : int):
     )
 
     # Log performance for analysis
-    with open(f"Optuna_results/xp_coder{timestamp_exp}.txt", "a") as f:
+    with open(f"Optuna_results/{timestamp_exp}.txt", "a") as f:
         f.write(f"Performance: {performance}\n\n")
 
     return performance
@@ -100,4 +100,4 @@ if __name__ == "__main__":
     else :
         timestamp_xp = int(time.time())
         name_exp = f"xp_coder{timestamp_xp}"
-    launch_study(lambda trial: objective(trial, timestamp_xp), name_exp)
+    launch_study(lambda trial: objective(trial, name_exp), name_exp)

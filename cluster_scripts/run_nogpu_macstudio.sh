@@ -5,7 +5,7 @@
 #SBATCH --partition=ouranos
 #SBATCH --gres=gpu:0
 #SBATCH --mail-type=all
-#SBATCH --mail-user=xavier.daull@lis-lab.fr
+#SBATCH --mail-user=xavier.daull@lis-lab.fr,thomas-gouttebel@etud.univ-tln.fr
 #SBATCH --time=96:00:00
 
 # Start time
@@ -16,7 +16,7 @@ SRUN_PID="not started"
 LOG_IDENTIFIER=${JOB_ID:-$start_time}
 
 # Email address
-EMAIL="xavier.daull@lis-lab.fr"
+EMAIL="xavier.daull@lis-lab.fr,thomas-gouttebel@etud.univ-tln.fr"
 
 # Environment variables for repeated paths
 DOCKER_IMAGE="docker://doxav/ollamawithpython:latest"
