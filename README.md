@@ -34,7 +34,7 @@ To start the collaborative development process on local IHM for new commands, ex
 ```bash
 python learn.py
 ```
-You can start creating functions or pipelines by using **Jquery_fonts/IHMv1.html** or **Jquery_fonts/IHMv2.html**
+You can start creating functions or pipelines by using **Jquery_front/IHMv1.html** or **Jquery_front/IHMv2.html**
 
 ![IMH](IHM.png)
 
