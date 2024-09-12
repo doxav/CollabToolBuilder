@@ -1,16 +1,34 @@
 #!/bin/bash
 #SBATCH --job-name=XPCollabFunctionsGPTCreator
 #SBATCH --partition=ouranos
-#SBATCH --gres=gpu:0
-#SBATCH --nodes=1   # Demande d'un noeud
-#SBATCH --ntasks=1     #Nombre de taches
-#SBATCH --cpus-per-task=1   #Nombre de cpu par tache
-#SBATCH --mem=1G   # Ressource memoire RAM
-#SBATCH --output="./OutFiles/outJobCPU%j.log"  # Nom du fichier  de sortie  avec JobId
-#SBATCH --error="./OutFiles/errJobCPU%j.log"   # Nom du fichier erreur avec JobId
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=1G
+#SBATCH --output="./OutFiles/outJobCPU%j.log"
+#SBATCH --error="./OutFiles/errJobCPU%j.log"
 #SBATCH --mail-type=all
 #SBATCH --mail-user=xavier.daull@lis-lab.fr
 #SBATCH --time=96:00:00
+
+# Check if there is the 2 parameters
+[ "$#" -ne 2 ] && echo "Usage: $0 [optuna experiment file in optimisation without .py extension]  [LLM Mode : macstudio, gpu, other, GPT4. Default is macstudio]" && exit 1
+
+# Parameters for mode (gpu or nogpu)
+MODE=$(echo "${2:-macstudio}" | tr '[:upper:]' '[:lower:]') # Default is macstudio, pass 'gpu' as first argument for GPU mode
+
+# Check if we are in GPU mode and if GPUs were actually allocated
+if [ "$MODE" == "gpu" ]; then
+  # SLURM_GPUS_ON_NODE is the number of GPUs allocated
+  if [ "${SLURM_GPUS_ON_NODE:-0}" -lt 1 ]; then
+    echo "Error: GPU mode was requested, but no GPUs were allocated. Use --gres=gpu:1" >&2
+    exit 1
+  else
+    echo "GPUs allocated: $SLURM_GPUS_ON_NODE"
+  fi
+else
+    echo "Running in $MODE mode..."
+fi
 
 # Set the IN_MACSTU docker environment variable to true
 export IN_MACSTU=True
@@ -26,35 +44,41 @@ LOG_IDENTIFIER=${JOB_ID:-$start_time}
 EMAIL="xavier.daull@lis-lab.fr"
 
 # Environment variables for repeated paths
-DOCKER_IMAGE="docker://jitaross/ollamawithpython:latest"
-CONTAINER_IMAGE="/home/$USER/jitaross+ollamawithpython+latest.sqsh"
+DOCKER_IMAGE="docker://doxav/ollamawithpython:latest"
+NAME_EXP="xp_coder$(date +"%Y%m%d_%H%M%S")"
+CONTAINER_IMAGE="/home/$USER/doxav+ollamawithpython+latest.sqsh"
 BASE_DIR="/home/$USER/CollabFunctionsGPTCreator"
 MOUNT_PATHS="/home/$USER:/home/$USER,$BASE_DIR:$BASE_DIR"
-SCRIPT_PATH="$BASE_DIR/cluster_scripts/run_indocker_macstudio.sh"
+SCRIPT_PATH="$BASE_DIR/cluster_scripts/run_indocker_multi.sh"
 LOG_DIR="$BASE_DIR/logs"
 OPTUNA_DB_DIR="$BASE_DIR/Optuna_db"
 DB_FILE="$OPTUNA_DB_DIR/$NAME_EXP.db"
 OUTPUT_LOG="$LOG_DIR/script_output_$LOG_IDENTIFIER.log"
 ERROR_LOG="$LOG_DIR/script_error_$LOG_IDENTIFIER.log"
-FIRST_EMAIL_INTERVAL=2 # First email interval in minutes
 EMAIL_INTERVAL=30 # Interval in minutes for sending subsequent updates
-NAME_EXP="xp_coder$(date +"%Y%m%d_%H%M%S")"
+FIRST_EMAIL_INTERVAL=2 # First email interval in minutes
+SECOND_EMAIL_INTERVAL=7 # Second email interval in minutes
 GZ_FILE="$LOG_DIR/$NAME_EXP.tar.gz"
-ANALYSIS_FILE="$BASE_DIR/optimisation/$NAME_EXP.txt"
+ANALYSIS_FILE="$BASE_DIR/Optuna_results/"$NAME_EXP"_analysis.txt"
+PYTHON_FILE="$BASE_DIR/optimisation/$1.py"
+PYTHON_SHORT=$1
+echo $ANALYSIS_FILE
+# Check if the python file exists
+if [ ! -f "$PYTHON_FILE" ]; then
+    echo "The file $PYTHON_FILE does not exist."
+    exit 1
+fi
 # Ensure the log directory exists
 mkdir -p $LOG_DIR
 touch $ERROR_LOG
 touch $OUTPUT_LOG
-
-# Get SHA of optuna_opti.py
-OPTUNA_OPTI_SHA=$(sha256sum /home/$USER/CollabFunctionsGPTCreator/optimisation/optuna_opti_Synthesis_coder.py | awk '{ print $1 }')
 
 # Function to truncate email body content
 truncate_log() {
   local log_content=$(cat "$OUTPUT_LOG")
   local log_length=${#log_content}
   if [ $log_length -gt 1000 ]; then
-    echo "${log_content:0:500}\n....\nTRUNCATED CONTENT\n....\n${log_content: -500}"
+    echo "${log_content:0:2000}\n....\nTRUNCATED CONTENT\n....\n${log_content: -2000}"
   else
     cat "$OUTPUT_LOG"
   fi
@@ -65,8 +89,7 @@ send_email_update() {
   current_time=$(date +%s)
   duration=$(( (current_time - start_time) / 60 ))
   # Recompress all relevant files into a single gzip archive
-  DB_FILE="/home/$USER/CollabFunctionsGPTCreator/Optuna_db/$NAME_EXP.db"
-  FILES_TO_ARCHIVE="$BASE_DIR/optimisation/optuna_opti_Synthesis_coder.py $OUTPUT_LOG $ERROR_LOG"
+  FILES_TO_ARCHIVE="$PYTHON_FILE $OUTPUT_LOG $ERROR_LOG"
   # Change directory to home to use relative paths
   cd /home/$USER || handle_error
   if [ -f "$DB_FILE" ]; then
@@ -80,8 +103,8 @@ send_email_update() {
   fi
   # Create new gzip archive using relative paths
   tar -czf $GZ_FILE -C /home/$USER $(echo $FILES_TO_ARCHIVE | sed "s|/home/$USER/||g")
-  subject="Cluster experiment progress update (JobID: $JOB_ID, SrunPID: $SRUN_PID, Duration: $duration mins, SHA: $OPTUNA_OPTI_SHA)"
-  [ "$final_update" == "true" ] && subject="Cluster experiments result (JobID: $JOB_ID, SrunPID: $SRUN_PID, START: $start_datetime, END: $(date +"%Y-%m-%d %H:%M:%S"), Duration: $duration mins, SHA: $OPTUNA_OPTI_SHA)"
+  subject="Cluster xp progress update (JobID: $JOB_ID, SrunPID: $SRUN_PID, Duration: $duration mins, File: $1, Mode: $2, Name_xp: $NAME_EXP)"
+  [ "$final_update" == "true" ] && subject="Cluster experiments result (JobID: $JOB_ID, SrunPID: $SRUN_PID, START: $start_datetime, END: $(date +"%Y-%m-%d %H:%M:%S"), Duration: $duration mins,  File: $1, Mode: $2, Name_xp: $NAME_EXP)"
   truncated_content=$(truncate_log)
 
   #echo -e "$truncated_content" | mailx -S charset=utf-8 -s "$subject" -a $GZ_FILE "$EMAIL"
@@ -107,7 +130,7 @@ handle_error() {
   echo "Job failed with exit code $exit_code" | tee -a $ERROR_LOG
   echo "Last log lines before failure:" | tee -a $ERROR_LOG
   echo "$last_log_lines" | tee -a $ERROR_LOG
-  mailx -S charset=utf-8 -s "Cluster experiment FAILED (JobID: $JOB_ID, SrunPID: $SRUN_PID, SHA: $OPTUNA_OPTI_SHA)" -a $GZ_FILE "$EMAIL" < $ERROR_LOG
+  mailx -S charset=utf-8 -s "Cluster experiment FAILED (JobID: $JOB_ID, SrunPID: $SRUN_PID,Duration: $duration mins, File: $1, Mode: $2, Name_xp: $NAME_EXP )" -a $GZ_FILE "$EMAIL" < $ERROR_LOG
   exit $exit_code
 }
 # Trap errors and script exit to trigger handle_error
@@ -128,7 +151,7 @@ cd /home/$USER || handle_error
 [ -f "$CONTAINER_IMAGE" ] || enroot import $DOCKER_IMAGE || handle_error
 
 # Run the container and experiment in the background
-srun --container-image=$CONTAINER_IMAGE --container-mounts=$MOUNT_PATHS $SCRIPT_PATH $NAME_EXP &
+srun --container-image=$CONTAINER_IMAGE --container-mounts=$MOUNT_PATHS $SCRIPT_PATH $NAME_EXP $PYTHON_SHORT $MODE &
 SRUN_PID=$!
 
 # Ensure SRUN_PID is logged
@@ -139,6 +162,10 @@ send_email_update "false"
 
 # Send the first email update after FIRST_EMAIL_INTERVAL
 sleep ${FIRST_EMAIL_INTERVAL}m
+send_email_update "false"
+
+# Send the second email update after SECOND_EMAIL_INTERVAL
+sleep ${SECOND_EMAIL_INTERVAL}m
 send_email_update "false"
 
 # Periodically send updates

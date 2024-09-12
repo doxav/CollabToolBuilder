@@ -8,15 +8,17 @@ def analysis(name_exp : str):
     current_folder = os.getcwd()
 
     # File to save results
-    output_file = os.path.join(current_folder, f"{name_exp}.txt")
+    output_file = os.path.join(current_folder, f"Optuna_results/{name_exp}_analysis.txt")
 
     sqlite_file = os.path.join(current_folder, f"Optuna_db/{name_exp}.db")
 
     # Function to write results to the file
-    def write_to_file(text):
-        with open(output_file, "a") as f:
+    def write_to_file(text, mode="a"):
+        with open(output_file, mode) as f:
             f.write(text + "\n")
+        print(text)
 
+    write_to_file("start analysis", "w")
     # Get all studies in the database
     study_summaries = optuna.study.get_all_study_summaries(storage=f"sqlite:///{sqlite_file}")
 
