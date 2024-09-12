@@ -77,8 +77,8 @@ touch $OUTPUT_LOG
 truncate_log() {
   local log_content=$(cat "$OUTPUT_LOG")
   local log_length=${#log_content}
-  if [ $log_length -gt 1000 ]; then
-    echo "${log_content:0:2000}\n....\nTRUNCATED CONTENT\n....\n${log_content: -2000}"
+  if [ $log_length -gt 3000 ]; then
+    echo "${log_content:0:1000}\n....\nTRUNCATED CONTENT\n....\n${log_content: -2000}"
   else
     cat "$OUTPUT_LOG"
   fi
