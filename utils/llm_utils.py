@@ -51,6 +51,8 @@ AGENT = ''
 import asyncio
 import websockets
 
+ws_url = "ws://localhost:6789"
+
 
 def smart_print(message: str, agent_name=None, message_type=None, append=False, column_id=None, column_max=None):
     global AgentDisplayManager, AGENT
