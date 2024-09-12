@@ -103,8 +103,8 @@ send_email_update() {
   fi
   # Create new gzip archive using relative paths
   tar -czf $GZ_FILE -C /home/$USER $(echo $FILES_TO_ARCHIVE | sed "s|/home/$USER/||g")
-  subject="Cluster xp progress update (JobID: $JOB_ID, SrunPID: $SRUN_PID, Duration: $duration mins, File: $1, Mode: $2, Name_xp: $NAME_EXP)"
-  [ "$final_update" == "true" ] && subject="Cluster experiments result (JobID: $JOB_ID, SrunPID: $SRUN_PID, START: $start_datetime, END: $(date +"%Y-%m-%d %H:%M:%S"), Duration: $duration mins,  File: $1, Mode: $2, Name_xp: $NAME_EXP)"
+  subject="Cluster xp progress update (JobID:$JOB_ID SrunPID:$SRUN_PID Duration:$duration m File:$PYTHON_SHORT Mode:$MODE Name_xp:$NAME_EXP)"
+  [ "$final_update" == "true" ] && subject="Cluster xp result (JobID:$JOB_ID runPID:$SRUN_PID START:$start_datetime END:$(date +"%Y-%m-%d %H:%M:%S") Duration:$duration m File:$PYTHON_SHORT Mode:$MODE Name_xp:$NAME_EXP)"
   truncated_content=$(truncate_log)
 
   #echo -e "$truncated_content" | mailx -S charset=utf-8 -s "$subject" -a $GZ_FILE "$EMAIL"
@@ -130,7 +130,7 @@ handle_error() {
   echo "Job failed with exit code $exit_code" | tee -a $ERROR_LOG
   echo "Last log lines before failure:" | tee -a $ERROR_LOG
   echo "$last_log_lines" | tee -a $ERROR_LOG
-  mailx -S charset=utf-8 -s "Cluster experiment FAILED (JobID: $JOB_ID, SrunPID: $SRUN_PID,Duration: $duration mins, File: $1, Mode: $2, Name_xp: $NAME_EXP )" -a $GZ_FILE "$EMAIL" < $ERROR_LOG
+  mailx -S charset=utf-8 -s "Cluster experiment FAILED (JobID:$JOB_ID runPID:$SRUN_PID Duration:$duration m File:$PYTHON_SHORT Mode:$MODE Name_xp:$NAME_EXP)" -a $GZ_FILE "$EMAIL" < $ERROR_LOG
   exit $exit_code
 }
 # Trap errors and script exit to trigger handle_error
