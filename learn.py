@@ -1,5 +1,4 @@
 import inspect
-import pprint
 import random
 import string
 import subprocess
@@ -8,38 +7,26 @@ import types
 import time
 from config import *
 
-#import openai
-import json
-from typing import Dict, Optional
+from typing import Dict
 
-from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, save_prompt, _visual_input, \
+from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, \
     is_vscode_installed, smart_print, smart_input
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import copy
-from pydantic import BaseModel
+
 import os
 import uuid
 import re
 import shutil
 import hashlib
 
-from langchain_core.runnables import Runnable, RunnablePassthrough
-#from langchain.schema.runnable import Runnable, RunnablePassthrough
+from langchain_core.runnables import Runnable
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-# from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.ai import AIMessage
 from langchain_core.messages.system import SystemMessage
-from langchain_core.messages.function import FunctionMessage
 
-from langchain_openai import ChatOpenAI  # from langchain.chat_models import ChatOpenAI
-# from langchain.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 
 import json
-
-from langchain.globals import set_llm_cache
-from langchain_community.cache import SQLiteCache
 
 #set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
 

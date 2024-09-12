@@ -6,7 +6,7 @@ import subprocess
 
 from typing import List, Optional, Union
 from dataclasses import dataclass, field
-#from jinja2 import Template
+from jinja2 import Template
 from langchain import LLMChain
 from langchain.llms import OpenAI
 from langchain.prompts import PromptTemplate
@@ -51,24 +51,6 @@ AGENT = ''
 import asyncio
 import websockets
 
-ws_url = "ws://localhost:6789"
-
-
-async def send_messageeeee(message):
-    async with websockets.connect(ws_url) as websocket:
-        po = await websocket.send(message)
-        print("nb bytes sent: ", po)
-
-
-def is_websocket_running():
-    url = "http://127.0.0.1:5000/api/hello"
-    try:
-        response = requests.get(url)
-        if response.status_code == 200:
-            return True
-    except requests.ConnectionError:
-        return False
-
 
 def smart_print(message: str, agent_name=None, message_type=None, append=False, column_id=None, column_max=None):
     global AgentDisplayManager, AGENT
@@ -83,14 +65,14 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
         IN_NOTEBOOK = globals()['IN_NOTEBOOK']
 
     if 'IN_WEBSOCKET' not in globals():
-        if is_websocket_running():
+        if HumanLLMMonitor.use_websocket:
             globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = True
         else:
             globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = False
     else:
         IN_WEBSOCKET = globals()['IN_WEBSOCKET']
 
-    if True or IN_WEBSOCKET:
+    if IN_WEBSOCKET:
         message_dict = {'message':message, 'agent_name':agent_name, 'message_type':message_type, 'append':append, 'column_id':column_id, 'column_max':column_max}
         # convert message_dict to json
         message = json.dumps(message_dict)
@@ -128,14 +110,14 @@ def smart_input(message: str, agent_name=None, message_type=None):
 
     if 'IN_WEBSOCKET' not in globals():
         # Check if a Streamlit server is running
-        if is_websocket_running():
+        if HumanLLMMonitor.use_websocket:
             globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = True
 
         else:
             globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = False
     else:
         IN_WEBSOCKET = globals()['IN_WEBSOCKET']
-    if True or IN_WEBSOCKET:
+    if IN_WEBSOCKET:
         structured_message = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'input': True}
         # convert structured_message to json
         message = json.dumps(structured_message)
