@@ -5,6 +5,9 @@ FROM ollama/ollama
 # Set DEBIAN_FRONTEND to noninteractive to avoid prompts
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Add environment variables to determine if running program in cluster or macstudio
+ENV IN_MACSTU=false
+
 # Install wget and build dependencies
 RUN apt-get update && apt-get install -y \
     wget \
