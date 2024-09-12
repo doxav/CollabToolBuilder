@@ -75,9 +75,17 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
         IN_WEBSOCKET = globals()['IN_WEBSOCKET']
 
     if IN_WEBSOCKET:
+        # Check if in the message there are no unexpected non-whitespace characters
+        if re.search(r'[^\x20-\x7E\t\n\r]', message):
+            # Remove unexpected characters
+            message = re.sub(r'[^\x20-\x7E\t\n\r]', "", message)
         message_dict = {'message':message, 'agent_name':agent_name, 'message_type':message_type, 'append':append, 'column_id':column_id, 'column_max':column_max}
         # convert message_dict to json
         message = json.dumps(message_dict)
+        time.sleep(0.01)
+        # Wait 2 seconds every 100 messages to avoid flooding the WebSocket server
+        if HumanLLMMonitor.websocket_server.message_count % 250 == 0:
+            time.sleep(2)
         HumanLLMMonitor.websocket_server.send_message(message)
 
     elif IN_NOTEBOOK and agent_name:
@@ -1627,7 +1635,10 @@ The following annotations are provided to guide the refinement process. Each ann
                         # Store the current chunk as the previous one for the next iteration
                         previous_chunk_str = current_chunk_str
                         final_output = str(chunk)
-                    smart_print(start_color + chunk_content + end_color, self.agent_name, "Inference streaming output "+str(color_id), append=True)
+                    if HumanLLMMonitor.use_websocket:
+                        smart_print(chunk_content, self.agent_name, "Inference streaming output "+str(color_id), append=True)
+                    else:
+                        smart_print(start_color + chunk_content + end_color, self.agent_name, "Inference streaming output "+str(color_id), append=True)
                 return AIMessage(content=final_output)  # Return the concatenated full respons
             else:
                 value = func.invoke(input_msg)
