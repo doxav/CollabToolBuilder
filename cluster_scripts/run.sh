@@ -8,6 +8,9 @@
 #SBATCH --mail-user=xavier.daull@lis-lab.fr
 #SBATCH --time=96:00:00
 
+# Set the IN_MACSTU docker environment variable to False
+export IN_MACSTU=False
+
 # Start time
 start_time=$(date +%s)
 start_datetime=$(date +"%Y-%m-%d %H:%M:%S")
@@ -20,8 +23,8 @@ LOG_IDENTIFIER=${JOB_ID:-$start_time}
 EMAIL="xavier.daull@lis-lab.fr"
 
 # Environment variables for repeated paths
-DOCKER_IMAGE="docker://doxav/ollamawithpython:latest"
-CONTAINER_IMAGE="/home/$USER/doxav+ollamawithpython+latest.sqsh"
+DOCKER_IMAGE="docker://jitaross/ollamawithpython:latest"
+CONTAINER_IMAGE="/home/$USER/jitaross+ollamawithpython+latest.sqsh"
 MOUNT_PATHS="/home/$USER/.ollama:/home/$USER/.ollama,/home/$USER/CollabFunctionsGPTCreator:/home/$USER/CollabFunctionsGPTCreator,/home/$USER/.cache:/home/$USER/.cache"
 SCRIPT_PATH="/home/$USER/CollabFunctionsGPTCreator/cluster_scripts/run_indocker.sh"
 LOG_DIR="/home/$USER/CollabFunctionsGPTCreator/logs"
