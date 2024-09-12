@@ -1,3 +1,4 @@
+
 #!/bin/bash
 #SBATCH --job-name=XPCollabFunctionsGPTCreator
 #SBATCH --output=/home/%u/CollabFunctionsGPTCreator/logs/ollama_experiment_%j.out
@@ -23,7 +24,7 @@ EMAIL="xavier.daull@lis-lab.fr"
 DOCKER_IMAGE="docker://doxav/ollamawithpython:latest"
 CONTAINER_IMAGE="/home/$USER/doxav+ollamawithpython+latest.sqsh"
 MOUNT_PATHS="/home/$USER/.ollama:/home/$USER/.ollama,/home/$USER/CollabFunctionsGPTCreator:/home/$USER/CollabFunctionsGPTCreator,/home/$USER/.cache:/home/$USER/.cache"
-SCRIPT_PATH="/home/$USER/CollabFunctionsGPTCreator/cluster_scripts/run_indocker.sh"
+SCRIPT_PATH="/home/$USER/CollabFunctionsGPTCreator/cluster_scripts/run_indocker_macstudio.sh"
 LOG_DIR="/home/$USER/CollabFunctionsGPTCreator/logs"
 OUTPUT_LOG="$LOG_DIR/script_output_$LOG_IDENTIFIER.log"
 ERROR_LOG="$LOG_DIR/script_error_$LOG_IDENTIFIER.log"
@@ -71,7 +72,7 @@ send_email_update() {
     fi
   else
     echo "No $NAME_EXP.db file to attach" > $LOG_DIR/no_optuna_db.txt
-    attachments="-a $LOG_DIR/no_optuna_db.txt -a /home/$USER/CollabFunctionsGPTCreator/optimisation/optuna_opti_Synthesis_coder.py -a /home/$USER/CollabFunctionsGPTCreator/optimisation/$NAME_EXP.txt"
+    attachments="-a $LOG_DIR/no_optuna_db.txt -a /home/$USER/CollabFunctionsGPTCreator/optimisation/optuna_opti_Synthesis_coder.py"
   fi
 
   subject="Cluster experiment progress update (JobID: $JOB_ID, SrunPID: $SRUN_PID, Duration: $duration mins, SHA: $OPTUNA_OPTI_SHA)"
@@ -81,6 +82,52 @@ send_email_update() {
   iconv -f utf-8 -t utf-8 "$OUTPUT_LOG" > "$TEMP_LOG"
   mailx -S charset=utf-8 -s "$subject" $attachments "$EMAIL" < "$TEMP_LOG"
   rm -f "$TEMP_LOG"
+}
+
+# Function to truncate email body content
+truncate_log() {
+  local log_content=$(cat "$OUTPUT_LOG")
+  local log_length=${#log_content}
+  if [ $log_length -gt 1000 ]; then
+    echo "${log_content:0:500}\n....\nTRUNCATED CONTENT\n....\n${log_content: -500}"
+  else
+    cat "$OUTPUT_LOG"
+  fi
+}
+send_email_update() {
+  local final_update=$1
+  current_time=$(date +%s)
+  duration=$(( (current_time - start_time) / 60 ))
+
+  # Recompress all relevant files into a single gzip archive
+  BASE_DIR="/home/$USER/CollabFunctionsGPTCreator"
+  DB_FILE="/home/$USER/CollabFunctionsGPTCreator/Optuna_db/$NAME_EXP.db"
+  FILES_TO_ARCHIVE="$BASE_DIR/optimisation/optuna_opti_Synthesis_coder.py $OUTPUT_LOG $ERROR_LOG"
+  # Change directory to home to use relative paths
+  cd /home/$USER
+  if [ -f "$DB_FILE" ]; then
+      FILES_TO_ARCHIVE="$DB_FILE $FILES_TO_ARCHIVE"
+  else
+      echo "Warning: $DB_FILE not found, skipping it in the archive."
+  fi
+  # Remove existing gzip file if it exists
+  if [ -f "$GZ_FILE" ]; then
+      rm "$GZ_FILE"
+  fi
+  # Create new gzip archive using relative paths
+  tar -czf $GZ_FILE -C /home/$USER $(echo $FILES_TO_ARCHIVE | sed "s|/home/$USER/||g")
+  subject="Cluster experiment progress update (JobID: $JOB_ID, SrunPID: $SRUN_PID, Duration: $duration mins, SHA: $OPTUNA_OPTI_SHA)"
+  [ "$final_update" == "true" ] && subject="Cluster experiments result (JobID: $JOB_ID, SrunPID: $SRUN_PID, START: $start_datetime, END: $(date +"%Y-%m-%d %H:%M:%S"), Duration: $duration mins, SHA: $OPTUNA_OPTI_SHA)"
+
+  truncated_content=$(truncate_log)
+  echo -e "$truncated_content" | mailx -S charset=utf-8 -s "$subject" -a $GZ_FILE "$EMAIL"
+  if ! mailx -S charset=utf-8 -s "$subject" -a "$GZ_FILE" "$EMAIL" << EOF
+$truncated_content
+EOF
+  then
+      echo "Failed to send email" >> $ERROR_LOG
+      exit 1
+  fi
 }
 
 # Function to handle errors and send detailed email

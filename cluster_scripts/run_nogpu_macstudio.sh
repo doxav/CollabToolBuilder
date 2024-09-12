@@ -10,10 +10,12 @@
 #SBATCH --error="./OutFiles/errJobCPU%j.log"   # Nom du fichier erreur avec JobId
 #SBATCH --mail-type=all
 #SBATCH --mail-user=xavier.daull@lis-lab.fr
+#SBATCH --time=96:00:00
+
 # Start time
 start_time=$(date +%s)
 start_datetime=$(date +"%Y-%m-%d %H:%M:%S")
-JOB_ID={SLURM_JOB_ID:-"bashID_(date +%Y%m%d_%H%M%S)"}
+JOB_ID=${SLURM_JOB_ID:-"bashID_$(date +%Y%m%d_%H%M%S)"}
 SRUN_PID="not started"
 LOG_IDENTIFIER=${JOB_ID:-$start_time}
 
@@ -35,6 +37,7 @@ FIRST_EMAIL_INTERVAL=2 # First email interval in minutes
 EMAIL_INTERVAL=30 # Interval in minutes for sending subsequent updates
 NAME_EXP="xp_coder$(date +"%Y%m%d_%H%M%S")"
 GZ_FILE="$LOG_DIR/$NAME_EXP.tar.gz"
+ANALYSIS_FILE="$BASE_DIR/optimisation/$NAME_EXP.txt"
 # Ensure the log directory exists
 mkdir -p $LOG_DIR
 touch $ERROR_LOG
@@ -74,17 +77,24 @@ send_email_update() {
   fi
   # Create new gzip archive using relative paths
   tar -czf $GZ_FILE -C /home/$USER $(echo $FILES_TO_ARCHIVE | sed "s|/home/$USER/||g")
-	echo 7
   subject="Cluster experiment progress update (JobID: $JOB_ID, SrunPID: $SRUN_PID, Duration: $duration mins, SHA: $OPTUNA_OPTI_SHA)"
   [ "$final_update" == "true" ] && subject="Cluster experiments result (JobID: $JOB_ID, SrunPID: $SRUN_PID, START: $start_datetime, END: $(date +"%Y-%m-%d %H:%M:%S"), Duration: $duration mins, SHA: $OPTUNA_OPTI_SHA)"
   truncated_content=$(truncate_log)
 
-  ANALYSIS_FILE="$BASE_DIR/optimisation/$NAME_EXP.txt"
+  #echo -e "$truncated_content" | mailx -S charset=utf-8 -s "$subject" -a $GZ_FILE "$EMAIL"
 
   TEMP_LOG=$(mktemp)
-  iconv -f utf-8 -t utf-8 "$OUTPUT_LOG" > "$TEMP_LOG"
-  mailx -S charset=utf-8 -s "$subject" -a $GZ_FILE -a $ANALYSIS_FILE "$EMAIL" < "$TEMP_LOG"
-  rm -f "$TEMP_LOG"
+  #iconv -f utf-8 -t utf-8 "$OUTPUT_LOG" > "$TEMP_LOG"
+  echo -e "$truncated_content" > "$TEMP_LOG"
+  if [ -f "$ANALYSIS_FILE" ]; then
+    echo -e "\n\n--- Analysis File Content ---\n" >> "$TEMP_LOG"
+    cat "$ANALYSIS_FILE" >> "$TEMP_LOG"
+    mailx -S charset=utf-8 -s "$subject" -a $GZ_FILE -a $ANALYSIS_FILE "$EMAIL" < "$TEMP_LOG"
+  else
+    echo -e "\n\n--- NO Analysis File !!! ---\n" >> "$TEMP_LOG"
+    mailx -S charset=utf-8 -s "$subject" -a $GZ_FILE "$EMAIL" < "$TEMP_LOG"
+   fi
+   rm -f "$TEMP_LOG"
 
 }
 # Function to handle errors and send detailed email
