@@ -10,7 +10,7 @@ def analysis(name_exp : str):
     # File to save results
     output_file = os.path.join(current_folder, f"{name_exp}.txt")
 
-    sqlite_file = os.path.join(current_folder, f"{name_exp}.db")
+    sqlite_file = os.path.join(current_folder, f"Optuna_db/{name_exp}.db")
 
     # Function to write results to the file
     def write_to_file(text):

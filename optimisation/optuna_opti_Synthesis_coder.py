@@ -81,6 +81,7 @@ def objective(trial, name_xp : str):
         model_choice={"coach": "default_llm","coder": "premium_llm","critic": "default_llm","capitalizer": "default_llm"},
         optuna_opti="coder",
         special_criteria={"max_autofix": max_autofix, "temperature": temperature, "presence_penalty": presence_penalty},
+        name_exp=name_xp
     )
 
     # Log performance for analysis

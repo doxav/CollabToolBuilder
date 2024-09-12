@@ -4,7 +4,7 @@
 #SBATCH --gres=gpu:0
 #SBATCH --nodes=1   # Demande d'un noeud
 #SBATCH --ntasks=1     #Nombre de taches
-#SBATCH --cpus-per-task=2   #Nombre de cpu par tache
+#SBATCH --cpus-per-task=1   #Nombre de cpu par tache
 #SBATCH --mem=1G   # Ressource memoire RAM
 #SBATCH --output="./OutFiles/outJobCPU%j.log"  # Nom du fichier  de sortie  avec JobId
 #SBATCH --error="./OutFiles/errJobCPU%j.log"   # Nom du fichier erreur avec JobId
@@ -125,8 +125,7 @@ cd /home/$USER || handle_error
 [ -f "$CONTAINER_IMAGE" ] || enroot import $DOCKER_IMAGE || handle_error
 
 # Run the container and experiment in the background
-srun --container-image=$CONTAINER_IMAGE --gres=gpu:0 --partition=ouranos \
-     --container-mounts=$MOUNT_PATHS $SCRIPT_PATH $NAME_EXP &
+srun --container-image=$CONTAINER_IMAGE --container-mounts=$MOUNT_PATHS $SCRIPT_PATH $NAME_EXP &
 SRUN_PID=$!
 
 # Ensure SRUN_PID is logged

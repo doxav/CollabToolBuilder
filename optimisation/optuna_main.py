@@ -52,7 +52,7 @@ def definition_global_parameters(temperature : float = None, presence_penalty : 
     return llmORchains_list, envs
 
 def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "premium_llm", problem_prompts_subdir : str = None, max_coding_attempts : int = 2, max_execution_time : int = 900,
-               model_choice=None, optuna_opti : str = "coach", criteria : str = None, special_criteria : dict = None):
+        model_choice=None, optuna_opti : str = "coach", criteria : str = None, special_criteria : dict = None, name_exp : str = ""):
     if model_choice is None:
         model_choice = {"coach": "default", "coder": "premium_llm", "critic": "default_llm",
                         "capitalizer": "default_llm"}
@@ -82,7 +82,8 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
                                            optuna_opti=optuna_opti,
                                            criteria=criteria,
                                            special_criteria=special_criteria)
-
+ 
+    analysis(name_exp)
     return performance
 
 def launch_study(objective, name_exp : str):
@@ -101,4 +102,3 @@ def launch_study(objective, name_exp : str):
     study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}", study_name=name_exp)
     study.optimize(objective, n_trials=200)
 
-    analysis(name_exp)
