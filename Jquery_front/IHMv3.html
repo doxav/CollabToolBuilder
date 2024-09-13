@@ -313,7 +313,6 @@ $(function() {
         // Try to reconnect every 2 seconds
         setTimeout(function() {
             socket = new WebSocket('ws://localhost:6789');
-            console.log('Trying to reconnect...');
         }, 2000);
     };
 
@@ -654,21 +653,13 @@ $(function() {
                     </div>
                     <br>
                 `;
-                $(`#slider-${columnId}`).on('input', function () {
-                    $(`#value-${columnId}`).text(this.value);
-                });
-                $(`#evaluate-${columnId}`).click(function () {
-                    let score = $(`#slider-${columnId}`).val() / 10;
-                    let comment = $(`#comment-${columnId}`).val();
-                    sendFunctionCall(data.agent_name, "setCommentsAndScore", {comment: comment, score: score, output_id: columnIndex});
-                });
             } else if (evaluationType === 'compliance') {
                 targetColumn.innerHTML += `
                     <div style="text-align: center;">
                         <p>Does this solution comply?</p>
                         <select id="compliance-${columnId}">
-                            <option value="yes">Yes</option>
-                            <option value="no">No</option>
+                            <option value="1">Yes</option>
+                            <option value="0">No</option>
                         </select>
                     </div>
                     <br>
@@ -681,11 +672,7 @@ $(function() {
                     </div>
                     <br>
                 `;
-                $(`#evaluate-${columnId}`).click(function () {
-                    let compliance = $(`#compliance-${columnId}`).val();
-                    let comment = $(`#comment-${columnId}`).val();
-                    sendFunctionCall(data.agent_name, "setCommentsAndCompliance", {comment: comment, compliance: compliance, output_id: columnIndex});
-                });
+
             } else {
                 // Évaluation par défaut
             }
@@ -694,7 +681,7 @@ $(function() {
             targetColumn.innerHTML += `
                 <br>
                 <div style="text-align: center;">
-                    <button id="deletebutton-${columnId}"><i class="fa-regular fa-trash-can"></i> Do not keep this solution</button>
+                   <button id="delete-${columnId}"><i class="fa-regular fa-trash-can"></i> Do not keep this solution</button>
                 </div>
                 <br>
                 <div style="text-align: center;">
@@ -706,8 +693,28 @@ $(function() {
                 </div>
             `;
 
+                // Refresh value on value change
+                $(`#slider-${columnId}`).on('input', function () {
+                    $(`#value-${columnId}`).text(this.value);
+                });
+
+                $(document).on("click", `#evaluate-${columnId}`, function () {
+                    console.log('Evaluate button clicked');
+                    alert('Evaluation submitted ! Thanks you !');
+                    // If a slider exists, get the score of it, else get the value of the compliance select
+                    if($(`#slider-${columnId}`).length) {
+                        let score = $(`#slider-${columnId}`).val() / 10;
+                        let comment = $(`#comment-${columnId}`).val();
+                        sendFunctionCall(data.agent_name, "evaluateCommentAnswerForLater", {comment: comment, score: score, output_id: columnIndex});
+                    } else {
+                        let compliance = $(`#compliance-${columnId}`).val();
+                        let comment = $(`#comment-${columnId}`).val();
+                        sendFunctionCall(data.agent_name, "evaluateCommentAnswerForLater", {comment: comment, score: compliance, output_id: columnIndex});
+                    }
+                });
+
             // Mise à jour des événements pour les boutons
-            $(`#deletebutton-${columnId}`).click(function () {
+            $(document).on("click", `#delete-${columnId}`, function () {
                 let targetColumn = document.getElementById(`column-${columnId}`);
                 if (targetColumn.style.backgroundColor === 'lightcoral') {
                     targetColumn.style.backgroundColor = '';
