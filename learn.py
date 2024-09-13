@@ -40,7 +40,7 @@ UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002" # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function="intfloat/e5-base-v2" # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
-reset_db_indices=True # Set to True after changing embeddings
+reset_db_indices=False # Set to True after changing embeddings
 
 HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices) 
 

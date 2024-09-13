@@ -157,9 +157,30 @@ box-sizing: border-box;
 .default_button { background-color: #636363; color: white; border: 1px solid #b0b0b0; padding: 5px 10px; cursor: pointer; border-radius: 5px;}
 .button{border-radius: 5px;}
 .close-btn { position: absolute; top: -4px; right: -4px; cursor: pointer; background-color: transparent; border: none; color: white; font-size: 16px; }
-pre { background-color: #f0f0f0; padding: 10px; border-radius: 5px; overflow-x: auto; max-width: 100%; white-space: pre-wrap;}
-code { font-family: 'Courier New', Courier, monospace; white-space: pre-wrap;}
-.message { max-width: 100%; word-wrap: break-word; white-space: pre-wrap;}
+.message {
+    max-width: 100%;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+pre {
+    background-color: #f0f0f0;
+    padding: 10px;
+    border-radius: 5px;
+    overflow-x: auto;
+    max-width: 100%;
+    white-space: pre-wrap; /* Preserve line breaks and wrap text */
+    word-wrap: break-word;
+    display: block;
+}
+
+code {
+    font-family: 'Courier New', Courier, monospace;
+    white-space: pre-wrap; /* Preserve line breaks and wrap text */
+    word-wrap: break-word;
+    overflow-x: auto;
+    display: block;
+}
 .column-container { display: flex; flex-wrap: wrap;}
 .auto-open-checkbox {
 margin-top: 10px;
@@ -837,54 +858,62 @@ $(function() {
         }
     });
 
-       function formatMessage(message) {
-        // Supprimer les codes de couleur ANSI
-        let cleanString = message.replace(/\u001b\[\d+m/g, '');
-        // Supprimer toutes les séquences d'échappement ANSI
-        cleanString = cleanString.replace(/\u\d+b/g, '');
+   function formatMessage(message) {
+    // Remove ANSI color codes
+    let cleanString = message.replace(/\u001b\[\d+m/g, '');
+    // Remove all ANSI escape sequences
+    cleanString = cleanString.replace(/\u\d+b/g, '');
 
-        // Expression régulière pour capturer les blocs de code
-        const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+    // Regular expression to match code blocks
+    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
 
-        // Extraire les blocs de code et les remplacer par des placeholders
-        let codeBlocks = [];
-        cleanString = cleanString.replace(codeBlockRegex, function(match, lang, code) {
-            codeBlocks.push({ lang: lang, code: code });
-            return `[[CODE_BLOCK_${codeBlocks.length - 1}]]`;
-        });
+    // Extract code blocks and replace with placeholders
+    let codeBlocks = [];
+    cleanString = cleanString.replace(codeBlockRegex, function(match, lang, code) {
+        codeBlocks.push({ lang: lang, code: code });
+        return `[[CODE_BLOCK_${codeBlocks.length - 1}]]`;
+    });
 
-        // Échapper les caractères HTML dans le reste du texte
-        cleanString = escapeHtml(cleanString);
+    // Escape HTML characters in the rest of the text
+    cleanString = escapeHtml(cleanString);
 
-        // Remplacer les placeholders par le code mis en évidence
-        codeBlocks.forEach(function(block, index) {
-            let highlightedCode;
-            if (block.lang && hljs.getLanguage(block.lang)) {
-                highlightedCode = hljs.highlight(block.lang, block.code).value;
-            } else {
-                highlightedCode = hljs.highlightAuto(block.code).value;
-            }
-            cleanString = cleanString.replace(`[[CODE_BLOCK_${index}]]`, `<pre><code>${highlightedCode}</code></pre>`);
-        });
+    // Replace remaining line breaks in the rest of the text with <br>
+    cleanString = cleanString.replace(/\n/g, '<br>');
 
-        // Remplacer les sauts de ligne restants par <br>
-        cleanString = cleanString.replace(/\n/g, '<br>');
+    // Replace placeholders with highlighted code
+    codeBlocks.forEach(function(block, index) {
+        let highlightedCode;
+        if (block.lang && hljs.getLanguage(block.lang)) {
+            highlightedCode = hljs.highlight(block.lang, block.code).value;
+        } else {
+            highlightedCode = hljs.highlightAuto(block.code).value;
+        }
+        // Preserve line breaks and indentation in code blocks
+        cleanString = cleanString.replace(
+            `[[CODE_BLOCK_${index}]]`,
+            `<pre><code>${highlightedCode}</code></pre>`
+        );
+    });
 
-        return `<div class="message">${cleanString}</div>`;
-    }
+    return `<div class="message">${cleanString}</div>`;
+}
 
-    function escapeHtml(text) {
-        const map = {
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#039;',
-            '`': '&#096;',
-            '/': '&#x2F;'
-        };
-        return text.replace(/[&<>"'`/]/g, function(m) { return map[m]; });
-    }
+
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;',
+        '`': '&#096;',
+        '/': '&#x2F;',
+    };
+    return text.replace(/[&<>"'`/]/g, function (m) {
+        return map[m];
+    });
+}
+
 
 
 
