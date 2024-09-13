@@ -82,8 +82,9 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
                                            optuna_opti=optuna_opti,
                                            criteria=criteria,
                                            special_criteria=special_criteria)
- 
+    print("Analysis...") 
     analysis(name_exp)
+    print("Analysis done.")
     return performance
 
 def launch_study(objective, name_exp : str):
