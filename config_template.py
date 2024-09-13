@@ -1,14 +1,30 @@
 import os
+# Check the docker environment variables to see if LLM_MODE is set (to launch on a cluster/macstudio using ollama)
+IN_MACSTU = os.environ.get('LLM_MODE')
+if IN_MACSTU in ["macstudio", "gpu"]:
+    os.environ['OPENAI_BASE_URL'] = 'http://localhost:11434/v1'
+    OPENAI_API_KEY = "ollama"
+    if IN_MACSTU == "macstudio":
+        MODELS_CONFIG_LIST = {
+                "basic_gpt":"codestral_latest_20k:latest",
+                "smart_gpt":"codestral_latest_20k:latest",
+                "code_gpt":"codestral_latest_20k:latest",
+        }
+    else :
+        MODELS_CONFIG_LIST = {
+                "basic_gpt":"codestral:latest-20k",
+                "smart_gpt":"codestral:latest-20k",
+                "code_gpt":"codestral:latest-20k",
+        }
 
-#os.environ['OPENAI_BASE_URL'] = 'http://127.0.0.1:11434' #'ollama'
+else:
+    OPENAI_API_KEY = "your_openai_api_key_here"
+    MODELS_CONFIG_LIST = {
+            "code_gpt": "gpt-4o-mini-2024-07-18", #"llama-3.1-70b-versatile", # "mixtral-8x7b-32768", # "eramax/nxcode-cq-7b-orpo:q6", #mistral-nemo:12b-instruct-2407-q4_K_M", #"llama3:latest",
+    "smart_gpt": "gpt-4o-mini-2024-07-18", #"llama-3.1-70b-versatile", # "mixtral-8x7b-32768", # "gpt-4o-mini", # "eramax/nxcode-cq-7b-orpo:q6", #mistral-nemo:12b-instruct-2407-q4_K_M", #"llama3:latest",
+    "basic_gpt": "gpt-4o-mini-2024-07-18", #"llama-3.1-70b-versatile", # "mixtral-8x7b-32768", # "gpt-4o-mini" # "eramax/nxcode-cq-7b-orpo:q6" #mistral-nemo:12b-instruct-2407-q4_K_M", #"llama3:latest",
+    }
 
-###### Use of Groq API
-#os.environ['OPENAI_BASE_URL'] = "https://api.groq.com/openai/v1" #'groq'
-#os.environ['OPENAI_API_KEY'] = "your-key-here" 
-#os.environ["GROQ_API_KEY"] = os.environ['OPENAI_API_KEY']
-
-# If you use OPENAI, you can add your API key here
-OPENAI_API_KEY = "Your_openai_api_key_here"
 openai_api_key = OPENAI_API_KEY
 os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
 
@@ -28,7 +44,7 @@ NEO4J_PASSWORD = 'neo4j_password'
 
 # List of models to use in the application, you can add your own models here, no limitation, for example:
 MODELS_CONFIG_LIST = {
-    "premium_gpt": "gpt-4o-mini-2024-07-18", #"llama-3.1-70b-versatile", # "mixtral-8x7b-32768", # "eramax/nxcode-cq-7b-orpo:q6", #mistral-nemo:12b-instruct-2407-q4_K_M", #"llama3:latest",
+    "code_gpt": "gpt-4o-mini-2024-07-18", #"llama-3.1-70b-versatile", # "mixtral-8x7b-32768", # "eramax/nxcode-cq-7b-orpo:q6", #mistral-nemo:12b-instruct-2407-q4_K_M", #"llama3:latest",
     "smart_gpt": "gpt-4o-mini-2024-07-18", #"llama-3.1-70b-versatile", # "mixtral-8x7b-32768", # "gpt-4o-mini", # "eramax/nxcode-cq-7b-orpo:q6", #mistral-nemo:12b-instruct-2407-q4_K_M", #"llama3:latest",
     "basic_gpt": "gpt-4o-mini-2024-07-18", #"llama-3.1-70b-versatile", # "mixtral-8x7b-32768", # "gpt-4o-mini" # "eramax/nxcode-cq-7b-orpo:q6" #mistral-nemo:12b-instruct-2407-q4_K_M", #"llama3:latest",
 }

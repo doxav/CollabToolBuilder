@@ -1085,6 +1085,7 @@ class SynthesisManager:
 
     def set_targetJSON_comparison(self, file_path: str, target_section_title_embedding_label: str = "section_embedding_2", target_section_content_embedding_label: str = "content_embedding_2", target_plan_embedding_label: str = "plan_embedding_2", normalize_embeddings: bool = True, min_cosine_similarity: float = None):
         self.target_file_path = file_path
+
         with open(file_path, 'r') as f:
             self.target_data = json.load(f)
         output_check = ''

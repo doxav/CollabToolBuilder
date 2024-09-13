@@ -7,3 +7,4 @@ temp/
 config.py
 primitives/config.py
 .env
+config_cluster.py

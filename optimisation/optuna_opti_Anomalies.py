@@ -1,11 +1,10 @@
 import os
+import sys
 import time
-import learn
-from langchain_openai import ChatOpenAI
-import optuna as opt
-from config import MODELS_CONFIG_LIST
+from optimisation.optuna_main import launch_study, launch_run, definition_few_shots
 
-def objective(trial):
+
+def objective(trial, timestamp_exp: int):
 
     # Define parameters for Coach
 
@@ -13,16 +12,7 @@ def objective(trial):
     reset_env_end = trial.suggest_categorical("reset_env_end", [True])
 
     # Define the few shots parameters and if they are used
-    few_shots_tags = trial.suggest_categorical("few_shots_tags", [True, False])
-    if few_shots_tags:
-        number_of_shots = trial.suggest_int("number_of_shots", 1, 5)
-        #filter_tags = trial.suggest_categorical("filter_tags", "")
-        ranking_tags = trial.suggest_categorical("ranking_tags", ["by_score_asc", "by_date_asc", "mrr_asc", "cosine_asc", "random", "accuracy", "relevance"])
-        annotations = trial.suggest_categorical("annotations", ["fix", "delete", "approve", "variants"])
-        summary = trial.suggest_categorical("summary", [True, False])
-        format = trial.suggest_categorical("format", ["JSON", "Markdown", "Jinja2"])
-        few_shots = f"few_shots: {{'num': {number_of_shots}, 'ranking_method': '{ranking_tags}', 'annotations': '{annotations}', 'summary': {summary}, 'format': '{format}'}}"
-
+    few_shots = definition_few_shots(trial)
     # Definition of the coach's prompt
     coach_agent_role = trial.suggest_categorical("role_priming", [ "You are a research assistant", "You are an AI coach", "You are a task optimizer", "You are a technical synthesis expert"])
     #coach_user_input_failed_tasks = trial.suggest_categorical("coach_user_input_failed_tasks", [True, False])
@@ -78,7 +68,7 @@ def objective(trial):
         """)
 
     criteria_user_message = trial.suggest_categorical("criteria_user_message", ["None", "Learnt", "Failed", "Env", "All", "LearntEnv", "FailedEnv"])
-        
+
     if coach_format_output_type == "JSON":
         coach_format_output = """You should only respond in the JSON format described below:
          {
@@ -127,18 +117,18 @@ def objective(trial):
         f"5) Develop key minimal elements of specification (acceptance criteria, best strategies to compare, performance tips to beat a LLM) to successfully prompt a coder agent to generate code implementing the task while minimizing distance to goal. Organize the requirements with clear indexing to a depth of {specification_depth}.",
         f"6) Tasks provided should be generic, not specific to given examples{', so the reasoning can mention examples but proposed task and plan should not mention any information related to examples' if use_examples else ''}.",
         f"7) After proposing the task, you should provide a test case of the function corresponding to this task for each example:",
-            f"a) Write a one liner python call to the main function for each 'Document to be tested', this call should be designed to maximize the expected results for the 'Document to be tested'",
-            f"b) Precede each one liner call with a line of comment in this form '# document #uuid usage test' (e.g. '#document #125dc4bc-54e0-4336-82bc-417e40ec9b8f usage test'...) to indicate to which document the code of the next line applies to given its unique id",
-            f"c) Call to the main function uses 'problem' as first required parameter, then provide parameters sepecific to the document for this function (do not provide document #uuid as parameter but title and context instead)",
-            f"d) Generate only one test for each document, so the total number of function calls in this test list should be equal to the number of 'Document to be tested'",
-            f"e) Your only source of data will be the Neo4j graph provide in the primitives. Do not use the date."
-        ]
+        f"a) Write a one liner python call to the main function for each 'Document to be tested', this call should be designed to maximize the expected results for the 'Document to be tested'",
+        f"b) Precede each one liner call with a line of comment in this form '# document #uuid usage test' (e.g. '#document #125dc4bc-54e0-4336-82bc-417e40ec9b8f usage test'...) to indicate to which document the code of the next line applies to given its unique id",
+        f"c) Call to the main function uses 'problem' as first required parameter, then provide parameters sepecific to the document for this function (do not provide document #uuid as parameter but title and context instead)",
+        f"d) Generate only one test for each document, so the total number of function calls in this test list should be equal to the number of 'Document to be tested'",
+        f"e) Your only source of data will be the Neo4j graph provide in the primitives. Do not use the date."
+    ]
 
     del criteria_coach[criteria_to_remove - 1]
 
     for i in range(len(criteria_coach)):
         coach_text = "\n".join(criteria_coach[i])
-    
+
     prompt_coach = [f"""
             ROLE: 
                 You are a {role_priming} that defines tasks to {goal_definition} . 
@@ -221,8 +211,8 @@ def objective(trial):
     """
     # Write the prompt in the file readed after by the coach
     with open("./prompts/identify_best_task.txt", "w") as f:
-            f.write(prompt_coach[0])
-    with open("./prompts/IR_CPS_TechSynthesis/identify_best_task.txt", "w") as f: f.write(prompt_coach)
+        f.write(prompt_coach[0])
+    with open("./prompts/Anomalies/identify_best_task.txt", "w") as f: f.write(prompt_coach)
 
     # Define parameters for Coder
 
@@ -306,14 +296,14 @@ def objective(trial):
     # handle_previous_attempts = trial.suggest_categorical("handle_previous_attempts", [True, False])
     # instruction_to_remove = trial.suggest_int("instruction_to_remove", 1, 14)
 
-    modularity_final = f"16) Ensure that the generated code adheres to principles of reusability and modularity as {modularity}." if modularity != "None" else "3) Ensure that the generated code adheres to principles of reusability." 
+    modularity_final = f"16) Ensure that the generated code adheres to principles of reusability and modularity as {modularity}." if modularity != "None" else "3) Ensure that the generated code adheres to principles of reusability."
 
 
     # Construct the prompt based on the suggested parameters
     criteria_coder = [
         f"1) First part of the function should be dedicated for the Neo4J graph connection (which is already created). Here you can find the informations:",
-            f"URI='bolt://127.0.0.1:7687'",
-            f"AUTH = auth=('neo4j','password')",
+        f"URI='bolt://127.0.0.1:7687'",
+        f"AUTH = auth=('neo4j','password')",
         f"2) Ensure that the generated code adheres to principles of reusability and modularity. Specifically, functions should not hard-code strings, variables, or parameters that make them context-specific. Instead, any data or parameters of helpers functions that can vary should be passed as arguments to the functions, ensuring that the functions can be reused in different contexts or with different data without requiring modifications to the code itself. This ensures that the code is adaptable and can be utilized in various scenarios, enhancing its utility and longevity.",
         f"3) Call existing functions as much as possible from the primitives folder.",
         f"4) Name your function in a meaningful way (can infer the task from the name).",
@@ -327,9 +317,9 @@ def objective(trial):
         f"12) Do not take into account the fan_date_declaration, it does not matter for the code.",
         f"13) Adapt the exact same code as the primitives  (generateNeo4J.py) is their is nothing in the succeded functions",
         f"14) Avoid those errors:"
-            "- Error: 'SynthesisManager' object has no attribute 'min_plan_cosine_similarity'"
-            "- analyze_similar_anomalies() got an unexpected keyword argument 'problem'"
-            "TypeError: string indices must be integers, not 'str'",
+        "- Error: 'SynthesisManager' object has no attribute 'min_plan_cosine_similarity'"
+        "- analyze_similar_anomalies() got an unexpected keyword argument 'problem'"
+        "TypeError: string indices must be integers, not 'str'",
         f"15) The code should first connect to the Neo4J graph, then implement the task, and finally return the result. Ensure that the code is modular and reusable, adhering to principles of reusability and modularity. ",
         {modularity_final},
         f"17) Ensure to use the primitives functions",
@@ -338,7 +328,7 @@ def objective(trial):
         f"20) Do not use toLower in the cypther request ou WHERE clause",
     ]
     # modularity_final = f"3) Ensure that the generated code adheres to principles of reusability and modularity as {modularity}." if modularity != "None" else "3) Ensure that the generated code adheres to principles of reusability." 
-    
+
     # # Construct the prompt based on the suggested parameters
     # criteria_coder = [
     #      f"1) Reason in {reasoning_depth} steps to find out the best task to minimize distance to goal.",
@@ -356,13 +346,13 @@ def objective(trial):
     #     f"13) Your function should include appropriate modification to resources and sections to measure task success. Main functions are:\n- class Section(section_id: int, title: str, content: str, parent_id: int)\n- {bot_function_specifications}",
     #     "14) Before the return of the main function, ensure to store your results or text generated in resources or sections which are the only permanent storage. Also, ensure that results are returned for future reuse of the function."
     # ]
-    
+
     del criteria_coder[instruction_to_remove - 1]
     for i in range(len(criteria_coder)):
         coder_text = "\n".join(criteria_coder[i])
     # del criteria_coder[instruction_to_remove - 1]
     # coder_text = "\n".join(criteria_coder)
-    
+
     prompt_coder = [f"""
     You are a helpful assistant that writes Python code to be executed using a restricted list of packages ({libraries_restriction}) to complete the task specified by me.
     At each round of conversation, I will give you:
@@ -373,12 +363,12 @@ def objective(trial):
     CURRENT STATE OF THE ENVIRONMENT USED TO TEST TASK
         Document #xxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx: 
         {
-                'id: ...'
-                'title: ...'
-                'abstract: ...'
-                'comment: ...'
-                'target_file_path: ...'
-        }
+    'id: ...'
+    'title: ...'
+    'abstract: ...'
+    'comment: ...'
+    'target_file_path: ...'
+    }
 
     - General code for re-use or demonstration purpose: ...
     - Code from the last round with attempts to implement task with its performance (e.g. 'sections titles progress': x, 'sections content progress': y): ...
@@ -418,7 +408,7 @@ def objective(trial):
 
     # Write the prompt in the file readed after by the coder
     with open("./prompts/code_task.txt", "w") as f:
-            f.write(prompt_coder[0])
+        f.write(prompt_coder[0])
     # prompt_coder = f"""
     # You are a helpful assistant that writes Python code to be executed using a restricted list of packages ({libraries_restriction}) to complete the task specified by me.
     # At each round of conversation, I will give you:
@@ -459,17 +449,17 @@ def objective(trial):
     # reasoning_depth = trial.suggest_int("reasoning_depth", 1, 3)
     # detailed_explanation = trial.suggest_categorical("detailed_explanation", [True, False])
     # critic_to_remove = trial.suggest_int("critic_to_remove", 1, 3)
-    
+
     # # Construct the prompt based on the suggested parameters
     # criteria_critic = [
     #     f"Reasoning: Based on the information I listed above, do a {reasoning_depth} step reasoning to evaluate if the code implementation and execution is aligned with the task goal to decide if it is a success.",
     #     "Success: write 'True' if code is a success, 'False' otherwise",
     #     f"Explain: explain in detail your evaluation of your success evaluation." if detailed_explanation else ""
     # ]
-    
+
     # del criteria_critic[critic_to_remove - 1]
     # critic_text = "\n".join(criteria_critic)
-    
+
     # if prompt_template == "Extensive":
     #     prompt_critic = f"""
     #     You are a Python expert and domain expert in the field of the task, you should validate the Python code provided and its result regarding the code implementing the task and feedback.
@@ -501,79 +491,32 @@ def objective(trial):
     #         f.write(prompt_critic)
 
     # Save the parameters chosen by the trial
-    with open("Optuna_results.txt", "a") as f:
+    with open(f"Optuna_results/xp_anomalies{timestamp_exp}.txt", "a") as f:
         f.write(f"Trial: {trial.number}\nPrompt Coach Chosen: \n{prompt_coach}")
-        #f.write(f"Trial: {trial.number}\nPrompt Coach Chosen: \n{prompt_coach}\nPrompt Coder Chosen : \n{prompt_coder}\nPrompt Critic Chosen : \n{prompt_critic}\nModel Chosen: {modelVariation}\n")
 
-    # Run the learning loop
-    perf = learn.run_4agents_learning_loop(default_llm_key="default_llm",
-                                premium_llm_key="premium_llm",
-                                llmORchains_list=llmORchains_list,
-                                test_environments=envs,
-                                manual_validation_to_capitalize=False,
-                                problem_prompts_subdir='Anomalies',
-                                max_coding_attempts=2,
-                                include_code=False,
-                                selected_successful_functions=[],
-                                selected_failed_functions=[],
-                                agtask_premium_llm_by_default=True,
-                                max_execution_time=900,
-                                agtask_skip_rounds=0,
-                                agcoding_skip_rounds=0,
-                                agvalidation_skip_rounds=0,
-                                agcapitalize_skip_rounds=0,
-                                model_choice={"coach": "premium_llm", "coder":"default_llm", "critic":"default_llm", "capitalizer": "default_llm"},
-                                optuna_opti="Coach",
-                                criteria=criteria_user_message)
-    
-    with open("Optuna_results.txt", "a") as f:
+
+    perf = launch_run(
+        default_llm_key="default_llm",
+        premium_llm_key="premium_llm",
+        problem_prompts_subdir="Anomalies",
+        max_coding_attempts=2,
+        max_execution_time=900,
+        model_choice={"coach": "default_llm", "coder": "premium_llm", "critic": "default_llm", "capitalizer": "default_llm"},
+        optuna_opti="coach",
+        criteria=criteria_user_message
+    )
+
+    with open(f"Optuna_results/xp_anomalies{timestamp_exp}.txt", "a") as f:
         f.write(f"Performance: {perf}\n\n")
-    
     return perf
 
+
 if __name__ == "__main__":
-    # Initialize the default and premium LLMs
-    #default_llm = ChatOpenAI(model_name="gpt-3.5-turbo-1106") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
-    #default_llm = create_Nmajority_chain(num_models=3)
-    #premium_llm = ChatOpenAI(model_name="gpt-4o") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
-    llmORchains_list = {
-        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt"]),
-        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"]),
-        #"3_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"] , num_models=3),
-        #"10_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"], num_models=10)
-    }
-
-    # Set the documents to test/validate as a list of environments
-    documents=[
-        {
-        "id": "68802377-e8e5-4940-a337-e66930ba5015",
-        "title": "Erreur de connexion au serveur interne",
-        "context": "Lors de la tentative de connexion au serveur interne de l'entreprise, les utilisateurs rencontrent un message d'erreur indiquant une impossibilité de se connecter. Ce problème semble intermittent et affecte principalement les utilisateurs du département des ventes.",
-        "target_file_path": "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/fiche_ano/Erreur de connexion au serveur interne.json"
-        },
-
-        {
-        "id": "c0533337-1c5e-4091-ba7d-061ae409cda4",
-        "title": "Problème de performance sur le module de gestion des utilisateurs",
-        "context": "Lors de l'utilisation du module de gestion des utilisateurs, nous avons constaté des ralentissements significatifs. Les utilisateurs rapportent que la page met plusieurs minutes à se charger et que les opérations de modification et de suppression d'utilisateur prennent un temps anormalement long. Ce problème a été observé sur plusieurs navigateurs et sur différentes configurations matérielles, ce qui suggère qu'il ne s'agit pas d'un problème isolé à un utilisateur spécifique ou à un type de machine. Nous avons identifié que ce problème semble se produire principalement lorsque le nombre d'utilisateurs dépasse les 1000. Les logs du serveur montrent des temps de réponse élevés sur les requêtes liées à la base de données pour ce module spécifique. Une analyse initiale indique que certaines requêtes ne sont pas optimisées et causent des verrous au niveau de la base de données.",
-        "target_file_path": "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/fiche_ano/Problème de performance sur le module de gestion des utilisateurs.json"
-        }
-    ]
-
-    envs = []
-    for doc in documents:
-        env = learn.EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'], target_file_path=doc['target_file_path'], id=doc['id']).get_environment()
-        envs.append(env)
-
-    with open("Optuna_results.txt", "w") as f:
-        f.write("")
-    # Wait for 10s
-    time.sleep(10)
-    # get current folder
-    current_folder = os.getcwd()
-
-    sqlite_file = os.path.join(current_folder, "optuna.db")
-
-    # Create a study and optimize the objective function
-    study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}")
-    study.optimize(objective, n_trials=200)
+    os.chdir("../")
+    # Recuperate name_exp from terminal argument:
+    if len(sys.argv) > 1:
+        name_exp = sys.argv[1]
+    else:
+        timestamp_xp = int(time.time())
+        name_exp = f"xp_coder{timestamp_xp}"
+    launch_study(lambda trial: objective(trial, timestamp_xp), name_exp)
