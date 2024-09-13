@@ -1,82 +1,114 @@
-### Real-Time Communication Interface
 
-#### 1. **Overview**
-This HTML file provides the structure for a real-time communication interface built using WebSockets and front-end JavaScript libraries like jQuery and Highlight.js. The primary purpose is to enable a real-time, web-based system that handles communication between different agents, displaying messages, allowing the user to send inputs, and managing solution-focused interactions.
+# MANUAL - Real-Time Communication Interface
 
----
-
-#### 2. **Key Features**
-- **WebSocket Communication**: Establishes a connection with a WebSocket server to handle real-time messaging.
-- **Sidebar Toggles**: Allows users to toggle between history and settings sidebars.
-- **Accordion Interface**: Displays messages in collapsible sections for easy navigation.
-- **Filtering Options**: Provides filters for message types and agents.
-- **Real-Time Messaging**: Supports sending and receiving messages in real-time with a user input field and send button.
-- **Multiple Solutions Handling**: Supports showing, evaluating, and regenerating multiple solutions with a flexible layout.
-- **Pagination**: Handles pagination for displaying solutions when there are more than four.
+## Table of Contents
+1. [Overview](#overview)
+2. [WebSocket Setup and Communication](#websocket-setup-and-communication)
+3. [Interface Layout](#interface-layout)
+4. [Message Handling](#message-handling)
+5. [Dynamic Content Features](#dynamic-content-features)
+6. [User Interface Interactions](#user-interface-interactions)
+7. [Custom Evaluations](#custom-evaluations)
+8. [Settings Application](#settings-application)
+9. [Error Handling and Recovery](#error-handling-and-recovery)
 
 ---
 
-#### 3. **Structure and Components**
-##### 3.1 **HTML Structure**
-- **Main Container**: Divides the interface into three parts: History Sidebar, Main Content, and Settings Sidebar.
-- **Message Accordion**: Displays messages received from agents in an accordion format.
-- **Solution Columns**: If the agent sends multiple solutions, they are displayed in columns with expandable views.
-- **Pagination**: If solutions exceed the column limit (4), a pagination system is added to navigate between pages of solutions.
+## 1. Overview
+This document describes the Real-Time Communication Interface implemented in `IHMv3.html`. The interface facilitates real-time communication between a front-end user interface and backend systems via WebSocket. It supports multiple agents, message handling, evaluations, and dynamic user interface updates.
 
-##### 3.2 **CSS Styles**
-- **Flexible Layout**: The interface uses flexbox to ensure responsive design for the message section and the sidebars.
-- **Solution Columns**: Solutions are displayed in columns with options to expand and view details.
-- **Theme**: Dark-themed with gray tones, utilizing custom styling for buttons, accordions, and other UI elements.
-- **Message Formatting**: Messages are wrapped in a flexible layout that formats code snippets using Highlight.js.
+## 2. WebSocket Setup and Communication
+The interface connects to a WebSocket server at `ws://localhost:6789`. This connection allows real-time communication for sending and receiving messages between the front end and agents.
 
-##### 3.3 **JavaScript Functionality**
-- **WebSocket Communication**: JavaScript handles establishing a connection to a WebSocket server. Upon receiving data, it dynamically displays messages within the accordion interface.
-- **Message Display and Formatting**: The `displayMessage()` function handles the rendering of messages, formatting them into HTML-friendly content and using syntax highlighting for code blocks.
-- **Filter Functionality**: Users can filter messages based on agent type or message type through dropdowns.
-- **Accordion Control**: jQuery UI accordion is used to make message sections collapsible, aiding in organizing large amounts of data.
+### WebSocket Connection:
+- **Initialization**:
+    ```javascript
+    let socket = new WebSocket('ws://localhost:6789');
+    socket.onopen = function() {
+        console.log('WebSocket connection established');
+    };
+    ```
 
----
+- **Sending Messages**:
+    Messages are sent in JSON format with an `agent_name`, `function`, and `params`.
+    ```javascript
+    let message = {
+        agent_name: "AgentName",
+        function: "FunctionName",
+        params: {param1: "value"}
+    };
+    socket.send(JSON.stringify(message));
+    ```
 
-#### 4. **Key Interactions**
-##### 4.1 **Sending Messages**
-- Users can type a message into the text input field located at the bottom of the main content area and press "Send" to submit their message.
-- Messages are transmitted via WebSocket to the server and are displayed in the interface.
+- **Receiving Messages**:
+    Messages from the WebSocket are received and processed based on their `message_type`.
+    ```javascript
+    socket.onmessage = function(event) {
+        let data = JSON.parse(event.data);
+        handleMessage(data);
+    };
+    ```
 
-##### 4.2 **Solution Handling**
-- The system allows for the display of multiple solutions sent by agents. Each solution can be expanded for a detailed view, scored, annotated, or discarded.
-- There are also options for regenerating solutions with modifications or keeping selected solutions.
+## 3. Interface Layout
+The interface is divided into three main sections:
+- **History Sidebar**: Displays historical information.
+- **Main Content**: Contains the message accordion, user input field, and filter options.
+- **Settings Sidebar**: Provides options to configure the behavior of agents, including selecting default and premium LLMs and setting temperature.
 
-##### 4.3 **Filters and Search**
-- The filter bar at the top and bottom of the main content allows users to filter messages by type or agent and perform a text search within the messages.
-- The filters help in narrowing down the view to specific message types or agents.
+The layout is implemented using a Flexbox design to ensure responsiveness. Hidden sidebars are toggled as needed.
 
-##### 4.4 **Settings Control**
-- In the settings sidebar, users can control options like the default LLM (Language Learning Model), premium LLM, and adjust temperature settings for the models.
-- Users can also apply these settings via the "Apply Settings" button, which sends the configuration to the WebSocket server.
+## 4. Message Handling
+The interface handles various types of messages:
+- **Inference Results**: Displays multiple solutions in columns. Solutions include buttons for expansion, evaluation, and pagination when there are more than four solutions.
+- **Evaluation Results**: Supports agents that return scores or compliance results. Custom logic is applied depending on the agent's evaluation type.
+- **Prompt Inputs**: The interface dynamically generates input fields (e.g., number of rounds, parallel inferences).
 
----
+## 5. Dynamic Content Features
+### Accordion:
+The main content is displayed in an accordion, which updates automatically when new messages are received. It supports filtering by agent or message type.
 
-#### 5. **WebSocket Integration**
-The WebSocket connection is initiated on page load and listens for messages from the server. When a message is received:
-- **Message Type Handling**: The script handles different types of messages such as:
-  - Inference results
-  - Solution suggestions
-  - Score updates
-  - History data
-- **Real-Time Updates**: All messages and interactions are reflected in real-time as the WebSocket connection stays alive throughout the session.
+### Pagination:
+If multiple solutions are presented, a pagination system is used to display up to four solutions per page.
 
----
+### Expand/Collapse:
+Solutions can be expanded for a more detailed view using the expand button, and collapsed back as needed.
 
-#### 6. **How to Use the Interface**
-1. **Start WebSocket Server**: Ensure your WebSocket server is running and listening for connections at `ws://localhost:6789`.
-2. **Load HTML File**: Open this HTML file in any modern web browser that supports WebSocket connections.
-3. **Interact with Agents**: Use the input field to send messages to different agents. Results and responses will be displayed in the message accordion.
-4. **Navigate Solutions**: Expand or score multiple solutions from agents and use pagination if there are more than four solutions.
-5. **Adjust Settings**: Change LLM settings in the settings sidebar, then apply changes as needed.
+## 6. User Interface Interactions
+- **Filter Bars**: Two filter bars (top and bottom) allow the user to filter messages by agent and message type. These filter bars are synchronized.
+- **Settings Sidebar**: Contains controls for changing the default LLM, premium LLM, and adjusting the inference temperature.
+- **Auto-Focus**: A checkbox enables auto-focus on new messages, automatically scrolling to the latest update.
+- **Annotation Tool**: Users can highlight and annotate parts of the message for review or action.
 
----
+## 7. Custom Evaluations
+The interface supports custom evaluations for different agents:
+- **Score-based Evaluations**: Solutions can be scored using a slider, and the score is sent back to the server.
+- **Compliance-based Evaluations**: Solutions are evaluated for compliance using a dropdown menu.
 
-#### 7. **Additional Notes**
-- The interface supports various real-time features such as syntax highlighting for code blocks, handling of multiple solutions, and flexible layouts for different screen sizes.
-- Some features like regenerating solutions or scoring may require server-side support to function properly.
-f how to set up and use the interface described in the attached HTML file. For further customization or server-side integration, modifications to the WebSocket server or JavaScript functions might be necessary.
+After evaluations, additional options for deleting or regenerating solutions are provided.
+
+## 8. Settings Application
+The settings sidebar allows users to modify configurations such as:
+- **Default and Premium LLMs**: Users can select which language model or chain of models to use for inference.
+- **Temperature**: The temperature slider adjusts the randomness of the model's responses. Once settings are applied, they are sent to the server via WebSocket.
+
+Example:
+```javascript
+let settings = {
+    defaultLLM: $("#default-llm").val(),
+    premiumLLM: $("#premium-llm").val(),
+    temperature: $("#temperature").val()
+};
+```
+
+## 9. Error Handling and Recovery
+The system is designed to handle WebSocket disconnections gracefully. If the connection is lost, the system attempts to reconnect every 2 seconds:
+```javascript
+socket.onclose = function() {
+    console.log('WebSocket connection closed');
+    setTimeout(function() {
+        socket = new WebSocket('ws://localhost:6789');
+    }, 2000);
+};
+```
+
+Errors during message parsing or sending are logged to the console for troubleshooting.
