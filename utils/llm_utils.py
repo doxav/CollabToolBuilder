@@ -82,7 +82,7 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
         message_dict = {'message':message, 'agent_name':agent_name, 'message_type':message_type, 'append':append, 'column_id':column_id, 'column_max':column_max}
         # convert message_dict to json
         message = json.dumps(message_dict)
-        time.sleep(0.01)
+        time.sleep(0.05)
         # Wait 2 seconds every 100 messages to avoid flooding the WebSocket server
         if HumanLLMMonitor.websocket_server.message_count % 250 == 0:
             time.sleep(2)
