@@ -283,12 +283,22 @@ console.log('WebSocket connection established');
 };
 
 socket.onmessage = function(event) {
-let data = JSON.parse(event.data);
-displayMessage(data);
+    try {
+        let data = JSON.parse(event.data);
+        displayMessage(data);
+    } catch (e) {
+        console.log('Error parsing JSON:', e);
+
+    }
 };
 
 socket.onclose = function() {
 console.log('WebSocket connection closed');
+// Try to reconnect every 2 seconds
+setTimeout(function() {
+    socket = new WebSocket('ws://localhost:6789');
+    console.log('Trying to reconnect...');
+}, 2000);
 };
 
 function sendFunctionCall(agentName, functionName, params) {
@@ -508,16 +518,9 @@ function displayMessage(data) {
         let $question = $(`<p>How many parallel inferences ?</p>`);
         // Show a select list in HTML from 1 to 10 with the ability to put another number and send it to the server when the send button is pressed
         let $select = $(`<select id="parallel-inferences-select"></select>`);
-        for (let i = 1; i <= 10; i++) {
+        for (let i = 1; i <= 5; i++) {
             $select.append(`<option value="${i}">${i}</option>`);
         }
-        $select.append(`<option value="other">Other</option>`);
-        // If other is selected, show an input field to enter the number of inference
-        $select.change(function () {
-            if ($(this).val() === "other") {
-                $(this).replaceWith(`<input type="number" id="parallel-inferences-input" min="1" max="100" step="1" value="1">`);
-            }
-        });
         let $button = $(`<button id="send-parallel-inferences">Send</button>`);
         let $container = $(`<div></div>`);
         $container.append($question);

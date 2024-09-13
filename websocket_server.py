@@ -1,5 +1,7 @@
 import json
 import asyncio
+import time
+
 import websockets
 
 
@@ -8,6 +10,7 @@ class WebsocketServer:
         self.monitors = {}  # Stores agent monitors
         self.current_instances = {}  # Track current active monitor instances
         self.connected_clients = set()
+        self.message_count = 0
 
     def add_monitor(self, monitor):
         self.monitors[monitor.agent_name] = monitor
@@ -48,14 +51,7 @@ class WebsocketServer:
         server.close()
         await server.wait_closed()
 
-    def send_messageee(self, agent_name, message_type, message):
-        for client in self.connected_clients:
-            asyncio.create_task(client.send(json.dumps({
-                "agent_name": agent_name,
-                "message_type": message_type,
-                "message": message
-            })))
-
     def send_message(self, message):
+        self.message_count += 1
         for client in self.connected_clients:
             asyncio.run(client.send(message))
