@@ -245,7 +245,7 @@ class TaskIdentificationAgent():
                         f"- Already failed tasks (too hard): {failed_tasks if failed_tasks and failed_tasks!='{}' else 'None'}\n"+\
                         f"- Current status of examples on which the task will be tested on: {envs_status}\n"
 
-        task = self.human_llm_identify_best_task.CallHumanLLM(system_prompt_template=self.problem_prompts_subdir+"identify_best_task", user_message=user_message, return_message_content_only=False, optuna=self.optuna_opti, model_choice=self.model_choice, stream_output=True)
+        task = self.human_llm_identify_best_task.CallHumanLLM(system_prompt_template=self.problem_prompts_subdir+"identify_best_task", user_message=user_message, return_message_content_only=False, optuna=self.optuna_opti, model_choice=self.model_choice, stream_output=False   )
         return task
 
 
@@ -444,7 +444,7 @@ class CodingAgent():
     def get_primitives(self):
         primitives = []
         # Add the pipelines folder for the primitives
-        if self.problem_prompts_subdir=="Anomalies/":
+        if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
             path_folder = "pipelines/pipelines"
         else:
             path_folder = "primitives"
@@ -581,7 +581,7 @@ class CapitalizationAgent:
     def capitalize_successful_tasks(self, task_description: str, parsed_code: str) -> None:
         import socket, uuid, datetime
 
-        if self.problem_prompts_subdir=="Anomalies/":
+        if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
             function_name = parsed_code.get("main_function_name", parsed_code.get("main_function", {}).get("name", "unknown"))
             pipeline_file_path = os.path.join("pipelines/pipelines", function_name+".py")
             tool_description = str(self.generate_tool_description(function_name, parsed_code["program_code"]))
@@ -598,7 +598,7 @@ class CapitalizationAgent:
             smart_print(f"************ Last added task ************\n{function_name}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
 
         
-        if self.problem_prompts_subdir=="Anomalies/":
+        if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
            if os.path.exists(pipeline_file_path):
                 smart_print(f"Pipeline file {pipeline_file_path} already exists, please provide a new name for the pipeline.", self.name, "capitalize_successful_tasks WARNING")
                 if self.optuna_opti:
@@ -617,7 +617,7 @@ class CapitalizationAgent:
                 else:
                     function_file_path = os.path.join("functions", smart_input("New function name: ")+".py")
         
-        if self.problem_prompts_subdir=="Anomalies/":
+        if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
             new_path = pipeline_file_path
         else:
             new_path = function_file_path
@@ -748,7 +748,7 @@ class CapitalizationAgent:
             page_content = result.page_content
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
-            if self.problem_prompts_subdir=="Anomalies/":
+            if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
                 if "class_name" in task_data:
                     if task_data["class_name"] in self.tasks_repository:
                         smart_print(f"> pipeline/task {task_data['class_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
@@ -804,7 +804,7 @@ class CapitalizationAgent:
             page_content = result.page_content
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
-            if self.problem_prompts_subdir=="Anomalies/":
+            if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
                 if 'class_name' in task_data:
                     if task_data["class_name"] in self.failed_tasks_repository:
                         smart_print(f"> failed pipeline/task {task_data['class_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
