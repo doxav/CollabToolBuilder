@@ -15,10 +15,10 @@ def definition_few_shots(trial):
         ranking_tags = trial.suggest_categorical("ranking_tags",
                                                  ["by_score_asc", "by_date_asc", "mrr_asc", "cosine_asc", "random",
                                                   "accuracy", "relevance"])
-        annotations = trial.suggest_categorical("annotations", ["fix", "delete", "approve", "variants"])
+        #annotations = trial.suggest_categorical("annotations", ["fix", "delete", "approve", "variants", "nothing"])
         summary = trial.suggest_categorical("summary", [True, False])
         format = trial.suggest_categorical("format", ["JSON", "Markdown", "Jinja2"])
-        few_shots = f"few_shots: {{'num': {number_of_shots}, 'ranking_method': '{ranking_tags}', 'annotations': '{annotations}', 'summary': {summary}, 'format': '{format}'}}"
+        few_shots = f"few_shots: {{'num': {number_of_shots}, 'ranking_method': '{ranking_tags}', 'summary': {summary}, 'format': '{format}'}}"
     return few_shots
 
 def definition_global_parameters(temperature : float = None, presence_penalty : float = None):
