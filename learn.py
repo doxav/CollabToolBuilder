@@ -1,5 +1,4 @@
 import inspect
-import pprint
 import random
 import string
 import subprocess
@@ -8,40 +7,28 @@ import types
 import time
 from config import *
 
-#import openai
-import json
-from typing import Dict, Optional
+from typing import Dict
 
-from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, save_prompt, _visual_input, \
+from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, \
     is_vscode_installed, smart_print, smart_input
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import copy
-from pydantic import BaseModel
+
 import os
 import uuid
 import re
 import shutil
 import hashlib
 
-from langchain_core.runnables import Runnable, RunnablePassthrough
-#from langchain.schema.runnable import Runnable, RunnablePassthrough
+from langchain_core.runnables import Runnable
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-# from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.ai import AIMessage
 from langchain_core.messages.system import SystemMessage
-from langchain_core.messages.function import FunctionMessage
 
-from langchain_openai import ChatOpenAI  # from langchain.chat_models import ChatOpenAI
-# from langchain.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 
 import json
 
-from langchain.globals import set_llm_cache
-from langchain_community.cache import SQLiteCache
-
-set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
+#set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
 
 #openai.api_key = os.environ['OPENAI_API_KEY']
 #if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
@@ -53,7 +40,7 @@ UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002" # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function="intfloat/e5-base-v2" # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
-reset_db_indices=True # Set to True after changing embeddings
+reset_db_indices=False # Set to True after changing embeddings
 
 HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices) 
 
@@ -878,6 +865,11 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               criteria=None, max_execution_time=900):
     time_end = time.time() + max_execution_time
     scores = None
+
+    if HumanLLMMonitor.use_websocket:
+        if HumanLLMMonitor.websocket_server is None:
+            HumanLLMMonitor.initialize_websocket_server()
+
     if problem_prompts_subdir is None:
         # menu to choose the problem prompts subdirectory
         # get the list of subdirectories in the problem prompts directory

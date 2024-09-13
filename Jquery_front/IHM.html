@@ -232,15 +232,18 @@ color: white;
         <center>
             <label for="default-llm">Default LLM:</label><br><br>
             <select id="default-llm">
-                <option value="0">GPT-3.5</option>
-                <option value="1">GPT-4</option>
-                <option value="2">Sonnet 3.5</option>
+                <option value="default_llm">default_llm</option>
+                <option value="premium_llm">premium_llm</option>
+                <option value="3_majority_chain">3_majority_chain</option>
+                <option value="10_majority_chain">10_majority_chain</option>
             </select><br><br><br>
 
             <label for="premium-llm">Premium LLM:</label><br><br>
             <select id="premium-llm">
-                <option value="0">GPT-4</option>
-                <option value="1">Sonnet 3.5</option>
+                <option value="default_llm">default_llm</option>
+                <option value="premium_llm">premium_llm</option>
+                <option value="3_majority_chain">3_majority_chain</option>
+                <option value="10_majority_chain">10_majority_chain</option>
             </select><br><br><br>
 
             <label for="temperature">Temperature:</label><br><br>
@@ -280,20 +283,45 @@ console.log('WebSocket connection established');
 };
 
 socket.onmessage = function(event) {
-let data = JSON.parse(event.data);
-displayMessage(data);
+    try {
+        let data = JSON.parse(event.data);
+        displayMessage(data);
+    } catch (e) {
+        console.log('Error parsing JSON:', e);
+
+    }
 };
 
 socket.onclose = function() {
 console.log('WebSocket connection closed');
+// Try to reconnect every 2 seconds
+setTimeout(function() {
+    socket = new WebSocket('ws://localhost:6789');
+    console.log('Trying to reconnect...');
+}, 2000);
 };
 
+function sendFunctionCall(agentName, functionName, params) {
+    let message = {
+        agent_name: agentName,
+        function: functionName,
+        params: params
+    };
+    socket.send(JSON.stringify(message));
+}
+
 function displayMessage(data) {
+    currentAgent = data.agent_name;
     let title = `${data.agent_name} | ${data.message_type} | ${new Date().toLocaleTimeString()}`;
     if (data.message_type === null) {
         title = `${data.agent_name} | ${new Date().toLocaleTimeString()}`;
     }
     let content = `<div class='message'>${formatMessage(data.message)}</div>`;
+
+    // If the message_type is null, set it to " "
+    if (data.message_type === null) {
+        data.message_type = " ";
+    }
 
     let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
     if (data.agent_name === "CodingAgent" && data.message_type === "NEW inference result recieved") {
@@ -491,16 +519,9 @@ function displayMessage(data) {
         let $question = $(`<p>How many parallel inferences ?</p>`);
         // Show a select list in HTML from 1 to 10 with the ability to put another number and send it to the server when the send button is pressed
         let $select = $(`<select id="parallel-inferences-select"></select>`);
-        for (let i = 1; i <= 10; i++) {
+        for (let i = 1; i <= 5; i++) {
             $select.append(`<option value="${i}">${i}</option>`);
         }
-        $select.append(`<option value="other">Other</option>`);
-        // If other is selected, show an input field to enter the number of inference
-        $select.change(function () {
-            if ($(this).val() === "other") {
-                $(this).replaceWith(`<input type="number" id="parallel-inferences-input" min="1" max="100" step="1" value="1">`);
-            }
-        });
         let $button = $(`<button id="send-parallel-inferences">Send</button>`);
         let $container = $(`<div></div>`);
         $container.append($question);
@@ -581,21 +602,25 @@ function displayMessage(data) {
 
         } else if(data.agent_name === "CodingAgent" && (data.message_type === "LLM ANSWER content" || data.message_type === "POST INFERENCE" || data.message_type === "process_ai_generated_code SystemMessage" || data.message_type === "Multiple LLM ANSWERS" || data.message_type === "MULTIPLE inferences received") ){
             // Do nothing
-        } else if (data.message_type === "Inference streaming output"){
-            // Add message to previous “Inference streaming output” message content of the same agent_name for streaming display unless it is the first message, create a new message
-            let $lastMessage = $agentAccordion.children("div").children().last();
-            const h4Elements = document.querySelectorAll('h4');
-            // If the last message is preceded by a h4 with the text "Inference streaming output", append the new message to the previous message
-            if ($lastMessage.length > 0 && h4Elements[h4Elements.length - 1].textContent.includes( "Inference streaming output")) {
-                $lastMessage.append(formatMessage(data.message));
-            } else {
-                if ($agentAccordion.length === 0) {
-                    $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
-                    $("#message-accordion").append($agentAccordion);
-                }
-                let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${formatMessage(content)}</div>`);
-                $agentAccordion.children("div").append($messageContainer);
+        } else if (data.message_type.includes("Inference streaming output") && data.agent_name === "TaskIdentificationAgent") {
+            console.log("Inference streaming output");
+            // For each inference the last caracter of the messa_type is the inference number, so we can create a new message-container inside the TaskIdentificationAgent accordion for each inference and add the message OR append the message to the accordion if it already exists
+            let inferenceNumber = data.message_type.slice(-1);
+            // Check if the inferenceNumber is a number
+            if (isNaN(inferenceNumber)) {
+                return;
             }
+            let $inferenceAccordion = $(`#message-accordion > div[data-agent="TaskIdentificationAgent"] > div > div[data-inference="${inferenceNumber}"]`);
+            if ($inferenceAccordion.length === 0) {
+                $inferenceAccordion = $(`<div data-inference="${inferenceNumber}"><h4>Inference ${inferenceNumber}</h4><div class="column-container"></div></div>`);
+                $(`#message-accordion > div[data-agent="TaskIdentificationAgent"] > div`).append($inferenceAccordion);
+            }
+            let $messageContainer = $(`<div class="message">${content}</div>`);
+            $inferenceAccordion.children("div").append($messageContainer);
+            // Add the accordion to the TaskIdentificationAgent accordion
+            $("#message-accordion").accordion("refresh");
+            updateFilters(data);
+
         } else if (data.message_type === "BEFORE inference action MENU" || data.message_type === "AFTER inference action MENU" && data.message.includes("Change default") || data.message.includes("Change premium") || data.message.includes("Exit") || data.message.includes("Log comments")) {
                 displayMenuOptions(data.message);
             } else if(data.agent_name === "CONFIG" && data.message.includes("Enter a capital letter for subdirectory")){
@@ -758,15 +783,7 @@ function displayMessage(data) {
             // Score is the value of the slider divided by 10
             let score = $(`#slider-${columnId}`).val() / 10;
             let comment = $(`#comment-${columnId}`).val();
-            socket.send(JSON.stringify({message: `d`}));
-            // Wait a second for the message to be sent before sending the score
-            setTimeout(() => {
-                socket.send(JSON.stringify({message: `${score}`}));
-            }, 1000);
-            // Wait another second before sending the comment
-            setTimeout(() => {
-                socket.send(JSON.stringify({message: `${comment}`}));
-            }, 1000);
+            sendFunctionCall(currentAgent, "setCommentsAndScore", {comment: comment, score: score, output_id: columnId});
         });
 
         // Add event listener to the delete button
@@ -1050,7 +1067,10 @@ function displayMessage(data) {
                     premiumLLM: $("#premium-llm").val(),
                     temperature: $("#temperature").val()
                 };
-                socket.send(JSON.stringify({ type: "settings", data: settings }));
+                sendFunctionCall(currentAgent,"set_default_llmORchain", [settings["defaultLLM"], settings["temperature"]]);
+                sendFunctionCall(currentAgent,"set_premium_llmORchain", [settings["premiumLLM"], settings["temperature"]]);
+                //sendFunctionCall(currentAgent,"set_temperature", settings["temperature"]);
+                console.log("Settings applied:", settings);
             });
 
         function saveSelection() {
