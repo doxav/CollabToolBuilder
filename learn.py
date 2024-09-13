@@ -1,52 +1,35 @@
 import inspect
-import pprint
 import random
 import string
 import subprocess
 import traceback
 import types
 import time
-import torch
-
-from sympy.physics.units import temperature
-
 from config import *
 
-#import openai
-import json
-from typing import Dict, Optional
+from typing import Dict
 
-from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, save_prompt, _visual_input, \
+from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, \
     is_vscode_installed, smart_print, smart_input
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import copy
-from pydantic import BaseModel
+
 import os
 import uuid
 import re
 import shutil
 import hashlib
 
-from langchain_core.runnables import Runnable, RunnablePassthrough
-#from langchain.schema.runnable import Runnable, RunnablePassthrough
+from langchain_core.runnables import Runnable
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-# from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.ai import AIMessage
 from langchain_core.messages.system import SystemMessage
-from langchain_core.messages.function import FunctionMessage
 
-from langchain_openai import ChatOpenAI  # from langchain.chat_models import ChatOpenAI
-# from langchain.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 
 import json
 
-from langchain.globals import set_llm_cache
-from langchain_community.cache import SQLiteCache
+#set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
 
-set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
-torch.cuda.empty_cache()
 #openai.api_key = os.environ['OPENAI_API_KEY']
 #if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
 
@@ -208,7 +191,7 @@ class TaskIdentificationAgent():
         self.criteria = criteria
         self.human_llm_identify_best_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice,
                                                             premium_llm_by_default=premium_llm_by_default,
-                                                            llmORchains_list=llmORchains_list, optuna=optuna)#,output_schema="identify_best_task.schema.py")
+                                                            llmORchains_list=llmORchains_list)#,output_schema="identify_best_task.schema.py")
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         self.envs = envs
         self.optuna_opti = optuna
@@ -915,6 +898,11 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               criteria=None, max_execution_time=900, special_criteria=None):
     time_end = time.time() + max_execution_time
     scores = None
+
+    if HumanLLMMonitor.use_websocket:
+        if HumanLLMMonitor.websocket_server is None:
+            HumanLLMMonitor.initialize_websocket_server()
+
     if problem_prompts_subdir is None:
         # menu to choose the problem prompts subdirectory
         # get the list of subdirectories in the problem prompts directory

@@ -31,7 +31,7 @@ os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
 # Elastic search and Kibana information
 elastic_url_port = 'Your_elastic_url_here' # Default port is 9200
 kibana_url_port = 'Your_kibana_url_here' # Default port is 5601
-ELASTICSEARCH_HOST = 'http://localhost:9200'
+
 # If there is a user and password needed for the elastic search, add them here
 elastic_user="username"
 elastic_password="password"
@@ -48,4 +48,3 @@ MODELS_CONFIG_LIST = {
     "smart_gpt": "gpt-4o-mini-2024-07-18", #"llama-3.1-70b-versatile", # "mixtral-8x7b-32768", # "gpt-4o-mini", # "eramax/nxcode-cq-7b-orpo:q6", #mistral-nemo:12b-instruct-2407-q4_K_M", #"llama3:latest",
     "basic_gpt": "gpt-4o-mini-2024-07-18", #"llama-3.1-70b-versatile", # "mixtral-8x7b-32768", # "gpt-4o-mini" # "eramax/nxcode-cq-7b-orpo:q6" #mistral-nemo:12b-instruct-2407-q4_K_M", #"llama3:latest",
 }
-
