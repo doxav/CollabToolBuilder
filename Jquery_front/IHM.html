@@ -383,8 +383,6 @@ function displayMessage(data) {
                 socket.send(JSON.stringify({message: columnsToKeep.join(',')}));
             });
         }
-
-    } else if (data.agent_name === "CodingAgent" && data.message_type === "Scores") {
         /*
             // Show message
             if ($agentAccordion.length === 0) {
@@ -427,6 +425,7 @@ function displayMessage(data) {
         $scoreButtons.each(function (index, button) {
             const regex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m(SUCCESS|FAILED)\\u001b\\[0m`, 'm');
             const match = data.message.match(regex);
+            console.log("Match not found yet:", match);
             if (match) {
                 console.log("Match found:", match);
                 const score = match[1];
@@ -660,8 +659,6 @@ function displayMessage(data) {
         });
 
 
-    } else if(data.agent_name === "Pipeline/Function Mode" && data.message_type === "Files loaded" ){
-        // Do nothing
 
     } else {
             if ($agentAccordion.length === 0) {
