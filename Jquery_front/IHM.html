@@ -232,15 +232,18 @@ color: white;
         <center>
             <label for="default-llm">Default LLM:</label><br><br>
             <select id="default-llm">
-                <option value="0">GPT-3.5</option>
-                <option value="1">GPT-4</option>
-                <option value="2">Sonnet 3.5</option>
+                <option value="default_llm">default_llm</option>
+                <option value="premium_llm">premium_llm</option>
+                <option value="3_majority_chain">3_majority_chain</option>
+                <option value="10_majority_chain">10_majority_chain</option>
             </select><br><br><br>
 
             <label for="premium-llm">Premium LLM:</label><br><br>
             <select id="premium-llm">
-                <option value="0">GPT-4</option>
-                <option value="1">Sonnet 3.5</option>
+                <option value="default_llm">default_llm</option>
+                <option value="premium_llm">premium_llm</option>
+                <option value="3_majority_chain">3_majority_chain</option>
+                <option value="10_majority_chain">10_majority_chain</option>
             </select><br><br><br>
 
             <label for="temperature">Temperature:</label><br><br>
@@ -280,20 +283,45 @@ console.log('WebSocket connection established');
 };
 
 socket.onmessage = function(event) {
-let data = JSON.parse(event.data);
-displayMessage(data);
+    try {
+        let data = JSON.parse(event.data);
+        displayMessage(data);
+    } catch (e) {
+        console.log('Error parsing JSON:', e);
+
+    }
 };
 
 socket.onclose = function() {
 console.log('WebSocket connection closed');
+// Try to reconnect every 2 seconds
+setTimeout(function() {
+    socket = new WebSocket('ws://localhost:6789');
+    console.log('Trying to reconnect...');
+}, 2000);
 };
 
+function sendFunctionCall(agentName, functionName, params) {
+    let message = {
+        agent_name: agentName,
+        function: functionName,
+        params: params
+    };
+    socket.send(JSON.stringify(message));
+}
+
 function displayMessage(data) {
+    currentAgent = data.agent_name;
     let title = `${data.agent_name} | ${data.message_type} | ${new Date().toLocaleTimeString()}`;
     if (data.message_type === null) {
         title = `${data.agent_name} | ${new Date().toLocaleTimeString()}`;
     }
     let content = `<div class='message'>${formatMessage(data.message)}</div>`;
+
+    // If the message_type is null, set it to " "
+    if (data.message_type === null) {
+        data.message_type = " ";
+    }
 
     let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
     if (data.agent_name === "CodingAgent" && data.message_type === "NEW inference result recieved") {
@@ -343,6 +371,27 @@ function displayMessage(data) {
             // Update the pagination info with the total number of pages
             totalPages = Math.ceil(columnMax / 4);
             $pageInfo.text(`Page ${currentPage} of ${totalPages}`);
+        }
+        // If it's the last solution
+        if(data.column_id === data.column_max - 1){
+            // Add a button below the solution columns to continue by sending the columns to keep,
+            // it's all the columns without the column in the list of deleted columns (let columnsToDelete = JSON.parse(localStorage.getItem('columnsToDelete')) || [];)
+            // the button should send the columns to keep to the server separated by a comma
+            let $continueButton = $(`<button id="continue-button">Continue</button>`);
+            $('.solution-columns').after($continueButton);
+            $continueButton.click(function () {
+                console.log("Continue button clicked");
+                let columnsToDelete = JSON.parse(localStorage.getItem('columnsToDelete')) || [];
+                let columnsToKeep = [];
+                let columnMax = data.column_max;
+                for (let i = 0; i < columnMax; i++) {
+                    if (!columnsToDelete.includes(i)) {
+                        columnsToKeep.push(i);
+                    }
+                }
+                console.log("Columns to keep:", columnsToKeep.join(','));
+                socket.send(JSON.stringify({message: columnsToKeep.join(',')}));
+            });
         }
 
     } else if (data.agent_name === "CodingAgent" && data.message_type === "Scores") {
@@ -423,6 +472,7 @@ function displayMessage(data) {
              */
 
     } else if (data.message === "Skip for how many rounds? ") {
+        let $question = $(`<p>Skip for how many rounds ?</p>`);
         // Show a select list in HTML from 1 to 10 with the ability to put another number and send it to the server when the send button is pressed
         let $select = $(`<select id="rounds-select"></select>`);
         for (let i = 1; i <= 10; i++) {
@@ -437,6 +487,7 @@ function displayMessage(data) {
         });
         let $button = $(`<button id="send-rounds">Send</button>`);
         let $container = $(`<div></div>`);
+        $container.append($question);
         $container.append($select);
         $container.append($button);
         // Add the select list and button below the Accordion
@@ -465,20 +516,15 @@ function displayMessage(data) {
             $container.remove();
         });
     } else if (data.message_type === "NUM_PARALLEL_INFERENCES") {
+        let $question = $(`<p>How many parallel inferences ?</p>`);
         // Show a select list in HTML from 1 to 10 with the ability to put another number and send it to the server when the send button is pressed
         let $select = $(`<select id="parallel-inferences-select"></select>`);
-        for (let i = 1; i <= 10; i++) {
+        for (let i = 1; i <= 5; i++) {
             $select.append(`<option value="${i}">${i}</option>`);
         }
-        $select.append(`<option value="other">Other</option>`);
-        // If other is selected, show an input field to enter the number of inference
-        $select.change(function () {
-            if ($(this).val() === "other") {
-                $(this).replaceWith(`<input type="number" id="parallel-inferences-input" min="1" max="100" step="1" value="1">`);
-            }
-        });
         let $button = $(`<button id="send-parallel-inferences">Send</button>`);
         let $container = $(`<div></div>`);
+        $container.append($question);
         $container.append($select);
         $container.append($button);
         // Add the select list and button below the Accordion
@@ -556,22 +602,25 @@ function displayMessage(data) {
 
         } else if(data.agent_name === "CodingAgent" && (data.message_type === "LLM ANSWER content" || data.message_type === "POST INFERENCE" || data.message_type === "process_ai_generated_code SystemMessage" || data.message_type === "Multiple LLM ANSWERS" || data.message_type === "MULTIPLE inferences received") ){
             // Do nothing
-        } else if (data.message_type === "Inference streaming output"){
-            console.log("Handling inference streaming output");
-            // Add message to previous “Inference streaming output” message content of the same agent_name for streaming display unless it is the first message, create a new message
-            let $lastMessage = $agentAccordion.children("div").children().last();
-            const h4Elements = document.querySelectorAll('h4');
-            // If the last message is preceded by a h4 with the text "Inference streaming output", append the new message to the previous message
-            if ($lastMessage.length > 0 && h4Elements[h4Elements.length - 1].textContent.includes( "Inference streaming output")) {
-                $lastMessage.append(data.message);
-            } else {
-                if ($agentAccordion.length === 0) {
-                    $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
-                    $("#message-accordion").append($agentAccordion);
-                }
-                let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${content}</div>`);
-                $agentAccordion.children("div").append($messageContainer);
+        } else if (data.message_type.includes("Inference streaming output") && data.agent_name === "TaskIdentificationAgent") {
+            console.log("Inference streaming output");
+            // For each inference the last caracter of the messa_type is the inference number, so we can create a new message-container inside the TaskIdentificationAgent accordion for each inference and add the message OR append the message to the accordion if it already exists
+            let inferenceNumber = data.message_type.slice(-1);
+            // Check if the inferenceNumber is a number
+            if (isNaN(inferenceNumber)) {
+                return;
             }
+            let $inferenceAccordion = $(`#message-accordion > div[data-agent="TaskIdentificationAgent"] > div > div[data-inference="${inferenceNumber}"]`);
+            if ($inferenceAccordion.length === 0) {
+                $inferenceAccordion = $(`<div data-inference="${inferenceNumber}"><h4>Inference ${inferenceNumber}</h4><div class="column-container"></div></div>`);
+                $(`#message-accordion > div[data-agent="TaskIdentificationAgent"] > div`).append($inferenceAccordion);
+            }
+            let $messageContainer = $(`<div class="message">${content}</div>`);
+            $inferenceAccordion.children("div").append($messageContainer);
+            // Add the accordion to the TaskIdentificationAgent accordion
+            $("#message-accordion").accordion("refresh");
+            updateFilters(data);
+
         } else if (data.message_type === "BEFORE inference action MENU" || data.message_type === "AFTER inference action MENU" && data.message.includes("Change default") || data.message.includes("Change premium") || data.message.includes("Exit") || data.message.includes("Log comments")) {
                 displayMenuOptions(data.message);
             } else if(data.agent_name === "CONFIG" && data.message.includes("Enter a capital letter for subdirectory")){
@@ -613,6 +662,9 @@ function displayMessage(data) {
             $container.remove();
         });
 
+
+    } else if(data.agent_name === "Pipeline/Function Mode" && data.message_type === "Files loaded" ){
+        // Do nothing
 
     } else {
             if ($agentAccordion.length === 0) {
@@ -707,15 +759,17 @@ function displayMessage(data) {
             // Add a max heigh to the formated message
             targetColumn.innerHTML += `<div class="message" style="max-height: 450px; overflow-y: auto;">${formatedMessage}</div>`;
             targetColumn.innerHTML += `<div style="text-align: center; align-content: center; align-items: center;"><p>Score the solution : </p><input type="range" min="0" max="10" value="5" step="1" class="slider" id = "slider-${columnId}"><br><span id="value-${columnId}">5</span></div>`;
-            targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="evaluate-"${columnId}><i class="fa-regular fa-paper-plane"></i> Evaluate this solution</button></div><br>`;
+            // Add a text input to add a comment
+            targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><input type="text" id="comment-${columnId}" placeholder="Add a comment"></div>`;
+            targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="evaluate-${columnId}"><i class="fa-regular fa-paper-plane"></i> Evaluate this solution</button></div><br>`;
             // Refresh score when slider is moved
             $(`#slider-${columnId}`).on('input', function () {
                 $(`#value-${columnId}`).text(this.value);
             });
-            targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="deletebutton-"${columnId}><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Do not keep this solution</button></div>`;
-            targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="regenwithmymodifbutton-"${columnId}><i class="fa-solid fa-rotate" aria-hidden="true"></i> Regenerate with my modifications</button></div>`;
-            targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="regenallbutton-"${columnId}><i class="fa-solid fa-rotate" aria-hidden="true"></i> Regenerate with all modifications</button></div>`;
-            targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="score-"${columnId} class="button">Scoring ...</button></div>`;
+            targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="deletebutton-${columnId}"><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Do not keep this solution</button></div>`;
+            targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="regenwithmymodifbutton-${columnId}"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Regenerate with my modifications</button></div>`;
+            targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="regenallbutton-${columnId}"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Regenerate with all modifications</button></div>`;
+            targetColumn.innerHTML += `<br><div style="text-align: center; align-items: center; align-content: center;"><button id="score-${columnId}" class="button">Scoring ...</button></div>`;
         }
         if (columnMax>4){
             // Show only the 4 first columns
@@ -724,7 +778,60 @@ function displayMessage(data) {
             $columns.slice(0, 4).show();
         }
 
+        // Add event listener to the evaluate button
+        $(`#evaluate-${columnId}`).click(function () {
+            // Score is the value of the slider divided by 10
+            let score = $(`#slider-${columnId}`).val() / 10;
+            let comment = $(`#comment-${columnId}`).val();
+            sendFunctionCall(currentAgent, "setCommentsAndScore", {comment: comment, score: score, output_id: columnId});
+        });
 
+        // Add event listener to the delete button
+        $(`#deletebutton-${columnId}`).click(function () {
+            // If the column is already marked for deletion, unmark it and change the background color and button color and remove it from the list of columns to delete
+            let targetColumn = document.getElementById(`column-${columnId}`);
+            if (targetColumn.style.backgroundColor === 'lightcoral') {
+                targetColumn.style.backgroundColor = '';
+                this.style.backgroundColor = '';
+                let columnsToDelete = JSON.parse(localStorage.getItem('columnsToDelete')) || [];
+                columnsToDelete = columnsToDelete.filter(column => column !== columnId);
+                localStorage.setItem('columnsToDelete', JSON.stringify(columnsToDelete));
+                console.log('Columns to delete:', columnsToDelete);
+                return;
+            }
+            // Make the background color of the column light red
+            targetColumn.style.backgroundColor = 'lightcoral';
+            // Make the background color of the button light red
+            this.style.backgroundColor = 'lightcoral';
+            // Add the number of the column in a list of columns to delete
+            let columnsToDelete = JSON.parse(localStorage.getItem('columnsToDelete')) || [];
+            columnsToDelete.push(columnId);
+            localStorage.setItem('columnsToDelete', JSON.stringify(columnsToDelete));
+            console.log('Columns to delete:', columnsToDelete);
+        });
+
+        // Add event listener to the regenerate with my modifications button
+        // Send to the server the entire text with the annotation and without the HTML tags of the targetColumn
+        $(`#regenwithmymodifbutton-${columnId}`).click(function () {
+            let targetColumn = document.getElementById(`column-${columnId}`);
+            let text = targetColumn.querySelector('.message').textContent;
+            let textWithoutHtml = text.replace(/<[^>]*>/g, '');
+            //socket.send(JSON.stringify({message: textWithoutHtml}));
+            console.log(textWithoutHtml);
+        });
+
+        // Add event listener to the regenerate with all modifications button
+        // Send to the server the entire text with the annotation and without the HTML tags of all the columns
+        $(`#regenallbutton-${columnId}`).click(function () {
+            // Get all the columns of the solution columns
+            let columns = document.querySelectorAll('.solution-column .message');
+            let text = '';
+            columns.forEach(column => {
+                text += column.textContent.replace(/<[^>]*>/g, '');
+            });
+            //socket.send(JSON.stringify({message: text}));
+            console.log(text);
+        });
 
     } catch (error) {
         console.error('Error parsing message:', error);
@@ -772,7 +879,7 @@ function displayMessage(data) {
                 // Remove all ANSI escape sequences
                 cleanString = cleanString.replace(/\u\d+b/g, '');
                 // Replace "\n" with "<br>"
-                const lineBreaks = cleanString.replace(/\n/g, '<br>');
+                let lineBreaks = cleanString.replace(/\n/g, '<br>');
                 // Regular expression to match Python code blocks
                 const codeBlockRegex = /```python\n([\s\S]*?)```/;
                 // Extract the Python code block
@@ -785,7 +892,8 @@ function displayMessage(data) {
                     // Return the message with the highlighted code and add the rest of the message that was not part of the code block
                     return `<div class="message"><pre><code>${highlightedCode}</code></pre></div>`;
                 }
-
+                // Replace spaces with &nbsp;
+                lineBreaks = cleanString.replace(/ /g, '&nbsp;');
                 // If no Python code block is found, return the original message
                 return `<div class="message">${lineBreaks}</div>`;
             }
@@ -804,8 +912,15 @@ function displayMessage(data) {
                         let letter = match[1].toUpperCase();
                         // Si la ligne contient le mot "Change" on l'ignore
                         if (!match[2].includes("Change default") && !match[2].includes("Change premium") && !match[2].includes("Exit") && !match[2].includes("Log comments")) {
-                            let $option = $(`<div class="menu-option" data-option="${match[1]}">${match[2]}</div>`);
-                            $("#menu-options").append($option);
+                            if(match[2].includes("Change num of parallel inferences")){
+                                // Remove "\u001b[32m" and "\u001b[0m" from the message
+                                let cleanString = match[2].replace(/\u001b\[\d+m/g, '');
+                                let $option = $(`<div class="menu-option" data-option="${letter}">${cleanString}</div>`);
+                                $("#menu-options").append($option);
+                            }else {
+                                let $option = $(`<div class="menu-option" data-option="${letter}">${match[2]}</div>`);
+                                $("#menu-options").append($option);
+                            }
                         }
                     }
                 });
@@ -952,7 +1067,10 @@ function displayMessage(data) {
                     premiumLLM: $("#premium-llm").val(),
                     temperature: $("#temperature").val()
                 };
-                socket.send(JSON.stringify({ type: "settings", data: settings }));
+                sendFunctionCall(currentAgent,"set_default_llmORchain", [settings["defaultLLM"], settings["temperature"]]);
+                sendFunctionCall(currentAgent,"set_premium_llmORchain", [settings["premiumLLM"], settings["temperature"]]);
+                //sendFunctionCall(currentAgent,"set_temperature", settings["temperature"]);
+                console.log("Settings applied:", settings);
             });
 
         function saveSelection() {
@@ -1177,7 +1295,8 @@ function displayMessage(data) {
                 $("#filter-agent-type").val($(this).val());
             });
 
-
+            // When refresh the page, clear the let columnsToDelete = JSON.parse(localStorage.getItem('columnsToDelete')) || [];
+            localStorage.removeItem('columnsToDelete');
 
         });
 
