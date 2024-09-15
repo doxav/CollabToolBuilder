@@ -315,9 +315,12 @@ class UnifiedVectorDB:
     es_user = None
     es_password = None
     OpenAI_embedding_function_name = "text-embedding-ada-002"
+    db_connection_check_done = False
 
     @staticmethod
     def check_db():
+        if UnifiedVectorDB.db_connection_check_done is True:
+            return
         if UnifiedVectorDB.db_type == 'elasticsearch':
             session = requests.Session()
             retry = Retry(total=5, backoff_factor=1)
@@ -328,11 +331,13 @@ class UnifiedVectorDB:
                 response = session.get(UnifiedVectorDB.es_url, auth=auth, timeout=5, verify=False)
                 response.raise_for_status()
                 print("Elasticsearch response:", response.text)
+                UnifiedVectorDB.db_connection_check_done = True
             except requests.exceptions.RequestException as e:
                 print(f"Error: {e}\nURL: {UnifiedVectorDB.es_url}\nCheck Elasticsearch and credentials.")
                 exit(1)
         elif UnifiedVectorDB.db_type == 'chroma':
             print("Chroma DB check is not yet implemented")
+            UnifiedVectorDB.db_connection_check_done = True
         else:
             raise ValueError(f"Unsupported DB type: {UnifiedVectorDB.db_type}")
 

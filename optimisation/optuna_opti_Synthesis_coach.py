@@ -171,13 +171,14 @@ def objective(trial, timestamp_exp: int):
 
     return perf
 
-
 if __name__ == "__main__":
-    os.chdir("../")
+    # Change directory to the location of this script if not already in the correct directory
+    if os.path.basename(os.getcwd()) == "optimisation":
+        os.chdir("../")
     # Recuperate name_exp from terminal argument:
     if len(sys.argv) > 1:
         name_exp = sys.argv[1]
-    else:
+    else :
         timestamp_xp = int(time.time())
         name_exp = f"xp_coder{timestamp_xp}"
-    launch_study(lambda trial: objective(trial, timestamp_xp), name_exp)
+    launch_study(lambda trial: objective(trial, name_exp), name_exp)

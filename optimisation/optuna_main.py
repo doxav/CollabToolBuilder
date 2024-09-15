@@ -5,6 +5,10 @@ from langchain_openai import ChatOpenAI
 from config import MODELS_CONFIG_LIST
 from learn import EnvironmentManager, run_4agents_learning_loop
 from optimisation.optuna_analysis import analysis
+from utils.llm_utils import HumanLLMMonitor
+
+# Set the class variable
+HumanLLMMonitor.use_websocket = False
 
 def definition_few_shots(trial):
     few_shots = ""

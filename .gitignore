@@ -8,3 +8,6 @@ config.py
 primitives/config.py
 .env
 config_cluster.py
+Optuna_results/xp_*
+Optuna_db/xp_*
+functions/*.py
