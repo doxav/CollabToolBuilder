@@ -679,6 +679,7 @@ class HumanLLMMonitor:
     def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_max_context_size=16000, default_llmORchain=None,
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1, llmORchains_list=None,
                  synthesize_mode=False, inference_checks=None, output_schema=None):
+        self.current_inference_context = None
         if llmORchains_list is None: raise ValueError("llmORchains_list must be provided")
         self.llmORchains_list = llmORchains_list
         self.system_prompt = system_prompt
@@ -707,6 +708,7 @@ class HumanLLMMonitor:
         self.synthesize_mode = synthesize_mode
         self.inference_checks = inference_checks if inference_checks else {}
         self.last_inference_check_results = None
+
 
     # New: Handling function calls via WebSocket
     def execute_function(self, function_name, params):
@@ -1385,11 +1387,48 @@ class HumanLLMMonitor:
         comments = smart_input("Comment on the result: ", self.agent_name)
         return comments, score
 
-    def setCommentsAndScore(self, comment, score, output_id):
-        score = float(score) if score else None
-        comment = comment if comment else None
-        if comment or score:
-            print(f"Comment and score for output {output_id}: {comment} - {score}")
+    def evaluateCommentAnswerForLater(self, comment, score, output_id=0, message=None):
+        if comment:
+            self.comments.append(comment)
+
+        context = self.current_inference_context
+
+        # Determine the output content
+        if message is not None:
+            output_content = message
+        elif context.get('output_contents'):
+            output_content = context['output_contents'][output_id] if isinstance(context['output_contents'], list) else \
+            context['output_contents']
+        else:
+            output_content = None
+
+        # Compute inference time
+        start_time = context.get('start_time')
+        end_time = datetime.now()
+        inference_time = (end_time - start_time).total_seconds if start_time else None
+
+        self._log_entry(
+            function_name=context.get('function_name'),
+            input_contents=context.get('input_contents'),
+            output_contents=output_content,
+            inference_time=inference_time,
+            input_modified=context.get('input_modified'),
+            skipped_inference=context.get('skipped_inference'),
+            skip_rounds=self.skip_rounds,
+            input_comments=context.get('input_comments'),
+            output_comments=[comment],
+            output_llm_raw=context.get('raw_llm_outputs')[output_id] if isinstance(context.get('raw_llm_outputs'),
+                                                                                   list) else context.get(
+                'raw_llm_outputs'),
+            output_modified=context.get(
+                'output_modified'),
+            user_score=score,  # New field for user-provided score
+            message_tokens=context.get('message_tokens'),
+            use_premium_llm=context.get('use_premium_llm'),
+            call_duration=context.get('call_duration'),
+            synthesize_mode=self.synthesize_mode
+        )
+
 
     def findBetterPrompt(self, comments, inference_result_msg, premium_llm_function):
         comments = smart_input("First enter your critic here (then modify answer to get ideal answer): ",
@@ -1531,7 +1570,7 @@ The following annotations are provided to guide the refinement process. Each ann
 
     def _log_entry(self, function_name, input_contents, output_contents, input_modified=False,
                    skipped_inference=False, input_comments=None, output_comments=None, output_llm_raw=None,
-                   output_modified=False, inference_time=None, message_tokens=None, score=None, use_premium_llm=False,
+                   output_modified=False, inference_time=None, user_score=None, message_tokens=None, score=None, use_premium_llm=False,
                    call_duration=None, skip_rounds=None, synthesize_mode=False, pipeline_mode=False):
         entry = {
             "input_contents": input_contents,
@@ -1549,7 +1588,8 @@ The following annotations are provided to guide the refinement process. Each ann
             "after_inference_option_counts": self.after_inference_option_counts,
             "call_duration": call_duration,
             "synthesize_mode": synthesize_mode,
-            "pipeline_mode": pipeline_mode
+            "pipeline_mode": pipeline_mode,
+            "user_score": user_score
         }
         #print(f"Human modifications ? input_modified:{input_modified}, output_modified:{output_modified}\nlog entry: {entry}")
 
@@ -1742,6 +1782,22 @@ The following annotations are provided to guide the refinement process. Each ann
                         self.skip_rounds = init_skip_rounds
                         smart_print(f"\033[31mMULTI-INFERENCE OUTPUT #{counter} > \033[0m", self.agent_name,
                                     "POST INFERENCE", append=True)
+                    self.current_inference_context = {
+                        'function_name': inspect.stack()[1].function,
+                        'input_contents': llm_input_messages,
+                        'output_contents': output_messages,
+                        'start_time': start_time,  # Store start_time instead of computing inference_time
+                        'input_modified': ((llm_input_messages[0].content + "\n" + llm_input_messages[1].content) != (
+                                input_contents_str0 + "\n" + input_contents_str1)),
+                        'skipped_inference': skip_inference,
+                        'input_comments': input_comments,
+                        'output_comments': output_comments,
+                        'raw_llm_outputs': raw_llm_outputs,
+                        'output_modified': [output_message.content != raw for output_message, raw in
+                                            zip(output_messages, raw_llm_outputs)],
+                        'message_tokens': None,  # You may want to calculate this
+                        'use_premium_llm': use_premium_llm
+                    }
                     # Post-inference human intervention
                     output_messages_instance, output_comments_instance, score_instance = self._after_inference(
                         llm_output, premium_llm_function=premium_llm_function, output_id=counter,
