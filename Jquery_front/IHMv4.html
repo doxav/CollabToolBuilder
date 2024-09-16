@@ -440,6 +440,39 @@ $(function() {
 
         } else if (data.message_type === "Scores") {
             handleEvaluationResults(data);
+             let $scoreButtons = $agentAccordion.find("button[id^='score-']");
+        // Stock scores in an array retrieved with the regex "const regex = new RegExp(`^${i}\\.\\s+(SUCCESS|FAILED)`, 'm');"
+
+        // for each button, we retrieve the score and we change the text of the button
+        $scoreButtons.each(function (index, button) {
+            const regex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m(SUCCESS|FAILED)\\u001b\\[0m`, 'm');
+            const match = data.message.match(regex);
+            if (match) {
+                console.log("Match found:", match);
+                const score = match[1];
+                button.textContent = score;
+                if (score === "SUCCESS") {
+                    button.style.backgroundColor = "green";
+                } else {
+                    button.style.backgroundColor = "red";
+                }
+                // Extract the full text following the solution number
+                const fullTextRegex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
+                const fullTextMatch = data.message.match(fullTextRegex);
+
+                if (fullTextMatch) {
+                    const fullText = fullTextMatch[1].trim();
+
+                    // Attach a click event to display the full text in a pop-up
+                    button.addEventListener('click', function () {
+                        alert(`Score of solution ${index + 1}:\n\n${fullText}`);
+                    });
+                }
+            } else {
+                button.textContent = "Scoring failed";
+                button.style.backgroundColor = "red";
+            }
+        });
 
         } else if (data.message === "Skip for how many rounds? ") {
             // Existing code for handling this case
@@ -748,6 +781,10 @@ $(function() {
                 <br>
                 <div style="text-align: center;">
                     <button id="regenallbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Regenerate with all modifications</button>
+                </div>
+                <br>
+                <div style="text-align: center;">
+                    <button id="score-${columnId}">Scoring ...</button>
                 </div>
             `;
 
