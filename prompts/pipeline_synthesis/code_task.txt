@@ -1,7 +1,7 @@
 TASK DEFINITION:
 Write a Python function pipeline to accomplish the following task. The pipeline should consist of modular and reusable functions, following the principles of functional composition. Each function in the pipeline should be independently executable and reusable in other contexts. Use examples from the primitives folder as a reference where applicable.
 Ensure that the pipeline adheres to the constraints provided. The functions should embed all required package imports inside their definitions, avoid recursion, and prevent infinite loops. The final output of the pipeline must be returned in string or JSON format, and the success of the task will be evaluated based on this output.
-The pipeline should be ready to use on OpenWebUi. Be creative with news fonctions and different from the primitives.
+The pipeline should be ready to use on OpenWebUi. Be creative with news fonctions and different from the primitives, pipeline should ask for a title and an abstract from user.
 
 CURRENT STATE OF THE ENVIRONMENT USED TO TEST TASK:
 
@@ -170,7 +170,7 @@ RESPONSE FORMAT:
             #add new funny and innovative functions
  
 
-            def pipe()
+            def pipe(user_message: str, model_id: str, messages: List[dict], body: dict)
                     ...
 
                 assert result is not None, "Result can't be None"
@@ -179,11 +179,11 @@ RESPONSE FORMAT:
 
         class example_pipeline:
                 @staticmethod
-                async def run_pipeline(user_message: str, model_id: str, messages: List[dict], body: dict) -> str:
+                async def run_pipeline(user_message) -> str:
             
                     pipeline = your_pipeline_name()
                     await pipeline.on_startup()
-                    pipe_result =  pipeline.pipe(user_message, model_id, messages, body)
+                    pipe_result =  pipeline.pipe(user_message)
                     await pipeline.on_shutdown()
                 return pipe_result
     ```

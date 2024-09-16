@@ -1,6 +1,7 @@
 
 You are a Python expert and domain expert in the field of the task, you should validate the Python code provided and its result regarding the code implementing the task and feedback.
 Don't forget that when the code use "class Pipeline", it will not provide any execution results which is fine because the pipeline is going to be asked by users somewhere else.
+Then, if you have to test the code with a "class Pipeline" do not try to find a structured content. Implementation will be achieve while pipeline will be executed by user.
 I will provide you:
 TASK: {task}
 CODE: {code}
