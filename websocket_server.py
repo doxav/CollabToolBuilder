@@ -31,10 +31,10 @@ class WebsocketServer:
                         monitor = self.monitors[agent_name]
                         result = monitor.execute_function(function_name, params)
                         message = json.dumps({"status": "success", "result": result})
-                        message = None
+                        #message = None
                     else:
                         message = json.dumps({"status": "error", "message": "Monitor not found"})
-                        message = None
+                        #message = None
                 for client in self.connected_clients:
                     if client != websocket and message is not None:
                         await client.send(message)

@@ -331,21 +331,46 @@ $(function() {
 
     socket.onclose = function() {
         console.log('WebSocket connection closed');
-        // Try to reconnect every 2 seconds
+        // Try to reconnect 3 times
         setTimeout(function() {
             socket = new WebSocket('ws://localhost:6789');
-        }, 2000);
+        }, 500);
+        setTimeout(function() {
+            socket = new WebSocket('ws://localhost:6789');
+        }, 1000);
+        setTimeout(function() {
+            socket = new WebSocket('ws://localhost:6789');
+        }, 4000);
     };
 
-    function sendFunctionCall(agentName, functionName, params) {
+    /*function sendFunctionCall(agentName, functionName, params) {
         let message = {
             agent_name: agentName,
             function: functionName,
             params: params
         };
         socket.send(JSON.stringify(message));
-    }
+    }*/
 
+    function sendFunctionCall(agentName, functionName, params, callback = null) {
+        let message = {
+            agent_name: agentName,
+            function: functionName,
+            params: params
+        };
+        socket.send(JSON.stringify(message));
+
+        if (callback) {
+            console.log('Setting up callback for', functionName);
+            alert('Setting up callback for', functionName);
+            socket.onmessage = function(event) {
+                let data = JSON.parse(event.data);
+                if (data.function === functionName) {
+                    callback(data.message);  // Call the callback with the response
+                }
+            };
+        }
+    }
     function displayMessage(data) {
         currentAgent = data.agent_name;
         let title = `${data.agent_name} | ${data.message_type} | ${new Date().toLocaleTimeString()}`;
@@ -358,7 +383,7 @@ $(function() {
         // Check if message_type includes "Inference streaming output"
         if (data.message_type && data.message_type.includes("Inference streaming output")) {
             // Do not wrap the message in collapsible container
-            content = `<div class='message'>${formatMessage(data.message)}</div>`;
+            content = `${formatMessage(data.message)}`;
         } else {
             // First, check if message is code or prompt
             let isCode = isPythonCode(data.message);
@@ -377,7 +402,7 @@ $(function() {
                     </div>
                 `;
             } else {
-                content = `<div class='message'>${formatMessage(data.message)}</div>`;
+                content = `${formatMessage(data.message)}`;
             }
         }
 
@@ -609,15 +634,15 @@ $(function() {
                     <span class="arrow"><i class="fa-solid fa-chevron-down"></i></span> <span>Inference ${inferenceNumber}</span>
                 </div>
                 <div class="collapsible-content">
-                    <div class="column-container"></div>
+                    <div class="column-container"><div class="message"></div></div>
                 </div>
             </div>
         `);
         $(`#message-accordion > div[data-agent="TaskIdentificationAgent"] > div`).append($inferenceAccordion);
             }
             // Add the data to the last message container
-            let $messageContainer = $(`<div class="message">${content}</div>`);
-            $inferenceAccordion.find('.column-container').append($messageContainer);
+            //let $messageContainer = $(content);
+            $inferenceAccordion.find('.message').append(content);
             updateFilters(data);
             // END COPY
 
@@ -808,12 +833,24 @@ $(function() {
                 console.log('Columns to delete:', columnsToDelete);
             });
 
+            /*$(`#regenwithmymodifbutton-${columnId}`).click(function () {
+                let targetColumn = document.getElementById(`column-${columnId}`);
+                let text = targetColumn.querySelector('.message').textContent;
+                let textWithoutHtml = text.replace(/<[^>]*>/g, '');
+                sendFunctionCall(data.agent_name, "criticAnswer", {content_annotated: textWithoutHtml, inference_result_msg: ""});
+            });*/
+
             $(`#regenwithmymodifbutton-${columnId}`).click(function () {
                 let targetColumn = document.getElementById(`column-${columnId}`);
                 let text = targetColumn.querySelector('.message').textContent;
                 let textWithoutHtml = text.replace(/<[^>]*>/g, '');
-                //sendFunctionCall(data.agent_name, "regenerateWithModifications", {text: textWithoutHtml, output_id: columnIndex});
-                alert(textWithoutHtml);
+
+                sendFunctionCall(data.agent_name, "criticAnswer", {content_annotated: textWithoutHtml, inference_result_msg: ""}, function(responseMessage) {
+                    console.log(responseMessage);
+                    alert(responseMessage);
+                    // Replace the content of the column with the new response
+                    targetColumn.querySelector('.message').innerHTML = formatMessage(responseMessage);
+                });
             });
 
             $(`#regenallbutton-${columnId}`).click(function () {
@@ -822,8 +859,7 @@ $(function() {
                 columns.forEach(column => {
                     text += column.textContent.replace(/<[^>]*>/g, '');
                 });
-                //sendFunctionCall(data.agent_name, "regenerateWithAllModifications", {text: text});
-                alert(text);
+                sendFunctionCall(data.agent_name, "criticAnswer", {content_annotated: text, inference_result_msg: ""});
             });
         }
 
@@ -989,7 +1025,7 @@ $(function() {
         );
     });
 
-    return `<div class="message">${cleanString}</div>`;
+    return `${cleanString}`;
 }
 
 
