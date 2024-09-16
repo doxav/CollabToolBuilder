@@ -782,11 +782,13 @@ $(function() {
                 <div style="text-align: center;">
                     <button id="regenallbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Regenerate with all modifications</button>
                 </div>
-                <br>
-                <div style="text-align: center;">
-                    <button id="score-${columnId}">Scoring ...</button>
-                </div>
-            `;
+                <br>`;
+            if (data.agent_name == 'CodingAgent'){
+                targetColumn.innerHTML +=`
+                    <div style="text-align: center;">
+                        <button id="score-${columnId}">Scoring ...</button>
+                    </div>
+            `;}
 
                 // Refresh value on value change
                 $(`#slider-${columnId}`).on('input', function () {

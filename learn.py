@@ -340,7 +340,7 @@ class CodingAgent():
                         elif isinstance(node, ast.ImportFrom) or isinstance(node, ast.Import):
                             node_type = "ImportFrom"
                             imports.append(ast.get_source_segment(code, node))
-                            smart_print("ImportFrom node: IMPORT SHOULD BE DONE INSIDE FUNCTIONS !!!", self.name, "process_ai_generated_code SystemMessage")
+                            #smart_print("ImportFrom node: IMPORT SHOULD BE DONE INSIDE FUNCTIONS !!!", self.name, "process_ai_generated_code SystemMessage")
                         else:
                             smart_print(f"Unsupported node type: {type(node)} - content:  {ast.get_source_segment(code, node)}", self.name, "process_ai_generated_code SystemMessage")
                             #raise ValueError(f"Unsupported node type: {type(node)} - content:  {ast.get_source_segment(code, node)}")  # TODO: check if await is needed
@@ -525,8 +525,7 @@ class CodingAgent():
                 test_results = check_results.get("Run Tests", None)
                 if test_results:
                     results.append(test_results)
-        smart_print(f"************ Code tests results ************\n{test_results}\n************************".replace("\\n", "\n"), self.name, "code_task_and_run_test RESULT")
-        # test if more than one code is returned, so ask to select or 
+                    
         if len(results) > 1:
             # display the list of results with success, exception and code
             results_list = ""
@@ -817,7 +816,7 @@ class CapitalizationAgent:
             page_content = result.page_content
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
-            if self.problem_prompts_subdir=="Anomalies/":
+            if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
                 if 'class_name' in task_data:
                     smart_print(f"{id}: failed Pipeline name:{task_data['class_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
             else:
