@@ -832,7 +832,8 @@ $(function() {
                 let targetColumn = document.getElementById(`column-${columnId}`);
                 let text = targetColumn.querySelector('.message').textContent;
                 let textWithoutHtml = text.replace(/<[^>]*>/g, '');
-                sendFunctionCall(data.agent_name, "regenerateWithModifications", {text: textWithoutHtml, output_id: columnIndex});
+                //sendFunctionCall(data.agent_name, "regenerateWithModifications", {text: textWithoutHtml, output_id: columnIndex});
+                alert(textWithoutHtml);
             });
 
             $(`#regenallbutton-${columnId}`).click(function () {
@@ -841,7 +842,8 @@ $(function() {
                 columns.forEach(column => {
                     text += column.textContent.replace(/<[^>]*>/g, '');
                 });
-                sendFunctionCall(data.agent_name, "regenerateWithAllModifications", {text: text});
+                //sendFunctionCall(data.agent_name, "regenerateWithAllModifications", {text: text});
+                alert(text);
             });
         }
 
