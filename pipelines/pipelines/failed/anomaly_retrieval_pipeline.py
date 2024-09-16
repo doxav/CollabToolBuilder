@@ -154,9 +154,7 @@ class Pipeline:
 
     def process_user_response(self, user_input):
         if user_input == None:
-            self.reset_pipeline()
-            return "Now can you help me with providing some information about the anomaly you encountered?"
-        
+            
         new_title = self.extract_title_from_prompt(user_input)
         if new_title:
             self.anomaly_data['title'] = new_title
