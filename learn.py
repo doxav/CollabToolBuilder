@@ -32,7 +32,7 @@ import json
 
 #openai.api_key = os.environ['OPENAI_API_KEY']
 #if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
-
+HumanLLMMonitor.use_websocket = False
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
 UnifiedVectorDB.es_user = elastic_user
@@ -196,32 +196,58 @@ class TaskIdentificationAgent():
         self.model_choice = model_choice
 
     def identify_best_task(self) -> str:
-        learnt_tasks = HumanLLMMonitor.get_learnt_tasks()
-        failed_tasks = HumanLLMMonitor.get_failed_tasks()
+        user_message = ""
+        if not self.optuna_opti:
+            user_message = self.human_llm_identify_best_task.get_multiple_few_shots(criteria=self.criteria)
+            self.human_llm_identify_best_task.user_message_few_shots = user_message
         envs_status = '\n'.join([env.get_state() for env in self.envs])
-        if self.criteria and self.criteria != "None":
-            match self.criteria:
-                case "Learnt":
-                    learnt_tasks = None
-                case "Failed":
-                    failed_tasks = None
-                case "Env":
-                    envs_status = None
-                case "LearntFailed":
-                    learnt_tasks, failed_tasks = None, None
-                case "LearntEnv":
-                    learnt_tasks, envs_status = None, None
-                case "FailedEnv":
-                    failed_tasks, envs_status = None, None
-                case _:
-                    learnt_tasks, failed_tasks, envs_status = None, None, None
 
-        user_message =  f"- Already developed tasks: {learnt_tasks if learnt_tasks and learnt_tasks!='{}' else 'None'}\n"+\
-                        f"- Already failed tasks (too hard): {failed_tasks if failed_tasks and failed_tasks!='{}' else 'None'}\n"+\
-                        f"- Current status of examples on which the task will be tested on: {envs_status}\n"
+        user_message += f"\n- Current status of examples on which the task will be tested on: {envs_status}\n"
 
-        task = self.human_llm_identify_best_task.CallHumanLLM(system_prompt_template=self.problem_prompts_subdir+"identify_best_task", user_message=user_message, return_message_content_only=False, optuna=self.optuna_opti, model_choice=self.model_choice, stream_output=True)
+        task = self.human_llm_identify_best_task.CallHumanLLM(
+            system_prompt_template=self.problem_prompts_subdir + "identify_best_task",
+            user_message=user_message,
+            return_message_content_only=False,
+            optuna=self.optuna_opti,
+            model_choice=self.model_choice,
+            stream_output=True
+        )
         return task
+
+    def expand_criteria_aligned(self, criteria):
+        """
+        Étend les critères où les valeurs sont des listes en alignant les indices ensemble.
+        Par exemple, si les critères sont :
+        {
+            'sources': ['learnt', 'failed'],
+            'num': [3, 2],
+            'format': ['Json', 'Markdown']
+        }
+        Cette méthode générera :
+        [
+            {'sources': 'learnt', 'num': 3, 'format': 'Json'},
+            {'sources': 'failed', 'num': 2, 'format': 'Markdown'}
+        ]
+        """
+        # Déterminer la longueur maximale parmi les listes
+        lengths = [len(value) if isinstance(value, list) else 1 for value in criteria.values()]
+        max_length = max(lengths)
+
+        expanded_criteria = []
+
+        for i in range(max_length):
+            new_criteria = {}
+            for key, value in criteria.items():
+                if isinstance(value, list):
+                    if i < len(value):
+                        new_criteria[key] = value[i]
+                    else:
+                        # Si la liste est plus courte, utiliser le dernier élément
+                        new_criteria[key] = value[-1]
+                else:
+                    new_criteria[key] = value
+            expanded_criteria.append(new_criteria)
+        return expanded_criteria
 
 
 # Agent 2: Code Task
@@ -392,6 +418,8 @@ class CodingAgent():
                         decision = "a" if max_autofix > 1 else "no"
                         if decision == "a":
                             max_autofix -= 1
+                    elif self.optuna_opti:
+                        decision = "n"
                     else:
                         decision = smart_input("Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ", self.name).strip().lower()
                     if decision in ("no", "n", ""):
@@ -450,11 +478,13 @@ class CodingAgent():
             user_message+=f"{nl}CURRENT STATE OF DOCUMENTS TO PERFORM/TEST TASK: [[[{nl}{nl.join([env.get_state(extended=True) for env in self.envs])}{nl}]]]"
         if len(primitives) > 0:
             user_message+=f"{dnl}RE-USABLE CODE PRIMITIVES: [[[{nl}{nl.join(primitives)}{nl}]]]"
-        successful_tasks, failed_tasks = HumanLLMMonitor.get_learnt_tasks(), HumanLLMMonitor.get_failed_tasks()
+        successful_tasks = list(HumanLLMMonitor.get_learnt_tasks())
+        failed_tasks = list(HumanLLMMonitor.get_failed_tasks())
         if successful_tasks and len(successful_tasks) > 0:
-            user_message+=f"{dnl}PREVIOUSLY SUCCESSFUL TASKS: [[[{nl}{nl.join(successful_tasks[:5])}{nl}]]]"
+            user_message += f"{dnl}PREVIOUSLY SUCCESSFUL TASKS: [[[{nl}{nl.join(successful_tasks[:5])}{nl}]]]"
         if failed_tasks and len(failed_tasks) > 0:
-            user_message+=f"{dnl}PREVIOUSLY FAILED TASKS: [[[{nl}{nl.join(failed_tasks[:3])}{nl}]]]"
+            user_message += f"{dnl}PREVIOUSLY FAILED TASKS: [[[{nl}{nl.join(failed_tasks[:3])}{nl}]]]"
+
         if previous_errors and len(previous_errors) > 0:
             user_message+=f"{dnl}PREVIOUS ATTEMPTS TO CODE THE TASK: [[[{nl}"
             for previous_error, previous_score, previous_code in zip(previous_errors, previous_scores, previous_codes):
@@ -741,6 +771,13 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     time_end = time.time() + max_execution_time
     scores = None
 
+    if criteria is None and optuna_opti is None:
+        criteria = {
+            'sources': ["learnt", "failed", "default"],
+            'num': [2,3,2],
+            'format': ["json", "Jinja2", "Markdown"]
+        }
+
     if HumanLLMMonitor.use_websocket:
         if HumanLLMMonitor.websocket_server is None:
             HumanLLMMonitor.initialize_websocket_server()
@@ -767,6 +804,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
 
     #agent_capitalize.retrieve_saved_tasks_in_db(include_code=include_code, selected_successful_functions=selected_successful_functions, selected_failed_functions=selected_failed_functions)
     continue_identifying_tasks = True
+
 
     # Global learn loop
     while continue_identifying_tasks and time.time() < time_end:

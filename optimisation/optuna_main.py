@@ -1,3 +1,4 @@
+import json
 import optuna as opt
 import time
 import os
@@ -11,19 +12,43 @@ from utils.llm_utils import HumanLLMMonitor
 HumanLLMMonitor.use_websocket = False
 
 def definition_few_shots(trial):
-    few_shots = ""
-    few_shots_tags = trial.suggest_categorical("few_shots_tags", [True, False])
-    if few_shots_tags:
-        number_of_shots = trial.suggest_int("number_of_shots", 1, 5)
-        # filter_tags = trial.suggest_categorical("filter_tags", "")
-        ranking_tags = trial.suggest_categorical("ranking_tags",
-                                                 ["by_score_asc", "by_date_asc", "mrr_asc", "cosine_asc", "random",
-                                                  "accuracy", "relevance"])
-        #annotations = trial.suggest_categorical("annotations", ["fix", "delete", "approve", "variants", "nothing"])
-        summary = trial.suggest_categorical("summary", [True, False])
-        format = trial.suggest_categorical("format", ["JSON", "Markdown", "Jinja2"])
-        few_shots = f"few_shots: {{'num': {number_of_shots}, 'ranking_method': '{ranking_tags}', 'summary': {summary}, 'format': '{format}'}}"
-    return few_shots
+    few_shots_tags = ""
+    # Déterminer le nombre de tags few_shot (entre 0 et 3)
+    number_of_tags = trial.suggest_int("number_of_few_shot_tags", 0, 3)
+    sources_list = ["learnt", "failed", "example"]
+
+    for i in range(number_of_tags):
+        source = sources_list[i]
+        num = trial.suggest_int(f"num_tag_{i+1}", 1, 5)
+        output_format = trial.suggest_categorical(f"format_tag_{i+1}", ["Json", "Markdown", "Jinja2"])
+
+        # Si le format est 'Jinja2', obtenir éventuellement un template
+        if output_format == "Jinja2":
+            # Le template est optionnel
+            template = trial.suggest_categorical(
+                f"template_tag_{i+1}",
+                ["template1", "template2", None]
+            )
+        else:
+            template = None
+
+        # Construction du dictionnaire pour le tag few_shot
+        few_shot_dict = {
+            "sources": source,
+            "num": num,
+            "format": output_format
+        }
+        if template:
+            few_shot_dict["template"] = template
+
+        # Conversion du dictionnaire en chaîne JSON avec des guillemets doubles
+        few_shot_json = json.dumps(few_shot_dict)
+
+        # Ajout du tag few_shot au prompt
+        few_shots_tags += f"few_shots: {few_shot_json}\n"
+
+    return few_shots_tags
+
 
 def definition_global_parameters(temperature : float = None, presence_penalty : float = None):
     # Initialize the default and premium LLMs
@@ -86,7 +111,7 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
                                            optuna_opti=optuna_opti,
                                            criteria=criteria,
                                            special_criteria=special_criteria)
-    print("Analysis...") 
+    print("Analysis...")
     analysis(name_exp)
     print("Analysis done.")
     return performance

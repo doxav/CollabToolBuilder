@@ -108,7 +108,7 @@ def objective(trial, timestamp_exp: int):
     coach_criterias = coach_criterias_dict[trial.suggest_categorical("coach_criterias", ['coach_criterias_topcurrent', 'coach_criterias_newhybrid_v1', 'coach_criterias_newhybrid_v2'])]
 
     criteria_user_message = trial.suggest_categorical("criteria_user_message",
-                                                      ["None", "Learnt", "Failed", "Env", "All", "LearntEnv", "FailedEnv"])
+                                                      ["None", "learnt", "failed", "learnt failed"])
 
     #coach_format_output_type = "Markdown"
 
@@ -180,5 +180,5 @@ if __name__ == "__main__":
         name_exp = sys.argv[1]
     else :
         timestamp_xp = int(time.time())
-        name_exp = f"xp_coder{timestamp_xp}"
+        name_exp = f"xp_coach{timestamp_xp}"
     launch_study(lambda trial: objective(trial, name_exp), name_exp)

@@ -15,7 +15,7 @@ requests~=2.31.0
 psutil
 httpx
 PyPDF2
-pydantic
+pydantic~=2.8.2
 watchdog
 PyYAML~=6.0.1
 python-dotenv~=1.0.1
@@ -24,17 +24,17 @@ python-dotenv~=1.0.1
 transformers
 torch
 sentence-transformers
-scikit-learn
+scikit-learn~=1.5.1
 numpy~=1.26.4
 optuna~=3.6.1
 einops
-pandas
+pandas~=2.2.2
 seaborn
 
 # Web scraping and APIs
 wikipedia-api
 arxiv
-bs4
+bs4~=0.0.2
 beautifulsoup4~=4.12.3
 
 # Parsing and NLP
@@ -48,17 +48,17 @@ flask_cors
 websockets~=11.0.3
 
 # Elasticsearch
-elasticsearch
+elasticsearch~=8.14.0
 
 # Neo4j for graph database
-neo4j
+neo4j~=5.24.0
 
 # Gradio for UI
 gradio
 
 # Jupyter and IPython tools
-ipywidgets
-IPython
+ipywidgets~=8.1.5
+IPython~=8.25.0
 ipykernel
 jupyter_client~=8.6.2
 nbformat~=5.10.4
@@ -67,3 +67,10 @@ nbformat~=5.10.4
 llama-index
 llama-index-llms-ollama
 llama-index-embeddings-ollama
+
+config~=0.5.1
+Jinja2~=3.1.4
+fastapi~=0.111.0
+aiohttp~=3.9.5
+starlette~=0.37.2
+nest-asyncio~=1.6.0

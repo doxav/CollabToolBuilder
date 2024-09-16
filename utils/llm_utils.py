@@ -485,7 +485,6 @@ class HumanLLMMonitor:
     # Initialize vector databases for tasks
     db_collection_success="successful_tasks"
     db_collection_failed="failed_tasks"
-    common_vectordb_embedding_function = None
     reset_db_indices = False # Set to True if you want to reset the database indices
     db_learnt_tasks = None
     db_failed_tasks = None
@@ -510,25 +509,163 @@ class HumanLLMMonitor:
     def get_learnt_tasks(cls, query_text="*", k=10, metadata_filter=None, sort_order=None, similarity_search=False):
         cls.check_init_db()
         if similarity_search:
-            # Perform similarity search
             results = cls.db_learnt_tasks.similarity_search_with_score(query=query_text, k=k)
         else:
-            # Perform standard query with optional metadata filtering and sorting
-            results = cls.db_learnt_tasks.query(query_text=query_text, k=k, metadata_filter=metadata_filter, sort_order=sort_order)
-        
-        return {result.metadata['task_name']: result.page_content for result in results}
+            results = cls.db_learnt_tasks.query(
+                query_text=query_text, k=k, metadata_filter=metadata_filter, sort_order=sort_order
+            )
+        return {result.page_content for result in results}
 
     @classmethod
     def get_failed_tasks(cls, query_text="*", k=10, metadata_filter=None, sort_order=None, similarity_search=False):
         cls.check_init_db()
         if similarity_search:
-            # Perform similarity search
             results = cls.db_failed_tasks.similarity_search_with_score(query=query_text, k=k)
         else:
-            # Perform standard query with optional metadata filtering and sorting
-            results = cls.db_failed_tasks.query(query_text=query_text, k=k, metadata_filter=metadata_filter, sort_order=sort_order)
-        
-        return {result.metadata['task_name']: result.page_content for result in results}
+            results = cls.db_failed_tasks.query(
+                query_text=query_text, k=k, metadata_filter=metadata_filter, sort_order=sort_order
+            )
+        return {result.page_content for result in results}
+
+    @classmethod
+    def get_multiple_few_shots(cls, criteria):
+        if not criteria:
+            return ""
+
+        # Convert parameters to lists if they aren't already
+        def ensure_list(value, default):
+            return value if isinstance(value, list) else [value or default]
+
+        keys_defaults = {
+            'sources': ['learnt'],
+            'num': 5,
+            'query_text': '*',
+            'metadata_filter': {},
+            'sort_order': None,
+            'similarity_search': False,
+            'format': 'Json',
+            'format_string': None,
+            'template': None
+        }
+
+        # Prepare criteria lists
+        criteria_lists = {key: ensure_list(criteria.get(key), default) for key, default in keys_defaults.items()}
+
+        # Determine the number of iterations
+        max_length = max(len(v) for v in criteria_lists.values())
+
+        # Extend lists to match max_length
+        for key in criteria_lists:
+            criteria_lists[key].extend([criteria_lists[key][-1]] * (max_length - len(criteria_lists[key])))
+
+        all_formatted_examples = []
+
+        for i in range(max_length):
+            crit = {key: criteria_lists[key][i] for key in keys_defaults}
+
+            if crit['sources'] == "learnt":
+                examples = cls.get_learnt_tasks(
+                    query_text=crit['query_text'],
+                    k=crit['num'],
+                    metadata_filter=crit['metadata_filter'],
+                    sort_order=crit['sort_order'],
+                    similarity_search=crit['similarity_search']
+                )
+            elif crit['sources'] == "failed":
+                examples = cls.get_failed_tasks(
+                    query_text=crit['query_text'],
+                    k=crit['num'],
+                    metadata_filter=crit['metadata_filter'],
+                    sort_order=crit['sort_order'],
+                    similarity_search=crit['similarity_search']
+                )
+            else:
+                examples = HumanLLMMonitor.common_vectordb.query(
+                    query_text=crit['query_text'],
+                    k=crit['num'],
+                    metadata_filter=crit['metadata_filter'],
+                    sort_order=crit['sort_order']
+                )
+
+            format_criteria = {
+                'format': crit['format'],
+                'format_string': crit['format_string'],
+                'template': crit['template']
+            }
+
+            formatted_examples = cls.format_examples(examples, format_criteria)
+            all_formatted_examples.append(formatted_examples)
+
+        return "\n".join(all_formatted_examples)
+
+    @classmethod
+    def format_examples(cls, examples, criteria):
+        if not examples:
+            return ""
+
+        if isinstance(criteria, str):
+            criteria = {'format': criteria}
+
+        output_format = criteria.get('format', 'Json')
+        template_str = criteria.get('template', None)
+
+        formatted_examples = []
+
+        for entry in examples:
+            # Extract the content appropriately
+            if isinstance(entry, str):
+                content_str = entry
+            elif hasattr(entry, 'page_content'):
+                content_str = entry.page_content
+            else:
+                # Handle other possible structures
+                content_str = str(entry)
+
+            try:
+                content = json.loads(content_str)
+            except json.JSONDecodeError as e:
+                print(f"Error decoding JSON: {e}")
+                continue
+
+            if output_format.lower() == 'json':
+                formatted_example = json.dumps(content, indent=2)
+
+            elif output_format.lower() == 'markdown':
+                formatted_example = cls.dict_to_markdown(content)
+
+            elif output_format.lower() == 'jinja2':
+                if not template_str:
+                    # Provide a default template if none is specified
+                    template_str = cls.get_default_jinja2_template(content)
+                try:
+                    from jinja2 import Template
+                    template = Template(template_str)
+                    formatted_example = template.render(**content)
+                except Exception as e:
+                    print(f"Error rendering Jinja2 template: {e}")
+                    continue
+            else:
+                print(f"Unsupported format or missing template for '{output_format}'.")
+                continue
+
+            formatted_examples.append(formatted_example)
+
+        return "\n".join(formatted_examples) + "\n"
+
+    @classmethod
+    def get_default_jinja2_template(cls, content):
+        # Génère un template Jinja2 par défaut en listant toutes les clés et leurs valeurs
+        template_lines = []
+        for key in content.keys():
+            template_lines.append(f"{key}: {{{{ {key} }}}}")
+        return "\n".join(template_lines)
+
+    @staticmethod
+    def dict_to_markdown(content):
+        markdown_lines = []
+        for key, value in content.items():
+            markdown_lines.append(f"**{key}**: {value}")
+        return "\n".join(markdown_lines)
 
     @classmethod
     def add_learnt_task(cls, serialized_entry, tags):
@@ -558,8 +695,8 @@ class HumanLLMMonitor:
             cls.ws_thread.join(timeout=5)  # Wait for 5 seconds to join the thread
             cls.websocket_server = None
             cls.ws_thread = None
-
     # static method to change common_vectordb_embedding_function which can be either OpenAIEmbeddings or HuggingFaceEmbeddings
+
     @staticmethod
     def set_common_vectordb_embedding_function(embedding_function):
         # if embedding_function is a string, then create the corresponding embedding function
@@ -588,17 +725,24 @@ class HumanLLMMonitor:
             )
 
     def get_few_shots_tag_args(self, prompt=None):
-        """
-        Retrieves the few shots tag arguments from the system prompt.
-
-        Returns:
-            dict: A dictionary containing the few shots tag arguments.
-        """
         if prompt is None:
             prompt = self.system_prompt
-        few_shots_match = re.search(r"few_shots:\s*(\{.*\})?$", prompt)
-        few_shots_data = json.loads(few_shots_match.group(1)) if few_shots_match and few_shots_match.group(1) else {}
-        return few_shots_data
+
+        # Trouver tous les tags 'few_shots' avec leurs arguments
+        few_shots_matches = re.findall(r"few_shots:\s*(\{[^}]*\})", prompt, re.DOTALL)
+
+        few_shots_data_list = []
+        for match in few_shots_matches:
+            try:
+                data = json.loads(match)
+                few_shots_data_list.append(data)
+            except json.JSONDecodeError as e:
+                print(f"Erreur lors du décodage du tag 'few_shots': {e}")
+                continue
+
+        prompt_without_few_shots = re.sub(r"few_shots:\s*\{[^}]*\}\s*", "", prompt, flags=re.DOTALL)
+
+        return few_shots_data_list, prompt_without_few_shots
 
     def set_llmORchain(self, llm_name, is_premium=False, temperature=0.7):
         if llm_name in self.llmORchains_list:
@@ -606,7 +750,7 @@ class HumanLLMMonitor:
                 self.premium_llm_name = llm_name
             else:
                 self.default_llm_name = llm_name
-                
+
             selected_llm_or_chain = self.llmORchains_list[llm_name]
 
             # Check if it's a sequence of steps (RunnableSequence)
@@ -694,7 +838,7 @@ class HumanLLMMonitor:
                 self.premium_llm = selected_llm_or_chain
             else:
                 self.default_llm = selected_llm_or_chain
-                
+
             return True
         else:
             smart_print(f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}", self.agent_name)
@@ -719,25 +863,27 @@ class HumanLLMMonitor:
         import sys
         from typing import Type
         from pydantic import BaseModel
-        
+
         module_name = "dynamic_module"
         spec = importlib.util.spec_from_file_location(module_name, file_path)
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
-        
+
         # Iterate through the attributes of the module to find the Pydantic class
         for attr_name in dir(module):
             attr = getattr(module, attr_name)
             if isinstance(attr, type) and issubclass(attr, BaseModel) and attr is not BaseModel:
                 return attr
-        
+
         raise ValueError("No Pydantic BaseModel class found in the provided file.")
+
 
     def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_max_context_size=16000, default_llmORchain=None,
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1, llmORchains_list=None,
                  synthesize_mode=False, inference_checks=None, output_schema=None, temperature=0.7, optuna=False):
         self.current_inference_context = None
+        self.user_message_few_shots = ""
         if llmORchains_list is None: raise ValueError("llmORchains_list must be provided")
         self.llmORchains_list = llmORchains_list
         self.temperature = temperature
@@ -768,9 +914,8 @@ class HumanLLMMonitor:
         self.synthesize_mode = synthesize_mode
         self.inference_checks = inference_checks if inference_checks else {}
         self.last_inference_check_results = None
-
-
     # New: Handling function calls via WebSocket
+
     def execute_function(self, function_name, params):
         if hasattr(self, function_name):
             func = getattr(self, function_name)
@@ -799,77 +944,31 @@ class HumanLLMMonitor:
         return None
 
     def load_prompt(self, function_name: str = None, agent_name: str = None, prompt: str = None) -> str:
-        """
-        Load a prompt with the ability to retrieve few_shots examples based on the provided tag parameters.
-
-        :param function_name: The name of the function calling the prompt.
-        :param agent_name: The name of the agent requesting the prompt.
-        :param prompt: The name of the prompt file to load.
-        :return: A formatted string including the main prompt and few_shots examples.
-        """
-        function_name = function_name if function_name else inspect.stack()[2].function
 
         with open(f"prompts/{prompt}.txt", "r") as f:
-            prompt = f.read()
+            prompt_content = f.read()
 
-        if "few_shots" in prompt:
-            few_shots_tag = self.get_few_shots_tag_args()
-            match = re.search(r"few_shots:\s*(\{[^}]*\})\s*$", prompt, re.DOTALL)
-            # Remove the few_shots tag and the dictionary from the prompt
-            prompt = prompt[:match.start()].rstrip()
-        else:
-            return prompt
+        few_shots_data_list, prompt_content = self.get_few_shots_tag_args(prompt_content)
 
-        HumanLLMMonitor._check_and_init_vector_db()
+        if few_shots_data_list:
+            combined_criteria = self.combine_criteria(few_shots_data_list)
+            self.user_message_few_shots = self.get_multiple_few_shots(combined_criteria)
+            prompt_content += "\n\n" + self.user_message_few_shots
 
-        # Manage the few_shots_tag parameters
-        if few_shots_tag == {}:
-            # Set default values if the dictionary is empty
-            default_params = {
-                'num': 5,  # Default number of examples to retrieve
-                'filter': {},  # Default filter for the vector database
-                'ranking_method': 'relevance',  # Default ranking method
-                'generate_summary': False,  # Indicates if a summary should be generated
-                'summary_char_limit': 200  # Character limit for the summary
-            }
-            # Merge the provided parameters with the default values
-            merged_params = {**default_params, **(few_shots_tag or {})}
+        return prompt_content
 
-            # Initialize FewShotsParams with the merged parameters
-            params = FewShotsParams(**merged_params)
-        else :
-            params = FewShotsParams(**few_shots_tag)
-
-        # Create metadata filter for querying the vector database
-        metadata_filter = {
-            "function_name": function_name,
-            "agent_name": agent_name,
-            **params.filter
-        }
-
-        try:
-            # Query the vector database to retrieve relevant log entries
-            log_entries = HumanLLMMonitor.common_vectordb.query(
-                query_text="*",
-                metadata_filter=metadata_filter,
-                k=params.num,
-                sort_order=params.ranking_method
-            )
-        except Exception as e:
-            raise ValueError(f"Error querying vector database: {e}")
-
-        # Process the retrieved examples based on the parameters
-        examples = self._process_examples(log_entries, params)
-
-        # Generate a summary if required
-        if params.generate_summary:
-            summary = self.generate_summary(examples, params.summary_char_limit)
-            examples.append(summary)
-
-        # Combine the main prompt with the examples
-        combined_prompt = f"{prompt}\n\nExamples:\n" + "\n\n".join(examples)
-
-        return combined_prompt
+    def combine_criteria(self, criteria_list):
+        combined = {}
+        for criteria in criteria_list:
+            for key, value in criteria.items():
+                if key in combined:
+                    if isinstance(combined[key], list):
+                        combined[key].extend(value if isinstance(value, list) else [value])
+                    else:
+                        combined[key] = [combined[key]] + (value if isinstance(value, list) else [value])
+                else:
+                    combined[key] = value
+        return combined
 
     def _process_examples(self, log_entries: List, params: FewShotsParams) -> List[str]:
         """
@@ -1289,36 +1388,108 @@ class HumanLLMMonitor:
 
     def getScoredResults(self, function_name):
         HumanLLMMonitor._check_and_init_vector_db()
+        menu = (
+            "Do you want to see:\n"
+            "[A] all MODIFIED/SCORED/COMMENTED results.\n"
+            "[B] INPUT modified only.\n"
+            "[C] OUTPUT modified only.\n"
+            "[D] SCORED only.\n"
+            "[E] COMMENTED only.\n"
+            "[F] Success Tasks.\n"
+            "[G] Failed Tasks.\n"
+            "[H] user_message_few_shots.\n"
+            "[I] Modify user_message_few_shots.\n"
+            "Select your letter for choice or hit enter for all: "
+        )
         confirm = smart_input(
-            "Do you want see:\n[A] all MODIFIED/SCORED/COMMENTED results.\n[B] INPUT modified only.\n[C] OUTPUT modified only.\n[D] SCORED only.\n[E] COMMENTED only.\nSelect your letter for choice or hit enter for all: ",
-            self.agent_name,"BEFORE inference action MENU").upper()
+            menu,
+            self.agent_name,
+            "BEFORE inference action MENU"
+        ).upper()
         result = []
+
+        if confirm == "F":
+            tasks = self.get_learnt_tasks()
+            task_list = "\n".join(tasks)
+            _visual_input(task_list)
+            return
+
+        if confirm == "G":
+            tasks = self.get_failed_tasks()
+            task_list = "\n".join(tasks)
+            _visual_input(task_list)
+            return
+
+        if confirm == "H":
+            if self.user_message_few_shots:
+                _visual_input(self.user_message_few_shots)
+            else:
+                print("No few_shots available.")
+            return
+
+        if confirm == "I":
+            new_few_shots = _visual_input(self.user_message_few_shots or "")
+            self.user_message_few_shots = new_few_shots
+            smart_print(message=self.user_message_few_shots, agent_name=self.agent_name)
+            return
+
         if confirm in ["A", "", "B"]:
-            result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
-                                                                metadata_filter={"function_name": function_name,
-                                                                                 "agent_name": self.agent_name,
-                                                                                 "input_modified": True},
-                                                                k=100))
+            result.extend(HumanLLMMonitor.common_vectordb.query(
+                query_text="*",
+                metadata_filter={
+                    "function_name": function_name,
+                    "agent_name": self.agent_name,
+                    "input_modified": True
+                },
+                k=100
+            ))
+
         if confirm in ["A", "", "C"]:
-            result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
-                                                                metadata_filter={"function_name": function_name,
-                                                                                 "agent_name": self.agent_name,
-                                                                                 "output_modified": True},
-                                                                k=100))
+            result.extend(HumanLLMMonitor.common_vectordb.query(
+                query_text="*",
+                metadata_filter={
+                    "function_name": function_name,
+                    "agent_name": self.agent_name,
+                    "output_modified": True
+                },
+                k=100
+            ))
+
         if confirm in ["A", "", "D"]:
-            result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
-                                                                metadata_filter={"function_name": function_name,
-                                                                                 "agent_name": self.agent_name,
-                                                                                 "scored": True}, k=100))
+            result.extend(HumanLLMMonitor.common_vectordb.query(
+                query_text="*",
+                metadata_filter={
+                    "function_name": function_name,
+                    "agent_name": self.agent_name,
+                    "scored": True
+                },
+                k=100
+            ))
+
         if confirm in ["A", "", "E"]:
-            result.extend(HumanLLMMonitor.common_vectordb.query(query_text="*",
-                                                                metadata_filter={"function_name": function_name,
-                                                                                 "agent_name": self.agent_name,
-                                                                                 "commented": True}, k=100))
-        visual_result = "\n===============================\n".join(
-            [json.dumps(json.loads(item.page_content), indent=4, sort_keys=True).replace("\\n", "\n") for item
-             in result])
-        _visual_input(visual_result, filetype="json")
+            result.extend(HumanLLMMonitor.common_vectordb.query(
+                query_text="*",
+                metadata_filter={
+                    "function_name": function_name,
+                    "agent_name": self.agent_name,
+                    "commented": True
+                },
+                k=100
+            ))
+
+        if result:
+            visual_result = "\n===============================\n".join(
+                [
+                    json.dumps(
+                        json.loads(item.page_content),
+                        indent=4,
+                        sort_keys=True
+                    ).replace("\\n", "\n") for item in result
+                ]
+            )
+            _visual_input(visual_result, filetype="json")
+        else:
+            print("No results found for the selected option.")
 
     @staticmethod
     def getPreviousResults(function_name=None,agent_name=None,k=100):
