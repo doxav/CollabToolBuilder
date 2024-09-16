@@ -1066,6 +1066,10 @@ $(document).on('click', '.collapsible-header', function() {
                         let cleanString = match[2].replace(/\u001b\[\d+m/g, '');
                         let $option = $(`<div class="menu-option" data-option="${letter}">${cleanString}</div>`);
                         $("#menu-options").append($option);
+                    } else if(match[2].includes("Continue")){
+                        // Set button color to green
+                        let $option = $(`<div class="menu-option" data-option="${letter}" style="background-color: green;">${match[2]}</div>`);
+                        $("#menu-options").append($option);
                     } else {
                         let $option = $(`<div class="menu-option" data-option="${letter}">${match[2]}</div>`);
                         $("#menu-options").append($option);
