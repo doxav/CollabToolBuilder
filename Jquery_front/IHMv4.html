@@ -199,7 +199,7 @@ color: white;
     transition: transform 0.2s;
 }
 .collapsible-message.open .arrow {
-    transform: rotate(90deg);
+    transform: rotate(180deg);
 }
 .collapsible-message.open .collapsible-content {
     display: block;
@@ -369,7 +369,7 @@ $(function() {
                 content = `
                     <div class="collapsible-message open">
                         <div class="collapsible-header">
-                            <span class="arrow">▶</span> <span>${isCode ? 'Code' : 'Prompt'}</span>
+                            <span class="arrow"><i class="fa-solid fa-chevron-down"></i></span> <span>${isCode ? 'Code' : 'Prompt'}</span>
                         </div>
                         <div class="collapsible-content">
                             ${formatMessage(data.message)}
@@ -606,7 +606,7 @@ $(function() {
         $inferenceAccordion = $(`
             <div data-inference="${inferenceNumber}" class="collapsible-message open">
                 <div class="collapsible-header">
-                    <span class="arrow">▶</span> <span>Inference ${inferenceNumber}</span>
+                    <span class="arrow"><i class="fa-solid fa-chevron-down"></i></span> <span>Inference ${inferenceNumber}</span>
                 </div>
                 <div class="collapsible-content">
                     <div class="column-container"></div>
@@ -727,46 +727,22 @@ $(function() {
 
             const evaluationType = agentEvaluations[data.agent_name] || 'default';
 
-            if (evaluationType === 'score') {
-                targetColumn.innerHTML += `
-                    <div style="text-align: center;">
-                        <p>Score the solution:</p>
-                        <input type="range" min="0" max="10" value="5" step="1" class="slider" id="slider-${columnId}">
-                        <br><span id="value-${columnId}">5</span>
-                    </div>
-                    <br>
-                    <div style="text-align: center;">
-                        <input type="text" id="comment-${columnId}" placeholder="Add a comment">
-                    </div>
-                    <br>
-                    <div style="text-align: center;">
-                        <button id="evaluate-${columnId}"><i class="fa-regular fa-paper-plane"></i> Evaluate this solution</button>
-                    </div>
-                    <br>
-                `;
-            } else if (evaluationType === 'compliance') {
-                targetColumn.innerHTML += `
-                    <div style="text-align: center;">
-                        <p>Does this solution comply?</p>
-                        <select id="compliance-${columnId}">
-                            <option value="1">Yes</option>
-                            <option value="0">No</option>
-                        </select>
-                    </div>
-                    <br>
-                    <div style="text-align: center;">
-                        <input type="text" id="comment-${columnId}" placeholder="Add a comment">
-                    </div>
-                    <br>
-                    <div style="text-align: center;">
-                        <button id="evaluate-${columnId}"><i class="fa-regular fa-paper-plane"></i> Evaluate this solution</button>
-                    </div>
-                    <br>
-                `;
-
-            } else {
-                // Évaluation par défaut
-            }
+            targetColumn.innerHTML += `
+                <div style="text-align: center;">
+                    <p>Score the solution:</p>
+                    <input type="range" min="0" max="10" value="5" step="1" class="slider" id="slider-${columnId}">
+                    <br><span id="value-${columnId}">5</span>
+                </div>
+                <br>
+                <div style="text-align: center;">
+                    <input type="text" id="comment-${columnId}" placeholder="Add a comment">
+                </div>
+                <br>
+                <div style="text-align: center;">
+                    <button id="evaluate-${columnId}"><i class="fa-regular fa-paper-plane"></i> Evaluate this solution</button>
+                </div>
+                <br>
+            `;
 
             // Boutons supplémentaires avec identifiants mis à jour
             targetColumn.innerHTML += `
@@ -782,11 +758,15 @@ $(function() {
                 <div style="text-align: center;">
                     <button id="regenallbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Regenerate with all modifications</button>
                 </div>
-                <br>
-                <div style="text-align: center;">
-                    <button id="score-${columnId}">Scoring ...</button>
-                </div>
             `;
+            if(evaluationType === 'score') {
+                targetColumn.innerHTML += `
+                    <br>
+                    <div style="text-align: center;">
+                        <button id="score-${columnId}">Scoring ...</button>
+                    </div>
+                `;
+            }
 
                 // Refresh value on value change
                 $(`#slider-${columnId}`).on('input', function () {
