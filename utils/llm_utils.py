@@ -315,9 +315,12 @@ class UnifiedVectorDB:
     es_user = None
     es_password = None
     OpenAI_embedding_function_name = "text-embedding-ada-002"
+    db_connection_check_done = False
 
     @staticmethod
     def check_db():
+        if UnifiedVectorDB.db_connection_check_done is True:
+            return
         if UnifiedVectorDB.db_type == 'elasticsearch':
             session = requests.Session()
             retry = Retry(total=5, backoff_factor=1)
@@ -328,11 +331,13 @@ class UnifiedVectorDB:
                 response = session.get(UnifiedVectorDB.es_url, auth=auth, timeout=5, verify=False)
                 response.raise_for_status()
                 print("Elasticsearch response:", response.text)
+                UnifiedVectorDB.db_connection_check_done = True
             except requests.exceptions.RequestException as e:
                 print(f"Error: {e}\nURL: {UnifiedVectorDB.es_url}\nCheck Elasticsearch and credentials.")
                 exit(1)
         elif UnifiedVectorDB.db_type == 'chroma':
             print("Chroma DB check is not yet implemented")
+            UnifiedVectorDB.db_connection_check_done = True
         else:
             raise ValueError(f"Unsupported DB type: {UnifiedVectorDB.db_type}")
 
@@ -678,10 +683,12 @@ class HumanLLMMonitor:
 
     def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_max_context_size=16000, default_llmORchain=None,
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1, llmORchains_list=None,
-                 synthesize_mode=False, inference_checks=None, output_schema=None):
+                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature=0.7, optuna=False):
         self.current_inference_context = None
         if llmORchains_list is None: raise ValueError("llmORchains_list must be provided")
         self.llmORchains_list = llmORchains_list
+        self.temperature = temperature
+        self.optuna = optuna
         self.system_prompt = system_prompt
         self.set_output_schema(output_schema)
         self.set_default_llmORchain(default_llmORchain if default_llmORchain else "default_llm") #.default_llm = default_llmORchain if default_llmORchain else self.llmORchains_list.get("default_llm")
@@ -714,37 +721,37 @@ class HumanLLMMonitor:
     def execute_function(self, function_name, params):
         if hasattr(self, function_name):
             func = getattr(self, function_name)
-            
+
             if callable(func):
                 # Récupérer les informations de la signature de la fonction
                 func_signature = inspect.signature(func)
                 param_count = len(func_signature.parameters)
-                
+
                 # Si la fonction attend un seul argument positionnel
                 if param_count == 1 and not isinstance(params, dict):
                     return func(params)
-                
+
                 # Si la fonction attend plusieurs arguments positionnels
                 elif param_count > 1 and isinstance(params, (list, tuple)):
                     return func(*params)
-                
+
                 # Si la fonction attend des mots-clés et `params` est un dictionnaire
                 elif isinstance(params, dict):
                     return func(**params)
-                
+
                 else:
                     raise TypeError(f"Cannot match parameters to function signature. Expected {param_count} parameters but received {type(params).__name__}.")
-        
+
         # Retourner une valeur par défaut si la fonction n'existe pas ou n'est pas callable
         return None
-    
+
     def load_prompt(self, function_name: str = None, agent_name: str = None, prompt: str = None) -> str:
         """
         Load a prompt with the ability to retrieve few_shots examples based on the provided tag parameters.
 
         :param function_name: The name of the function calling the prompt.
         :param agent_name: The name of the agent requesting the prompt.
-        :param few_shots_tag: A dictionary containing parameters to customize few_shots example retrieval.
+        :param prompt: The name of the prompt file to load.
         :return: A formatted string including the main prompt and few_shots examples.
         """
         function_name = function_name if function_name else inspect.stack()[2].function
@@ -856,7 +863,7 @@ class HumanLLMMonitor:
        :return: A string containing the generated summary.
        """
        # Set up the language model and prompt
-       llm = OpenAI(temperature=0.7)
+       llm = OpenAI(temperature=self.temperature)
        prompt = PromptTemplate(
           input_variables=["examples"],
           template="Summarize the following examples in {char_limit} characters or less:\n\n{examples}"
@@ -952,8 +959,8 @@ class HumanLLMMonitor:
 
             smart_print(before_menu+menu, self.agent_name, "BEFORE inference action MENU")
             menu_start_time = time.time()
-            match (optuna):
-                case "Coach":
+            match (optuna.lower() if optuna else ""):
+                case "coach":
                     llm_keys = list(self.llmORchains_list.keys())
                     if type(model_choice) == int:
                         # Model change from choice of optuna
@@ -970,6 +977,8 @@ class HumanLLMMonitor:
                     premium_llm_function = self.premium_llm
                     self.synthesize_mode = False
                     # Default actions for all agents while running with optuna
+                    action = ""
+                case "coder":
                     action = ""
                 case _: # Default case
                     action = smart_input(
@@ -1843,4 +1852,3 @@ The following annotations are provided to guide the refinement process. Each ann
         )
 
         return [message.content for message in output_messages] if return_message_content_only else output_messages
-    

@@ -251,12 +251,26 @@ class TaskIdentificationAgent():
 
 # Agent 2: Code Task
 class CodingAgent():
-    def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None):
+    def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, special_criteria=None):
         #super().__init__(llm)
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
+        if special_criteria is not None:
+            for key, value in special_criteria.items():
+                setattr(self, key, value)
 
-        self.human_llm_code_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice, premium_llm_by_default=True, num_parallel_inferences=4, llmORchains_list=llmORchains_list)#, output_schema="code_task.schema.py")
+        kwargs = {
+            "default_llmORchain": default_llm_choice,
+            "premium_llmORchain": premium_llm_choice,
+            "premium_llm_by_default": True,
+            "num_parallel_inferences": 4,
+            "llmORchains_list": llmORchains_list,
+            "optuna": optuna
+        }
+        if hasattr(self, 'temperature'):
+            kwargs["temperature"] = self.temperature
+
+        self.human_llm_code_task = HumanLLMMonitor(**kwargs)
         self.human_llm_code_task.skip_rounds = skip_rounds
         self.human_llm_code_task.add_inference_check("Code Parsing", self.parse_ai_generated_code)
         self.human_llm_code_task.add_inference_check("Run Tests", self.run_tests_on_code)
@@ -389,13 +403,15 @@ class CodingAgent():
     
         # Set initial state before running tests or runnable code
         no_runtime_errors, exec_results = [], []
-
         # insert content of config.py into the code to ensure that the OPENAI_API_KEY is set
         with open("config.py", "r") as f: common_code = f.read() + "\n"
         # Common code part to be executed in all cases
         common_code += "\n".join(primitives) + "\n"
 
         # Run the code & tests in each environment
+        max_autofix = None
+        if hasattr(self, 'max_autofix'):
+            max_autofix = self.max_autofix
         for env in self.envs:
             env.backup_state()
             # Determine tests to run or set default runnable code
@@ -408,8 +424,10 @@ class CodingAgent():
                 no_runtime_error, exec_result = env.step(code_to_run)
                 while not no_runtime_error and current_skip_rounds <= 0:
                     smart_print("\033[31mCODE ERROR\033[0m: "+exec_result, self.name, "code_task_and_run_test SystemMessage")
-                    if self.optuna_opti:
-                        decision = "n"
+                    if self.optuna_opti and max_autofix is not None:
+                        decision = "a" if max_autofix > 1 else "no"
+                        if decision == "a":
+                            max_autofix -= 1
                     else:
                         decision = smart_input("Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ", self.name).strip().lower()
                     if decision in ("no", "n", ""):
@@ -480,7 +498,22 @@ class CodingAgent():
             user_message+=f"{nl}]]]"
 
         current_skip_rounds = self.human_llm_code_task.skip_rounds # save the initial value to align it for code validation
-        codes = self.human_llm_code_task.CallHumanLLM(system_prompt_template=self.problem_prompts_subdir+"code_task", user_message=user_message, return_message_content_only=False, stream_output=False, optuna=self.optuna_opti, model_choice=self.model_choice)
+        # Initialisation des kwargs avec les paramètres requis
+        kwargs = {
+            "system_prompt_template": self.problem_prompts_subdir + "code_task",
+            "user_message": user_message,
+            "return_message_content_only": False,
+            "stream_output": False,
+            "optuna": self.optuna_opti,
+            "model_choice": self.model_choice
+        }
+
+        # Ajouter temperature seulement si l'attribut temperature existe dans l'instance
+        if hasattr(self, 'temperature'):
+            kwargs["temperature"] = self.temperature
+
+        # Appeler la méthode avec les arguments sous forme de **kwargs
+        codes = self.human_llm_code_task.CallHumanLLM(**kwargs)
         results = []
 
         for index, code in enumerate(codes):
@@ -530,7 +563,7 @@ class ValidationAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None):
         #super().__init__(llm)
         self.name = self.__class__.__name__
-        self.human_llm_validate_code = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice, premium_llm_by_default=False, llmORchains_list=llmORchains_list)
+        self.human_llm_validate_code = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice, premium_llm_by_default=False, llmORchains_list=llmORchains_list, optuna=optuna)
         self.human_llm_validate_code.skip_rounds = skip_rounds
         self.envs = envs
         self.optuna_opti = optuna
@@ -565,7 +598,7 @@ class CapitalizationAgent:
         self.tasks_repository: Dict[str, str] = {}
         self.failed_tasks_repository: Dict[str, str] = {}
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
-        self.human_llm_generate_function_description = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice, premium_llm_by_default=False, llmORchains_list=llmORchains_list)
+        self.human_llm_generate_function_description = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice, premium_llm_by_default=False, llmORchains_list=llmORchains_list, optuna=optuna)
         self.human_llm_generate_function_description.skip_rounds = skip_rounds
         self.optuna_opti = optuna
         self.model_choice = model_choice
@@ -873,7 +906,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0,
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                               optuna_opti=None, allow_custom_score_state_functions=False,
-                              criteria=None, max_execution_time=900):
+                              criteria=None, max_execution_time=900, special_criteria=None):
     time_end = time.time() + max_execution_time
     scores = None
 
@@ -897,7 +930,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         test_environments = [manager.get_environment()]
 
     agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, premium_llm_by_default=agtask_premium_llm_by_default, skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(model_choice) == dict else model_choice), criteria=criteria)
-    agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['coding' if 'coding' in model_choice else 'coder'] if type(model_choice) == dict else model_choice))
+    agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['coding' if 'coding' in model_choice else 'coder'] if type(model_choice) == dict else model_choice), special_criteria=special_criteria)
     agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['validation' if 'validation' in model_choice else 'critic'] if type(model_choice) == dict else model_choice))
     agent_capitalize = CapitalizationAgent(default_llm_key, premium_llm_choice=premium_llm_key, skip_rounds=agcapitalize_skip_rounds,problem_prompts_subdir=problem_prompts_subdir, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(model_choice) == dict else model_choice))
 
