@@ -2,7 +2,9 @@ from typing import List, Dict, Union
 import numpy as np
 from neo4j import GraphDatabase
 import os
+import matplotlib
 import re
+matplotlib.use('Agg')  # Use a non-interactive backend
 import matplotlib.pyplot as plt
 from pydantic import BaseModel
 
@@ -44,25 +46,43 @@ class Pipeline:
         with driver.session() as session:
             result = session.run(query)
             return [{"phase": record["phase"], "count": record["nombre_anomalies"]} for record in result]
+   
+    @staticmethod
+    def sanitize_for_plotting(text):
+        # Replace problematic characters for LaTeX
+        # Escape special characters
+        sanitized_text = text.replace('$', r'\$').replace('_', r'\_').replace('\\', r'\\').replace('{', r'\{').replace('}', r'\}')
+        # Remove problematic sequences
+        sanitized_text = re.sub(r'[^a-zA-Z0-9\s\$\_\{\}\\]', '', sanitized_text)
+        return sanitized_text
 
     def aggregate_phase_data(self, data):
         return {record['phase']: record['count'] for record in data}
 
     def generate_graph(self, phase_data):
-        phases = list(phase_data.keys())
-        counts = list(phase_data.values())
+        filtered_phase_data = {phase: count for phase, count in phase_data.items() if phase is not None and count is not None}
+
+        phases = list(filtered_phase_data.keys())
+        counts = list(filtered_phase_data.values())
+
+        if not phases or not counts:
+            return "No valid data to plot."
+
+        # Get top 5 phases
+        top_phases = sorted(filtered_phase_data.items(), key=lambda x: x[1], reverse=True)[:5]
+        phases, counts = zip(*top_phases)
 
         plt.figure(figsize=(10, 6))
         plt.barh(phases, counts, color='skyblue')
-        plt.xlabel('Nombre d\'anomalies')
-        plt.ylabel('Phase génératrice d\'anomalies')
-        plt.title('Répartition des anomalies par phase génératrice')
+        plt.xlabel(self.sanitize_for_plotting("Nombre d anomalies"))
+        plt.ylabel(self.sanitize_for_plotting("Phase génératrice d anomalies"))
+        plt.title(self.sanitize_for_plotting("Répartition des anomalies par phase génératrice"))
+        plt.rcParams['text.usetex'] = False
         plt.tight_layout()
 
-        # Sauvegarder le graphique sous forme d'image
-        image_path = "anomalies_par_phase.png"
+        image_path = 'graph_from_pipelines/graph_stade_generateur.png'
         plt.savefig(image_path)
-
+        plt.close()  # Close the plot to free up resources
         return image_path
 
     def generate_recommendations(self, phase_data):
@@ -71,7 +91,8 @@ class Pipeline:
             "Maintenance": "Renforcer les tests après chaque mise à jour.",
             "Test": "Augmenter la fréquence des tests de régression."
         }
-        top_phases = sorted(phase_data.items(), key=lambda x: x[1], reverse=True)[:3]
+        # Get top 5 phases
+        top_phases = sorted(phase_data.items(), key=lambda x: x[1], reverse=True)[:5]
         recommendation_text = "Recommandations pour les phases génératrices d'anomalies :\n"
         
         for phase, count in top_phases:
