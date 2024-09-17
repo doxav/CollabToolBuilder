@@ -199,7 +199,7 @@ color: white;
     transition: transform 0.2s;
 }
 .collapsible-message.open .arrow {
-    transform: rotate(90deg);
+    transform: rotate(180deg);
 }
 .collapsible-message.open .collapsible-content {
     display: block;
@@ -321,6 +321,7 @@ $(function() {
     };
 
     socket.onmessage = function(event) {
+        console.log('Received message1');
         try {
             let data = JSON.parse(event.data);
             displayMessage(data);
@@ -331,21 +332,57 @@ $(function() {
 
     socket.onclose = function() {
         console.log('WebSocket connection closed');
-        // Try to reconnect every 2 seconds
+        // Try to reconnect 3 times
         setTimeout(function() {
             socket = new WebSocket('ws://localhost:6789');
-        }, 2000);
+        }, 500);
+        setTimeout(function() {
+            socket = new WebSocket('ws://localhost:6789');
+        }, 1000);
+        setTimeout(function() {
+            socket = new WebSocket('ws://localhost:6789');
+        }, 4000);
     };
 
-    function sendFunctionCall(agentName, functionName, params) {
+    /*function sendFunctionCall(agentName, functionName, params) {
         let message = {
             agent_name: agentName,
             function: functionName,
             params: params
         };
         socket.send(JSON.stringify(message));
-    }
+    }*/
 
+    function sendFunctionCall(agentName, functionName, params, callback = null) {
+        let message = {
+            agent_name: agentName,
+            function: functionName,
+            params: params
+        };
+        socket.send(JSON.stringify(message));
+
+        if (callback) {
+            console.log('Setting up callback for', functionName);
+            socket.onmessage = function(event) {
+                console.log('Reception event');
+                console.log('Received message:', event.data);
+                try {
+                    data = JSON.parse(event.data);
+                } catch (e) {console.log('Error parsing JSON:', e); return;}   
+                console.log('Parsed data:', data);
+                if (data.function === functionName) {
+                    console.log('Calling callback with data:', data);
+                    console.log('Data.message:', data.result);
+                    // Add a text at the begginning of the message
+                    callback(data.result);  // Call the callback with the response
+                    console.log('Callback called');
+                } else {
+                    console.log('Function name does not match for callback, displaying message instead');
+                    displayMessage(data);
+                }
+            };
+        }
+    }
     function displayMessage(data) {
         currentAgent = data.agent_name;
         let title = `${data.agent_name} | ${data.message_type} | ${new Date().toLocaleTimeString()}`;
@@ -358,7 +395,7 @@ $(function() {
         // Check if message_type includes "Inference streaming output"
         if (data.message_type && data.message_type.includes("Inference streaming output")) {
             // Do not wrap the message in collapsible container
-            content = `<div class='message'>${formatMessage(data.message)}</div>`;
+            content = `${formatMessage(data.message)}`;
         } else {
             // First, check if message is code or prompt
             let isCode = isPythonCode(data.message);
@@ -369,7 +406,7 @@ $(function() {
                 content = `
                     <div class="collapsible-message open">
                         <div class="collapsible-header">
-                            <span class="arrow">▶</span> <span>${isCode ? 'Code' : 'Prompt'}</span>
+                            <span class="arrow"><i class="fa-solid fa-chevron-down"></i></span> <span>${isCode ? 'Code' : 'Prompt'}</span>
                         </div>
                         <div class="collapsible-content">
                             ${formatMessage(data.message)}
@@ -377,7 +414,7 @@ $(function() {
                     </div>
                 `;
             } else {
-                content = `<div class='message'>${formatMessage(data.message)}</div>`;
+                content = `${formatMessage(data.message)}`;
             }
         }
 
@@ -527,7 +564,7 @@ $(function() {
               // COPIED CODE
               let $question = $(`<p>How many parallel inferences?</p>`);
               let $select = $(`<select id="parallel-inferences-select"></select>`);
-              for (let i = 1; i <= 5; i++) {
+              for (let i = 1; i <= 4; i++) {
                   $select.append(`<option value="${i}">${i}</option>`);
               }
               let $button = $(`<button id="send-parallel-inferences">Send</button>`);
@@ -606,18 +643,18 @@ $(function() {
         $inferenceAccordion = $(`
             <div data-inference="${inferenceNumber}" class="collapsible-message open">
                 <div class="collapsible-header">
-                    <span class="arrow">▶</span> <span>Inference ${inferenceNumber}</span>
+                    <span class="arrow"><i class="fa-solid fa-chevron-down"></i></span> <span>Inference ${inferenceNumber}</span>
                 </div>
                 <div class="collapsible-content">
-                    <div class="column-container"></div>
+                    <div class="column-container"><div class="message"></div></div>
                 </div>
             </div>
         `);
         $(`#message-accordion > div[data-agent="TaskIdentificationAgent"] > div`).append($inferenceAccordion);
             }
             // Add the data to the last message container
-            let $messageContainer = $(`<div class="message">${content}</div>`);
-            $inferenceAccordion.find('.column-container').append($messageContainer);
+            //let $messageContainer = $(content);
+            $inferenceAccordion.find('.message').append(content);
             updateFilters(data);
             // END COPY
 
@@ -727,46 +764,22 @@ $(function() {
 
             const evaluationType = agentEvaluations[data.agent_name] || 'default';
 
-            if (evaluationType === 'score') {
-                targetColumn.innerHTML += `
-                    <div style="text-align: center;">
-                        <p>Score the solution:</p>
-                        <input type="range" min="0" max="10" value="5" step="1" class="slider" id="slider-${columnId}">
-                        <br><span id="value-${columnId}">5</span>
-                    </div>
-                    <br>
-                    <div style="text-align: center;">
-                        <input type="text" id="comment-${columnId}" placeholder="Add a comment">
-                    </div>
-                    <br>
-                    <div style="text-align: center;">
-                        <button id="evaluate-${columnId}"><i class="fa-regular fa-paper-plane"></i> Evaluate this solution</button>
-                    </div>
-                    <br>
-                `;
-            } else if (evaluationType === 'compliance') {
-                targetColumn.innerHTML += `
-                    <div style="text-align: center;">
-                        <p>Does this solution comply?</p>
-                        <select id="compliance-${columnId}">
-                            <option value="1">Yes</option>
-                            <option value="0">No</option>
-                        </select>
-                    </div>
-                    <br>
-                    <div style="text-align: center;">
-                        <input type="text" id="comment-${columnId}" placeholder="Add a comment">
-                    </div>
-                    <br>
-                    <div style="text-align: center;">
-                        <button id="evaluate-${columnId}"><i class="fa-regular fa-paper-plane"></i> Evaluate this solution</button>
-                    </div>
-                    <br>
-                `;
-
-            } else {
-                // Évaluation par défaut
-            }
+            targetColumn.innerHTML += `
+                <div style="text-align: center;">
+                    <p>Score the solution:</p>
+                    <input type="range" min="0" max="10" value="5" step="1" class="slider" id="slider-${columnId}">
+                    <br><span id="value-${columnId}">5</span>
+                </div>
+                <br>
+                <div style="text-align: center;">
+                    <input type="text" id="comment-${columnId}" placeholder="Add a comment">
+                </div>
+                <br>
+                <div style="text-align: center;">
+                    <button id="evaluate-${columnId}"><i class="fa-regular fa-paper-plane"></i> Evaluate this solution</button>
+                </div>
+                <br>
+            `;
 
             // Boutons supplémentaires avec identifiants mis à jour
             targetColumn.innerHTML += `
@@ -782,13 +795,15 @@ $(function() {
                 <div style="text-align: center;">
                     <button id="regenallbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Regenerate with all modifications</button>
                 </div>
-                <br>`;
-            if (data.agent_name == 'CodingAgent'){
-                targetColumn.innerHTML +=`
+            `;
+            if(evaluationType === 'score') {
+                targetColumn.innerHTML += `
+                    <br>
                     <div style="text-align: center;">
                         <button id="score-${columnId}">Scoring ...</button>
                     </div>
-            `;}
+                `;
+            }
 
                 // Refresh value on value change
                 $(`#slider-${columnId}`).on('input', function () {
@@ -830,11 +845,23 @@ $(function() {
                 console.log('Columns to delete:', columnsToDelete);
             });
 
+            /*$(`#regenwithmymodifbutton-${columnId}`).click(function () {
+                let targetColumn = document.getElementById(`column-${columnId}`);
+                let text = targetColumn.querySelector('.message').textContent;
+                let textWithoutHtml = text.replace(/<[^>]*>/g, '');
+                sendFunctionCall(data.agent_name, "criticAnswer", {content_annotated: textWithoutHtml, inference_result_msg: ""});
+            });*/
+
             $(`#regenwithmymodifbutton-${columnId}`).click(function () {
                 let targetColumn = document.getElementById(`column-${columnId}`);
                 let text = targetColumn.querySelector('.message').textContent;
                 let textWithoutHtml = text.replace(/<[^>]*>/g, '');
-                sendFunctionCall(data.agent_name, "regenerateWithModifications", {text: textWithoutHtml, output_id: columnIndex});
+
+                sendFunctionCall(data.agent_name, "criticAnswer", {content_annotated: textWithoutHtml, inference_result_msg: ""}, function(responseMessage) {
+                    console.log("responseMessage:"+responseMessage);
+                    // Replace the content of the column with the new response
+                    targetColumn.querySelector('.message').innerHTML = formatMessage(responseMessage);
+                });
             });
 
             $(`#regenallbutton-${columnId}`).click(function () {
@@ -843,7 +870,11 @@ $(function() {
                 columns.forEach(column => {
                     text += column.textContent.replace(/<[^>]*>/g, '');
                 });
-                sendFunctionCall(data.agent_name, "regenerateWithAllModifications", {text: text});
+                sendFunctionCall(data.agent_name, "criticAnswer", {content_annotated: text, inference_result_msg: ""}, function(responseMessage) {
+                    console.log("responseMessage:"+responseMessage);
+                    // Replace the content of the column with the new response
+                    targetColumn.querySelector('.message').innerHTML = formatMessage(responseMessage);
+                });
             });
         }
 
@@ -853,6 +884,10 @@ $(function() {
         }
 
         if (columnIndex === columnMax - 1) {
+            // Si le bouton existe déjà, ne pas le recréer
+            if (document.getElementById(`continue-button-${data.agent_name}`)) {
+                return;
+            }
             // Ajouter le bouton "Continue"
             let $continueButton = $(`<button id="continue-button-${data.agent_name}">Continue</button>`);
             $('.solution-columns').after($continueButton);
@@ -1009,7 +1044,7 @@ $(function() {
         );
     });
 
-    return `<div class="message">${cleanString}</div>`;
+    return `${cleanString}`;
 }
 
 
@@ -1065,6 +1100,10 @@ $(document).on('click', '.collapsible-header', function() {
                         // Remove ANSI codes
                         let cleanString = match[2].replace(/\u001b\[\d+m/g, '');
                         let $option = $(`<div class="menu-option" data-option="${letter}">${cleanString}</div>`);
+                        $("#menu-options").append($option);
+                    } else if(match[2].includes("Continue")){
+                        // Set button color to green
+                        let $option = $(`<div class="menu-option" data-option="${letter}" style="background-color: green;">${match[2]}</div>`);
                         $("#menu-options").append($option);
                     } else {
                         let $option = $(`<div class="menu-option" data-option="${letter}">${match[2]}</div>`);
