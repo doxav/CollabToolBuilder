@@ -46,17 +46,19 @@ class Pipeline:
             return "Welcome on the pipeline. Please provide some data on the article you used to generate the outline."
         elif self.conversation_state == "ask_title":
             return "Ok let's start! Please provide the title of the article."
+        elif self.conversation_state == "ask_authors":
+            return "Great! Now please provide the authors of the article separated by commas."
         elif self.conversation_state == "ask_abstract":
             return "Please provide a brief abstract of the article."
         elif self.conversation_state == "ask_confirmation":
-            return f"Here is the summary of the article:\n\nTitle: {self.article_data['title']}\nAbstract: {self.article_data['abstract']}\n\nIs this information correct? (yes/no)"
+            return f"Here is the summary of the article:\n\nBy {self.article_data['authors']}\nTitle: {self.article_data['title']}\nAbstract: {self.article_data['abstract']}\n\nIs this information correct? (y/n)"
         else:
             return "Thanks for using our pipeline. Please enter a whitespace to start again."
 
     def process_user_response(self, user_input):
         if user_input is None:
             self.reset_pipeline()
-            return "Now can you help me with providing some information about the article you want to structure?"
+            return "Now can you help me with providing some information about the article you   want to structure?"
 
         user_input = user_input.strip()
 
@@ -66,6 +68,11 @@ class Pipeline:
 
         elif self.conversation_state == "ask_title" and user_input != "reset":
             self.article_data['title'] = user_input
+            self.conversation_state = "ask_authors"
+            return self.ask_next_question()
+        
+        elif self.conversation_state == "ask_authors" and user_input != "reset":
+            self.article_data['authors'] = user_input.split(",")
             self.conversation_state = "ask_abstract"
             return self.ask_next_question()
 
@@ -95,21 +102,21 @@ class Pipeline:
     def handle_conversation(self, user_input):
         return self.process_user_response(user_input)
 
-    def generate_initial_outline(self, title: str, abstract: str, temperature=0.7) -> Dict[str, str]:
+    def generate_initial_outline(self, title: str, abstract: str, authors: list) -> Dict[str, str]:
         # Using the function provided earlier to generate a LaTeX outline
         from langchain_openai import ChatOpenAI
         from langchain.prompts import ChatPromptTemplate
         
-        llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=temperature, openai_api_key=openai.api_key)
+        llm = ChatOpenAI(model_name="gpt-4o-mini", openai_api_key=openai.api_key)
         
         prompt_template = """Generate LaTeX code for a 15-page research survey document with bibliography. 
-        The title of the research survey is "{title}," and the abstract is "{abstract}." 
+        The title of the research survey is "{title}," and the abstract is "{abstract} by {authors}." 
         Include sections such as Introduction, Literature Review, Methodology, Findings, Discussion, 
         Conclusion, and Future Work. Ensure proper formatting and structure, and leave placeholders 
         for content in each section."""
         
         prompter = ChatPromptTemplate.from_template(prompt_template)
-        message = prompter.format_messages(title=title, abstract=abstract)
+        message = prompter.format_messages(title=title, abstract=abstract, authors=", ".join(self.article_data['authors']))
         
         generated_text = llm(message)
         
@@ -122,14 +129,16 @@ class Pipeline:
 
         article = {
             'title': self.article_data['title'],
-            'abstract': self.article_data['abstract']
+            'abstract': self.article_data['abstract'],
+            'authors': self.article_data.get('authors', []),
         }
 
         assert article['title'] is not None, "Title can't be None"
         assert article['abstract'] is not None, "Abstract can't be None"
+        assert article['authors'] is not None, "Authors can't be None"
 
         # Step 2: Generate the LaTeX outline based on the title and abstract
-        outline = self.generate_initial_outline(article['title'], article['abstract'])
+        outline = self.generate_initial_outline(article['title'], article['abstract'], article['authors'])
 
         # Step 4: Return the generated outline in a suitable format
         return outline

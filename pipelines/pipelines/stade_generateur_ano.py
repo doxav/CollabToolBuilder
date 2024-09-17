@@ -86,18 +86,14 @@ class Pipeline:
         return image_path
 
     def generate_recommendations(self, phase_data):
-        recommendations = {
-            "Développement": "Augmenter les revues de code pour éviter les bugs en développement.",
-            "Maintenance": "Renforcer les tests après chaque mise à jour.",
-            "Test": "Augmenter la fréquence des tests de régression."
-        }
+        
         # Get top 5 phases
         top_phases = sorted(phase_data.items(), key=lambda x: x[1], reverse=True)[:5]
-        recommendation_text = "Recommandations pour les phases génératrices d'anomalies :\n"
+        recommendation_text = "**Top des phases les plus génératrices d'anomalies :**\n"
         
         for phase, count in top_phases:
-            recommendation_text += f"Phase: {phase} - {count} anomalies\n"
-            recommendation_text += f"Recommandation: {recommendations.get(phase, 'Aucune recommandation spécifique.')}\n\n"
+            recommendation_text += f"  -  Phase de production: **{phase}** - {count} anomalies\n\n\n"
+            
         
         return recommendation_text
 
