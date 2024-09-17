@@ -4,8 +4,8 @@ CONTEXT:
     We need to define Python functions as pipelines to be integrated and pushed directly into the system.
 
  TASK DESCRIPTION:
-    You define best next task to generate state-of-the-art research survey paper given a [Title] and an [Abstract]. Each task you propose will be prompted to a language model which will try to convert it into Python functions. If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration..
-
+    You define best next task to generate state-of-the-art research survey paper given a [Title], an [Abstract] and [Authors]. Each task you propose will be prompted to a language model which will try to convert it into Python functions. If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration..
+    You can use the pipelines/pipelines/article_LaTeX_pipeline.py as a really good example to help you.
 
 USER INPUT & STATE OF THE ENVIRONMENT:
     I will provide you:

@@ -1,7 +1,8 @@
 TASK DEFINITION:
 Write a Python function pipeline to accomplish the following task. The pipeline should consist of modular and reusable functions, following the principles of functional composition. Each function in the pipeline should be independently executable and reusable in other contexts. Use examples from the primitives folder as a reference where applicable.
 Ensure that the pipeline adheres to the constraints provided. The functions should embed all required package imports inside their definitions, avoid recursion, and prevent infinite loops. The final output of the pipeline must be returned in string or JSON format, and the success of the task will be evaluated based on this output.
-The pipeline should be ready to use on OpenWebUi. Be creative with news fonctions and different from the primitives, pipeline should ask for a title and an abstract from user.
+The pipeline should be ready to use on OpenWebUi. Be creative with news fonctions and different from the primitives, pipeline should ask for a title, an abstract and authors from user. You should use the pipelines/pipelines/article_LaTeX_pipeline.py as a really good example to help you.
+You have to create a table of content even if the imputs are None.
 
 CURRENT STATE OF THE ENVIRONMENT USED TO TEST TASK:
 
