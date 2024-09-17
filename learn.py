@@ -35,8 +35,8 @@ import json
 HumanLLMMonitor.use_websocket = False
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
-# UnifiedVectorDB.es_user = elastic_user
-# UnifiedVectorDB.es_password = elastic_password
+UnifiedVectorDB.es_user = elastic_user
+UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002" # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function="intfloat/e5-base-v2" # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
@@ -650,7 +650,10 @@ class CapitalizationAgent:
         if parsed_code:
             task_name = parsed_code.get(name_key, "replace this text with a descriptive name of the class" if is_anomaly else "replace this text with a descriptive name of the function")
         else :
-            task_name = smart_input(f"CONFIG Please provide a name for the {'pipeline' if is_anomaly else 'function'}: ").strip()
+            if self.optuna_opti:
+                task_name = f"{task_description[:500]}"
+            else:
+                task_name = smart_input(f"CONFIG Please provide a name for the {'pipeline' if is_anomaly else 'function'}: ").strip()
         if not self.optuna_opti or is_anomaly:
             task_name = _visual_input(task_name)
             task_description_refined = _visual_input(task_description)

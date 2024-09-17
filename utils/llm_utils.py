@@ -11,7 +11,6 @@ from langchain import LLMChain
 from langchain.llms import OpenAI
 from langchain.prompts import PromptTemplate
 
-
 import time
 import json
 from elasticsearch import Elasticsearch
@@ -79,7 +78,8 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
         if re.search(r'[^\x20-\x7E\t\n\r]', message):
             # Remove unexpected characters
             message = re.sub(r'[^\x20-\x7E\t\n\r]', "", message)
-        message_dict = {'message':message, 'agent_name':agent_name, 'message_type':message_type, 'append':append, 'column_id':column_id, 'column_max':column_max}
+        message_dict = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'append': append,
+                        'column_id': column_id, 'column_max': column_max}
         # convert message_dict to json
         message = json.dumps(message_dict)
         time.sleep(0.05)
@@ -140,15 +140,39 @@ def smart_input(message: str, agent_name=None, message_type=None):
                 print("Waiting for WebSocket client to connect")
                 time.sleep(1)
 
-        # Wait and receive response from WebSocket
-        async def receive_message():
+        async def receive_message(timeout=900):
             async with websockets.connect(ws_url) as websocket:
-                print("SMART INPUT Waiting for response from WebSocket")
-                response = await websocket.recv()
-                print("SMART INPUT Received response from WebSocket")
-                answer = json.loads(response)['message']
-                print("SMART INPUT Answer: ", answer)
-                return str(answer).upper()
+                try:
+                    print("SMART INPUT Waiting for response from WebSocket")
+                    while True:
+                        response = await asyncio.wait_for(websocket.recv(), timeout=timeout)
+                        print("SMART INPUT Received response from WebSocket")
+                        json_data = json.loads(response)
+                        if 'sender_id' in json_data and json_data[
+                            'sender_id'] == HumanLLMMonitor.websocket_server.server_id:
+                            print("Received message from self, ignoring")
+                            continue
+
+                        if 'result' in json_data:
+                            print("Received my function result, ignoring")
+                            json_data['sender_id'] = HumanLLMMonitor.websocket_server.server_id
+                            response = json.dumps(json_data)
+                            HumanLLMMonitor.websocket_server.send_notasync_message(response)
+                            continue
+
+                        else:
+                            break
+                    if 'message' in json_data:
+                        answer = json_data['message']
+                    elif 'result' in json_data:
+                        answer = json_data['result']
+                    else:
+                        raise ValueError("No 'message' or 'result' in WebSocket response")
+                    print("SMART INPUT Answer: ", answer)
+                    return str(answer).upper()
+                except asyncio.TimeoutError:
+                    print("Timeout waiting for response from WebSocket")
+                    return None
 
         return asyncio.run(receive_message())
 
@@ -266,7 +290,7 @@ def save_prompt(prompt_name, text, package_path="."):
     # if prompt_file_path_name exists, move existing file to prompt_file_path_name.timestamp (timestamp = datetime.now().isoformat())
     if f_exists(prompt_file_path_name):
         moved_file_path_name = prompt_file_path_name + datetime.now().strftime(".%H-%M-%S_%m-%d-%y")
-        smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}","save_prompt")
+        smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}", "save_prompt")
         f_move(prompt_file_path_name, moved_file_path_name)
 
     smart_print(f"Saving new prompt file {prompt_file_path_name}", "save_prompt")
@@ -291,7 +315,8 @@ def save_prompt_with_tag(prompt_name, text, new_tag, package_path="."):
     # Backup existing file
     if f_exists(prompt_file_path_name):
         moved_file_path_name = prompt_file_path_name + datetime.now().strftime(".%Y-%m-%d_%H-%M-%S")
-        smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}","save_prompt_with_tag")
+        smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}",
+                    "save_prompt_with_tag")
         f_move(prompt_file_path_name, moved_file_path_name)
 
     smart_print(f"Saving new prompt file {prompt_file_path_name}", "save_prompt_with_tag")
@@ -326,7 +351,8 @@ class UnifiedVectorDB:
             retry = Retry(total=5, backoff_factor=1)
             adapter = HTTPAdapter(max_retries=retry)
             session.mount("https://", adapter)
-            auth = HTTPBasicAuth(UnifiedVectorDB.es_user, UnifiedVectorDB.es_password) if UnifiedVectorDB.es_user else None
+            auth = HTTPBasicAuth(UnifiedVectorDB.es_user,
+                                 UnifiedVectorDB.es_password) if UnifiedVectorDB.es_user else None
             try:
                 response = session.get(UnifiedVectorDB.es_url, auth=auth, timeout=5, verify=False)
                 response.raise_for_status()
@@ -356,7 +382,8 @@ class UnifiedVectorDB:
             self._collection = self.db._collection
         elif UnifiedVectorDB.db_type == 'elasticsearch':
             elastic_client = Elasticsearch(UnifiedVectorDB.es_url,
-                                           http_auth=(UnifiedVectorDB.es_user, UnifiedVectorDB.es_password) if UnifiedVectorDB.es_user else None,
+                                           http_auth=(UnifiedVectorDB.es_user,
+                                                      UnifiedVectorDB.es_password) if UnifiedVectorDB.es_user else None,
                                            verify_certs=False, ssl_show_warn=False)
             self.db = ElasticsearchStore(
                 index_name=self.collection_name,
@@ -472,7 +499,7 @@ class HumanLLMMonitor:
     step_id = 0
     function_list = None
     common_vectordb = None
-    common_vectordb_embedding_function = None #OpenAIEmbeddings(model=UnifiedVectorDB.OpenAI_embedding_function_name, deployment=UnifiedVectorDB.OpenAI_embedding_function_name)  #HuggingFaceEmbeddings(model_name="intfloat/e5-base-v2", encode_kwargs={"normalize_embeddings": True}) # TODO: set as a parameter
+    common_vectordb_embedding_function = None  #OpenAIEmbeddings(model=UnifiedVectorDB.OpenAI_embedding_function_name, deployment=UnifiedVectorDB.OpenAI_embedding_function_name)  #HuggingFaceEmbeddings(model_name="intfloat/e5-base-v2", encode_kwargs={"normalize_embeddings": True}) # TODO: set as a parameter
 
     common_vectordb_collection_name = "human_llm_monitor_logs"
     common_vectordb_persist_directory = "human_llm_monitor_vectordb"
@@ -709,20 +736,22 @@ class HumanLLMMonitor:
             cls.ws_thread.join(timeout=5)  # Wait for 5 seconds to join the thread
             cls.websocket_server = None
             cls.ws_thread = None
-    # static method to change common_vectordb_embedding_function which can be either OpenAIEmbeddings or HuggingFaceEmbeddings
 
+    # static method to change common_vectordb_embedding_function which can be either OpenAIEmbeddings or HuggingFaceEmbeddings
     @staticmethod
     def set_common_vectordb_embedding_function(embedding_function):
         # if embedding_function is a string, then create the corresponding embedding function
         if isinstance(embedding_function, str):
             if embedding_function in ["OpenAIEmbeddings", "text-embedding-ada-002"]:
-                HumanLLMMonitor.common_vectordb_embedding_function = OpenAIEmbeddings(model=embedding_function, deployment=UnifiedVectorDB.OpenAI_embedding_function_name)
+                HumanLLMMonitor.common_vectordb_embedding_function = OpenAIEmbeddings(model=embedding_function,
+                                                                                      deployment=UnifiedVectorDB.OpenAI_embedding_function_name)
             elif embedding_function == "HuggingFaceEmbeddings":
                 HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
                     model_name="intfloat/e5-base-v2", encode_kwargs={"normalize_embeddings": True})
             else:
                 HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
-                    model_name=embedding_function, encode_kwargs={"normalize_embeddings": True}, model_kwargs={"trust_remote_code": True})
+                    model_name=embedding_function, encode_kwargs={"normalize_embeddings": True},
+                    model_kwargs={"trust_remote_code": True})
         else:
             HumanLLMMonitor.common_vectordb_embedding_function = embedding_function
 
@@ -739,6 +768,12 @@ class HumanLLMMonitor:
             )
 
     def get_few_shots_tag_args(self, prompt=None):
+        """
+        Retrieves the few shots tag arguments from the system prompt.
+
+        Returns:
+            dict: A dictionary containing the few shots tag arguments.
+        """
         if prompt is None:
             prompt = self.system_prompt
 
@@ -783,9 +818,12 @@ class HumanLLMMonitor:
                                             name="LLM Temperature",
                                             description="The temperature of the LLM"
                                         )
-                                    ).with_config(configurable={"llm_temperature": temperature})  # Replace with desired default temperature
+                                    ).with_config(configurable={
+                                        "llm_temperature": temperature})  # Replace with desired default temperature
                                 except ValueError as e:
-                                    smart_print(f"Sub-step {key} in step {step} does not support temperature configuration: {e}", self.agent_name)
+                                    smart_print(
+                                        f"Sub-step {key} in step {step} does not support temperature configuration: {e}",
+                                        self.agent_name)
                             modified_dict[key] = sub_step
                         step.steps__ = modified_dict
                         modified_steps.append(step)
@@ -797,7 +835,8 @@ class HumanLLMMonitor:
                                     name="LLM Temperature",
                                     description="The temperature of the LLM"
                                 )
-                            ).with_config(configurable={"llm_temperature": temperature})  # Replace with desired default temperature
+                            ).with_config(configurable={
+                                "llm_temperature": temperature})  # Replace with desired default temperature
                         except ValueError as e:
                             print(f"Step {step} does not support temperature configuration: {e}", self.agent_name)
                         modified_steps.append(step)
@@ -819,9 +858,11 @@ class HumanLLMMonitor:
                             name="LLM Temperature",
                             description="The temperature of the LLM"
                         )
-                    ).with_config(configurable={"llm_temperature": temperature})  # Replace with desired default temperature
+                    ).with_config(
+                        configurable={"llm_temperature": temperature})  # Replace with desired default temperature
                 except ValueError as e:
-                    smart_print(f"LLM/Chain '{llm_name}' does not support temperature configuration: {e}", self.agent_name)
+                    smart_print(f"LLM/Chain '{llm_name}' does not support temperature configuration: {e}",
+                                self.agent_name)
 
             # Apply structured output if needed
             if self.output_schema:
@@ -855,7 +896,9 @@ class HumanLLMMonitor:
 
             return True
         else:
-            smart_print(f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}", self.agent_name)
+            smart_print(
+                f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}",
+                self.agent_name)
             return False
 
     def set_default_llmORchain(self, llm_name, temperature=0.7):
@@ -864,7 +907,7 @@ class HumanLLMMonitor:
     def set_premium_llmORchain(self, llm_name, temperature=0.7):
         return self.set_llmORchain(llm_name, is_premium=True, temperature=temperature)
 
-    def set_output_schema(self, output_schema, package_path = "."):
+    def set_output_schema(self, output_schema, package_path="."):
         # test if output_schema is a string, then it means it is a filename located in the prompt repo, load it and set it as output_schema
         if isinstance(output_schema, str):
             if "/" not in output_schema: self.output_schema_path = f"{package_path}/prompts/{output_schema}"
@@ -893,8 +936,10 @@ class HumanLLMMonitor:
         raise ValueError("No Pydantic BaseModel class found in the provided file.")
 
 
-    def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_max_context_size=16000, default_llmORchain=None,
-                 premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1, llmORchains_list=None,
+    def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_max_context_size=16000,
+                 default_llmORchain=None,
+                 premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1,
+                 llmORchains_list=None,
                  synthesize_mode=False, inference_checks=None, output_schema=None, temperature=0.7, optuna=False):
         self.current_inference_context = None
         self.user_message_few_shots = ""
@@ -904,8 +949,10 @@ class HumanLLMMonitor:
         self.optuna = optuna
         self.system_prompt = system_prompt
         self.set_output_schema(output_schema)
-        self.set_default_llmORchain(default_llmORchain if default_llmORchain else "default_llm") #.default_llm = default_llmORchain if default_llmORchain else self.llmORchains_list.get("default_llm")
-        self.set_premium_llmORchain(premium_llmORchain if premium_llmORchain else "premium_llm") #premium_llm = premium_llmORchain if premium_llmORchain else self.llmORchains_list.get("premium_llm")
+        self.set_default_llmORchain(
+            default_llmORchain if default_llmORchain else "default_llm")  #.default_llm = default_llmORchain if default_llmORchain else self.llmORchains_list.get("default_llm")
+        self.set_premium_llmORchain(
+            premium_llmORchain if premium_llmORchain else "premium_llm")  #premium_llm = premium_llmORchain if premium_llmORchain else self.llmORchains_list.get("premium_llm")
         self.CPS_env_type = CPS_env_type
         self.agent_name = agent_name or self.get_caller_class_name()
         if HumanLLMMonitor.use_websocket:
@@ -928,8 +975,8 @@ class HumanLLMMonitor:
         self.synthesize_mode = synthesize_mode
         self.inference_checks = inference_checks if inference_checks else {}
         self.last_inference_check_results = None
-    # New: Handling function calls via WebSocket
 
+    # New: Handling function calls via WebSocket
     def execute_function(self, function_name, params):
         if hasattr(self, function_name):
             func = getattr(self, function_name)
@@ -952,7 +999,8 @@ class HumanLLMMonitor:
                     return func(**params)
 
                 else:
-                    raise TypeError(f"Cannot match parameters to function signature. Expected {param_count} parameters but received {type(params).__name__}.")
+                    raise TypeError(
+                        f"Cannot match parameters to function signature. Expected {param_count} parameters but received {type(params).__name__}.")
 
         # Retourner une valeur par défaut si la fonction n'existe pas ou n'est pas callable
         return None
@@ -1023,27 +1071,27 @@ class HumanLLMMonitor:
         return examples
 
     def generate_summary(self, examples: List[str], char_limit: int) -> str:
-       """
+        """
        Generate a summary of the examples using a language model.
 
        :param examples: List of example strings to summarize.
        :param char_limit: Maximum character limit for the summary.
        :return: A string containing the generated summary.
        """
-       # Set up the language model and prompt
-       llm = OpenAI(temperature=self.temperature)
-       prompt = PromptTemplate(
-          input_variables=["examples"],
-          template="Summarize the following examples in {char_limit} characters or less:\n\n{examples}"
-       )
+        # Set up the language model and prompt
+        llm = OpenAI(temperature=self.temperature)
+        prompt = PromptTemplate(
+            input_variables=["examples"],
+            template="Summarize the following examples in {char_limit} characters or less:\n\n{examples}"
+        )
 
-       # Create a chain to generate the summary
-       chain = LLMChain(llm=llm, prompt=prompt)
+        # Create a chain to generate the summary
+        chain = LLMChain(llm=llm, prompt=prompt)
 
-       # Generate the summary
-       summary = chain.run(examples="\n".join(examples), char_limit=char_limit)
+        # Generate the summary
+        summary = chain.run(examples="\n".join(examples), char_limit=char_limit)
 
-       return f"Summary: {summary.strip()}"
+        return f"Summary: {summary.strip()}"
 
     def add_inference_check(self, check_name, check_function):
         self.inference_checks[check_name] = InferenceCheck(check_name, check_function)
@@ -1069,7 +1117,8 @@ class HumanLLMMonitor:
 
         if token_length > self.llm_max_context_size:
             smart_print(
-                f"\033[31mCANNOT SEND MESSAGE TO LLM:\n{content}\n\nToo many tokens in human message for LLM ({token_length}). Fallback to manual feedback.\033[0m",self.agent_name)
+                f"\033[31mCANNOT SEND MESSAGE TO LLM:\n{content}\n\nToo many tokens in human message for LLM ({token_length}). Fallback to manual feedback.\033[0m",
+                self.agent_name)
             return False
         else:
             return True
@@ -1109,7 +1158,8 @@ class HumanLLMMonitor:
             before_menu = f"\033[{self.print_color}m***** {self.agent_name}->{function_name}  BEFORE *****\nSYSTEM PROMPT:\n{messages[0].content}\n\nUSER MESSAGE:\n{messages[1].content}\n***** {self.agent_name}->{function_name} BEFORE *****\033[0m\n"
             if not self._max_tokens_ok(messages[0].content + "\n" + messages[1].content):
                 before_menu += ("WARNING!!!! Max tokens exceeded, you should refactor user message or system prompt!\n")
-            menu += ("[A] Modify agent's 'system prompt' (role, global context, constraints, examples) OR the answer SCHEMA output.\n")
+            menu += (
+                "[A] Modify agent's 'system prompt' (role, global context, constraints, examples) OR the answer SCHEMA output.\n")
             menu += ("[B] Add instruction or information to agent.\n")
             menu += ("[C] Skip and set LLM output from recent outputs or manually define it.\n")
             menu += ("[D] Log comments (not used by the model, just for information).\n")
@@ -1125,7 +1175,7 @@ class HumanLLMMonitor:
             menu += (f"[P] Proceed to inference using a PREMIUM LLM - Current value={use_premium_llm}\n")
             menu += (f"[Z] Continue\n")
 
-            smart_print(before_menu+menu, self.agent_name, "BEFORE inference action MENU")
+            smart_print(before_menu + menu, self.agent_name, "BEFORE inference action MENU")
             menu_start_time = time.time()
             match (optuna.lower() if optuna else ""):
                 case "coach":
@@ -1148,9 +1198,10 @@ class HumanLLMMonitor:
                     action = ""
                 case "coder":
                     action = ""
-                case _: # Default case
+                case _:  # Default case
                     action = smart_input(
-                        f"\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",self.agent_name).upper()
+                        f"\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
+                        self.agent_name).upper()
 
             # ACTIONS processing
             start_time, action = time.time(), action  # Init action selected and timer to measure time spent and occurences in action processing
@@ -1164,7 +1215,8 @@ class HumanLLMMonitor:
                 if hasattr(self, 'output_schema_path') and self.output_schema_path:
                     new_schema_content = _visual_input(open(self.output_schema_path).read(), filetype="py")
                     confirm_schema = smart_input(
-                        "Do you want to replace the current output schema with your input? (y/n): ", self.agent_name).upper()
+                        "Do you want to replace the current output schema with your input? (y/n): ",
+                        self.agent_name).upper()
                     if confirm_schema == "Y":
                         with open(self.output_schema_path, 'w') as schema_file:
                             schema_file.write(new_schema_content)
@@ -1185,7 +1237,7 @@ class HumanLLMMonitor:
                 comments = self.log_comments(comments)
 
             elif action == "E":  # See all previous results - list results from  HumanLLMMonitor.common_vectordb filtered by agent_name and function_name
-                result = self.getPreviousResults(function_name,self.agent_name)
+                result = self.getPreviousResults(function_name, self.agent_name)
                 _visual_input(result)
 
             elif action == "F":  # See previous MODIFIED/SCORED/COMMENTED results - list results from  HumanLLMMonitor.common_vectordb filtered by agent_name and function_name, filtered on comments
@@ -1227,36 +1279,43 @@ class HumanLLMMonitor:
             start_time, menu_start_time = None, None
 
             if action in [None, "", "P",
-                          "C","Z"]:  # P: Proceed to inference using a PREMIUM LLM; C: Set LLM output by re-using past
+                          "C", "Z"]:  # P: Proceed to inference using a PREMIUM LLM; C: Set LLM output by re-using past
                 if action == "P": use_premium_llm = True
                 break
             else:
                 proceed = "y" if optuna else smart_input(
-                    "Proceed to inference (y/n) ? You can also hit 'p' to proceed using a premium llm.",self.agent_name,"INFERENCE CHOICE").lower()
+                    "Proceed to inference (y/n) ? You can also hit 'p' to proceed using a premium llm.",
+                    self.agent_name, "INFERENCE CHOICE").lower()
                 if proceed in ["y", "p", ""]:
                     if proceed == "p": use_premium_llm = True
                     break
 
         smart_print(
-            f"Time spent in each option and occurrences: {self.before_inference_option_times} - {self.before_inference_option_counts}",self.agent_name)
+            f"Time spent in each option and occurrences: {self.before_inference_option_times} - {self.before_inference_option_counts}",
+            self.agent_name)
 
         return messages, comments, forced_llm_output, use_premium_llm, default_llm_function, premium_llm_function, function_calling
 
     def changeNumParallelInferencesAndSynthesize(self):
         try:
-            self.num_parallel_inferences = int(smart_input("Enter new value for num_parallel_inferences: ", self.agent_name, "NUM_PARALLEL_INFERENCES"))
+            self.num_parallel_inferences = int(
+                smart_input("Enter new value for num_parallel_inferences: ", self.agent_name,
+                            "NUM_PARALLEL_INFERENCES"))
         except:
             self.num_parallel_inferences = 1
-        synthesize_mode_input = smart_input("Turn synthesis mode on/off (1 for ON, 0 for OFF): ",self.agent_name,"NUM_PARALLEL_INFERENCES SYNTHESIS MODE CHOICE").strip()  # NEW
+        synthesize_mode_input = smart_input("Turn synthesis mode on/off (1 for ON, 0 for OFF): ", self.agent_name,
+                                            "NUM_PARALLEL_INFERENCES SYNTHESIS MODE CHOICE").strip()  # NEW
         if synthesize_mode_input in ["0", "1"]:  # NEW
             self.synthesize_mode = synthesize_mode_input == "1"  # NEW
         else:  # NEW
-            smart_print("Invalid input. Synthesize mode remains unchanged.", self.agent_name, "NUM_PARALLEL_INFERENCES SYNTHESIS MODE CHOICE")  # NEW
+            smart_print("Invalid input. Synthesize mode remains unchanged.", self.agent_name,
+                        "NUM_PARALLEL_INFERENCES SYNTHESIS MODE CHOICE")  # NEW
 
     def changeNumParallelInferences(self):
         try:
             self.num_parallel_inferences = int(
-                smart_input("Enter new value for num_parallel_inferences: ", self.agent_name, "NUM_PARALLEL_INFERENCES"))
+                smart_input("Enter new value for num_parallel_inferences: ", self.agent_name,
+                            "NUM_PARALLEL_INFERENCES"))
         except:
             self.num_parallel_inferences = 1
 
@@ -1336,7 +1395,8 @@ class HumanLLMMonitor:
                 refine_prompt = _visual_input(
                     f"Current system prompt:<<< {self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)} >>>\n\nFeedback or critic: {comments}")
                 forced_llm_output = default_llm_function.invoke(
-                    [SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt="improve_prompt_from_answer_critic")),
+                    [SystemMessage(content=self.load_prompt(agent_name=self.agent_name,
+                                                            prompt="improve_prompt_from_answer_critic")),
                      HumanMessage(content=refine_prompt)])
                 new_template = forced_llm_output.content
             else:
@@ -1345,16 +1405,21 @@ class HumanLLMMonitor:
                        self.agent_name).upper() == "Y":
             if use_premium_llm:
                 forced_llm_output = premium_llm_function.invoke(
-                    [SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt="system_prompt_refiner")), HumanMessage(
-                        content=f"PROMPT TO GET SUGGESTIONS FOR IMPROVEMENT:\n{self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)}")])
+                    [SystemMessage(
+                        content=self.load_prompt(agent_name=self.agent_name, prompt="system_prompt_refiner")),
+                     HumanMessage(
+                         content=f"PROMPT TO GET SUGGESTIONS FOR IMPROVEMENT:\n{self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)}")])
             else:
                 forced_llm_output = default_llm_function.invoke(
-                    [SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt="system_prompt_refiner")), HumanMessage(
-                        content=f"PROMPT TO GET SUGGESTIONS FOR IMPROVEMENT:\n{self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)}")])
+                    [SystemMessage(
+                        content=self.load_prompt(agent_name=self.agent_name, prompt="system_prompt_refiner")),
+                     HumanMessage(
+                         content=f"PROMPT TO GET SUGGESTIONS FOR IMPROVEMENT:\n{self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)}")])
             smart_print(
                 f"***** PROMPT SUGGESTIONS *****\n\033[33m{forced_llm_output.content}\033[0m\n*************",
                 self.agent_name, "PROMPT SUGGESTIONS")
-        new_template = _visual_input(self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt) if new_template is None else new_template)
+        new_template = _visual_input(self.load_prompt(agent_name=self.agent_name,
+                                                      prompt=self.system_prompt) if new_template is None else new_template)
         smart_print(f"***** NEW PROMPT TEMPLATE:\n{new_template}\n*************", self.agent_name,
                     "NEW PROMPT TEMPLATE")
         # Confirm that the user wants to modify the template
@@ -1508,7 +1573,7 @@ class HumanLLMMonitor:
             print("No results found for the selected option.")
 
     @staticmethod
-    def getPreviousResults(function_name=None,agent_name=None,k=100):
+    def getPreviousResults(function_name=None, agent_name=None, k=100):
         HumanLLMMonitor._check_and_init_vector_db()
         metadata_filter = {}
         if function_name: metadata_filter["function_name"] = function_name
@@ -1529,21 +1594,25 @@ class HumanLLMMonitor:
 
         while self.skip_rounds <= 0:
             # MENU
-            multiple_ref = (f"OUTPUT \033[31m{output_id} OUT OF {outputs_count}\033[0m OUTPUTS" if (output_id and outputs_count and (outputs_count > 1)) else "")
+            multiple_ref = (f"OUTPUT \033[31m{output_id} OUT OF {outputs_count}\033[0m OUTPUTS" if (
+                        output_id and outputs_count and (outputs_count > 1)) else "")
 
             # Run inference checks if any
-            check_results = self.run_inference_checks(output_id-1, inference_result_msg.content)
+            check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
             check_display = ""
             # Display inference check results
             for check_name, result in check_results.items():
                 check_display += f"{nl}CHECK {check_name} result: " + str(result).replace("\\n", "\n")
 
-            menu = (f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n{check_display}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")
+            menu = (
+                f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n{check_display}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")
 
-            menu += ("[A] Manually set/modify the answer/output (I don't want to try to improve agent's system prompt).\n")  # je voudrais le corriger uniquement pour demander une suggestion d'amélioration du prompt (d'un autre côté, je peux aussi le faire dans le menu précédent)
+            menu += (
+                "[A] Manually set/modify the answer/output (I don't want to try to improve agent's system prompt).\n")  # je voudrais le corriger uniquement pour demander une suggestion d'amélioration du prompt (d'un autre côté, je peux aussi le faire dans le menu précédent)
             menu += ("[B] Critic this answer/output to get an improved answer/output.\n")
             menu += ("[C] Find a better Prompt by providing critic and ideal answer.\n")
-            menu += ("[D] Evaluate & comment answer (Score between 0(worst)-1(top), and explain) to improve future results by using scored/commented examples.\n")
+            menu += (
+                "[D] Evaluate & comment answer (Score between 0(worst)-1(top), and explain) to improve future results by using scored/commented examples.\n")
             menu += ("[E] Go back BEFORE inference to improve system prompt or add information to user message.\n")
             menu += ("[G] Skip human actions for N rounds.\n")
             menu += ("[Z] Continue\n")
@@ -1553,7 +1622,8 @@ class HumanLLMMonitor:
                 f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""))
             menu_start_time = time.time()
             action = "" if optuna else smart_input(
-                f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",self.agent_name).upper()
+                f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
+                self.agent_name).upper()
 
             # ACTIONS processing
             start_time, action = time.time(), action  # Init action selected and timer to measure time spent and occurences in action processing
@@ -1562,7 +1632,7 @@ class HumanLLMMonitor:
                 self.modifyAnswer(inference_result_msg)
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
-                comments = self.criticAnswer(comments, inference_result_msg, premium_llm_function)
+                comments = self.criticAnswer(comments, inference_result_msg)
 
             elif action == "C":  # Find a better Prompt by providing critic and ideal answer
                 comments = self.findBetterPrompt(comments, inference_result_msg, premium_llm_function)
@@ -1594,14 +1664,15 @@ class HumanLLMMonitor:
             start_time, menu_start_time = None, None
 
             if action in [None, "",
-                          "E", "Z"]: break  # E: Go back BEFORE inference to improve system prompt or add information to user message
+                          "E",
+                          "Z"]: break  # E: Go back BEFORE inference to improve system prompt or add information to user message
 
-            proceed = smart_input("Continue 'y' (or 'n' to go back to menu) ? ",self.agent_name).lower()
+            proceed = smart_input("Continue 'y' (or 'n' to go back to menu) ? ", self.agent_name).lower()
             if proceed in ["y", ""]:
                 break
 
         if self.skip_rounds > 0:
-            check_results = self.run_inference_checks(output_id-1, inference_result_msg.content)
+            check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
             check_display = ""
             # Display inference check results
             for check_name, result in check_results.items():
@@ -1647,7 +1718,7 @@ class HumanLLMMonitor:
             output_content = message
         elif context.get('output_contents'):
             output_content = context['output_contents'][output_id] if isinstance(context['output_contents'], list) else \
-            context['output_contents']
+                context['output_contents']
         else:
             output_content = None
 
@@ -1678,7 +1749,6 @@ class HumanLLMMonitor:
             synthesize_mode=self.synthesize_mode
         )
 
-
     def findBetterPrompt(self, comments, inference_result_msg, premium_llm_function):
         comments = smart_input("First enter your critic here (then modify answer to get ideal answer): ",
                                self.agent_name)
@@ -1687,15 +1757,18 @@ class HumanLLMMonitor:
         smart_print(f"***** PROMPT FOR IMPROVEMENT *****\n{refine_prompt}", self.agent_name, "PROMPT FOR IMPROVEMENT")
         llm_output = premium_llm_function.invoke([SystemMessage(
             content=self.load_prompt(agent_name=self.agent_name, prompt="improve_prompt_from_answer_critic")),
-                                           HumanMessage(content=refine_prompt)])
+            HumanMessage(content=refine_prompt)])
         smart_print(f"***** RECOMMENDATION OPEN FOR EDITION *****\n", self.agent_name,
                     "RECOMMENDATION OPEN FOR EDITION")
         new_template = _visual_input(llm_output.content)
         smart_print(f"***** NEW PROMPT TEMPLATE:\n{new_template}\n*************", self.agent_name,
                     "NEW PROMPT TEMPLATE")  # Confirm that the user wants to modify the template
-        confirm = smart_input( "Do you want to replace current prompt file template with your input? (y/n): ",self.agent_name).upper() # Save prompt with tag options
+        confirm = smart_input("Do you want to replace current prompt file template with your input? (y/n): ",
+                              self.agent_name).upper()  # Save prompt with tag options
         if confirm == "Y":
-            tag_option = smart_input( "Enter a tag for saving the prompt (leave blank for no tag, or 'same' to keep the current tag): ",self.agent_name)
+            tag_option = smart_input(
+                "Enter a tag for saving the prompt (leave blank for no tag, or 'same' to keep the current tag): ",
+                self.agent_name)
         if tag_option.lower() == "same":
             save_prompt_with_tag(self.system_prompt, new_template, "")
         else:
@@ -1703,7 +1776,7 @@ class HumanLLMMonitor:
 
         return comments
 
-    def criticAnswer(self, comments, inference_result_msg, premium_llm_function):
+    def criticAnswer(self, content_annotated, inference_result_msg):
         def is_valid_python_structure(s):
             import ast
             output = None
@@ -1712,14 +1785,16 @@ class HumanLLMMonitor:
                 return output, True
             except (ValueError, SyntaxError):
                 return output, False
-        content_structure, is_strucutre = is_valid_python_structure(inference_result_msg.content)
+
         while True:
-            content_pretty = json.dumps(content_structure, indent=4) if is_strucutre else inference_result_msg.content
-            content_annotated = _visual_input(content_pretty, filetype="py" if is_strucutre else "md")
+            if not HumanLLMMonitor.use_websocket:
+                content_structure, is_structure = is_valid_python_structure(inference_result_msg.content)
+                content_pretty = json.dumps(content_structure,
+                                            indent=4) if is_structure else inference_result_msg.content
+                content_annotated = _visual_input(content_pretty, filetype="py" if is_structure else "md")
             #comments = smart_input("Provide critic/feedback/request: ", self.agent_name)
-            system_prompt = "Refine the ANSWER below given the HUMAN FEEDBACK to address for improving it."
             system_prompt = """
-Refine the **ANNOTATED ANSWER** to the **TARGET TASK**, given answer including important inline text annotated instructions on key elements to improve the answer using tags (see **ANNOTATION TAGS** for interpretation). Directly answer with the updated answer aligned with annotated instructions tags, no introduction.
+Refine the **ANNOTATED ANSWER** for the **TARGET TASK**, given answer including important inline text annotated instructions on key elements to improve the answer using tags (see **ANNOTATION TAGS** for interpretation). Directly answer with the updated answer aligned with annotated instructions tags, no introduction.
 
 ### TARGET TASK:
 Identify and define the best task to develop using code and LLM given the status of available developed tasks and failed tasks
@@ -1751,14 +1826,22 @@ The following annotations are provided to guide the refinement process. Each ann
 """
             #system_prompt = """Refine the **ANNOTATED ANSWER** given inline text annotated instructions (format: \intruction_type{text selection}[optional comment]). Directly answer with the updated answer aligned with annotated instructions tags, no introduction."""
             user_prompt = f"### ANNOTATED ANSWER:\n{content_annotated}"
-            smart_print(f"***** PROMPT:\n{system_prompt}\n `\n{user_prompt}".replace("\\n", "\n"), self.agent_name, "PROMPT")
-            llm_output = str(premium_llm_function.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]))
-            smart_print(f"***** REFINED ANSWER:\n\033[33m{llm_output}\033[0m\n".replace("\\n", "\n"),
-                        self.agent_name, "REFINED ANSWER")
-            if smart_input("Is the task refinement adequate? (yes/no): ", self.agent_name).strip().lower() in ["yes","y"]:
-                inference_result_msg.content = llm_output.content
-                break
-        return comments
+            llm_output = self.premium_llm.invoke(
+                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+            # TODO: sauvegarde log_entry
+            if not HumanLLMMonitor.use_websocket:
+                smart_print(f"***** PROMPT:\n{system_prompt}\n `\n{user_prompt}".replace("\\n", "\n"), self.agent_name,
+                            "PROMPT")
+                smart_print(f"***** REFINED ANSWER:\n\033[33m{llm_output.content}\033[0m\n".replace("\\n", "\n"),
+                            self.agent_name, "REFINED ANSWER")
+                if smart_input("Is the task refinement adequate? (yes/no): ", self.agent_name).strip().lower() in [
+                    "yes", "y"]:
+                    inference_result_msg.content = llm_output.content
+                    break
+            else:
+                return llm_output.content
+
+        return llm_output
 
     def modifyAnswer(self, inference_result_msg):
         inference_result_msg.content = _visual_input(inference_result_msg.content)
@@ -1812,14 +1895,16 @@ The following annotations are provided to guide the refinement process. Each ann
                     # Call the function with the provided arguments
                     result = globals()[function_name](**function_args)
                 else:
-                    result = smart_input(f"Uknown function: {function_name} -- please provide result manually:\n","call_llm_function_with_function_call")
+                    result = smart_input(f"Uknown function: {function_name} -- please provide result manually:\n",
+                                         "call_llm_function_with_function_call")
                 messages.append(FunctionMessage(content=result, name=function_name, arguments=function_args_str))
 
         return output
 
     def _log_entry(self, function_name, input_contents, output_contents, input_modified=False,
                    skipped_inference=False, input_comments=None, output_comments=None, output_llm_raw=None,
-                   output_modified=False, inference_time=None, user_score=None, message_tokens=None, score=None, use_premium_llm=False,
+                   output_modified=False, inference_time=None, user_score=None, message_tokens=None, score=None,
+                   use_premium_llm=False,
                    call_duration=None, skip_rounds=None, synthesize_mode=False, pipeline_mode=False):
         entry = {
             "input_contents": input_contents,
@@ -1887,7 +1972,8 @@ The following annotations are provided to guide the refinement process. Each ann
     def CallHumanLLM(self, original_input_messages=None, default_llm_function=None, premium_llm_function=None,
                      callable_system_message=None, system_prompt_template=None, user_message=None,
                      return_message_content_only=True, function_calling=False, temperature=None, timeout_seconds=300,
-                     stream_output=False, use_default_llm=True, optuna=None, model_choice=None, temperature_increase=0.05):
+                     stream_output=False, use_default_llm=True, optuna=None, model_choice=None,
+                     temperature_increase=0.05):
         #if not self.selected_llm_or_chain: raise ValueError("No LLM or chain selected for use.")
         # Define a helper function to perform the LLM calls for parallel inference.
         def perform_llm_call(input_msg, use_premium, func_calling, temperature=None, stream_output=True, color_id=None):
@@ -1910,7 +1996,8 @@ The following annotations are provided to guide the refinement process. Each ann
                 previous_chunk_str = ""
                 # Regex to match the end of a typical JSON structure
                 json_trail_re = re.compile(r'[\'\}\]]$')
-                for chunk in func.stream(input_msg):  #, temperature=temperature):  # Ensure 'llm' is correctly initialized with temperature
+                for chunk in func.stream(
+                        input_msg):  #, temperature=temperature):  # Ensure 'llm' is correctly initialized with temperature
                     if hasattr(chunk, 'content'):
                         chunk_content = chunk.content
                         final_output += chunk_content
@@ -1920,7 +2007,7 @@ The following annotations are provided to guide the refinement process. Each ann
                         # Check and remove trailing characters for accurate comparison
                         while json_trail_re.search(current_chunk_str):
                             current_chunk_str = current_chunk_str[:-1]
-                        
+
                         # Find the new part by removing the common prefix with the previous state
                         new_part_index = len(previous_chunk_str)
                         chunk_content = current_chunk_str[new_part_index:]
@@ -1928,9 +2015,11 @@ The following annotations are provided to guide the refinement process. Each ann
                         previous_chunk_str = current_chunk_str
                         final_output = str(chunk)
                     if HumanLLMMonitor.use_websocket:
-                        smart_print(chunk_content, self.agent_name, "Inference streaming output "+str(color_id), append=True)
+                        smart_print(chunk_content, self.agent_name, "Inference streaming output " + str(color_id),
+                                    append=True)
                     else:
-                        smart_print(start_color + chunk_content + end_color, self.agent_name, "Inference streaming output "+str(color_id), append=True)
+                        smart_print(start_color + chunk_content + end_color, self.agent_name,
+                                    "Inference streaming output " + str(color_id), append=True)
                 return AIMessage(content=final_output)  # Return the concatenated full respons
             else:
                 value = func.invoke(input_msg)
@@ -1943,7 +2032,8 @@ The following annotations are provided to guide the refinement process. Each ann
         if default_llm_function is None: default_llm_function = self.default_llm if use_default_llm else self.premium_llm
         if premium_llm_function is None: premium_llm_function = self.premium_llm if self.premium_llm else None
         if original_input_messages is None: original_input_messages = [
-            SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt=system_prompt_template)), HumanMessage(content=user_message)]
+            SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt=system_prompt_template)),
+            HumanMessage(content=user_message)]
         input_contents_str0, input_contents_str1 = str(original_input_messages[0].content), str(
             original_input_messages[1].content)
 
@@ -1971,10 +2061,13 @@ The following annotations are provided to guide the refinement process. Each ann
                 outputs = []
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_parallel_inferences) as executor:
-                    if type(self.premium_llm if use_premium_llm else self.default_llm) == type(self.llmORchains_list.get('3_majority_chain')):
+                    if type(self.premium_llm if use_premium_llm else self.default_llm) == type(
+                            self.llmORchains_list.get('3_majority_chain')):
                         stream_output = True
                     futures = [executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling,
-                                               ((temperature+(i*temperature_increase) if temperature>0 else 0) if temperature else None), stream_output, i) for i in
+                                               ((temperature + (
+                                                           i * temperature_increase) if temperature > 0 else 0) if temperature else None),
+                                               stream_output, i) for i in
                                range(self.num_parallel_inferences)]
                     for idx, future in enumerate(futures):
                         try:
@@ -1982,7 +2075,8 @@ The following annotations are provided to guide the refinement process. Each ann
                             outputs.append(llm_response)
                             smart_print(
                                 f'\033[0m**** New inference result recieved and added to outputs as #{len(outputs)}\033[0m:\n{llm_response.content}\n\033[9mEND OF #{len(outputs)}****\033[0m',
-                                self.agent_name, "NEW inference result recieved", column_id=idx, column_max=self.num_parallel_inferences)
+                                self.agent_name, "NEW inference result recieved", column_id=idx,
+                                column_max=self.num_parallel_inferences)
                         except concurrent.futures.TimeoutError:
                             smart_print('A task ran longer than the allotted timeout and was cancelled.',
                                         self.agent_name, "Inference result TIMEOUT")
