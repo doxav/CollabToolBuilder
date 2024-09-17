@@ -12,61 +12,81 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
 body {
-display: flex;
-font-family: Arial, sans-serif;
-background-color: #8f8f8f;
-margin: 0;
-padding: 0;
-height: 100vh;
-overflow: hidden;
-}
-#main-container {
-display: flex;
-width: 100%;
-height: 100%;
-}
-#history-sidebar {
-width: 250px;
-padding: 20px;
-border-right: 1px solid #3e3e3e;
-display: none;
-overflow-y: auto;
-box-sizing: border-box;
-}
-#main-content {
-flex: 1;
-padding: 20px;
-overflow-y: auto;
-box-sizing: border-box;
-}
-#settings-sidebar {
-width: 250px;
-padding: 20px;
-border-left: 1px solid #3e3e3e;
-display: none;
-overflow-y: auto;
-box-sizing: border-box;
-}
-.solution-columns {
     display: flex;
-    gap: 20px;
+    font-family: Arial, sans-serif;
+    background-color: #f6f6f6; /* Light Blue */
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    overflow: hidden;
 }
-.solution-column {
+
+#main-container {
+    display: flex;
+    width: 100%;
+    height: 100%;
+}
+
+#history-sidebar, #settings-sidebar {
+    width: 275px;
+    padding: 20px;
+    border-color: #f6f6f6; /* Light Blue */
+    display: none;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+#history-sidebar {
+    border-right: 1px solid #f6f6f6;
+}
+
+#settings-sidebar {
+    border-left: 1px solid #f6f6f6;
+}
+
+#main-content {
     flex: 1;
-    border: 1px solid #ccc;
-    padding: 10px;
-    margin-bottom: 10px;
-    max-width: 23%;
-    position: relative;
+    padding: 20px;
+    overflow-y: auto;
+    box-sizing: border-box;
+    background-color: #FFFFFF; /* White */
 }
+
+.accordion {
+    margin-bottom: 20px;
+    background-color: #67a1d5; /* Primary Blue */
+    color: white;
+}
+
+.menu-option {
+    display: inline-block;
+    margin: 5px;
+    padding: 5px 10px;
+    border: 1px solid #1976D2; /* Darker Blue */
+    border-radius: 15px;
+    cursor: pointer;
+    color: white;
+    background-color: #67a1d5; /* Primary Blue */
+    z-index: 99999;
+}
+
+.sidebar-toggle, .default_button {
+    cursor: pointer;
+    padding: 5px 10px;
+    background-color: #67a1d5; /* Primary Blue */
+    border: 1px solid #1976D2; /* Darker Blue */
+    margin-bottom: 10px;
+    color: white;
+}
+
 .expand-button {
     position: absolute;
     top: 10px;
     right: 10px;
     z-index: 10;
     padding: 10px;
-    background-color: #f0f0f0;
-    border: 1px solid #ccc;
+    background-color: #BBDEFB; /* Lighter Blue */
+    border: 1px solid #90CAF9; /* Light Blue */
     border-radius: 3px;
     cursor: pointer;
     font-size: 16px;
@@ -75,6 +95,68 @@ box-sizing: border-box;
     align-items: center;
     justify-content: center;
 }
+
+.solution-column {
+    flex: 1;
+    border: 1px solid #90CAF9; /* Light Blue */
+    padding: 10px;
+    margin-bottom: 10px;
+    max-width: 23%;
+    position: relative;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+    background-color: #E3F2FD; /* Light Blue */
+}
+
+.pagination button {
+    margin: 0 5px;
+    padding: 5px 10px;
+    background-color: #67a1d5; /* Darker Blue */
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+.annotation-menu {
+    display: none;
+    position: absolute;
+    background: #67a1d5; /* Primary Blue */
+    border: 1px solid #1976D2; /* Darker Blue */
+    padding: 10px;
+    z-index: 999999;
+    color: white;
+}
+
+pre {
+    background-color: #F5F5F5; /* Light Grey */
+    padding: 10px;
+    border-radius: 5px;
+    overflow-x: auto;
+    max-width: 100%;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    display: block;
+}
+
+.button {
+    background-color: #67a1d5; /* Primary Blue */
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+.solution-columns {
+    display: flex;
+    gap: 20px;
+}
+
 
 .expand-button i {
     transition: transform 0.3s ease;
@@ -130,13 +212,7 @@ box-sizing: border-box;
     will-change: transform;
 }
 
-.pagination {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 10px;
-    background-color: #f0f0f0;
-}
+
 .pagination button {
     margin: 0 5px;
     padding: 5px 10px;
@@ -146,16 +222,10 @@ box-sizing: border-box;
     cursor: pointer;
 }
 
-.accordion { margin-bottom: 20px; background-color: #6a737d; color: white; }
 .filter-bar { margin-bottom: 20px; }
 .column { display: inline-block; vertical-align: top; margin-right: 20px; width: 30%; }
-.menu-option { display: inline-block; margin: 5px; padding: 5px 10px; border: 1px solid #2e2e2e; border-radius: 15px; cursor: pointer; color: white; background-color: #555555; z-index: 99999;}
 #user-input { width: 100%; padding: 10px; margin-top: 10px; box-sizing: border-box; }
 #send-button { margin-top: 10px; }
-.annotation-menu { display: none; position: absolute; background: #636363; border: 1px solid #636363; padding: 10px; z-index: 999999;}
-.sidebar-toggle { cursor: pointer; padding: 5px 10px; background-color: #636363; border: 1px solid #636363; margin-bottom: 10px; color: white; }
-.default_button { background-color: #636363; color: white; border: 1px solid #b0b0b0; padding: 5px 10px; cursor: pointer; border-radius: 5px;}
-.button{border-radius: 5px;}
 .close-btn { position: absolute; top: -4px; right: -4px; cursor: pointer; background-color: transparent; border: none; color: white; font-size: 16px; }
 .message {
     max-width: 100%;
@@ -163,16 +233,6 @@ box-sizing: border-box;
     white-space: pre-wrap;
 }
 
-pre {
-    background-color: #f0f0f0;
-    padding: 10px;
-    border-radius: 5px;
-    overflow-x: auto;
-    max-width: 100%;
-    white-space: pre-wrap; /* Preserve line breaks and wrap text */
-    word-wrap: break-word;
-    display: block;
-}
 
 code {
     font-family: 'Courier New', Courier, monospace;
@@ -212,11 +272,17 @@ color: white;
         <div class="sidebar-toggle" id="toggle-history">Hide History</div>
         <div id="history-accordion" class="accordion">
             <h3>History</h3>
-            <div>
-                <p>History is empty</p>
+            <div id="history-content">
             </div>
         </div>
-        <a href="#" id="refresh-history">Refresh History</a>
+        <div id="stats-accordion" class="accordion">
+            <h3>Statistiques</h3>
+            <div id="stats-content">
+                <label style="font-size: x-small">Number of created functions : </label><label id="number-functions">0</label><br><br>
+                <label style="font-size: x-small">Number of validated functions : </label><label id="number-validated-functions">0</label><br><br>
+                <label style="font-size: x-small">Number of generated solutions : </label><label id="number-solutions">0</label><br><br>
+            </div>
+        </div>
     </div>
 
     <div id="main-content">
@@ -224,10 +290,10 @@ color: white;
         <div class="sidebar-toggle" id="toggle-settings-main">Show Settings</div>
       <div class="auto-open-checkbox">
             <input type="checkbox" id="auto-open-accordion" checked>
-            <label for="auto-open-accordion">Auto-focus new messages</label>
+            <label style="color:black;" for="auto-open-accordion">Auto-focus new messages</label>
         </div>
         <div>
-             <label style="color: white;"><input type="checkbox" id="show-concepts" checked> Show Concepts</label>
+             <label><input type="checkbox" id="show-concepts" checked> Show Concepts</label>
         </div>
         <div class="filter-bar">
             <select id="filter-message-type">
@@ -308,6 +374,8 @@ $(function() {
     let socket = new WebSocket('ws://localhost:6789');
     let currentAgent = '';
     let savedSelection = null;
+    let number_created_functions = 0;
+    let number_validated_functions = 0;
 
     // Mapping of agent names to their evaluation types
     const agentEvaluations = {
@@ -368,7 +436,7 @@ $(function() {
                 console.log('Received message:', event.data);
                 try {
                     data = JSON.parse(event.data);
-                } catch (e) {console.log('Error parsing JSON:', e); return;}   
+                } catch (e) {console.log('Error parsing JSON:', e); return;}
                 console.log('Parsed data:', data);
                 if (data.function === functionName) {
                     console.log('Calling callback with data:', data);
@@ -427,6 +495,8 @@ $(function() {
 
         // Generalize handling of multiple solutions
         if (data.column_max !== undefined && data.column_id !== undefined && data.message_type === "NEW inference result recieved") {
+            number_created_functions++;
+            document.getElementById("number-functions").textContent = number_created_functions;
             console.log("Handling multiple solutions");
             handleMultipleSolutions(data);
             // If it's the last solution and there are more than 4 solutions, add pagination
@@ -900,6 +970,8 @@ $(function() {
                         columnsToKeep.push(i);
                     }
                 }
+                number_validated_functions += columnsToKeep.length;
+                document.getElementById("number-functions-validated").textContent = number_validated_functions;
                 console.log("Columns to keep:", columnsToKeep.join(','));
                 socket.send(JSON.stringify({message: columnsToKeep.join(',')}));
             });
@@ -1070,7 +1142,7 @@ function isPythonCode(message) {
 
 function isPromptMessage(message) {
     // Check if the message looks like a prompt
-    return /^You are\b|^As an AI language model\b|^Please\b|^Write\b|^Generate\b|^Explain\b/i.test(message);
+    return /^Reasoning\b|^You are\b|^As an AI language model\b|^Please\b|^Write\b|^Generate\b|^Explain\b/i.test(message);
 }
 
 $(document).on('click', '.collapsible-header', function() {
@@ -1136,6 +1208,12 @@ $(document).on('click', '.collapsible-header', function() {
         heightStyle: "content"
     });
 
+    $("#stats-accordion").accordion({
+        collapsible: true,
+        active: false,
+        heightStyle: "content"
+    });
+
     $("#send-button").click(function() {
         sendMessage();
         // Hide options menu
@@ -1160,46 +1238,6 @@ $(document).on('click', '.collapsible-header', function() {
         }
     }
 
-    $("#refresh-history").click(function(e) {
-        e.preventDefault();
-        $.ajax({
-            url: "http://127.0.0.1:5000/api/history",
-            type: "GET",
-            dataType: 'text',
-            success: function(data) {
-                $("#history-accordion").empty();
-                console.log("Received raw data:", data);
-
-                try {
-                    let historyContent = JSON.parse(data);
-                    let contentHtml = '';
-                    console.log("Received JSON data:", historyContent);
-
-                    if (Object.keys(historyContent).length === 0) {
-                        contentHtml = '<h3>History</h3><div><p>History is empty</p></div>';
-                    } else {
-                        // Process history data
-                    }
-
-                    $("#history-accordion").html(contentHtml);
-                    $("#history-accordion").accordion("destroy").accordion({
-                        header: "> h3",
-                        collapsible: true,
-                        active: false,
-                        heightStyle: "content"
-                    });
-
-                } catch (e) {
-                    console.error("Failed to parse JSON data:", e);
-                }
-            },
-            error: function(jqXHR, textStatus, errorThrown) {
-                console.error("Failed to fetch history:", textStatus, errorThrown);
-                $("<h3>History</h3><div><p>Failed to load history</p></div>").appendTo("#history-accordion");
-                $("#history-accordion").accordion("refresh");
-            }
-        });
-    });
 
     $("#apply-settings").click(function() {
         let settings = {
