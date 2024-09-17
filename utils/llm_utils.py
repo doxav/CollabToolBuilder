@@ -612,6 +612,7 @@ class HumanLLMMonitor:
                     metadata_filter=crit['metadata_filter'],
                     sort_order=crit['sort_order']
                 )
+                crit['sources'] = "examples"
 
             # Process examples to retrieve all metadata if format is 'Jinja2'
             processed_examples = []
@@ -629,13 +630,13 @@ class HumanLLMMonitor:
                 'template': crit['template']
             }
 
-            formatted_examples = cls.format_examples(examples, format_criteria)
+            formatted_examples = cls.format_examples(examples, format_criteria, crit['sources'])
             all_formatted_examples.append(formatted_examples)
 
         return "\n".join(all_formatted_examples)
 
     @classmethod
-    def format_examples(cls, examples, criteria):
+    def format_examples(cls, examples, criteria, sources):
         if not examples:
             return ""
 
@@ -683,7 +684,8 @@ class HumanLLMMonitor:
 
             formatted_examples.append(formatted_example)
 
-        return "\n".join(formatted_examples) + "\n"
+        pipo = ''.join([f"\n|{format_ex}|" for format_ex in formatted_examples])
+        return f"\n{sources} tasks : <<{pipo}>>\n"
 
     @classmethod
     def get_default_jinja2_template(cls, content_data):
@@ -1008,9 +1010,6 @@ class HumanLLMMonitor:
     def load_prompt(self, function_name: str = None, agent_name: str = None, prompt: str = None) -> str:
         with open(f"prompts/{prompt}.txt", "r") as f:
             prompt_content = f.read()
-
-        if self.user_message_few_shots:
-            return prompt_content
 
         few_shots_data_list, prompt_content = self.get_few_shots_tag_args(prompt_content)
 
