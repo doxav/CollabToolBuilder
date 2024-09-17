@@ -374,7 +374,6 @@ $(function() {
                     console.log('Calling callback with data:', data);
                     console.log('Data.message:', data.result);
                     // Add a text at the begginning of the message
-                    data.result = "The function " + functionName + " has been remade :" + "\n\n" + data.result;
                     callback(data.result);  // Call the callback with the response
                     console.log('Callback called');
                 } else {
