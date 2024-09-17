@@ -35,8 +35,8 @@ import json
 HumanLLMMonitor.use_websocket = False
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
-UnifiedVectorDB.es_user = elastic_user
-UnifiedVectorDB.es_password = elastic_password
+# UnifiedVectorDB.es_user = elastic_user
+# UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002" # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function="intfloat/e5-base-v2" # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
@@ -647,8 +647,10 @@ class CapitalizationAgent:
 
         is_anomaly = self.problem_prompts_subdir == "Anomalies/"
         name_key = "class_name" if is_anomaly else "main_function_name"
-        task_name = parsed_code.get(name_key, "replace this text with a descriptive name of the class" if is_anomaly else "replace this text with a descriptive name of the function")
-
+        if parsed_code:
+            task_name = parsed_code.get(name_key, "replace this text with a descriptive name of the class" if is_anomaly else "replace this text with a descriptive name of the function")
+        else :
+            task_name = smart_input(f"CONFIG Please provide a name for the {'pipeline' if is_anomaly else 'function'}: ").strip()
         if not self.optuna_opti or is_anomaly:
             task_name = _visual_input(task_name)
             task_description_refined = _visual_input(task_description)
@@ -663,7 +665,7 @@ class CapitalizationAgent:
         serialized_entry = json.dumps({
             "time": datetime.datetime.now().isoformat(),
             name_key: task_name,
-            "program_code": parsed_code.get("program_code", None),
+            "program_code": parsed_code.get("program_code", None) if parsed_code else None,
             "task_description": task_description,
             "task_description_refined": task_description_refined,
         }, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
@@ -849,10 +851,10 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                                                      optuna=optuna_opti,
                                                                      end_time=time_end)
         if validation == "success":
-            HumanLLMMonitor.add_learnt_task(task_description, parsed_code)
+            agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
         else :
             if optuna_opti or smart_input("Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ").strip().upper() in ["Y", "YES"]:
-                HumanLLMMonitor.add_failed_task(task_description, parsed_code)
+                agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
         if optuna_opti:
             continue_identifying_tasks = False
         else:

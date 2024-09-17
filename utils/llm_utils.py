@@ -425,8 +425,7 @@ class UnifiedVectorDB:
                 return self.db.similarity_search(query_text, k=(k if k <= 50 else 50),
                                                  custom_query=custom_query)  # k seems to crash when > 50
             else:
-                return self.db.similarity_search(query_text, k=(k if k <= 50 else 50),
-                                                 filter=custom_filter_es)  # k seems to crash when > 50
+                return self.db.similarity_search(query_text, k=(k if k <= 50 else 50))  # k seems to crash when > 50
             # filter on AND conditions: filter=[{"match":{"metadata.function_name":function_name}}, {"match":{"metadata.agent_name":agent_name}}]
 
     def count(self):
@@ -587,6 +586,16 @@ class HumanLLMMonitor:
                     sort_order=crit['sort_order']
                 )
 
+            # Process examples to retrieve all metadata if format is 'Jinja2'
+            processed_examples = []
+            for example in examples:
+                example_data = {
+                    'content': getattr(example, 'page_content', str(example)),
+                    'metadata': getattr(example, 'metadata', {})
+                }
+                processed_examples.append(example_data)
+            examples = processed_examples
+
             format_criteria = {
                 'format': crit['format'],
                 'format_string': crit['format_string'],
@@ -607,40 +616,37 @@ class HumanLLMMonitor:
             criteria = {'format': criteria}
 
         output_format = criteria.get('format', 'Json')
-        template_str = criteria.get('template', None)
+        template_str = criteria.get('template')
 
         formatted_examples = []
 
         for entry in examples:
-            # Extract the content appropriately
-            if isinstance(entry, str):
-                content_str = entry
-            elif hasattr(entry, 'page_content'):
-                content_str = entry.page_content
+            # For 'Jinja2' format, use the entire example (content and metadata)
+            if output_format.lower() == 'jinja2':
+                content_data = entry
             else:
-                # Handle other possible structures
-                content_str = str(entry)
-
-            try:
-                content = json.loads(content_str)
-            except json.JSONDecodeError as e:
-                print(f"Error decoding JSON: {e}")
-                continue
+                # Extract content appropriately
+                content_str = entry.get('content', '')
+                try:
+                    content_data = json.loads(content_str)
+                except json.JSONDecodeError as e:
+                    print(f"Error decoding JSON: {e}")
+                    continue
 
             if output_format.lower() == 'json':
-                formatted_example = json.dumps(content, indent=2)
+                formatted_example = json.dumps(content_data, indent=2)
 
             elif output_format.lower() == 'markdown':
-                formatted_example = cls.dict_to_markdown(content)
+                formatted_example = cls.dict_to_markdown(content_data)
 
             elif output_format.lower() == 'jinja2':
                 if not template_str:
                     # Provide a default template if none is specified
-                    template_str = cls.get_default_jinja2_template(content)
+                    template_str = cls.get_default_jinja2_template(content_data)
                 try:
                     from jinja2 import Template
                     template = Template(template_str)
-                    formatted_example = template.render(**content)
+                    formatted_example = template.render(**content_data)
                 except Exception as e:
                     print(f"Error rendering Jinja2 template: {e}")
                     continue
@@ -653,11 +659,19 @@ class HumanLLMMonitor:
         return "\n".join(formatted_examples) + "\n"
 
     @classmethod
-    def get_default_jinja2_template(cls, content):
-        # Génère un template Jinja2 par défaut en listant toutes les clés et leurs valeurs
-        template_lines = []
-        for key in content.keys():
-            template_lines.append(f"{key}: {{{{ {key} }}}}")
+    def get_default_jinja2_template(cls, content_data):
+        # Generates a default Jinja2 template by recursively listing all keys and their values
+        def generate_template_lines(data, parent_key=''):
+            lines = []
+            for key, value in data.items():
+                full_key = f"{parent_key}{key}"
+                if isinstance(value, dict):
+                    lines.extend(generate_template_lines(value, f"{full_key}."))
+                else:
+                    lines.append(f"{full_key}: {{{{ {full_key} }}}}")
+            return lines
+
+        template_lines = generate_template_lines(content_data)
         return "\n".join(template_lines)
 
     @staticmethod
@@ -944,9 +958,11 @@ class HumanLLMMonitor:
         return None
 
     def load_prompt(self, function_name: str = None, agent_name: str = None, prompt: str = None) -> str:
-
         with open(f"prompts/{prompt}.txt", "r") as f:
             prompt_content = f.read()
+
+        if self.user_message_few_shots:
+            return prompt_content
 
         few_shots_data_list, prompt_content = self.get_few_shots_tag_args(prompt_content)
 
