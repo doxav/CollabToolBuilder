@@ -25,38 +25,30 @@ def definition_few_shots(trial):
     """
     few_shots_tags = ""
     # Determine the number of few-shot tags (between 0 and 3)
-    number_of_tags = trial.suggest_int("number_of_few_shot_tags", 0, 3)
     sources_list = ["learnt", "failed", "example"]
 
-    for i in range(number_of_tags):
+    for i in range(3):
         source = sources_list[i]
-        num = trial.suggest_int(f"num_tag_{i+1}", 1, 5)
-        output_format = trial.suggest_categorical(f"format_tag_{i+1}", ["Json", "Markdown", "Jinja2"])
+        num = trial.suggest_int(f"num_tag_{i+1}", 0, 5)
+        if num > 0:
+            output_format = trial.suggest_categorical(f"format_tag_{i+1}", ["Json", "Markdown", "Jinja2"])
 
-        # If the format is 'Jinja2', optionally get a template
-        if output_format == "Jinja2":
-            # The template is optional
-            template = trial.suggest_categorical(
-                f"template_tag_{i+1}",
-                ["template1", "template2", None]
-            )
-        else:
             template = None
 
-        # Construct the dictionary for the few-shot tag
-        few_shot_dict = {
-            "sources": source,
-            "num": num,
-            "format": output_format
-        }
-        if template:
-            few_shot_dict["template"] = template
+            # Construct the dictionary for the few-shot tag
+            few_shot_dict = {
+                "sources": source,
+                "num": num,
+                "format": output_format
+            }
+            if template:
+                few_shot_dict["template"] = template
 
-        # Convert the dictionary to a JSON string with double quotes
-        few_shot_json = json.dumps(few_shot_dict)
+            # Convert the dictionary to a JSON string with double quotes
+            few_shot_json = json.dumps(few_shot_dict)
 
-        # Add the few-shot tag to the prompt
-        few_shots_tags += f"few_shots: {few_shot_json}\n"
+            # Add the few-shot tag to the prompt
+            few_shots_tags += f"few_shots: {few_shot_json}\n"
 
     return few_shots_tags
 
