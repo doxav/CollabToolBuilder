@@ -4,9 +4,11 @@ import time
 
 import websockets
 
+import uuid
 
 class WebsocketServer:
     def __init__(self):
+        self.server_id = str(uuid.uuid4()) 
         self.monitors = {}  # Stores agent monitors
         self.current_instances = {}  # Track current active monitor instances
         self.connected_clients = set()
@@ -53,5 +55,8 @@ class WebsocketServer:
 
     def send_message(self, message):
         self.message_count += 1
+        # test if message is dict
+        if isinstance(message, dict) and "sender_id" not in message:
+            message['sender_id'] = self.server_id
         for client in self.connected_clients:
             asyncio.run(client.send(message))

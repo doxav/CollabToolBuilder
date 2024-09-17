@@ -140,21 +140,33 @@ def smart_input(message: str, agent_name=None, message_type=None):
                 print("Waiting for WebSocket client to connect")
                 time.sleep(1)
 
-        # Wait and receive response from WebSocket
-        async def receive_message():
+        async def receive_message(timeout=100):
             async with websockets.connect(ws_url) as websocket:
-                print("SMART INPUT Waiting for response from WebSocket")
-                response = await websocket.recv()
-                print("SMART INPUT Received response from WebSocket")
-                json_data = json.loads(response)
-                if 'message' in json_data:
-                    answer = json_data['message']
-                elif 'result' in json_data:
-                    answer = json_data['result']
-                else:
-                    raise ValueError("No 'message' or 'result' in WebSocket response")
-                print("SMART INPUT Answer: ", answer)
-                return str(answer).upper()
+                try:
+                    print("SMART INPUT Waiting for response from WebSocket")
+                    while True:
+                        response = await asyncio.wait_for(websocket.recv(), timeout=timeout)
+                        print("SMART INPUT Received response from WebSocket")
+                        json_data = json.loads(response)
+                        if 'result' in json_data:
+                             print("Received my function result, ignoring")
+                             HumanLLMMonitor.websocket_server.send_message(response)
+                             continue
+                        if 'sender_id' in json_data and json_data['sender_id'] == HumanLLMMonitor.websocket_server.server_id:
+                            print("Received message from self, ignoring")
+                            continue
+                        else: break
+                    if 'message' in json_data:
+                        answer = json_data['message']
+                    elif 'result' in json_data:
+                        answer = json_data['result']
+                    else:
+                        raise ValueError("No 'message' or 'result' in WebSocket response")
+                    print("SMART INPUT Answer: ", answer)
+                    return str(answer).upper()
+                except asyncio.TimeoutError:
+                    print("Timeout waiting for response from WebSocket")
+                    return None
 
         return asyncio.run(receive_message())
 

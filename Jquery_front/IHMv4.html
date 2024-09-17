@@ -321,6 +321,7 @@ $(function() {
     };
 
     socket.onmessage = function(event) {
+        console.log('Received message1');
         try {
             let data = JSON.parse(event.data);
             displayMessage(data);
@@ -362,11 +363,21 @@ $(function() {
 
         if (callback) {
             console.log('Setting up callback for', functionName);
-            alert('Setting up callback for', functionName);
             socket.onmessage = function(event) {
-                let data = JSON.parse(event.data);
+                console.log('Reception event');
+                console.log('Received message:', event.data);
+                try {
+                    data = JSON.parse(event.data);
+                } catch (e) {console.log('Error parsing JSON:', e); return;}   
+                console.log('Parsed data:', data);
                 if (data.function === functionName) {
+                    console.log('Calling callback with data:', data);
+                    console.log('Data.message:', data.message);
                     callback(data.message);  // Call the callback with the response
+                    console.log('Callback called');
+                } else {
+                    console.log('Function name does not match for callback, displaying message instead');
+                    displayMessage(data);
                 }
             };
         }
@@ -846,8 +857,7 @@ $(function() {
                 let textWithoutHtml = text.replace(/<[^>]*>/g, '');
 
                 sendFunctionCall(data.agent_name, "criticAnswer", {content_annotated: textWithoutHtml, inference_result_msg: ""}, function(responseMessage) {
-                    console.log(responseMessage);
-                    alert(responseMessage);
+                    console.log("responseMessage:"+responseMessage);
                     // Replace the content of the column with the new response
                     targetColumn.querySelector('.message').innerHTML = formatMessage(responseMessage);
                 });
