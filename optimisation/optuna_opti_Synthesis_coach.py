@@ -1,10 +1,7 @@
-import os
-import sys
-import time
-from optimisation.optuna_main import launch_run, definition_few_shots, launch_study
+from optimisation.optuna_main import launch_run, definition_few_shots, global_main
 
 
-def objective(trial, timestamp_exp: int):
+def objective(trial, timestamp_exp: str):
     # Definition of the coach's prompt
     coach_agent_role = trial.suggest_categorical("role_priming", ["In the context of a system generating efficient state-of-the-art research survey papers on a given subject, you are a researcher expert advising on the next best task to develop. This system employs a hybrid approach, leveraging both LLM capabilities and traditional algorithmic processing.",
                                                                   "You are an AI coach"])
@@ -153,7 +150,7 @@ def objective(trial, timestamp_exp: int):
         f.write(prompt_coach)
 
     # Save the parameters chosen by the trial
-    with open(f"Optuna_results/xp_coach{timestamp_exp}.txt", "a") as f:
+    with open(f"Optuna_results/{timestamp_exp}.txt", "a") as f:
         f.write(f"Trial: {trial.number}\nPrompt Coach Chosen: \n{prompt_coach}")
 
     perf = launch_run(
@@ -166,19 +163,10 @@ def objective(trial, timestamp_exp: int):
         optuna_opti="coach",
         criteria=criteria_user_message
     )
-    with open(f"Optuna_results/xp_coach{timestamp_exp}.txt", "a") as f:
+    with open(f"Optuna_results/{timestamp_exp}.txt", "a") as f:
         f.write(f"Performance: {perf}\n\n")
 
     return perf
 
 if __name__ == "__main__":
-    # Change directory to the location of this script if not already in the correct directory
-    if os.path.basename(os.getcwd()) == "optimisation":
-        os.chdir("../")
-    # Recuperate name_exp from terminal argument:
-    if len(sys.argv) > 1:
-        name_exp = sys.argv[1]
-    else :
-        timestamp_xp = int(time.time())
-        name_exp = f"xp_coach{timestamp_xp}"
-    launch_study(lambda trial: objective(trial, name_exp), name_exp)
+    global_main(objective, "coach")
