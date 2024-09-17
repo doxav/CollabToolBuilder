@@ -372,8 +372,10 @@ $(function() {
                 console.log('Parsed data:', data);
                 if (data.function === functionName) {
                     console.log('Calling callback with data:', data);
-                    console.log('Data.message:', data.message);
-                    callback(data.message);  // Call the callback with the response
+                    console.log('Data.message:', data.result);
+                    // Add a text at the begginning of the message
+                    data.result = "The function " + functionName + " has been remade :" + "\n\n" + data.result;
+                    callback(data.result);  // Call the callback with the response
                     console.log('Callback called');
                 } else {
                     console.log('Function name does not match for callback, displaying message instead');
@@ -869,7 +871,11 @@ $(function() {
                 columns.forEach(column => {
                     text += column.textContent.replace(/<[^>]*>/g, '');
                 });
-                sendFunctionCall(data.agent_name, "criticAnswer", {content_annotated: text, inference_result_msg: ""});
+                sendFunctionCall(data.agent_name, "criticAnswer", {content_annotated: text, inference_result_msg: ""}, function(responseMessage) {
+                    console.log("responseMessage:"+responseMessage);
+                    // Replace the content of the column with the new response
+                    targetColumn.querySelector('.message').innerHTML = formatMessage(responseMessage);
+                });
             });
         }
 
@@ -879,6 +885,10 @@ $(function() {
         }
 
         if (columnIndex === columnMax - 1) {
+            // Si le bouton existe déjà, ne pas le recréer
+            if (document.getElementById(`continue-button-${data.agent_name}`)) {
+                return;
+            }
             // Ajouter le bouton "Continue"
             let $continueButton = $(`<button id="continue-button-${data.agent_name}">Continue</button>`);
             $('.solution-columns').after($continueButton);
