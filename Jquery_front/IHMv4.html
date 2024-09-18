@@ -451,6 +451,13 @@ $(function() {
             };
         }
     }
+
+    function addHistoryEntry(actionDescription) {
+        let timestamp = new Date().toLocaleTimeString();
+        let $entry = $(`<div><strong>[${timestamp}]</strong> ${actionDescription}</div>`);
+        $('#history-content').append($entry);
+    }
+
     function displayMessage(data) {
         currentAgent = data.agent_name;
         let title = `${data.agent_name} | ${data.message_type} | ${new Date().toLocaleTimeString()}`;
@@ -626,6 +633,8 @@ $(function() {
                 socket.send(JSON.stringify({message: rounds}));
 
                 $container.remove();
+                let actionDescription = `User set skip rounds to ${rounds}`;
+                addHistoryEntry(actionDescription);
             });
             // END COPY
 
@@ -699,6 +708,29 @@ $(function() {
             });
             // END COPY
 
+        } else if (data.message_type === "fix_error"){
+            let $question = $(`<p>Do you want to edit the code to fix the error (you will also be requested first) ?</p>`);
+              let $yesButton = $(`<button id="yes-button">Yes</button>`);
+              let $noButton = $(`<button id="no-button">No</button>`);
+              let $autofixButton = $(`<button id="try-llm-button">Try autofix with LLM</button>`);
+              let $container = $(`<div></div>`);
+              $container.append($question);
+              $container.append($yesButton);
+              $container.append($noButton);
+              $container.append($autofixButton);
+              $("#message-accordion").append($container);
+              $yesButton.click(function () {
+                  socket.send(JSON.stringify({message: "yes"}));
+                  $container.remove();
+              });
+              $noButton.click(function () {
+                  socket.send(JSON.stringify({message: "no"}));
+                  $container.remove();
+              });
+              $autofixButton.click(function () {
+                  socket.send(JSON.stringify({message: "a"}));
+                  $container.remove();
+              });
         } else if(data.message_type.includes("Inference streaming output") && data.agent_name === "TaskIdentificationAgent") {
             // Existing code for handling this case
             // COPIED CODE
@@ -713,7 +745,7 @@ $(function() {
         $inferenceAccordion = $(`
             <div data-inference="${inferenceNumber}" class="collapsible-message open">
                 <div class="collapsible-header">
-                    <span class="arrow"><i class="fa-solid fa-chevron-down"></i></span> <span>Inference ${inferenceNumber}</span>
+                    <span class="arrow"><i class="fa-solid fa-chevron-down"></i></span> <span>Inference ${inferenceNumber+1}</span>
                 </div>
                 <div class="collapsible-content">
                     <div class="column-container"><div class="message"></div></div>
@@ -884,15 +916,17 @@ $(function() {
                     console.log('Evaluate button clicked');
                     alert('Evaluation submitted ! Thanks you !');
                     // If a slider exists, get the score of it, else get the value of the compliance select
+                    let score;
                     if($(`#slider-${columnId}`).length) {
-                        let score = $(`#slider-${columnId}`).val() / 10;
-                        let comment = $(`#comment-${columnId}`).val();
-                        sendFunctionCall(data.agent_name, "evaluateCommentAnswerForLater", {comment: comment, score: score, output_id: columnIndex});
+                        score = $(`#slider-${columnId}`).val() / 10;
+
                     } else {
-                        let compliance = $(`#compliance-${columnId}`).val();
-                        let comment = $(`#comment-${columnId}`).val();
-                        sendFunctionCall(data.agent_name, "evaluateCommentAnswerForLater", {comment: comment, score: compliance, output_id: columnIndex});
+                        score = $(`#compliance-${columnId}`).val();
                     }
+                    let comment = $(`#comment-${columnId}`).val();
+                    sendFunctionCall(data.agent_name, "evaluateCommentAnswerForLater", {comment: comment, score: score, output_id: columnIndex});
+                    let actionDescription = `User evaluated solution ${columnIndex} with score ${score} and comment "${comment}"`;
+                    addHistoryEntry(actionDescription);
                 });
 
             // Mise à jour des événements pour les boutons
@@ -913,6 +947,13 @@ $(function() {
                 columnsToDelete.push(columnIndex);
                 localStorage.setItem(`columnsToDelete-${data.agent_name}`, JSON.stringify(columnsToDelete));
                 console.log('Columns to delete:', columnsToDelete);
+                let actionDescription;
+                if (targetColumn.style.backgroundColor === 'lightcoral') {
+                    actionDescription = `User marked solution ${columnIndex + 1} for deletion`;
+                } else {
+                    actionDescription = `User unmarked solution ${columnIndex + 1} for deletion`;
+                }
+                addHistoryEntry(actionDescription);
             });
 
             /*$(`#regenwithmymodifbutton-${columnId}`).click(function () {
@@ -932,6 +973,8 @@ $(function() {
                     // Replace the content of the column with the new response
                     targetColumn.querySelector('.message').innerHTML = formatMessage(responseMessage);
                 });
+                let actionDescription = `User requested regeneration of solution ${columnIndex + 1} with modifications`;
+                addHistoryEntry(actionDescription);
             });
 
             $(`#regenallbutton-${columnId}`).click(function () {
@@ -945,6 +988,8 @@ $(function() {
                     // Replace the content of the column with the new response
                     targetColumn.querySelector('.message').innerHTML = formatMessage(responseMessage);
                 });
+                let actionDescription = `User requested regeneration of solution ${columnIndex + 1} with all modifications`;
+                addHistoryEntry(actionDescription);
             });
         }
 
@@ -974,6 +1019,8 @@ $(function() {
                 document.getElementById("number-functions-validated").textContent = number_validated_functions;
                 console.log("Columns to keep:", columnsToKeep.join(','));
                 socket.send(JSON.stringify({message: columnsToKeep.join(',')}));
+                let actionDescription = `User clicked continue, keeping solutions: ${columnsToKeep.map(num => num + 1).join(', ')}`;
+                addHistoryEntry(actionDescription);
             });
         }
 
@@ -1248,6 +1295,8 @@ $(document).on('click', '.collapsible-header', function() {
         sendFunctionCall(currentAgent,"set_default_llmORchain", [settings["defaultLLM"], settings["temperature"]]);
         sendFunctionCall(currentAgent,"set_premium_llmORchain", [settings["premiumLLM"], settings["temperature"]]);
         console.log("Settings applied:", settings);
+        let actionDescription = `User applied settings: default LLM=${settings.defaultLLM}, premium LLM=${settings.premiumLLM}, temperature=${settings.temperature}`;
+        addHistoryEntry(actionDescription);
     });
 
     function saveSelection() {
@@ -1353,6 +1402,8 @@ $(document).on('click', '.collapsible-header', function() {
             }
             parent.removeChild(tempHighlights[i]);
         }
+        let actionDescription = `User applied annotation: action="${annotationAction}", text="${annotationText}"`;
+        addHistoryEntry(actionDescription);
     });
 
     $(".annotation-menu .close-btn").click(function() {
@@ -1375,6 +1426,10 @@ $(document).on('click', '.collapsible-header', function() {
         socket.send(JSON.stringify({ message: `${option}` }));
         // Hide the menu options after selecting one
         $("#menu-options").empty();
+        // Retrieve the text of the selected option
+        let text = $(this).text();
+        let actionDescription = `User selected menu option "${text}"`;
+        addHistoryEntry(actionDescription);
     });
 
     $(document).on("click", ".regenerate", function() {

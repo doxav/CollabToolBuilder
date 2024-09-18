@@ -32,7 +32,6 @@ import json
 
 #openai.api_key = os.environ['OPENAI_API_KEY']
 #if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
-HumanLLMMonitor.use_websocket = False
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
 UnifiedVectorDB.es_user = elastic_user
@@ -42,8 +41,7 @@ UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002" # "nom
 embedding_function="intfloat/e5-base-v2" # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
 reset_db_indices=False # Set to True after changing embeddings
 
-HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices) 
-HumanLLMMonitor.use_websocket = False
+HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
 
 class Environment:
     def __init__(self, temp_root_dir: str = None, data_dir: str = "data"):
@@ -421,7 +419,7 @@ class CodingAgent():
                     elif self.optuna_opti:
                         decision = "n"
                     else:
-                        decision = smart_input("Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ", self.name).strip().lower()
+                        decision = smart_input("Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ", self.name,"fix_error").strip().lower()
                     if decision in ("no", "n", ""):
                         break
                     elif decision == "a":
