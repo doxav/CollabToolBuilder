@@ -331,6 +331,10 @@ color: white;
             </select>
             <input type="text" id="search-filter" placeholder="Search...">
         </div>
+        <div style="font-size: medium; font-weight: bold;">
+            <label>Remaining time:</label>
+            <span id="remaining-time">0</span>
+        </div>
 
         <div id="message-accordion" class="accordion"></div>
 
@@ -523,6 +527,25 @@ $(function() {
         // If the message_type is null, set it to " "
         if (data.message_type === null) {
             data.message_type = " ";
+        }
+
+        if (data.message_type === "time_end") {
+            // Convert remaining time to minutes and seconds
+            let remainingTime = parseInt(data.message);
+            let minutes = Math.floor(remainingTime / 60);
+            let seconds = remainingTime % 60;
+            document.getElementById("remaining-time").textContent = `${minutes}m ${seconds}s`;
+            // Countdown the remaining time
+            let countdown = setInterval(function() {
+                remainingTime--;
+                minutes = Math.floor(remainingTime / 60);
+                seconds = remainingTime % 60;
+                document.getElementById("remaining-time").textContent = `${minutes}m ${seconds}s`;
+                if (remainingTime <= 0) {
+                    clearInterval(countdown);
+                }
+            }, 1000);
+            return;
         }
 
         let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
