@@ -454,7 +454,7 @@ $(function() {
 
     function addHistoryEntry(actionDescription) {
         let timestamp = new Date().toLocaleTimeString();
-        let $entry = $(`<div><strong>[${timestamp}]</strong> ${actionDescription}</div>`);
+        let $entry = $(`<div style="font-size: small"><strong>[${timestamp}] ${currentAgent}</strong><br>${actionDescription}</div>`);
         $('#history-content').append($entry);
     }
 
@@ -735,17 +735,17 @@ $(function() {
             // Existing code for handling this case
             // COPIED CODE
             console.log("Inference streaming output");
-            let inferenceNumber = data.message_type.slice(-1);
+            let inferenceNumber = parseInt(data.message_type.slice(-1));
             if (isNaN(inferenceNumber)) {
                 return;
             }
             let $inferenceAccordion = $(`#message-accordion > div[data-agent="TaskIdentificationAgent"] > div > div[data-inference="${inferenceNumber}"]`);
             if ($inferenceAccordion.length === 0) {
                 // Create a collapsible container for the inference outputs
-        $inferenceAccordion = $(`
+        $inferenceAccordion = $(`<br>
             <div data-inference="${inferenceNumber}" class="collapsible-message open">
                 <div class="collapsible-header">
-                    <span class="arrow"><i class="fa-solid fa-chevron-down"></i></span> <span>Inference ${inferenceNumber+1}</span>
+                    <span class="arrow"><i class="fa-solid fa-chevron-down"></i></span> <span><strong>Inference ${inferenceNumber+1}</strong> </span>
                 </div>
                 <div class="collapsible-content">
                     <div class="column-container"><div class="message"></div></div>
@@ -956,13 +956,6 @@ $(function() {
                 addHistoryEntry(actionDescription);
             });
 
-            /*$(`#regenwithmymodifbutton-${columnId}`).click(function () {
-                let targetColumn = document.getElementById(`column-${columnId}`);
-                let text = targetColumn.querySelector('.message').textContent;
-                let textWithoutHtml = text.replace(/<[^>]*>/g, '');
-                sendFunctionCall(data.agent_name, "criticAnswer", {content_annotated: textWithoutHtml, inference_result_msg: ""});
-            });*/
-
             $(`#regenwithmymodifbutton-${columnId}`).click(function () {
                 let targetColumn = document.getElementById(`column-${columnId}`);
                 let text = targetColumn.querySelector('.message').textContent;
@@ -972,9 +965,15 @@ $(function() {
                     console.log("responseMessage:"+responseMessage);
                     // Replace the content of the column with the new response
                     targetColumn.querySelector('.message').innerHTML = formatMessage(responseMessage);
+                    // Set the button enable and change the text with the icon and text
+                    $(`#regenwithmymodifbutton-${columnId}`).prop('disabled', false);
+                    $(`#regenwithmymodifbutton-${columnId}`).html('<i class="fa-solid fa-rotate"></i> Regenerate with my modifications');
                 });
                 let actionDescription = `User requested regeneration of solution ${columnIndex + 1} with modifications`;
                 addHistoryEntry(actionDescription);
+                // Set the button disable and change the text
+                this.disabled = true;
+                this.textContent = 'Regenerating...';
             });
 
             $(`#regenallbutton-${columnId}`).click(function () {
@@ -987,9 +986,15 @@ $(function() {
                     console.log("responseMessage:"+responseMessage);
                     // Replace the content of the column with the new response
                     targetColumn.querySelector('.message').innerHTML = formatMessage(responseMessage);
+                    // Set the button enable and change the text with the icon and text
+                    $(`#regenallbutton-${columnId}`).prop('disabled', false);
+                    $(`#regenallbutton-${columnId}`).html('<i class="fa-solid fa-rotate"></i> Regenerate with all modifications');
                 });
                 let actionDescription = `User requested regeneration of solution ${columnIndex + 1} with all modifications`;
                 addHistoryEntry(actionDescription);
+                // Set the button disable and change the text
+                this.disabled = true;
+                this.textContent = 'Regenerating...';
             });
         }
 
