@@ -187,7 +187,7 @@ class TaskIdentificationAgent():
         self.params_user_message = params_user_message
         self.human_llm_identify_best_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice,
                                                             premium_llm_by_default=premium_llm_by_default,
-                                                            llmORchains_list=llmORchains_list)#,output_schema="identify_best_task.schema.py")
+                                                            llmORchains_list=llmORchains_list, envs=envs)#,output_schema="identify_best_task.schema.py")
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         self.envs = envs
         self.optuna_opti = optuna

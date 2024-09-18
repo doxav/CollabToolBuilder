@@ -13,17 +13,21 @@ from utils.llm_utils import HumanLLMMonitor
 # Set the class variable
 HumanLLMMonitor.use_websocket = False
 
-def definition_few_shots(trial):
+def definition_few_shots(trial, usr_msg: bool = False):
     """
-    Define few-shot tags for the trial.
+    Define few-shot tags and separators for the trial.
 
     Args:
         trial (optuna.trial.Trial): The Optuna trial object.
+        usr_msg (bool, optional): Flag to determine the format of few_shots_tags. Defaults to False.
 
     Returns:
-        str: A string containing the few-shot tags in JSON format.
+        tuple: A tuple containing the few-shot tags and separators.
     """
-    few_shots_tags = ""
+    if usr_msg:
+        few_shots_tags = []
+    else:
+        few_shots_tags = ""
     # Determine the number of few-shot tags (between 0 and 3)
     sources_list = ["learnt", "failed", "example"]
 
@@ -32,6 +36,26 @@ def definition_few_shots(trial):
         num = trial.suggest_int(f"num_tag_{i+1}", 0, 5)
         if num > 0:
             output_format = trial.suggest_categorical(f"format_tag_{i+1}", ["Json", "Markdown"])
+            # Define separators using Optuna
+            global_prefix = trial.suggest_categorical("global_prefix_option", ["tasks: <<",
+                                                                               "List of tasks: [[",
+                                                                               "tasks: {{",
+                                                                               "List of tasks: $$"
+                                                                               ])
+            if global_prefix[-2:] in ["[[", "$$"]:
+                global_prefix = f"{global_prefix[:8]}{source} {global_prefix[8:]}"
+            else:
+                global_prefix = f"{source}{global_prefix}"
+            global_suffix = f"{global_prefix[-2:]}\n".replace("<<", ">>").replace("[[", "]]").replace("{{", "}}")
+            item_prefix = trial.suggest_categorical("item_prefix_option", ["\n|", "\n(", "\n-"])
+            item_suffix = f"{item_prefix[-1:]}\n".replace("(", ")")
+
+            tmp_separators = {
+                "global_prefix": global_prefix,
+                "global_suffix": global_suffix,
+                "item_prefix": item_prefix,
+                "item_suffix": item_suffix
+            }
 
             template = None
 
@@ -40,18 +64,22 @@ def definition_few_shots(trial):
                 "sources": source,
                 "num": num,
                 "format": output_format,
-                "sort_order": "random"
+                "sort_order": "random",
+                "separators": tmp_separators
             }
             if template:
                 few_shot_dict["template"] = template
 
-            # Convert the dictionary to a JSON string with double quotes
-            few_shot_json = json.dumps(few_shot_dict)
-
             # Add the few-shot tag to the prompt
-            few_shots_tags += f"few_shots: {few_shot_json}\n"
+            if not isinstance(few_shots_tags, list):
+                # Convert the dictionary to a JSON string with double quotes
+                few_shot_json = json.dumps(few_shot_dict)
+                few_shots_tags += f"few_shots: {few_shot_json}\n"
+            else:
+                few_shots_tags.append(few_shot_dict)
 
     return few_shots_tags
+
 
 
 def definition_global_parameters(temperature : float = None, presence_penalty : float = None):

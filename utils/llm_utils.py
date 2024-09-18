@@ -594,6 +594,7 @@ class HumanLLMMonitor:
         if not few_shots_params:
             return ""
 
+
         all_formatted_examples = []
 
         for params in few_shots_params:
@@ -610,6 +611,16 @@ class HumanLLMMonitor:
             }
             for key, default in criteria_defaults.items():
                 params.setdefault(key, default)
+
+            if "separators" in params:
+                separators = params["separators"]
+            else:
+                separators = {
+                    "global_prefix" : f"\n{params['sources']} tasks : <<",
+                    "global_suffix" : ">>\n",
+                    "item_prefix" : "\n|",
+                    "item_suffix" : "|"
+                }
 
             if params['sources'] == "learnt":
                 examples = cls.get_learnt_tasks(
@@ -651,13 +662,13 @@ class HumanLLMMonitor:
                 'template': params['template']
             }
 
-            formatted_examples = cls.format_examples(examples, format_criteria, params['sources'])
+            formatted_examples = cls.format_examples(examples, format_criteria, separators)
             all_formatted_examples.append(formatted_examples)
 
         return "\n".join(all_formatted_examples)
 
     @classmethod
-    def format_examples(cls, examples, criteria, sources):
+    def format_examples(cls, examples, criteria, separators):
         if not examples:
             return ""
 
@@ -705,8 +716,9 @@ class HumanLLMMonitor:
 
             formatted_examples.append(formatted_example)
 
-        pipo = ''.join([f"\n|{format_ex}|" for format_ex in formatted_examples])
-        return f"\n{sources} tasks : <<{pipo}>>\n"
+        item = ''.join([f"{separators['item_prefix']}{format_ex}{separators['item_suffix']}" for format_ex in formatted_examples])
+
+        return f"{separators['global_prefix']}{item}{separators['global_suffix']}"
 
     @classmethod
     def get_default_jinja2_template(cls, content_data):
@@ -966,7 +978,7 @@ class HumanLLMMonitor:
                  default_llmORchain=None,
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1,
                  llmORchains_list=None,
-                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature=0.7, optuna=False):
+                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature=0.7, optuna=False, envs=None):
         self.current_inference_context = None
         self.user_message_few_shots = None
         if llmORchains_list is None: raise ValueError("llmORchains_list must be provided")
@@ -1002,6 +1014,7 @@ class HumanLLMMonitor:
         self.inference_checks = inference_checks if inference_checks else {}
         self.last_inference_check_results = None
         self.user_message = ""
+        self.envs = envs
 
     # New: Handling function calls via WebSocket
     def execute_function(self, function_name, params):
@@ -1270,7 +1283,7 @@ class HumanLLMMonitor:
 
             elif action == "F":  # See previous MODIFIED/SCORED/COMMENTED results - list results from  HumanLLMMonitor.common_vectordb filtered by agent_name and function_name, filtered on comments
                 result = self.getScoredResults(function_name)
-                if result:
+                if result is not None:
                     messages = [
                         SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)),
                         HumanMessage(content=result)
@@ -1547,8 +1560,10 @@ class HumanLLMMonitor:
         if confirm == "I":
             new_few_shots = _visual_input(self.user_message_few_shots)
             self.user_message_few_shots = new_few_shots
+            envs_status = '\n'.join([env.get_state() for env in self.envs])
 
-            return self.get_multiple_few_shots(self.user_message_few_shots)
+            return self.get_multiple_few_shots(self.user_message_few_shots) + (f"\n- Current status of examples on "
+                                                                               f"which the task will be tested on: {envs_status}\n")
 
         if confirm in ["A", "", "B"]:
             result.extend(HumanLLMMonitor.common_vectordb.query(
