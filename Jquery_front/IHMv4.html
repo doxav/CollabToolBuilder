@@ -97,11 +97,11 @@ body {
 }
 
 .solution-column {
-    flex: 1;
+    flex: 1 1 calc(100% / 1 - 20px); /* Par défaut, 4 colonnes */
+    box-sizing: border-box;
     border: 1px solid #90CAF9; /* Light Blue */
     padding: 10px;
     margin-bottom: 10px;
-    max-width: 23%;
     position: relative;
 }
 
@@ -154,7 +154,9 @@ pre {
 
 .solution-columns {
     display: flex;
+    flex-wrap: wrap;
     gap: 20px;
+    width: 100%;
 }
 
 
@@ -264,6 +266,31 @@ color: white;
 .collapsible-message.open .collapsible-content {
     display: block;
 }
+
+@media (min-width: 1200px) {
+    .solution-column {
+        flex: 1 1 calc(25% - 20px); /* 4 colonnes */
+    }
+}
+
+@media (max-width: 1199px) and (min-width: 900px) {
+    .solution-column {
+        flex: 1 1 calc(33.33% - 20px); /* 3 colonnes */
+    }
+}
+
+@media (max-width: 899px) and (min-width: 600px) {
+    .solution-column {
+        flex: 1 1 calc(50% - 20px); /* 2 colonnes */
+    }
+}
+
+@media (max-width: 599px) {
+    .solution-column {
+        flex: 1 1 calc(100% - 20px); /* 1 colonne */
+    }
+}
+
 </style>
 </head>
 <body>
@@ -732,33 +759,55 @@ $(function() {
                   $container.remove();
               });
         } else if(data.message_type.includes("Inference streaming output") && data.agent_name === "TaskIdentificationAgent") {
-            // Existing code for handling this case
-            // COPIED CODE
             console.log("Inference streaming output");
+            // Extract the inferenceNumber
             let inferenceNumber = parseInt(data.message_type.slice(-1));
             if (isNaN(inferenceNumber)) {
                 return;
             }
-            let $inferenceAccordion = $(`#message-accordion > div[data-agent="TaskIdentificationAgent"] > div > div[data-inference="${inferenceNumber}"]`);
-            if ($inferenceAccordion.length === 0) {
-                // Create a collapsible container for the inference outputs
-        $inferenceAccordion = $(`<br>
-            <div data-inference="${inferenceNumber}" class="collapsible-message open">
-                <div class="collapsible-header">
-                    <span class="arrow"><i class="fa-solid fa-chevron-down"></i></span> <span><strong>Inference ${inferenceNumber+1}</strong> </span>
-                </div>
-                <div class="collapsible-content">
-                    <div class="column-container"><div class="message"></div></div>
-                </div>
-            </div>
-        `);
-        $(`#message-accordion > div[data-agent="TaskIdentificationAgent"] > div`).append($inferenceAccordion);
+
+            const columnId = `${data.agent_name}-${inferenceNumber}`;
+            let targetColumn = document.getElementById(`column-${columnId}`);
+
+            if (!targetColumn) {
+                // Column doesn't exist yet, create it
+                console.log(`Creating column for inference ${inferenceNumber}`);
+
+                // Ensure the solutionColumnsContainer exists
+                let solutionColumnsContainer = document.querySelector(`#message-accordion > div[data-agent="${data.agent_name}"] > div > .solution-columns`);
+
+                if (!solutionColumnsContainer) {
+                    // Create the solution columns container
+                    solutionColumnsContainer = document.createElement('div');
+                    solutionColumnsContainer.className = 'solution-columns';
+                    let agentAccordion = document.querySelector(`#message-accordion > div[data-agent="${data.agent_name}"] > div`);
+                    if (!agentAccordion) {
+                        // Create agent accordion if it doesn't exist
+                        agentAccordion = document.createElement('div');
+                        agentAccordion.setAttribute('data-agent', data.agent_name);
+                        agentAccordion.innerHTML = `<h3>${data.agent_name}</h3><div></div>`;
+                        document.querySelector('#message-accordion').appendChild(agentAccordion);
+                    }
+
+                    agentAccordion.appendChild(solutionColumnsContainer);
+                }
+
+                // Create the column
+                targetColumn = document.createElement('div');
+                targetColumn.className = 'solution-column';
+                targetColumn.id = `column-${columnId}`;
+                targetColumn.innerHTML = `
+                    <button class="expand-button"><i class="fas fa-expand"></i></button><br>
+                    <h4>Inference ${inferenceNumber + 1}</h4>
+                    <div class="message" style="max-height: 450px; overflow-y: auto;"></div>
+                `;
+                solutionColumnsContainer.appendChild(targetColumn);
+                adjustColumnWidths();
             }
-            // Add the data to the last message container
-            //let $messageContainer = $(content);
-            $inferenceAccordion.find('.message').append(content);
-            updateFilters(data);
-            // END COPY
+
+            // Append the message to the column's message div
+            const messageDiv = targetColumn.querySelector('.message');
+            messageDiv.innerHTML += formatMessage(data.message);
 
         } else if (data.message_type === "BEFORE inference action MENU" || data.message_type === "AFTER inference action MENU" && data.message.includes("Change default") || data.message.includes("Change premium") || data.message.includes("Exit") || data.message.includes("Log comments")) {
                 displayMenuOptions(data.message);
@@ -889,11 +938,9 @@ $(function() {
                 <div style="text-align: center;">
                    <button id="delete-${columnId}"><i class="fa-regular fa-trash-can"></i> Do not keep this solution</button>
                 </div>
-                <br>
                 <div style="text-align: center;">
                     <button id="regenwithmymodifbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Regenerate with my modifications</button>
                 </div>
-                <br>
                 <div style="text-align: center;">
                     <button id="regenallbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Regenerate with all modifications</button>
                 </div>
@@ -1039,6 +1086,16 @@ $(function() {
         console.error('Error handling multiple solutions:', error);
     }
 }
+
+    function adjustColumnWidths() {
+        console.log('Adjusting column widths with', document.querySelectorAll('.solution-columns .solution-column').length, 'columns');
+        const columns = document.querySelectorAll('.solution-columns .solution-column');
+        const numColumns = columns.length;
+        columns.forEach(column => {
+            column.style.flex = `1 1 calc(${100 / numColumns}% - 20px)`;
+        });
+    }
+
 
     function handleEvaluationResults(data) {
         let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
