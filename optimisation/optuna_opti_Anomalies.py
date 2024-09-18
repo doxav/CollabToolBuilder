@@ -1,10 +1,7 @@
-import os
-import sys
-import time
-from optimisation.optuna_main import launch_study, launch_run, definition_few_shots
+from optimisation.optuna_main import launch_run, definition_few_shots, global_main
 
 
-def objective(trial, timestamp_exp: int):
+def objective(trial, timestamp_exp: str):
 
     # Define parameters for Coach
 
@@ -491,7 +488,7 @@ def objective(trial, timestamp_exp: int):
     #         f.write(prompt_critic)
 
     # Save the parameters chosen by the trial
-    with open(f"Optuna_results/xp_anomalies{timestamp_exp}.txt", "a") as f:
+    with open(f"Optuna_results/{timestamp_exp}.txt", "a") as f:
         f.write(f"Trial: {trial.number}\nPrompt Coach Chosen: \n{prompt_coach}")
 
 
@@ -506,17 +503,10 @@ def objective(trial, timestamp_exp: int):
         criteria=criteria_user_message
     )
 
-    with open(f"Optuna_results/xp_anomalies{timestamp_exp}.txt", "a") as f:
+    with open(f"Optuna_results/{timestamp_exp}.txt", "a") as f:
         f.write(f"Performance: {perf}\n\n")
     return perf
 
 
 if __name__ == "__main__":
-    os.chdir("../")
-    # Recuperate name_exp from terminal argument:
-    if len(sys.argv) > 1:
-        name_exp = sys.argv[1]
-    else:
-        timestamp_xp = int(time.time())
-        name_exp = f"xp_coder{timestamp_xp}"
-    launch_study(lambda trial: objective(trial, timestamp_xp), name_exp)
+    global_main(objective, "anomalies")

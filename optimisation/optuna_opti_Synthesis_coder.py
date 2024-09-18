@@ -1,7 +1,4 @@
-import os
-import sys
-import time
-from optimisation.optuna_main import launch_study, launch_run, definition_few_shots
+from optimisation.optuna_main import launch_run, definition_few_shots, global_main
 
 
 def objective(trial, name_xp : str):
@@ -92,13 +89,4 @@ def objective(trial, name_xp : str):
 
 
 if __name__ == "__main__":
-    # Change directory to the location of this script if not already in the correct directory
-    if os.path.basename(os.getcwd()) == "optimisation":
-        os.chdir("../")
-    # Recuperate name_exp from terminal argument:
-    if len(sys.argv) > 1:
-        name_exp = sys.argv[1]
-    else :
-        timestamp_xp = int(time.time())
-        name_exp = f"xp_coder{timestamp_xp}"
-    launch_study(lambda trial: objective(trial, name_exp), name_exp)
+    global_main(objective, "coder")

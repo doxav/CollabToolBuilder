@@ -1,3 +1,6 @@
+import json
+import sys
+
 import optuna as opt
 import time
 import os
@@ -11,30 +14,59 @@ from utils.llm_utils import HumanLLMMonitor
 HumanLLMMonitor.use_websocket = False
 
 def definition_few_shots(trial):
-    few_shots = ""
-    few_shots_tags = trial.suggest_categorical("few_shots_tags", [True, False])
-    if few_shots_tags:
-        number_of_shots = trial.suggest_int("number_of_shots", 1, 5)
-        # filter_tags = trial.suggest_categorical("filter_tags", "")
-        ranking_tags = trial.suggest_categorical("ranking_tags",
-                                                 ["by_score_asc", "by_date_asc", "mrr_asc", "cosine_asc", "random",
-                                                  "accuracy", "relevance"])
-        #annotations = trial.suggest_categorical("annotations", ["fix", "delete", "approve", "variants", "nothing"])
-        summary = trial.suggest_categorical("summary", [True, False])
-        format = trial.suggest_categorical("format", ["JSON", "Markdown", "Jinja2"])
-        few_shots = f"few_shots: {{'num': {number_of_shots}, 'ranking_method': '{ranking_tags}', 'summary': {summary}, 'format': '{format}'}}"
-    return few_shots
+    """
+    Define few-shot tags for the trial.
+
+    Args:
+        trial (optuna.trial.Trial): The Optuna trial object.
+
+    Returns:
+        str: A string containing the few-shot tags in JSON format.
+    """
+    few_shots_tags = ""
+    # Determine the number of few-shot tags (between 0 and 3)
+    sources_list = ["learnt", "failed", "example"]
+
+    for i in range(3):
+        source = sources_list[i]
+        num = trial.suggest_int(f"num_tag_{i+1}", 0, 5)
+        if num > 0:
+            output_format = trial.suggest_categorical(f"format_tag_{i+1}", ["Json", "Markdown", "Jinja2"])
+
+            template = None
+
+            # Construct the dictionary for the few-shot tag
+            few_shot_dict = {
+                "sources": source,
+                "num": num,
+                "format": output_format
+            }
+            if template:
+                few_shot_dict["template"] = template
+
+            # Convert the dictionary to a JSON string with double quotes
+            few_shot_json = json.dumps(few_shot_dict)
+
+            # Add the few-shot tag to the prompt
+            few_shots_tags += f"few_shots: {few_shot_json}\n"
+
+    return few_shots_tags
+
 
 def definition_global_parameters(temperature : float = None, presence_penalty : float = None):
-    # Initialize the default and premium LLMs
-    # default_llm = ChatOpenAI(model_name="gpt-3.5-turbo-1106") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
-    # default_llm = create_Nmajority_chain(num_models=3)
-    # premium_llm = ChatOpenAI(model_name="gpt-4o") # gpt-4-1106-preview gpt-3.5-turbo-1106 model_name=model_name, temperature=temperature, request_timeout=request_timout
+    """
+    Define global parameters for the LLMs and environments.
+
+    Args:
+        temperature (float, optional): The temperature setting for the LLMs.
+        presence_penalty (float, optional): The presence penalty setting for the LLMs.
+
+    Returns:
+        tuple: A tuple containing the LLM or chains list and the environments list.
+    """
     llmORchains_list = {
         "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt"], **{k: v for k, v in {"temperature": temperature, "presence_penalty": presence_penalty}.items() if v is not None}),
         "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"], **{k: v for k, v in {"temperature": temperature, "presence_penalty": presence_penalty}.items() if v is not None}),
-        # "3_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"] , num_models=3),
-        # "10_majority_chain": learn.create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["gpt-3.5"], reduce_model_name=MODELS_CONFIG_LIST["gpt-3.5"], num_models=10)
     }
 
     # Set the documents to test/validate as a list of environments
@@ -57,6 +89,24 @@ def definition_global_parameters(temperature : float = None, presence_penalty : 
 
 def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "premium_llm", problem_prompts_subdir : str = None, max_coding_attempts : int = 2, max_execution_time : int = 900,
         model_choice=None, optuna_opti : str = "coach", criteria : str = None, special_criteria : dict = None, name_exp : str = ""):
+    """
+    Launch the run with the specified parameters.
+
+    Args:
+        default_llm_key (str): The key for the default LLM.
+        premium_llm_key (str): The key for the premium LLM.
+        problem_prompts_subdir (str, optional): The subdirectory for problem prompts.
+        max_coding_attempts (int, optional): The maximum number of coding attempts.
+        max_execution_time (int, optional): The maximum execution time in seconds.
+        model_choice (dict, optional): The model choices for different roles.
+        optuna_opti (str, optional): The Optuna optimization target.
+        criteria (str, optional): The criteria for evaluation.
+        special_criteria (dict, optional): Special criteria for the run.
+        name_exp (str, optional): The name of the experiment.
+
+    Returns:
+        Any: The performance result of the run.
+    """
     if model_choice is None:
         model_choice = {"coach": "default", "coder": "premium_llm", "critic": "default_llm",
                         "capitalizer": "default_llm"}
@@ -86,12 +136,19 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
                                            optuna_opti=optuna_opti,
                                            criteria=criteria,
                                            special_criteria=special_criteria)
-    print("Analysis...") 
+    print("Analysis...")
     analysis(name_exp)
     print("Analysis done.")
     return performance
 
 def launch_study(objective, name_exp : str):
+    """
+    Launch the Optuna study with the specified objective and experiment name.
+
+    Args:
+        objective (callable): The objective function for the Optuna study.
+        name_exp (str): The name of the experiment.
+    """
     # get current folder
     current_folder = os.getcwd()
 
@@ -106,4 +163,23 @@ def launch_study(objective, name_exp : str):
     # Create a study and optimize the objective function
     study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}", study_name=name_exp)
     study.optimize(objective, n_trials=200)
+
+def global_main(objective, agent_name : str) :
+    """
+    Main function to launch the Optuna study.
+
+    Args:
+        objective (callable): The objective function for the Optuna study.
+        agent_name (str): The name of the agent.
+    """
+    # Change directory to the location of this script if not already in the correct directory
+    if os.path.basename(os.getcwd()) == "optimisation":
+        os.chdir("../")
+    # Recuperate name_exp from terminal argument:
+    if len(sys.argv) > 1:
+        name_exp = sys.argv[1]
+    else :
+        timestamp_xp = int(time.time())
+        name_exp = f"xp_{agent_name}{timestamp_xp}"
+    launch_study(lambda trial: objective(trial, name_exp), name_exp)
 

@@ -9,7 +9,6 @@ import re
 from typing import List, SupportsFloat, Any, Tuple, Dict
 from dataclasses import asdict
 
-#from config import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, ELASTICSEARCH_HOST
 from config import *
 #from attr import dataclass, field
 #import PyPDF2
