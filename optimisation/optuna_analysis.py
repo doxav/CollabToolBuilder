@@ -1,4 +1,3 @@
-import sys
 import optuna
 import os
 import pandas as pd
@@ -7,8 +6,10 @@ from optuna.importance import get_param_importances
 from itertools import combinations
 import traceback
 import numpy as np  # Added for variance calculation
+import sys
+import shutil  # For copying the SQLite file
 
-def analysis(name_exp: str, in_dir = False):
+def analysis(name_exp: str, in_dir=False):
     try:
         # Define the path to the SQLite database
         current_folder = os.getcwd()
@@ -16,7 +17,9 @@ def analysis(name_exp: str, in_dir = False):
         # File to save results
         output_file = os.path.join(current_folder, f"{name_exp}_analysis.txt" if in_dir else f"Optuna_results/{name_exp}_analysis.txt")
 
-        sqlite_file = os.path.join(current_folder, f"{name_exp}.db" if in_dir else f"Optuna_db/{name_exp}.db")
+        sqlite_file_original = os.path.join(current_folder, f"{name_exp}" if in_dir else f"Optuna_db/{name_exp}.db")
+        # Path to the copied SQLite file (temporary)
+        sqlite_file = os.path.join(current_folder, f"{name_exp}_temp_copy.db" if in_dir else f"Optuna_db/{name_exp}_temp_copy.db")
 
         # Function to write results to the file
         def write_to_file(text, mode="a"):
@@ -25,6 +28,10 @@ def analysis(name_exp: str, in_dir = False):
             print(text)
 
         write_to_file("Start analysis", "w")
+
+        # Copy the database file to avoid conflict
+        shutil.copy(sqlite_file_original, sqlite_file)
+        write_to_file(f"Database file copied to {sqlite_file}")
 
         # Get all studies in the database
         study_summaries = optuna.study.get_all_study_summaries(storage=f"sqlite:///{sqlite_file}")
@@ -189,6 +196,11 @@ def analysis(name_exp: str, in_dir = False):
         print(error_message)
         print(traceback_str)
 
+    finally:
+        # Ensure that the copied file is removed after the analysis
+        if os.path.exists(sqlite_file):
+            os.remove(sqlite_file)
+            write_to_file(f"Copied database file {sqlite_file} removed after analysis.")
+
 if len(sys.argv) > 1:
-    analysis(sys.argv[1], True)
-else: print("provide a file to analyze")
+    analysis(sys.argv[1], in_dir=True)
