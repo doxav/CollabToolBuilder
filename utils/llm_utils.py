@@ -83,9 +83,9 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
         # convert message_dict to json
         message = json.dumps(message_dict)
         time.sleep(0.05)
-        # Wait 2 seconds every 100 messages to avoid flooding the WebSocket server
-        if HumanLLMMonitor.websocket_server.message_count % 250 == 0:
-            time.sleep(2)
+        # Wait a second every 500 messages to avoid flooding the WebSocket server
+        if HumanLLMMonitor.websocket_server.message_count % 500 == 0:
+            time.sleep(1)
         HumanLLMMonitor.websocket_server.send_message(message)
 
     elif IN_NOTEBOOK and agent_name:
@@ -131,15 +131,7 @@ def smart_input(message: str, agent_name=None, message_type=None):
         structured_message = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'input': True}
         # convert structured_message to json
         message = json.dumps(structured_message)
-        no_client = True
-        while no_client:
-            HumanLLMMonitor.websocket_server.send_message(message)
-            if len(HumanLLMMonitor.websocket_server.connected_clients) > 0:
-                no_client = False
-            else:
-                print("Waiting for WebSocket client to connect")
-                time.sleep(1)
-
+        HumanLLMMonitor.websocket_server.send_message(message)
         async def receive_message(timeout=900):
             async with websockets.connect(ws_url) as websocket:
                 try:
