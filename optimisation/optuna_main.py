@@ -31,7 +31,7 @@ def definition_few_shots(trial):
         source = sources_list[i]
         num = trial.suggest_int(f"num_tag_{i+1}", 0, 5)
         if num > 0:
-            output_format = trial.suggest_categorical(f"format_tag_{i+1}", ["Json", "Markdown", "Jinja2"])
+            output_format = trial.suggest_categorical(f"format_tag_{i+1}", ["Json", "Markdown"])
 
             template = None
 
