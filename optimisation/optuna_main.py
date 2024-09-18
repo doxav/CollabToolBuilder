@@ -39,7 +39,8 @@ def definition_few_shots(trial):
             few_shot_dict = {
                 "sources": source,
                 "num": num,
-                "format": output_format
+                "format": output_format,
+                "sort_order": "random"
             }
             if template:
                 few_shot_dict["template"] = template
@@ -88,7 +89,7 @@ def definition_global_parameters(temperature : float = None, presence_penalty : 
     return llmORchains_list, envs
 
 def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "premium_llm", problem_prompts_subdir : str = None, max_coding_attempts : int = 2, max_execution_time : int = 900,
-        model_choice=None, optuna_opti : str = "coach", criteria : str = None, special_criteria : dict = None, name_exp : str = ""):
+               model_choice=None, optuna_opti : str = "coach", params_user_message : str = None, special_criteria : dict = None, name_exp : str = ""):
     """
     Launch the run with the specified parameters.
 
@@ -100,7 +101,7 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
         max_execution_time (int, optional): The maximum execution time in seconds.
         model_choice (dict, optional): The model choices for different roles.
         optuna_opti (str, optional): The Optuna optimization target.
-        criteria (str, optional): The criteria for evaluation.
+        params_user_message (str, optional): The criteria for evaluation.
         special_criteria (dict, optional): Special criteria for the run.
         name_exp (str, optional): The name of the experiment.
 
@@ -117,25 +118,25 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
         # Delete the presence_penalty from the special_criteria
         del special_criteria["presence_penalty"]
     performance = run_4agents_learning_loop(default_llm_key=default_llm_key,
-                                           premium_llm_key=premium_llm_key,
-                                           llmORchains_list=llmORchains_list,
-                                           test_environments=envs,
-                                           manual_validation_to_capitalize=False,
-                                           problem_prompts_subdir=problem_prompts_subdir,
-                                           max_coding_attempts=max_coding_attempts,
-                                           include_code=False,
-                                           selected_successful_functions=[],
-                                           selected_failed_functions=[],
-                                           agtask_premium_llm_by_default=True,
-                                           max_execution_time=max_execution_time,
-                                           agtask_skip_rounds=0,
-                                           agcoding_skip_rounds=0,
-                                           agvalidation_skip_rounds=0,
-                                           agcapitalize_skip_rounds=0,
-                                           model_choice=model_choice,
-                                           optuna_opti=optuna_opti,
-                                           criteria=criteria,
-                                           special_criteria=special_criteria)
+                                            premium_llm_key=premium_llm_key,
+                                            llmORchains_list=llmORchains_list,
+                                            test_environments=envs,
+                                            manual_validation_to_capitalize=False,
+                                            problem_prompts_subdir=problem_prompts_subdir,
+                                            max_coding_attempts=max_coding_attempts,
+                                            include_code=False,
+                                            selected_successful_functions=[],
+                                            selected_failed_functions=[],
+                                            agtask_premium_llm_by_default=True,
+                                            max_execution_time=max_execution_time,
+                                            agtask_skip_rounds=0,
+                                            agcoding_skip_rounds=0,
+                                            agvalidation_skip_rounds=0,
+                                            agcapitalize_skip_rounds=0,
+                                            model_choice=model_choice,
+                                            optuna_opti=optuna_opti,
+                                            params_user_message=params_user_message,
+                                            special_criteria=special_criteria)
     print("Analysis...")
     analysis(name_exp)
     print("Analysis done.")

@@ -32,7 +32,6 @@ import json
 
 #openai.api_key = os.environ['OPENAI_API_KEY']
 #if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
-HumanLLMMonitor.use_websocket = False
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
 UnifiedVectorDB.es_user = elastic_user
@@ -43,7 +42,6 @@ embedding_function="intfloat/e5-base-v2" # UnifiedVectorDB.OpenAI_embedding_func
 reset_db_indices=False # Set to True after changing embeddings
 
 HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices) 
-HumanLLMMonitor.use_websocket = False
 
 class Environment:
     def __init__(self, temp_root_dir: str = None, data_dir: str = "data"):
@@ -183,10 +181,10 @@ class EnvironmentManager:
 # Agent 1: Task Identification
 class TaskIdentificationAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
-                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, criteria=None):
+                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, params_user_message=None):
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
-        self.criteria = criteria
+        self.params_user_message = params_user_message
         self.human_llm_identify_best_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice,
                                                             premium_llm_by_default=premium_llm_by_default,
                                                             llmORchains_list=llmORchains_list)#,output_schema="identify_best_task.schema.py")
@@ -197,11 +195,14 @@ class TaskIdentificationAgent():
 
     def identify_best_task(self) -> str:
         user_message = ""
-        if not self.optuna_opti:
-            user_message = self.human_llm_identify_best_task.get_multiple_few_shots(criteria=self.criteria)
-            self.human_llm_identify_best_task.user_message_few_shots = user_message
-        envs_status = '\n'.join([env.get_state() for env in self.envs])
+        # If the user provided some parameters for the user message, call get_multiple_few_shots to retrieve the tasks asked
+        if self.params_user_message:
+            user_message = self.human_llm_identify_best_task.get_multiple_few_shots(
+                few_shots_params=self.params_user_message)
+            # Set the user_message_few_shots attribute to the parameters given in params_user_message
+            self.human_llm_identify_best_task.user_message_few_shots = self.params_user_message
 
+        envs_status = '\n'.join([env.get_state() for env in self.envs])
         user_message += f"\n- Current status of examples on which the task will be tested on: {envs_status}\n"
 
         task = self.human_llm_identify_best_task.CallHumanLLM(
@@ -213,41 +214,6 @@ class TaskIdentificationAgent():
             stream_output=True
         )
         return task
-
-    def expand_criteria_aligned(self, criteria):
-        """
-        Étend les critères où les valeurs sont des listes en alignant les indices ensemble.
-        Par exemple, si les critères sont :
-        {
-            'sources': ['learnt', 'failed'],
-            'num': [3, 2],
-            'format': ['Json', 'Markdown']
-        }
-        Cette méthode générera :
-        [
-            {'sources': 'learnt', 'num': 3, 'format': 'Json'},
-            {'sources': 'failed', 'num': 2, 'format': 'Markdown'}
-        ]
-        """
-        # Déterminer la longueur maximale parmi les listes
-        lengths = [len(value) if isinstance(value, list) else 1 for value in criteria.values()]
-        max_length = max(lengths)
-
-        expanded_criteria = []
-
-        for i in range(max_length):
-            new_criteria = {}
-            for key, value in criteria.items():
-                if isinstance(value, list):
-                    if i < len(value):
-                        new_criteria[key] = value[i]
-                    else:
-                        # Si la liste est plus courte, utiliser le dernier élément
-                        new_criteria[key] = value[-1]
-                else:
-                    new_criteria[key] = value
-            expanded_criteria.append(new_criteria)
-        return expanded_criteria
 
 
 # Agent 2: Code Task
@@ -772,16 +738,15 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0,
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                               optuna_opti=None, allow_custom_score_state_functions=False,
-                              criteria=None, max_execution_time=900, special_criteria=None):
+                              params_user_message=None, max_execution_time=900, special_criteria=None):
     time_end = time.time() + max_execution_time
     scores = None
 
-    if criteria is None and optuna_opti is None:
-        criteria = {
-            'sources': ["learnt", "failed", "default"],
-            'num': [2,3,2],
-            'format': ["json", "Jinja2", "Markdown"]
-        }
+    if params_user_message is None:
+        params_user_message = [
+            {'sources': 'learnt', 'num': 2, 'format': 'json'},
+            {'sources': 'failed', 'num': 3, 'format': 'Markdown'},
+        ]
 
     if HumanLLMMonitor.use_websocket:
         if HumanLLMMonitor.websocket_server is None:
@@ -802,7 +767,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         manager = EnvironmentManager(env_type)
         test_environments = [manager.get_environment()]
 
-    agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, premium_llm_by_default=agtask_premium_llm_by_default, skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(model_choice) == dict else model_choice), criteria=criteria)
+    agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, premium_llm_by_default=agtask_premium_llm_by_default, skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(model_choice) == dict else model_choice), params_user_message=params_user_message)
     agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['coding' if 'coding' in model_choice else 'coder'] if type(model_choice) == dict else model_choice), special_criteria=special_criteria)
     agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['validation' if 'validation' in model_choice else 'critic'] if type(model_choice) == dict else model_choice))
     agent_capitalize = CapitalizationAgent(default_llm_key, premium_llm_choice=premium_llm_key, skip_rounds=agcapitalize_skip_rounds,problem_prompts_subdir=problem_prompts_subdir, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(model_choice) == dict else model_choice))

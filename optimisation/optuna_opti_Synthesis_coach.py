@@ -161,7 +161,6 @@ def objective(trial, timestamp_exp: str):
         max_execution_time=900,
         model_choice={"coach": "premium_llm", "coder": "premium_llm", "critic": "default_llm", "capitalizer": "default_llm"},
         optuna_opti="coach",
-        criteria=criteria_user_message
     )
     with open(f"Optuna_results/{timestamp_exp}.txt", "a") as f:
         f.write(f"Performance: {perf}\n\n")
