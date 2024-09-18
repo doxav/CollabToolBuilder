@@ -218,7 +218,7 @@ class TaskIdentificationAgent():
 
 # Agent 2: Code Task
 class CodingAgent():
-    def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, special_criteria=None):
+    def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, special_criteria=None, params_user_message=None):
         #super().__init__(llm)
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
@@ -245,6 +245,7 @@ class CodingAgent():
         self.optuna_opti = optuna
         self.model_choice = model_choice
         self.processed_codes = set()
+        self.params_user_message = params_user_message
 
     def parse_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None, automatic_tests=True):
         import ast, time, re
@@ -444,12 +445,11 @@ class CodingAgent():
             user_message+=f"{nl}CURRENT STATE OF DOCUMENTS TO PERFORM/TEST TASK: [[[{nl}{nl.join([env.get_state(extended=True) for env in self.envs])}{nl}]]]"
         if len(primitives) > 0:
             user_message+=f"{dnl}RE-USABLE CODE PRIMITIVES: [[[{nl}{nl.join(primitives)}{nl}]]]"
-        successful_tasks = list(HumanLLMMonitor.get_learnt_tasks())
-        failed_tasks = list(HumanLLMMonitor.get_failed_tasks())
-        if successful_tasks and len(successful_tasks) > 0:
-            user_message += f"{dnl}PREVIOUSLY SUCCESSFUL TASKS: [[[{nl}{nl.join(successful_tasks[:5])}{nl}]]]"
-        if failed_tasks and len(failed_tasks) > 0:
-            user_message += f"{dnl}PREVIOUSLY FAILED TASKS: [[[{nl}{nl.join(failed_tasks[:3])}{nl}]]]"
+        if self.params_user_message:
+            user_message += self.human_llm_code_task.get_multiple_few_shots(
+                few_shots_params=self.params_user_message)
+            # Set the user_message_few_shots attribute to the parameters given in params_user_message
+            self.human_llm_code_task.user_message_few_shots = self.params_user_message
 
         if previous_errors and len(previous_errors) > 0:
             user_message+=f"{dnl}PREVIOUS ATTEMPTS TO CODE THE TASK: [[[{nl}"
@@ -642,7 +642,7 @@ class CapitalizationAgent:
         # Log entry into the common vector database with tags
         tags = {
             "host": HumanLLMMonitor.get_host_id(),
-            "step_id": HumanLLMMonitor.step_id,
+            "step_id": HumanLLMMonitor.step_id
         }
         HumanLLMMonitor.add_failed_task(serialized_entry, tags)
 
@@ -741,12 +741,21 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               params_user_message=None, max_execution_time=900, special_criteria=None):
     time_end = time.time() + max_execution_time
     scores = None
-
+    # If we want to filter by id or by date the results, here's how we can do it :
+    # {"sources": "learnt", "num": 2, "format": "json", "metadata_filter": {
+    #                                                       "text.time": {"$gte": "2022-01-01T00:00:00.000Z"} => All dates greater than or equal to the date (ISO 8601 date format)
+    #                                                       "text.time": {"$lte": "2022-01-01T00:00:00.000Z"} => All dates less than or equal to the date (ISO 8601 date format)
+    #                                                       "_id": {"$in": ["id1", "id2", "id3"]} => All ids in the list (UUID format)
+    #                                                       }}
     if params_user_message is None:
         params_user_message = [
-            {'sources': 'learnt', 'num': 2, 'format': 'json'},
-            {'sources': 'failed', 'num': 3, 'format': 'Markdown'},
+            {"sources": "learnt", "num": 2, "format": "json"},
+            {"sources": "failed", "num": 1, "format": "Markdown", "metadata_filter": {
+                "_id": {"$in": ["4d7dda08-4db3-4f22-908d-db78e72c7f13"]}
+            }},
         ]
+
+
 
     if HumanLLMMonitor.use_websocket:
         if HumanLLMMonitor.websocket_server is None:
