@@ -97,7 +97,7 @@ body {
 }
 
 .solution-column {
-    flex: 1 1 calc(100% / 1 - 20px); /* Par défaut, 4 colonnes */
+    /*flex: 1 1 calc(100% / 1 - 20px);  Par défaut, 4 colonnes */
     box-sizing: border-box;
     border: 1px solid #90CAF9; /* Light Blue */
     padding: 10px;
@@ -154,7 +154,7 @@ pre {
 
 .solution-columns {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 20px;
     width: 100%;
 }
@@ -266,31 +266,6 @@ color: white;
 .collapsible-message.open .collapsible-content {
     display: block;
 }
-
-@media (min-width: 1200px) {
-    .solution-column {
-        flex: 1 1 calc(25% - 20px); /* 4 colonnes */
-    }
-}
-
-@media (max-width: 1199px) and (min-width: 900px) {
-    .solution-column {
-        flex: 1 1 calc(33.33% - 20px); /* 3 colonnes */
-    }
-}
-
-@media (max-width: 899px) and (min-width: 600px) {
-    .solution-column {
-        flex: 1 1 calc(50% - 20px); /* 2 colonnes */
-    }
-}
-
-@media (max-width: 599px) {
-    .solution-column {
-        flex: 1 1 calc(100% - 20px); /* 1 colonne */
-    }
-}
-
 </style>
 </head>
 <body>
@@ -1112,11 +1087,12 @@ $(function() {
 }
 
     function adjustColumnWidths() {
-        console.log('Adjusting column widths with', document.querySelectorAll('.solution-columns .solution-column').length, 'columns');
         const columns = document.querySelectorAll('.solution-columns .solution-column');
         const numColumns = columns.length;
+        const gap = 20; // Gap size in pixels (should match the CSS gap)
+        const totalGapWidth = gap * (numColumns - 1);
         columns.forEach(column => {
-            column.style.flex = `1 1 calc(${100 / numColumns}% - 20px)`;
+            column.style.flex = `0 0 calc((100% - ${totalGapWidth}px) / ${numColumns})`;
         });
     }
 
