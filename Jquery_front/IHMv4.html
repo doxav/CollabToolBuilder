@@ -132,6 +132,10 @@ body {
     color: white;
 }
 
+.ui-autocomplete {
+    z-index: 1000000 !important;
+}
+
 pre {
     background-color: #F5F5F5; /* Light Grey */
     padding: 10px;
@@ -1446,28 +1450,57 @@ $(document).on('click', '.collapsible-header', function() {
 
     // Hide the annotation menu when clicking outside of it
     $(document).click(function(e) {
-        if (!$(e.target).closest(".annotation-menu").length){
-            if (!window.getSelection().toString()) {
-                $(".annotation-menu").hide();
-                savedSelection = null;
-                // Remove all tempHighlight spans
-                let tempHighlights = document.querySelectorAll("#temphighlight");
-                for (let i = 0; i < tempHighlights.length; i++) {
-                    let parent = tempHighlights[i].parentNode;
-                    while (tempHighlights[i].firstChild) {
-                        parent.insertBefore(tempHighlights[i].firstChild, tempHighlights[i]);
+            if (
+                !$(e.target).closest(".annotation-menu").length &&
+                !$(e.target).closest(".ui-autocomplete").length
+            ) {
+                if (!window.getSelection().toString()) {
+                    $(".annotation-menu").hide();
+                    savedSelection = null;
+                    // Remove all tempHighlight spans
+                    let tempHighlights = document.querySelectorAll("#temphighlight");
+                    for (let i = 0; i < tempHighlights.length; i++) {
+                        let parent = tempHighlights[i].parentNode;
+                        while (tempHighlights[i].firstChild) {
+                            parent.insertBefore(tempHighlights[i].firstChild, tempHighlights[i]);
+                        }
+                        parent.removeChild(tempHighlights[i]);
                     }
-                    parent.removeChild(tempHighlights[i]);
                 }
             }
-        }
-        // Collapse the column if clicking outside of it unless if it's on the annotation menu
-        if (!$(e.target).closest(".solution-column").length && !$(e.target).closest(".annotation-menu").length) {
-            $(".solution-column").removeClass("expanded");
-            $(".expand-button i").removeClass("fa-compress").addClass("fa-expand");
-        }
+            // Collapse the column if clicking outside of it unless it's on the annotation menu or autocomplete list
+            if (
+                !$(e.target).closest(".solution-column").length &&
+                !$(e.target).closest(".annotation-menu").length &&
+                !$(e.target).closest(".ui-autocomplete").length
+            ) {
+                $(".solution-column").removeClass("expanded");
+                $(".expand-button i").removeClass("fa-compress").addClass("fa-expand");
+            }
+        });
+
+
+    // Initialize the annotation history array
+    let annotationHistory = [];
+
+    // Set up the autocomplete feature on the annotation input field
+    $("#annotation-input").autocomplete({
+        source: function(request, response) {
+            let term = request.term.toLowerCase();
+            let matches = $.grep(annotationHistory, function(item){
+                return item.toLowerCase().indexOf(term) >= 0;
+            });
+            response(matches);
+        },
+        minLength: 0
     });
 
+    // Show the autocomplete suggestions when the input gains focus
+    $("#annotation-input").focus(function(){
+        $(this).autocomplete("search", "");
+    });
+
+    // Update the annotation history when a new annotation is applied
     $("#apply-annotation").click(function() {
         let annotationAction = $("#annotation-action").val();
         let annotationText = $("#annotation-input").val();
@@ -1490,6 +1523,11 @@ $(document).on('click', '.collapsible-header', function() {
         }
         let actionDescription = `User applied annotation: action="${annotationAction}", text="${annotationText}"`;
         addHistoryEntry(actionDescription);
+
+        // Add the annotation to the history if it's not already there
+        if (annotationText && !annotationHistory.includes(annotationText)) {
+            annotationHistory.push(annotationText);
+        }
     });
 
     $(".annotation-menu .close-btn").click(function() {
