@@ -613,7 +613,7 @@ class CapitalizationAgent:
             function_name = parsed_code.get("main_function_name", parsed_code.get("main_function", {}).get("name", "unknown"))
             pipeline_file_path = os.path.join("pipelines/pipelines", function_name+".py")
             tool_description = str(self.generate_tool_description(function_name, parsed_code["program_code"]))
-            self.tasks_repository[function_name] = [tool_description, parsed_code["program_code"]]
+            self.learnt_tasks_repository[function_name] = [tool_description, parsed_code["program_code"]]
             # print last added task
             smart_print(f"************ Last added task ************\n{function_name}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
         else:
@@ -621,7 +621,7 @@ class CapitalizationAgent:
             # save function program_code in a file under the functions directory and add to the function signature the generated dosctring
             function_file_path = os.path.join("functions", function_name+".py")
             tool_description = str(self.generate_tool_description(function_name, parsed_code["program_code"]))
-            self.tasks_repository[function_name] = [tool_description, parsed_code["program_code"]]
+            self.learnt_tasks_repository[function_name] = [tool_description, parsed_code["program_code"]]
             # print last added task
             smart_print(f"************ Last added task ************\n{function_name}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
 
