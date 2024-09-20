@@ -937,6 +937,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         if HumanLLMMonitor.websocket_server is None:
             HumanLLMMonitor.initialize_websocket_server()
 
+    smart_print(str(max_execution_time), "CONFIG", "time_end")
+
     if problem_prompts_subdir is None:
         # menu to choose the problem prompts subdirectory
         # get the list of subdirectories in the problem prompts directory

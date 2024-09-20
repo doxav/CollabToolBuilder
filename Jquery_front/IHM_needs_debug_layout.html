@@ -97,7 +97,7 @@ body {
 }
 
 .solution-column {
-    flex: 1 1 calc(100% / 1 - 20px); /* Par défaut, 4 colonnes */
+    /*flex: 1 1 calc(100% / 1 - 20px);  Par défaut, 4 colonnes */
     box-sizing: border-box;
     border: 1px solid #90CAF9; /* Light Blue */
     padding: 10px;
@@ -132,10 +132,6 @@ body {
     color: white;
 }
 
-.ui-autocomplete {
-    z-index: 1000000 !important;
-}
-
 pre {
     background-color: #F5F5F5; /* Light Grey */
     padding: 10px;
@@ -158,7 +154,7 @@ pre {
 
 .solution-columns {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 20px;
     width: 100%;
 }
@@ -270,31 +266,6 @@ color: white;
 .collapsible-message.open .collapsible-content {
     display: block;
 }
-
-@media (min-width: 1200px) {
-    .solution-column {
-        flex: 1 1 calc(25% - 20px); /* 4 colonnes */
-    }
-}
-
-@media (max-width: 1199px) and (min-width: 900px) {
-    .solution-column {
-        flex: 1 1 calc(33.33% - 20px); /* 3 colonnes */
-    }
-}
-
-@media (max-width: 899px) and (min-width: 600px) {
-    .solution-column {
-        flex: 1 1 calc(50% - 20px); /* 2 colonnes */
-    }
-}
-
-@media (max-width: 599px) {
-    .solution-column {
-        flex: 1 1 calc(100% - 20px); /* 1 colonne */
-    }
-}
-
 </style>
 </head>
 <body>
@@ -1116,11 +1087,12 @@ $(function() {
 }
 
     function adjustColumnWidths() {
-        console.log('Adjusting column widths with', document.querySelectorAll('.solution-columns .solution-column').length, 'columns');
         const columns = document.querySelectorAll('.solution-columns .solution-column');
         const numColumns = columns.length;
+        const gap = 20; // Gap size in pixels (should match the CSS gap)
+        const totalGapWidth = gap * (numColumns - 1);
         columns.forEach(column => {
-            column.style.flex = `1 1 calc(${100 / numColumns}% - 20px)`;
+            column.style.flex = `0 0 calc((100% - ${totalGapWidth}px) / ${numColumns})`;
         });
     }
 
@@ -1450,57 +1422,28 @@ $(document).on('click', '.collapsible-header', function() {
 
     // Hide the annotation menu when clicking outside of it
     $(document).click(function(e) {
-            if (
-                !$(e.target).closest(".annotation-menu").length &&
-                !$(e.target).closest(".ui-autocomplete").length
-            ) {
-                if (!window.getSelection().toString()) {
-                    $(".annotation-menu").hide();
-                    savedSelection = null;
-                    // Remove all tempHighlight spans
-                    let tempHighlights = document.querySelectorAll("#temphighlight");
-                    for (let i = 0; i < tempHighlights.length; i++) {
-                        let parent = tempHighlights[i].parentNode;
-                        while (tempHighlights[i].firstChild) {
-                            parent.insertBefore(tempHighlights[i].firstChild, tempHighlights[i]);
-                        }
-                        parent.removeChild(tempHighlights[i]);
+        if (!$(e.target).closest(".annotation-menu").length){
+            if (!window.getSelection().toString()) {
+                $(".annotation-menu").hide();
+                savedSelection = null;
+                // Remove all tempHighlight spans
+                let tempHighlights = document.querySelectorAll("#temphighlight");
+                for (let i = 0; i < tempHighlights.length; i++) {
+                    let parent = tempHighlights[i].parentNode;
+                    while (tempHighlights[i].firstChild) {
+                        parent.insertBefore(tempHighlights[i].firstChild, tempHighlights[i]);
                     }
+                    parent.removeChild(tempHighlights[i]);
                 }
             }
-            // Collapse the column if clicking outside of it unless it's on the annotation menu or autocomplete list
-            if (
-                !$(e.target).closest(".solution-column").length &&
-                !$(e.target).closest(".annotation-menu").length &&
-                !$(e.target).closest(".ui-autocomplete").length
-            ) {
-                $(".solution-column").removeClass("expanded");
-                $(".expand-button i").removeClass("fa-compress").addClass("fa-expand");
-            }
-        });
-
-
-    // Initialize the annotation history array
-    let annotationHistory = [];
-
-    // Set up the autocomplete feature on the annotation input field
-    $("#annotation-input").autocomplete({
-        source: function(request, response) {
-            let term = request.term.toLowerCase();
-            let matches = $.grep(annotationHistory, function(item){
-                return item.toLowerCase().indexOf(term) >= 0;
-            });
-            response(matches);
-        },
-        minLength: 0
+        }
+        // Collapse the column if clicking outside of it unless if it's on the annotation menu
+        if (!$(e.target).closest(".solution-column").length && !$(e.target).closest(".annotation-menu").length) {
+            $(".solution-column").removeClass("expanded");
+            $(".expand-button i").removeClass("fa-compress").addClass("fa-expand");
+        }
     });
 
-    // Show the autocomplete suggestions when the input gains focus
-    $("#annotation-input").focus(function(){
-        $(this).autocomplete("search", "");
-    });
-
-    // Update the annotation history when a new annotation is applied
     $("#apply-annotation").click(function() {
         let annotationAction = $("#annotation-action").val();
         let annotationText = $("#annotation-input").val();
@@ -1523,11 +1466,6 @@ $(document).on('click', '.collapsible-header', function() {
         }
         let actionDescription = `User applied annotation: action="${annotationAction}", text="${annotationText}"`;
         addHistoryEntry(actionDescription);
-
-        // Add the annotation to the history if it's not already there
-        if (annotationText && !annotationHistory.includes(annotationText)) {
-            annotationHistory.push(annotationText);
-        }
     });
 
     $(".annotation-menu .close-btn").click(function() {

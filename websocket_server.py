@@ -56,6 +56,13 @@ class WebsocketServer:
         await server.wait_closed()
 
     def send_message(self, message):
+        no_client = True
+        while no_client:
+            if len(self.connected_clients) > 0:
+                no_client = False
+            else:
+                print("Waiting for WebSocket client to connect")
+                time.sleep(1)
         self.message_count += 1
         # test if message is dict
         if isinstance(message, dict) and "sender_id" not in message:
