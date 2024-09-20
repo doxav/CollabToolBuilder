@@ -34,8 +34,8 @@ import json
 #if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
-# UnifiedVectorDB.es_user = elastic_user
-# UnifiedVectorDB.es_password = elastic_password
+UnifiedVectorDB.es_user = elastic_user
+UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002" # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function="intfloat/e5-base-v2" # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
@@ -688,6 +688,13 @@ class CapitalizationAgent:
         }
         HumanLLMMonitor.add_failed_task(serialized_entry, tags)
 
+    def generate_tool_description(self, program_name, program_code):
+        user_message = f"MAIN FUNCTION: `{program_name}`\n\nFULL CODE:\n{program_code}"
+        tool_description = self.human_llm_generate_function_description.CallHumanLLM(
+            system_prompt_template="generate_function_description", user_message=user_message,
+            return_message_content_only=True, optuna=self.optuna_opti, model_choice=self.model_choice)
+        return tool_description
+
     def retrieve_saved_tasks_in_db(self, query="", max_db_results=20, include_code=None, selected_successful_functions=None, selected_failed_functions=None) -> None:
         def process_results(results, task_type, selected_functions, repository, metadata_key, include_code_flag):
             smart_print(f"************ Retrieving {task_type} tasks from database - LIST:", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
@@ -899,7 +906,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             10 * scores['best_score_without_validation'] +
             (20 * (1 + validated_score_avg) if scores['validated_scores'] else 0)
         )
-        return total_score_weighted_with_stats
+        if not continue_identifying_tasks:
+            return total_score_weighted_with_stats
     else:
         return 0
 
@@ -1002,7 +1010,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
         'validated_scores': None}
 
     # Second part: If there are successful codes, ask user to select one
-    if successful_codes and (not continue_even_if_successful or attempt >= max_attempts - 1) and (end_time is None or time.time() < end_time):
+    if successful_codes: # and (not continue_even_if_successful or attempt >= max_attempts - 1) and (end_time is None or time.time() < end_time):
         if len(successful_codes)==1:
             selected_code, _, scores = successful_codes[0]
             all_scores['validated_scores'] = scores

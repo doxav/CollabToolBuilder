@@ -10,7 +10,7 @@ def objective(trial, name_xp : str):
                                                                                               "code & feedback",
                                                                                               "code & score & feedback",
                                                                                               "feedback"])
-    primitives_selection = trial.suggest_categorical("primitives_selection", ["None", "primitives/generate_primitives", "primitives/primitives_to_add_later", ("primitives/generate", "primitives/primitives_to_add_later")])
+    primitives_selection = trial.suggest_categorical("primitives_selection", ["None", "primitives/generate_primitives", "primitives/primitives_to_add_later", ("primitives/generate_primitives", "primitives/primitives_to_add_later")])
     prev_failed_task = trial.suggest_categorical("prev_failed_task", ["None",
                                                                       ("b8b4938a-ff6c-4d2f-8513-adec299541c5", "4d7dda08-4db3-4f22-908d-db78e72c7f13"),
                                                                       ("36dd8e77-829d-48c9-8f6c-3d7bc8dfa3aa", "c7159fce-e204-4909-b156-299d698bc456")])
