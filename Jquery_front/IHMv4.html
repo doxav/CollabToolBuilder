@@ -555,6 +555,18 @@ $(function() {
 
         let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
 
+        if (data.agent_name === "TaskIdentificationAgent" && (data.message_type.includes("MULTIPLE inferences received") || data.message_type.includes("AFTER"))) {
+            // Retrieve the columns of the TaskIdentificationAgent
+            let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
+            let $columns = $agentAccordion.find('.solution-column');
+            // Replace the content of message content for all the columns with a formated markdown message
+            $columns.each(function (index, column) {
+                let $message = $(column).find('.message');
+                // Replace the actual content of the message with the actual content but formated with formatMarkdown
+                $message.html(formatMarkdown($message.html()));
+            });
+        }
+
         // Generalize handling of multiple solutions
         if (data.column_max !== undefined && data.column_id !== undefined && data.message_type === "NEW inference result recieved") {
             number_created_functions++;
@@ -763,16 +775,6 @@ $(function() {
             });
             // END COPY
 
-        } else if (data.agent_name === "TaskIdentificationAgent" && (data.message_type.includes("MULTIPLE inferences received") || data.message_type.includes("AFTER"))) {
-            // Retrieve the columns of the TaskIdentificationAgent
-            let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
-            let $columns = $agentAccordion.find('.solution-column');
-            // Replace the content of message content for all the columns with a formated markdown message
-            $columns.each(function (index, column) {
-                let $message = $(column).find('.message');
-                // Replace the actual content of the message with the actual content but formated with formatMarkdown
-                $message.html(formatMarkdown($message.html()));
-            });
         } else if (data.message_type === "fix_error"){
             let $question = $(`<p>Do you want to edit the code to fix the error (you will also be requested first) ?</p>`);
               let $yesButton = $(`<button id="yes-button">Yes</button>`);
@@ -1286,6 +1288,7 @@ $(function() {
             `<pre><code>${highlightedCode}</code></pre>`
         );
     });
+
 
     return `${cleanString}`;
 }
