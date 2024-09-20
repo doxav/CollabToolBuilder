@@ -905,6 +905,11 @@ $(function() {
         if (columnIndex === 0 && solutionColumnsContainer) {
             solutionColumnsContainer.remove();
             solutionColumnsContainer = null;
+            // Supprimer le bouton "Continue" s'il existe
+            let continueButton = document.getElementById('continue-button');
+            if (continueButton) {
+                continueButton.remove();
+            }
             let pagination = document.getElementById('pagination');
             if (pagination) {
                 pagination.remove();
