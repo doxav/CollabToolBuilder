@@ -1,20 +1,30 @@
-from optimisation.optuna_main import launch_run, definition_few_shots, global_main
+from optimisation.optuna_main_coder_fixed_parameters import launch_run, definition_few_shots, global_main
 
 
 def objective(trial, name_xp : str):
-    # Define parameters for Coder
-    libraries_restriction = trial.suggest_categorical("libraries_restriction", [
-        "Langchain, BeautifulSoap, RegEx, Sklearn",
-        "Numpy, Pandas, Matplotlib",
-        "TensorFlow, PyTorch"
-    ])
-    max_autofix = trial.suggest_int('max_autofix', 0, 5)
-    temperature = trial.suggest_float('temperature', 0.0, 1.0)
-    presence_penalty = trial.suggest_float('presence_penalty', -2.0, 2.0)
-    reasoning_depth = trial.suggest_int('reasoning_depth', 1, 4)
+    # Define parameters we want to tests
+
+    num_previous_attempts = trial.suggest_categorical("num_previous_attempts", [0, 2, 4, 8])
+    parameters_previous_attempts = trial.suggest_categorical("parameters_previous_attempts", ["code",
+                                                                                              "code & score",
+                                                                                              "code & feedback",
+                                                                                              "code & score & feedback",
+                                                                                              "feedback"])
+    primitives_selection = trial.suggest_categorical("primitives_selection", ["None", "primitives/generate_primitives", "primitives/primitives_to_add_later", ("primitives/generate", "primitives/primitives_to_add_later")])
+    prev_failed_task = trial.suggest_categorical("prev_failed_task", ["None",
+                                                                      ("b8b4938a-ff6c-4d2f-8513-adec299541c5", "4d7dda08-4db3-4f22-908d-db78e72c7f13"),
+                                                                      ("36dd8e77-829d-48c9-8f6c-3d7bc8dfa3aa", "c7159fce-e204-4909-b156-299d698bc456")])
+    prev_learnt_task = trial.suggest_categorical("prev_learnt_task", ["None", "set1", "set2"])
+
+    # Define fixed parameters for Coder
+    libraries_restriction = "Numpy, Pandas, Huggingface, Sklearn" # Can be removed: Huggingface and Sklearn, to test if 3 imposed methods offer better performance than with these libraries
+    max_autofix = 3
+    temperature = 0.5
+    presence_penalty = 0.7189030356596702
+    reasoning_depth = 1
 
     # Few shots parameters
-    few_shots = definition_few_shots(trial)
+    user_message_params = definition_few_shots(trial, True)
 
     # Reasoning and Task instructions based on file content
 
@@ -53,9 +63,8 @@ def objective(trial, name_xp : str):
     ```python
     # Example Python code here
     def your_function(bot):
-        # implementation here...
+        # implementation here... 
     ```
-    {few_shots}
     """
 
     # Combine everything to generate the final prompt for the Coder agent
@@ -77,8 +86,18 @@ def objective(trial, name_xp : str):
         max_execution_time=900,
         model_choice={"coach": "default_llm","coder": "premium_llm","critic": "default_llm","capitalizer": "default_llm"},
         optuna_opti="coder",
-        special_criteria={"max_autofix": max_autofix, "temperature": temperature, "presence_penalty": presence_penalty},
-        name_exp=name_xp
+        special_criteria={
+            "max_autofix": max_autofix,
+            "temperature": temperature,
+            "presence_penalty": presence_penalty,
+            "num_previous_attempts": num_previous_attempts,
+            "parameters_previous_attempts": parameters_previous_attempts,
+            "primitives_selection": primitives_selection,
+            "prev_failed_task": prev_failed_task,
+            "prev_learnt_task": prev_learnt_task
+        },
+        name_exp=name_xp,
+        params_user_message=user_message_params
     )
 
     # Log performance for analysis

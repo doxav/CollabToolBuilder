@@ -34,8 +34,8 @@ import json
 #if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
-UnifiedVectorDB.es_user = elastic_user
-UnifiedVectorDB.es_password = elastic_password
+# UnifiedVectorDB.es_user = elastic_user
+# UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002" # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function="intfloat/e5-base-v2" # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
@@ -246,6 +246,13 @@ class CodingAgent():
         self.model_choice = model_choice
         self.processed_codes = set()
         self.params_user_message = params_user_message
+        # Update 'metadata_filter' for the dictionaries with the 'source' field matching 'learnt' or 'failed'
+        if hasattr(self, 'prev_learnt_task') or hasattr(self, 'prev_failed_task'):
+            for d in self.params_user_message:
+                if d.get("source") == "learnt" and hasattr(self, 'prev_learnt_task'):
+                    d["metadata_filter"] = {"_id": self.prev_learnt_task}
+                elif d.get("source") == "failed" and hasattr(self, 'prev_failed_task'):
+                    d["metadata_filter"] = {"_id": self.prev_failed_task}
 
     def parse_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None, automatic_tests=True):
         import ast, time, re
@@ -417,22 +424,33 @@ class CodingAgent():
 
         return result
 
-
     def get_primitives(self):
         primitives = []
         # Add the pipelines folder for the primitives
-        if self.problem_prompts_subdir=="Anomalies/":
+        if self.problem_prompts_subdir == "Anomalies/":
             path_folder = "pipelines/pipelines"
         else:
-            path_folder = "primitives"
-        folder_path = os.path.join(os.path.dirname(__file__), path_folder)
-        # Utiliser os.listdir pour ne pas parcourir les sous-répertoires
-        for file in os.listdir(folder_path):
-            if file.endswith(".py"):
-                smart_print(f"File load: {file}", "CONFIG", "Files loaded")
-                file_path = os.path.join(folder_path, file)
-                with open(file_path, "r") as f:
-                    primitives.append(f.read())
+            if hasattr(self, 'primitives_selection'):
+                path_folder = self.primitives_selection
+            else:
+                path_folder = "primitives/generate_primitives"
+
+        # Si path_folder est une chaîne, convertir en liste pour uniformiser le traitement
+        if isinstance(path_folder, str):
+            path_folder = [path_folder]
+
+        # Parcourir chaque dossier dans path_folder
+        for folder in path_folder:
+            if folder.lower() != "none":
+                folder_path = os.path.join(os.path.dirname(__file__), folder)
+                # Utiliser os.listdir pour ne pas parcourir les sous-répertoires
+                for file in os.listdir(folder_path):
+                    if file.endswith(".py"):
+                        smart_print(f"File load: {file}", "CONFIG", "Files loaded")
+                        file_path = os.path.join(folder_path, file)
+                        with open(file_path, "r") as f:
+                            primitives.append(f.read())
+
         return primitives
 
     def code_task_and_run_test(self, refined_task: str, previous_errors=None, previous_scores=None, previous_codes=None) -> str:
@@ -451,11 +469,35 @@ class CodingAgent():
             # Set the user_message_few_shots attribute to the parameters given in params_user_message
             self.human_llm_code_task.user_message_few_shots = self.params_user_message
 
-        if previous_errors and len(previous_errors) > 0:
-            user_message+=f"{dnl}PREVIOUS ATTEMPTS TO CODE THE TASK: [[[{nl}"
-            for previous_error, previous_score, previous_code in zip(previous_errors, previous_scores, previous_codes):
-                user_message+=f"{nl}<<ATTEMPT FEEDBACK: {previous_error.content}" + (f"{dnl}SCORE: {previous_score}" if previous_score else "") + f"{dnl}CODE: {previous_code}{nl}>>"
-            user_message+=f"{nl}]]]"
+        if previous_errors:
+            if hasattr(self, 'num_previous_attempts'):
+                selected_attempts = zip(
+                    previous_errors[-self.num_previous_attempts:],
+                    previous_scores[-self.num_previous_attempts:],
+                    previous_codes[-self.num_previous_attempts:]
+                )
+            else:
+                selected_attempts = zip(previous_errors, previous_scores, previous_codes)
+
+            user_message += f"{dnl}PREVIOUS ATTEMPTS TO CODE THE TASK: [[[{nl}"
+
+            for feedback, score, code in selected_attempts:
+                user_message += f"{nl}<<"
+                if hasattr(self, 'parameters_previous_attempts'):
+                    if "feedback" in self.parameters_previous_attempts:
+                        user_message += f"ATTEMPT FEEDBACK: {feedback.content}{dnl}"
+                    if "score" in self.parameters_previous_attempts:
+                        user_message += f"SCORE: {score}{dnl}"
+                    if "code" in self.parameters_previous_attempts:
+                        user_message += f"CODE: {code}{dnl}"
+                else:
+                    # Default to including all components if the attribute is missing
+                    user_message += f"ATTEMPT FEEDBACK: {feedback.content}{dnl}"
+                    user_message += f"SCORE: {score}{dnl}" if score else ""
+                    user_message += f"CODE: {code}{dnl}"
+                user_message += f"{nl}>>"
+
+            user_message += f"{nl}]]]"
 
         current_skip_rounds = self.human_llm_code_task.skip_rounds # save the initial value to align it for code validation
         # Initialisation des kwargs avec les paramètres requis
@@ -743,15 +785,17 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     scores = None
     # If we want to filter by id or by date the results, here's how we can do it :
     # {"sources": "learnt", "num": 2, "format": "json", "metadata_filter": {
-    #                                                       "text.time": {"$gte": "2022-01-01T00:00:00.000Z"} => All dates greater than or equal to the date (ISO 8601 date format)
-    #                                                       "text.time": {"$lte": "2022-01-01T00:00:00.000Z"} => All dates less than or equal to the date (ISO 8601 date format)
-    #                                                       "_id": {"$in": ["id1", "id2", "id3"]} => All ids in the list (UUID format)
+    #                                                       For now text.time don't work, but id does
+    #                                                       "text.time": {"gte": "2022-01-01T00:00:00.000Z"} => All dates greater than or equal to the date (ISO 8601 date format)
+    #                                                       "text.time": {"lte": "2022-01-01T00:00:00.000Z"} => All dates less than or equal to the date (ISO 8601 date format)
+    #                                                       "_id": ["id1", "id2", "id3"] => All ids in the list (UUID format)
     #                                                       }}
     if params_user_message is None:
         params_user_message = [
             {"sources": "learnt", "num": 2, "format": "json"},
-            {"sources": "failed", "num": 1, "format": "Markdown", "metadata_filter": {
-                "_id": {"$in": ["4d7dda08-4db3-4f22-908d-db78e72c7f13"]}
+            {"sources": "failed", "num": 3, "format": "Markdown", "metadata_filter": {
+                #"_id": ["4d7dda08-4db3-4f22-908d-db78e72c7f13"],
+                #"text.time": {"gte": "2024-09-10T00:00:00.000Z"}
             }},
         ]
 
@@ -777,7 +821,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         test_environments = [manager.get_environment()]
 
     agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, premium_llm_by_default=agtask_premium_llm_by_default, skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(model_choice) == dict else model_choice), params_user_message=params_user_message)
-    agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['coding' if 'coding' in model_choice else 'coder'] if type(model_choice) == dict else model_choice), special_criteria=special_criteria)
+    agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['coding' if 'coding' in model_choice else 'coder'] if type(model_choice) == dict else model_choice), special_criteria=special_criteria, params_user_message=params_user_message)
     agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key, skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['validation' if 'validation' in model_choice else 'critic'] if type(model_choice) == dict else model_choice))
     agent_capitalize = CapitalizationAgent(default_llm_key, premium_llm_choice=premium_llm_key, skip_rounds=agcapitalize_skip_rounds,problem_prompts_subdir=problem_prompts_subdir, llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(model_choice['capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(model_choice) == dict else model_choice))
 

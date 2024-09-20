@@ -477,7 +477,21 @@ class UnifiedVectorDB:
             if metadata_filter and custom_filter_es is None:
                 custom_filter_es = []
                 for key, value in metadata_filter.items():
-                    custom_filter_es.append({"match": {f"metadata.{key}": value}})
+                    if key == '_id':
+                        # Use the 'ids' query for filtering on '_id'
+                        if isinstance(value, list):
+                            custom_filter_es.append({"ids": {"values": value}})
+                        else:
+                            custom_filter_es.append({"ids": {"values": [value]}})
+                    elif isinstance(value, dict) and any(k in value for k in ['gte', 'lte', 'gt', 'lt']):
+                        # Handle range queries (e.g., date ranges)
+                        custom_filter_es.append({"range": {f"{key}": value}})
+                    elif isinstance(value, list):
+                        # Use 'terms' query for multiple values
+                        custom_filter_es.append({"terms": {f"metadata.{key}": value}})
+                    else:
+                        # Use 'match' query for single value
+                        custom_filter_es.append({"match": {f"metadata.{key}": value}})
                 if metadata_filter_OR:
                     custom_filter_es = {"bool": {"should": custom_filter_es}}
             if sort_order == 'asc' or sort_order == 'desc':  # incompatible with knn search, so we rewrite query just keeping filters and sort
@@ -488,7 +502,7 @@ class UnifiedVectorDB:
                 return self.db.similarity_search(query_text, k=(k if k <= 50 else 50),
                                                  custom_query=custom_query)  # k seems to crash when > 50
             else:
-                return self.db.similarity_search(query_text, k=(k if k <= 50 else 50))  # k seems to crash when > 50
+                return self.db.similarity_search(query_text, k=(k if k <= 50 else 50), filter=custom_filter_es)  # k seems to crash when > 50
             # filter on AND conditions: filter=[{"match":{"metadata.function_name":function_name}}, {"match":{"metadata.agent_name":agent_name}}]
 
     def count(self):
