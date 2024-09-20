@@ -41,7 +41,7 @@ UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002" # "nom
 embedding_function="intfloat/e5-base-v2" # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
 reset_db_indices=False # Set to True after changing embeddings
 
-HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices) 
+HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
 
 class Environment:
     def __init__(self, temp_root_dir: str = None, data_dir: str = "data"):
@@ -395,7 +395,7 @@ class CodingAgent():
                     elif self.optuna_opti:
                         decision = "n"
                     else:
-                        decision = smart_input("Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ", self.name).strip().lower()
+                        decision = smart_input("Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ", self.name,"fix_error").strip().lower()
                     if decision in ("no", "n", ""):
                         break
                     elif decision == "a":
@@ -811,6 +811,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     if HumanLLMMonitor.use_websocket:
         if HumanLLMMonitor.websocket_server is None:
             HumanLLMMonitor.initialize_websocket_server()
+
+    smart_print(str(max_execution_time), "CONFIG", "time_end")
 
     if problem_prompts_subdir is None:
         # menu to choose the problem prompts subdirectory

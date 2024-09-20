@@ -9,7 +9,7 @@ import numpy as np  # Added for variance calculation
 import sys
 import shutil  # For copying the SQLite file
 
-def analysis(name_exp: str, in_dir=False):
+def analysis(name_exp: str, in_dir = False):
     try:
         # Define the path to the SQLite database
         current_folder = os.getcwd()
@@ -17,9 +17,7 @@ def analysis(name_exp: str, in_dir=False):
         # File to save results
         output_file = os.path.join(current_folder, f"{name_exp}_analysis.txt" if in_dir else f"Optuna_results/{name_exp}_analysis.txt")
 
-        sqlite_file_original = os.path.join(current_folder, f"{name_exp}" if in_dir else f"Optuna_db/{name_exp}.db")
-        # Path to the copied SQLite file (temporary)
-        sqlite_file = os.path.join(current_folder, f"{name_exp}_temp_copy.db" if in_dir else f"Optuna_db/{name_exp}_temp_copy.db")
+        sqlite_file = os.path.join(current_folder, f"{name_exp}.db" if in_dir else f"Optuna_db/{name_exp}.db")
 
         # Function to write results to the file
         def write_to_file(text, mode="a"):
@@ -203,4 +201,5 @@ def analysis(name_exp: str, in_dir=False):
             write_to_file(f"Copied database file {sqlite_file} removed after analysis.")
 
 if len(sys.argv) > 1:
-    analysis(sys.argv[1], in_dir=True)
+    analysis(sys.argv[1], True)
+else: print("provide a file to analyze")
