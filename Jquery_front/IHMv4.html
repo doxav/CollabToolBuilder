@@ -10,6 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.5.1/highlight.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.5.1/styles/default.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
 body {
     display: flex;
@@ -554,6 +555,18 @@ $(function() {
 
         let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
 
+        if (data.agent_name === "TaskIdentificationAgent" && (data.message_type.includes("MULTIPLE inferences received") || data.message_type.includes("AFTER"))) {
+            // Retrieve the columns of the TaskIdentificationAgent
+            let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
+            let $columns = $agentAccordion.find('.solution-column');
+            // Replace the content of message content for all the columns with a formated markdown message
+            $columns.each(function (index, column) {
+                let $message = $(column).find('.message');
+                // Replace the actual content of the message with the actual content but formated with formatMarkdown
+                $message.html(formatMarkdown($message.html()));
+            });
+        }
+
         // Generalize handling of multiple solutions
         if (data.column_max !== undefined && data.column_id !== undefined && data.message_type === "NEW inference result recieved") {
             number_created_functions++;
@@ -825,7 +838,7 @@ $(function() {
                 targetColumn.id = `column-${columnId}`;
                 targetColumn.innerHTML = `
                     <button class="expand-button"><i class="fas fa-expand"></i></button><br>
-                    <h4>Inference ${inferenceNumber + 1}</h4>
+                    <h4>Answer ${inferenceNumber + 1}</h4>
                     <div class="message" style="max-height: 450px; overflow-y: auto;"></div>
                 `;
                 solutionColumnsContainer.appendChild(targetColumn);
@@ -1199,6 +1212,10 @@ $(function() {
         }
     }
 
+    function formatMarkdown(message) {
+        return marked.parse(message);
+    }
+
     // Adds the listener for the expand button
     $(document).on("click", ".expand-button", function() {
         let $column = $(this).closest(".solution-column");
@@ -1271,6 +1288,7 @@ $(function() {
             `<pre><code>${highlightedCode}</code></pre>`
         );
     });
+
 
     return `${cleanString}`;
 }
