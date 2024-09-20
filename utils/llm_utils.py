@@ -197,77 +197,113 @@ def is_vscode_installed():
 
 def _visual_input(initial_string="", filetype="md"):
     """
-    Open a Tkinter window to interactively edit a given string.
-    
+    Open a visual editor (VSCode or Tkinter) to interactively edit a given string or list.
+
     Args:
-    - initial_string (str): The string to be edited.
+    - initial_string (str or list): The string or list to be edited.
+    - filetype (str): The file extension to use when editing with VSCode.
 
     Returns:
-    - str: The edited string.
+    - str or list: The edited string or list.
     """
     if is_vscode_installed():
-        # Step 1: Generate the code and save it to a file. Check if folder temps/edition exists, if not create it
-        if not os.path.exists('temp/edition'): os.makedirs('temp/edition')
+        # Step 1: Convert initial_string to a string representation
+        if isinstance(initial_string, list):
+            # Serialize the list to JSON format
+            initial_string_serialized = json.dumps(initial_string, indent=4)
+            # Default filetype to json if not specified
+            if filetype == "md":
+                filetype = "json"
+        else:
+            initial_string_serialized = initial_string
+
+        # Step 2: Generate the code and save it to a file
+        if not os.path.exists('temp/edition'):
+            os.makedirs('temp/edition')
         file_path = 'temp/edition/' + str(datetime.now().timestamp()) + f".{filetype}"
         with open(file_path, 'w') as file:
-            file.write(initial_string)
+            file.write(initial_string_serialized)
 
-        # Step 2: Open the file in VSCode. The `--wait` flag makes the subprocess call wait until the file is closed in VSCode.
+        # Step 3: Open the file in VSCode
         subprocess.run(["code", "--wait", file_path])
 
-        # Step 3: After the file is closed, you can read the contents
+        # Step 4: Read the edited content
         with open(file_path, 'r') as file:
             edited_string = file.read()
-        # delete the file
+        # Delete the file
         os.remove(file_path)
 
-        # Now you have the modified code in `modified_code` variable
-        return edited_string
+        # Step 5: Convert back to the appropriate type
+        if isinstance(initial_string, list):
+            try:
+                edited_data = json.loads(edited_string)
+            except json.JSONDecodeError as e:
+                print(f"Error decoding JSON: {e}")
+                edited_data = initial_string  # Fallback to original data
+            return edited_data
+        else:
+            return edited_string
 
-    def on_close():
-        """Function to execute when the window is closed."""
-        nonlocal edited_string
-        edited_string = txt_edit.get(1.0, tk.END).strip()
-        root.destroy()
+    else:
+        # Tkinter implementation
+        def on_close():
+            """Function to execute when the window is closed."""
+            nonlocal edited_string
+            edited_string = txt_edit.get(1.0, tk.END).strip()
+            root.destroy()
 
-    def copy(event):
-        root.clipboard_clear()
-        text = txt_edit.get("sel.first", "sel.last")
-        root.clipboard_append(text)
+        def copy(event):
+            root.clipboard_clear()
+            text = txt_edit.get("sel.first", "sel.last")
+            root.clipboard_append(text)
 
-    def paste(event):
-        text = root.clipboard_get()
-        txt_edit.insert(tk.INSERT, text)
-        return "break"
+        def paste(event):
+            text = root.clipboard_get()
+            txt_edit.insert(tk.INSERT, text)
+            return "break"
 
-    # Create a new Tkinter root window
-    root = tk.Tk()
-    root.title("Edit String")
+        # Create a new Tkinter root window
+        root = tk.Tk()
+        root.title("Edit Input")
 
-    # Create a scrolled text widget for editing the string
-    txt_edit = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=80, height=20)
-    txt_edit.pack(padx=10, pady=10, expand=True, fill=tk.BOTH)
+        # Create a scrolled text widget
+        txt_edit = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=80, height=20)
+        txt_edit.pack(padx=10, pady=10, expand=True, fill=tk.BOTH)
 
-    # Insert the initial string into the text widget
-    txt_edit.insert(tk.END, initial_string)
-    # ... inside your _visual_input function ...
-    txt_edit.bind("<Control-c>", copy)
-    txt_edit.bind("<Control-v>", paste)
-    txt_edit["undo"] = True
-    txt_edit.bind("<Control-z>", lambda event: txt_edit.edit_undo())
-    txt_edit.bind("<Control-y>", lambda event: txt_edit.edit_redo())
+        # Insert the initial string into the text widget
+        if isinstance(initial_string, list):
+            initial_string_serialized = json.dumps(initial_string, indent=4)
+        else:
+            initial_string_serialized = initial_string
+        txt_edit.insert(tk.END, initial_string_serialized)
 
-    # Bind the window's close event
-    root.protocol("WM_DELETE_WINDOW", on_close)
+        # Bindings and configurations
+        txt_edit.bind("<Control-c>", copy)
+        txt_edit.bind("<Control-v>", paste)
+        txt_edit["undo"] = True
+        txt_edit.bind("<Control-z>", lambda event: txt_edit.edit_undo())
+        txt_edit.bind("<Control-y>", lambda event: txt_edit.edit_redo())
 
-    # Edited string variable
-    edited_string = initial_string
+        # Bind the window's close event
+        root.protocol("WM_DELETE_WINDOW", on_close)
 
-    # Focus on the text widget and start the main loop
-    txt_edit.focus_set()
-    root.mainloop()
+        # Edited string variable
+        edited_string = initial_string_serialized
 
-    return edited_string
+        # Focus on the text widget and start the main loop
+        txt_edit.focus_set()
+        root.mainloop()
+
+        # Convert back to the appropriate type
+        if isinstance(initial_string, list):
+            try:
+                edited_data = json.loads(edited_string)
+            except json.JSONDecodeError as e:
+                print(f"Error decoding JSON: {e}")
+                edited_data = initial_string  # Fallback to original data
+            return edited_data
+        else:
+            return edited_string
 
 def list_prompt_variants(prompt_name, package_path="."):
     base_name = prompt_name.split("@")[0]
@@ -433,7 +469,21 @@ class UnifiedVectorDB:
             if metadata_filter and custom_filter_es is None:
                 custom_filter_es = []
                 for key, value in metadata_filter.items():
-                    custom_filter_es.append({"match": {f"metadata.{key}": value}})
+                    if key == '_id':
+                        # Use the 'ids' query for filtering on '_id'
+                        if isinstance(value, list):
+                            custom_filter_es.append({"ids": {"values": value}})
+                        else:
+                            custom_filter_es.append({"ids": {"values": [value]}})
+                    elif isinstance(value, dict) and any(k in value for k in ['gte', 'lte', 'gt', 'lt']):
+                        # Handle range queries (e.g., date ranges)
+                        custom_filter_es.append({"range": {f"{key}": value}})
+                    elif isinstance(value, list):
+                        # Use 'terms' query for multiple values
+                        custom_filter_es.append({"terms": {f"metadata.{key}": value}})
+                    else:
+                        # Use 'match' query for single value
+                        custom_filter_es.append({"match": {f"metadata.{key}": value}})
                 if metadata_filter_OR:
                     custom_filter_es = {"bool": {"should": custom_filter_es}}
             if sort_order == 'asc' or sort_order == 'desc':  # incompatible with knn search, so we rewrite query just keeping filters and sort
@@ -444,7 +494,7 @@ class UnifiedVectorDB:
                 return self.db.similarity_search(query_text, k=(k if k <= 50 else 50),
                                                  custom_query=custom_query)  # k seems to crash when > 50
             else:
-                return self.db.similarity_search(query_text, k=(k if k <= 50 else 50))  # k seems to crash when > 50
+                return self.db.similarity_search(query_text, k=(k if k <= 50 else 50), filter=custom_filter_es)  # k seems to crash when > 50
             # filter on AND conditions: filter=[{"match":{"metadata.function_name":function_name}}, {"match":{"metadata.agent_name":agent_name}}]
 
     def count(self):
@@ -496,7 +546,7 @@ class HumanLLMMonitor:
     common_vectordb_collection_name = "human_llm_monitor_logs"
     common_vectordb_persist_directory = "human_llm_monitor_vectordb"
     websocket_server = None
-    use_websocket = True
+    use_websocket = False
     ws_thread = None
     stop_event = threading.Event()
 
@@ -546,67 +596,64 @@ class HumanLLMMonitor:
         return {result.page_content for result in results}
 
     @classmethod
-    def get_multiple_few_shots(cls, criteria):
-        if not criteria:
+    def get_multiple_few_shots(cls, few_shots_params) -> str:
+        if not few_shots_params:
             return ""
 
-        # Convert parameters to lists if they aren't already
-        def ensure_list(value, default):
-            return value if isinstance(value, list) else [value or default]
-
-        keys_defaults = {
-            'sources': ['learnt'],
-            'num': 5,
-            'query_text': '*',
-            'metadata_filter': {},
-            'sort_order': None,
-            'similarity_search': False,
-            'format': 'Json',
-            'format_string': None,
-            'template': None
-        }
-
-        # Prepare criteria lists
-        criteria_lists = {key: ensure_list(criteria.get(key), default) for key, default in keys_defaults.items()}
-
-        # Determine the number of iterations
-        max_length = max(len(v) for v in criteria_lists.values())
-
-        # Extend lists to match max_length
-        for key in criteria_lists:
-            criteria_lists[key].extend([criteria_lists[key][-1]] * (max_length - len(criteria_lists[key])))
 
         all_formatted_examples = []
 
-        for i in range(max_length):
-            crit = {key: criteria_lists[key][i] for key in keys_defaults}
+        for params in few_shots_params:
+            # Ensure default values
+            criteria_defaults = {
+                'sources': 'learnt',
+                'num': 5,
+                'query_text': '*',
+                'metadata_filter': {},
+                'sort_order': None,
+                'similarity_search': False,
+                'format': 'Json',
+                'template': None
+            }
+            for key, default in criteria_defaults.items():
+                params.setdefault(key, default)
 
-            if crit['sources'] == "learnt":
+            if "separators" in params:
+                separators = params["separators"]
+            else:
+                separators = {
+                    "global_prefix" : f"\n{params['sources']} tasks : <<",
+                    "global_suffix" : ">>\n",
+                    "item_prefix" : "\n|",
+                    "item_suffix" : "|"
+                }
+
+            if params['sources'] == "learnt":
                 examples = cls.get_learnt_tasks(
-                    query_text=crit['query_text'],
-                    k=crit['num'],
-                    metadata_filter=crit['metadata_filter'],
-                    sort_order=crit['sort_order'],
-                    similarity_search=crit['similarity_search']
+                    query_text=params['query_text'],
+                    k=params['num'],
+                    metadata_filter=params['metadata_filter'],
+                    sort_order=params['sort_order'],
+                    similarity_search=params['similarity_search']
                 )
-            elif crit['sources'] == "failed":
+            elif params['sources'] == "failed":
                 examples = cls.get_failed_tasks(
-                    query_text=crit['query_text'],
-                    k=crit['num'],
-                    metadata_filter=crit['metadata_filter'],
-                    sort_order=crit['sort_order'],
-                    similarity_search=crit['similarity_search']
+                    query_text=params['query_text'],
+                    k=params['num'],
+                    metadata_filter=params['metadata_filter'],
+                    sort_order=params['sort_order'],
+                    similarity_search=params['similarity_search']
                 )
             else:
                 examples = HumanLLMMonitor.common_vectordb.query(
-                    query_text=crit['query_text'],
-                    k=crit['num'],
-                    metadata_filter=crit['metadata_filter'],
-                    sort_order=crit['sort_order']
+                    query_text=params['query_text'],
+                    k=params['num'],
+                    metadata_filter=params['metadata_filter'],
+                    sort_order=params['sort_order']
                 )
-                crit['sources'] = "examples"
+                params['sources'] = "examples"
 
-            # Process examples to retrieve all metadata if format is 'Jinja2'
+            # Process examples to retrieve all metadata
             processed_examples = []
             for example in examples:
                 example_data = {
@@ -617,18 +664,17 @@ class HumanLLMMonitor:
             examples = processed_examples
 
             format_criteria = {
-                'format': crit['format'],
-                'format_string': crit['format_string'],
-                'template': crit['template']
+                'format': params['format'],
+                'template': params['template']
             }
 
-            formatted_examples = cls.format_examples(examples, format_criteria, crit['sources'])
+            formatted_examples = cls.format_examples(examples, format_criteria, separators)
             all_formatted_examples.append(formatted_examples)
 
         return "\n".join(all_formatted_examples)
 
     @classmethod
-    def format_examples(cls, examples, criteria, sources):
+    def format_examples(cls, examples, criteria, separators):
         if not examples:
             return ""
 
@@ -676,8 +722,9 @@ class HumanLLMMonitor:
 
             formatted_examples.append(formatted_example)
 
-        pipo = ''.join([f"\n|{format_ex}|" for format_ex in formatted_examples])
-        return f"\n{sources} tasks : <<{pipo}>>\n"
+        item = ''.join([f"{separators['item_prefix']}{format_ex}{separators['item_suffix']}" for format_ex in formatted_examples])
+
+        return f"{separators['global_prefix']}{item}{separators['global_suffix']}"
 
     @classmethod
     def get_default_jinja2_template(cls, content_data):
@@ -761,31 +808,34 @@ class HumanLLMMonitor:
                 reset_db_indices=reset_db_indices
             )
 
-    def get_few_shots_tag_args(self, prompt=None):
+    def get_few_shots_tag_args(self, prompt):
         """
-        Retrieves the few shots tag arguments from the system prompt.
+        Removes the 'few_shots' tag from the prompt and inserts the string received from
+        get_multiple_few_shots at each location where the tag was removed.
 
         Returns:
-            dict: A dictionary containing the few shots tag arguments.
+            str: The modified prompt content with few shots inserted.
         """
-        if prompt is None:
-            prompt = self.system_prompt
+        # Find all 'few_shots' tags with their arguments
+        pattern = r"few_shots:\s*(\{[^}]*\})"
+        matches = list(re.finditer(pattern, prompt, re.DOTALL))
 
-        # Trouver tous les tags 'few_shots' avec leurs arguments
-        few_shots_matches = re.findall(r"few_shots:\s*(\{[^}]*\})", prompt, re.DOTALL)
-
-        few_shots_data_list = []
-        for match in few_shots_matches:
+        for match in reversed(matches):  # Reverse to not mess up indices when replacing
             try:
-                data = json.loads(match)
-                few_shots_data_list.append(data)
+                data_str = match.group(1)
+                data = json.loads(data_str)
+                # Combine criteria
+                combined_criteria = self.combine_criteria([data])
+                # Get the few shots string
+                few_shots_str = self.get_multiple_few_shots(combined_criteria)
+                # Replace the tag with the few shots string
+                start, end = match.span()
+                prompt = prompt[:start] + few_shots_str + prompt[end:]
             except json.JSONDecodeError as e:
-                print(f"Erreur lors du décodage du tag 'few_shots': {e}")
+                print(f"Error decoding 'few_shots' tag: {e}")
                 continue
 
-        prompt_without_few_shots = re.sub(r"few_shots:\s*\{[^}]*\}\s*", "", prompt, flags=re.DOTALL)
-
-        return few_shots_data_list, prompt_without_few_shots
+        return prompt
 
     def set_llmORchain(self, llm_name, is_premium=False, temperature=0.7):
         if llm_name in self.llmORchains_list:
@@ -934,9 +984,9 @@ class HumanLLMMonitor:
                  default_llmORchain=None,
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1,
                  llmORchains_list=None,
-                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature=0.7, optuna=False):
+                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature=0.7, optuna=False, envs=None):
         self.current_inference_context = None
-        self.user_message_few_shots = ""
+        self.user_message_few_shots = None
         if llmORchains_list is None: raise ValueError("llmORchains_list must be provided")
         self.llmORchains_list = llmORchains_list
         self.temperature = temperature
@@ -969,6 +1019,8 @@ class HumanLLMMonitor:
         self.synthesize_mode = synthesize_mode
         self.inference_checks = inference_checks if inference_checks else {}
         self.last_inference_check_results = None
+        self.user_message = ""
+        self.envs = envs
 
     # New: Handling function calls via WebSocket
     def execute_function(self, function_name, params):
@@ -1003,27 +1055,31 @@ class HumanLLMMonitor:
         with open(f"prompts/{prompt}.txt", "r") as f:
             prompt_content = f.read()
 
-        few_shots_data_list, prompt_content = self.get_few_shots_tag_args(prompt_content)
-
-        if few_shots_data_list:
-            combined_criteria = self.combine_criteria(few_shots_data_list)
-            self.user_message_few_shots = self.get_multiple_few_shots(combined_criteria)
-            prompt_content += "\n\n" + self.user_message_few_shots
+        prompt_content = self.get_few_shots_tag_args(prompt_content)
 
         return prompt_content
 
     def combine_criteria(self, criteria_list):
-        combined = {}
+        """
+        Formats the criteria list into the required output format.
+
+        Args:
+            criteria_list (list): List of criteria dictionaries.
+
+        Returns:
+            list: List of formatted criteria dictionaries.
+        """
+        formatted_list = []
         for criteria in criteria_list:
-            for key, value in criteria.items():
-                if key in combined:
-                    if isinstance(combined[key], list):
-                        combined[key].extend(value if isinstance(value, list) else [value])
-                    else:
-                        combined[key] = [combined[key]] + (value if isinstance(value, list) else [value])
-                else:
-                    combined[key] = value
-        return combined
+            formatted_criteria = {
+                "sources": criteria.get('sources', "default"),
+                "num": criteria.get('num', 2),
+                "format": criteria.get('format', "Markdown"),
+                "sort_order": criteria.get('sort_order', None),
+                "template": criteria.get('template', None),
+            }
+            formatted_list.append(formatted_criteria)
+        return formatted_list
 
     def _process_examples(self, log_entries: List, params: FewShotsParams) -> List[str]:
         """
@@ -1232,7 +1288,15 @@ class HumanLLMMonitor:
                 _visual_input(result)
 
             elif action == "F":  # See previous MODIFIED/SCORED/COMMENTED results - list results from  HumanLLMMonitor.common_vectordb filtered by agent_name and function_name, filtered on comments
-                self.getScoredResults(function_name)
+                result = self.getScoredResults(function_name)
+                if result is not None:
+                    messages = [
+                        SystemMessage(content=self.load_prompt(agent_name=self.agent_name, prompt=self.system_prompt)),
+                        HumanMessage(content=result)
+                    ]
+                    for message in messages:
+                        smart_print(message.content, self.agent_name, "BEFORE inference action MENU")
+
 
             elif action == "G":  # Skip human actions for N rounds
                 self.skipRounds()
@@ -1500,10 +1564,12 @@ class HumanLLMMonitor:
             return
 
         if confirm == "I":
-            new_few_shots = _visual_input(self.user_message_few_shots or "")
+            new_few_shots = _visual_input(self.user_message_few_shots)
             self.user_message_few_shots = new_few_shots
-            smart_print(message=self.user_message_few_shots, agent_name=self.agent_name)
-            return
+            envs_status = '\n'.join([env.get_state() for env in self.envs])
+
+            return self.get_multiple_few_shots(self.user_message_few_shots) + (f"\n- Current status of examples on "
+                                                                               f"which the task will be tested on: {envs_status}\n")
 
         if confirm in ["A", "", "B"]:
             result.extend(HumanLLMMonitor.common_vectordb.query(
