@@ -1117,7 +1117,7 @@ $(function() {
             }
             // Ajouter le bouton "Continue"
             let $continueButton = $(`<button id="continue-button-${data.agent_name}">Continue</button>`);
-            $('.solution-columns').after($continueButton);
+            $(solutionColumnsContainer).after($continueButton);
             $continueButton.click(function () {
                 console.log("Continue button clicked");
                 let columnsToDelete = JSON.parse(localStorage.getItem(`columnsToDelete-${data.agent_name}`)) || [];
@@ -1128,7 +1128,7 @@ $(function() {
                     }
                 }
                 number_validated_functions += columnsToKeep.length;
-                document.getElementById("number-functions-validated").textContent = number_validated_functions;
+                document.getElementById("number-validated-functions").textContent = number_validated_functions;
                 console.log("Columns to keep:", columnsToKeep.join(','));
                 socket.send(JSON.stringify({message: columnsToKeep.join(',')}));
                 let actionDescription = `User clicked continue, keeping solutions: ${columnsToKeep.map(num => num + 1).join(', ')}`;
