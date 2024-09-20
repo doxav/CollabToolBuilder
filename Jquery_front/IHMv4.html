@@ -906,7 +906,7 @@ $(function() {
             solutionColumnsContainer.remove();
             solutionColumnsContainer = null;
             // Supprimer le bouton "Continue" s'il existe
-            let continueButton = document.getElementById('continue-button');
+            let continueButton = document.getElementById(`continue-button-${data.agent_name}`);
             if (continueButton) {
                 continueButton.remove();
             }
