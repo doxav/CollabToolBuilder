@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Real-Time Communication Interface</title>
+<title>CollabFunctionsGPTCreator</title>
 <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
@@ -336,7 +336,7 @@ color: white;
             <input type="text" id="search-filter" placeholder="Search...">
         </div>
         <div style="font-size: medium; font-weight: bold;">
-            <label>Remaining time:</label>
+            <label>Experience remaining time:</label>
             <span id="remaining-time">0</span>
         </div>
 
@@ -929,7 +929,7 @@ $(function() {
                 const column = document.createElement('div');
                 column.className = 'solution-column';
                 column.id = `column-${colId}`;
-                column.innerHTML = `<button class="expand-button"><i class="fas fa-expand"></i></button><br><h4>Solution ${i + 1}</h4>`;
+                column.innerHTML = `<button class="expand-button"><i class="fas fa-expand"></i></button><br><h4>Answer ${i + 1}</h4>`;
                 solutionColumnsContainer.appendChild(column);
 
                 column.innerHTML += `</div><div class="overlay"></div>`;
@@ -946,18 +946,16 @@ $(function() {
             targetColumn.innerHTML += `
                 <div style="text-align: center;">
                     <p>Score the solution:</p>
-                    <input type="range" min="0" max="10" value="5" step="1" class="slider" id="slider-${columnId}">
-                    <br><span id="value-${columnId}">5</span>
+                    <div style="display: flex; justify-content: center; align-items: flex-start;">
+                        <!-- Slider and value container -->
+                        <div style="display: flex; flex-direction: column; align-items: center; margin-right: 10px;">
+                            <input type="range" min="-1" max="10" value="-1" step="1" class="slider" id="slider-${columnId}">
+                            <span id="value-${columnId}">-1</span>
+                        </div>
+                        <input type="text" id="comment-${columnId}" placeholder="Add feedback" style="margin-right: 10px;">
+                        <button id="evaluate-${columnId}"><i class="fa-regular fa-paper-plane"></i> Evaluate</button>
+                    </div>
                 </div>
-                <br>
-                <div style="text-align: center;">
-                    <input type="text" id="comment-${columnId}" placeholder="Add a comment">
-                </div>
-                <br>
-                <div style="text-align: center;">
-                    <button id="evaluate-${columnId}"><i class="fa-regular fa-paper-plane"></i> Evaluate this solution</button>
-                </div>
-                <br>
             `;
 
             // Boutons supplémentaires avec identifiants mis à jour
@@ -988,8 +986,18 @@ $(function() {
                 });
 
                 $(document).on("click", `#evaluate-${columnId}`, function () {
+                    if ($(`#slider-${columnId}`).val() === '-1') {
+                        alert('-1 is not a valid score, so please select a valid score.');
+                        return;
+                    }
+                    if($(`#comment-${columnId}`).val() === '') {
+                        alert('Please add a comment before evaluating the solution');
+                        return;
+                    }
                     console.log('Evaluate button clicked');
                     alert('Evaluation submitted ! Thanks you !');
+                    // Make button disabled
+                    $(`#evaluate-${columnId}`).prop('disabled', true);
                     // If a slider exists, get the score of it, else get the value of the compliance select
                     let score;
                     if($(`#slider-${columnId}`).length) {
@@ -1006,6 +1014,12 @@ $(function() {
 
             // Mise à jour des événements pour les boutons
             $(document).on("click", `#delete-${columnId}`, function () {
+                // Check if evaluate button is enabled
+                if($(`#evaluate-${columnId}`).prop('disabled') === false) {
+                    alert('You have to evaluate the solution before deleting it');
+                    return;
+                }
+
                 let targetColumn = document.getElementById(`column-${columnId}`);
                 if (targetColumn.style.backgroundColor === 'lightcoral') {
                     targetColumn.style.backgroundColor = '';
@@ -1431,22 +1445,26 @@ $(document).on('click', '.collapsible-header', function() {
         selection.addRange(range);
     }
 
-    $(document).on("mouseup", ".message", function(e) {
-        let selection = window.getSelection().toString();
-        if (selection) {
-            // Highlight selected text
-            let range = window.getSelection().getRangeAt(0);
-            let span = document.createElement("span");
-            span.style.backgroundColor = "yellow";
-            span.style.color = "black";
-            span.id = "temphighlight";
-            range.surroundContents(span);
-            saveSelection();
-            $(".annotation-menu")
-                .css({top: e.pageY, left: e.pageX})
-                .show();
-        }
-    });
+    // Add a listener for mouseup events on messages or hljs code blocks
+    $(document).on("mouseup", function(e) {
+            let selection = window.getSelection().toString();
+            if (selection) {
+                // Check if the selection is within a message or code block
+                if ($(e.target).closest(".message, pre, code, .language-python, .language-csharp").length) {
+                    // Highlight selected text
+                    let range = window.getSelection().getRangeAt(0);
+                    let span = document.createElement("span");
+                    span.style.backgroundColor = "yellow";
+                    span.style.color = "black";
+                    span.id = "temphighlight";
+                    range.surroundContents(span);
+                    saveSelection();
+                    $(".annotation-menu")
+                        .css({ top: e.pageY, left: e.pageX })
+                        .show();
+                }
+            }
+        });
 
     // Hide the annotation menu when clicking outside of it
     $(document).click(function(e) {
