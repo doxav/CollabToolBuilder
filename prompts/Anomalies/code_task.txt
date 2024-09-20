@@ -109,6 +109,7 @@ CONSTRAINTS:
         -avoid indentation error
         - AnomalyClusteringAndRecommendation() takes no arguments 
         -class Pipeline is mandatory to have a functional pipeline
+        -AVOID this error ! : AnomalyRetrievalAndRecommendationPipeline.run_pipeline() missing 3 required positional arguments: 'model_id', 'messages', and 'body'
         
 RESPONSE FORMAT:
     python ```
