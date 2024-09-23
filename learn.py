@@ -184,10 +184,11 @@ class EnvironmentManager:
 # Agent 1: Task Identification
 class TaskIdentificationAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
-                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, criteria=None):
+                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, criteria=None,params_user_message=None):
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         self.criteria = criteria
+        self.params_user_message = params_user_message
         self.human_llm_identify_best_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice,
                                                             premium_llm_by_default=premium_llm_by_default,
                                                             llmORchains_list=llmORchains_list)#,output_schema="identify_best_task.schema.py")
@@ -198,9 +199,13 @@ class TaskIdentificationAgent():
 
     def identify_best_task(self) -> str:
         user_message = ""
-        if not self.optuna_opti:
-            user_message = self.human_llm_identify_best_task.get_multiple_few_shots(criteria=self.criteria)
-            self.human_llm_identify_best_task.user_message_few_shots = user_message
+        # If the user provided some parameters for the user message, call get_multiple_few_shots to retrieve the tasks asked
+        if self.params_user_message:
+            user_message = self.human_llm_identify_best_task.get_multiple_few_shots(
+                few_shots_params=self.params_user_message)
+            # Set the user_message_few_shots attribute to the parameters given in params_user_message
+            self.human_llm_identify_best_task.user_message_few_shots = self.params_user_message
+
         envs_status = '\n'.join([env.get_state() for env in self.envs])
 
         user_message += f"\n- Current status of examples on which the task will be tested on: {envs_status}\n"

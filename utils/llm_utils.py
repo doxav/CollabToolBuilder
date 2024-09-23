@@ -37,13 +37,13 @@ from config import PickleCacheActivated
 import os
 import openai
 from requests.auth import HTTPBasicAuth
-from config import *
+
 from websocket_server import WebsocketServer
 
 openai.api_key = os.environ['OPENAI_API_KEY']
 if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
 
-ON_INPUT = True
+ON_INPUT = False
 
 AGENT = ''
 
@@ -863,8 +863,7 @@ class HumanLLMMonitor:
                                             description="The temperature of the LLM"
                                         )
                                     ).with_config(configurable={
-                                        "llm_temperature": temperature}) 
-                                    print("temperature has been changed to:", temperature) # Replace with desired default temperature
+                                        "llm_temperature": temperature})  # Replace with desired default temperature
                                 except ValueError as e:
                                     smart_print(
                                         f"Sub-step {key} in step {step} does not support temperature configuration: {e}",
@@ -881,8 +880,7 @@ class HumanLLMMonitor:
                                     description="The temperature of the LLM"
                                 )
                             ).with_config(configurable={
-                                "llm_temperature": temperature}) 
-                            print("temperature hass been changed to:", temperature, llm_name) # Replace with desired default temperature
+                                "llm_temperature": temperature})  # Replace with desired default temperature
                         except ValueError as e:
                             print(f"Step {step} does not support temperature configuration: {e}", self.agent_name)
                         modified_steps.append(step)
@@ -905,8 +903,7 @@ class HumanLLMMonitor:
                             description="The temperature of the LLM"
                         )
                     ).with_config(
-                        configurable={"llm_temperature": temperature}) 
-                    print("temperature has been changed to:", temperature, llm_name) # Replace with desired default temperature
+                        configurable={"llm_temperature": temperature})  # Replace with desired default temperature
                 except ValueError as e:
                     smart_print(f"LLM/Chain '{llm_name}' does not support temperature configuration: {e}",
                                 self.agent_name)
