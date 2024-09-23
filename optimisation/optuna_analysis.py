@@ -17,7 +17,8 @@ def analysis(name_exp: str, in_dir = False):
         # File to save results
         output_file = os.path.join(current_folder, f"{name_exp}_analysis.txt" if in_dir else f"Optuna_results/{name_exp}_analysis.txt")
 
-        sqlite_file = os.path.join(current_folder, f"{name_exp}.db" if in_dir else f"Optuna_db/{name_exp}.db")
+        sqlite_file_original = os.path.join(current_folder, f"{name_exp}.db" if in_dir else f"Optuna_db/{name_exp}.db")
+        sqlite_file = os.path.join(current_folder, f"{name_exp}_copy.db" if in_dir else f"Optuna_db/{name_exp}.db")
 
         # Function to write results to the file
         def write_to_file(text, mode="a"):
@@ -95,6 +96,7 @@ def analysis(name_exp: str, in_dir = False):
 
                         if values.dtype == 'object':
                             # Categorical parameter performance
+                            df[f'params_{param}'] = df[f'params_{param}'].apply(lambda x: tuple(x) if isinstance(x, list) else x)
                             performance_by_category = df.groupby(f'params_{param}')['value'].mean()
                             for cat_value, mean_perf in performance_by_category.items():
                                 write_to_file(f"{param:<25} | {'Categorical':<12} | {str(cat_value):<40} | {mean_perf:<15.4f}")
