@@ -464,7 +464,9 @@ class CodingAgent():
     def get_primitives(self):
         primitives = []
         # Add the pipelines folder for the primitives
+
         if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
+
             path_folder = "pipelines/pipelines"
         else:
             path_folder = "primitives"
