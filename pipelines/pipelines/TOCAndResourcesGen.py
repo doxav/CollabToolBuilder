@@ -40,7 +40,7 @@ class Pipeline:
                     f"Authors: {', '.join(self.article_data['authors'])}\n"
                     f"Is this information correct? (y/n)")
         else:
-            return "Thanks for using our pipeline. Please enter a whitespace to start again."
+            return "Thanks for using our  pipeline. Please enter a whitespace to start again."
 
     def process_user_response(self, user_input):
         if user_input is None:
