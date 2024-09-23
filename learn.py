@@ -675,7 +675,7 @@ class CapitalizationAgent:
         # Serialize entry for logging
         serialized_entry = json.dumps({
             "time": datetime.datetime.now().isoformat(),
-            ("class_name" if is_anomaly else "main_function_name"): function_name,
+            ("class_name" if (self.problem_prompts_subdir =="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/") else "main_function_name"): function_name,
             "program_code": parsed_code["program_code"],
             "tool_description": tool_description,
             "task_description": task_description,
@@ -688,7 +688,7 @@ class CapitalizationAgent:
     def capitalize_failed_tasks(self, task_description: str, parsed_code: str) -> None:
         import socket, uuid, datetime, json
 
-        is_anomaly = self.problem_prompts_subdir == "Anomalies/"
+        is_anomaly = self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir =="pipeline_synthesis/"
         name_key = "class_name" if is_anomaly else "main_function_name"
         if parsed_code:
             task_name = parsed_code.get(name_key, "replace this text with a descriptive name of the class" if is_anomaly else "replace this text with a descriptive name of the function")
@@ -723,35 +723,35 @@ class CapitalizationAgent:
         }
         HumanLLMMonitor.add_failed_task(serialized_entry, tags)
 
-    def retrieve_saved_tasks_in_db(self, query="", max_db_results=20, include_code=None, selected_successful_functions=None, selected_failed_functions=None) -> None:
-        def process_results(results, task_type, selected_functions, repository, metadata_key, include_code_flag):
-            smart_print(f"************ Retrieving {task_type} tasks from database - LIST:", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-            id = 0
-            for result in results:
-                id += 1
-                task_data = json.loads(result.page_content)
-                name_key = "class_name" if self.problem_prompts_subdir == "Anomalies/" else "main_function_name"
-                if name_key not in task_data:
-                    task_data[name_key] = ""
+  
+    def process_results(self, results, task_type, selected_functions, repository, metadata_key, include_code_flag):
+        smart_print(f"************ Retrieving {task_type} tasks from database - LIST:", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+        id = 0
+        for result in results:
+            id += 1
+            task_data = json.loads(result.page_content)
+            name_key = "class_name" if (self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/") else "main_function_name"
+            if name_key not in task_data:
+                task_data[name_key] = ""
                 
-                task_name = task_data.get(name_key)
-                smart_print(f"{id}: {task_type} {name_key}:{task_name} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+            task_name = task_data.get(name_key)
+            smart_print(f"{id}: {task_type} {name_key}:{task_name} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
 
-            if selected_functions is None:
-                selected_functions = smart_input(f"CONFIG Please select the {task_type} functions to load (separated by comma, 'all' for all, or hit enter for none): ").strip().replace(" ","").lower().split(",")
+        if selected_functions is None:
+            selected_functions = smart_input(f"CONFIG Please select the {task_type} functions to load (separated by comma, 'all' for all, or hit enter for none): ").strip().replace(" ","").lower().split(",")
             
-            id = 0
-            for result in results:
-                id += 1
-                if selected_functions and (str(id) not in selected_functions) and (selected_functions != ["all"]):
-                    continue
-                task_data = json.loads(result.page_content)
-                task_name = task_data.get(name_key)
-                
-                if task_name in repository:
-                    smart_print(f"> {task_type} {task_name} already loaded. Skipping duplicates...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+        id = 0
+        for result in results:
+            id += 1
+            if selected_functions and (str(id) not in selected_functions) and (selected_functions != ["all"]):
+                continue
+            task_data = json.loads(result.page_content)
+            task_name = task_data.get(name_key)
+             
+            if task_name in repository:
+                smart_print(f"> {task_type} {task_name} already loaded. Skipping duplicates...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
         tags = {    "host": HumanLLMMonitor.get_host_id(),
-                    "step_id": HumanLLMMonitor.step_id,}
+                        "step_id": HumanLLMMonitor.step_id,}
 
         self.db_failed_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
 
@@ -772,7 +772,7 @@ class CapitalizationAgent:
             page_content = result.page_content
             # Deserialize the JSON from the page_content string
             task_data = json.loads(page_content)
-            if self.problem_prompts_subdir=="Anomalies/":
+            if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
                 if "class_name" in task_data:
                     smart_print(f"{id}: Pipeline name:{task_data['class_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
             else:
