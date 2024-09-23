@@ -3,6 +3,10 @@ import os
 import openai
 from pydantic import BaseModel
 import re
+from langchain_openai import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate
+import json
+
 class Pipeline:
     class Valves(BaseModel):
         OPENAI_API_KEY: str
@@ -22,11 +26,13 @@ class Pipeline:
 
     def ask_next_question(self):
         if self.conversation_state == "start":
-            return "Welcome to the TOC and resource generation pipeline. Please provide the title of the article."
+            return "Welcome to the TOC and resource generation pipeline."
         elif self.conversation_state == "ask_title":
-            return "Great! Now please provide the abstract of the article."
+            return "Great, let's start! Now please provide the title of the article."
+        elif self.conversation_state == "ask_abstract":
+            return "Can you provide a brief abstract of the article?"
         elif self.conversation_state == "ask_authors":
-            return "Now please provide the authors of the article separated by commas."
+            return "Now please provide the authors of the article, separated by commas."
         elif self.conversation_state == "ask_confirmation":
             return (f"Here is the summary of the article:\n"
                     f"Title: {self.article_data['title']}\n"
@@ -39,7 +45,7 @@ class Pipeline:
     def process_user_response(self, user_input):
         if user_input is None:
             self.reset_pipeline()
-            return "Now can you help me with providing some information about the article you want to structure?"
+            return "Now can you help me by providing some information about the article you want to structure?"
 
         user_input = user_input.strip()
 
@@ -83,46 +89,69 @@ class Pipeline:
     def handle_conversation(self, user_input):
         return self.process_user_response(user_input)
 
-    def generate_toc(self) -> str:
-        toc_structure = {
-            "Introduction": "This section introduces the topic and outlines the objectives of the survey.",
-            "Literature Review": "This section reviews existing literature relevant to the survey topic.",
-            "Methodology": "This section describes the methods used to gather information for the survey.",
-            "Findings": "This section presents the key findings from the survey conducted.",
-            "Discussion": "This section discusses the implications and significance of the findings.",
-            "Conclusion": "This section summarizes the key points and suggests areas for future research."
-        }
+    def generate_section_content(self, section_title, authors, abstract, temperature=0.7):
+        llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=temperature, openai_api_key=self.valves.OPENAI_API_KEY)
+        prompt_template = f"Generate detailed content for the section titled '{section_title}' based on the following abstract:\n\n{abstract} by those {authors}"
+        prompter = ChatPromptTemplate.from_template(prompt_template)
+        message = prompter.format_messages(abstract=abstract)
+        
+        generated_text = llm(message)
+        return generated_text.content
 
+    def generate_toc(self) -> str:
+        sections = [
+            "Introduction",
+            "Title",
+            "Authors",
+            "Abstract",
+            "Literature Review",
+            "Methodology",
+            "Findings",
+            "Discussion",
+            "Conclusion"
+        ]
+        
         formatted_toc = f"## Table of Contents for: {self.article_data['title']}\n\n"
-        for section, description in toc_structure.items():
-            formatted_toc += f"### {section}\n{description}\n\n"
+        content = {}
+
+        # Generate section content
+        for section in sections:
+            if section == "Title":
+                section_content = self.article_data['title']
+            elif section == "Authors":
+                section_content = ", ".join(self.article_data['authors'])
+            elif section == "Abstract":
+                section_content = self.article_data['abstract']
+            else:
+                section_content = self.generate_section_content(section,self.article_data['authors'], self.article_data['abstract'])
+            
+            content[section] = section_content
+            formatted_toc += f"### {section_content}\n\n"
 
         return formatted_toc.strip()
 
     def suggest_resources(self) -> List[str]:
-        # Placeholder for resource suggestions
-        return [
-            "1. Author A. (2020). Title of Related Paper 1. Journal Name.",
-            "2. Author B. (2021). Title of Related Paper 2. Journal Name.",
-            "3. Author C. (2022). Title of Related Paper 3. Journal Name.",
-            "4. Author D. (2023). Title of Related Paper 4. Journal Name.",
-            "5. Author E. (2020). Title of Related Paper 5. Journal Name.",
-            "6. Author F. (2021). Title of Related Paper 6. Journal Name.",
-            "7. Author G. (2022). Title of Related Paper 7. Journal Name.",
-            "8. Author H. (2023). Title of Related Paper 8. Journal Name.",
-            "9. Author I. (2020). Title of Related Paper 9. Journal Name.",
-            "10. Author J. (2021). Title of Related Paper 10. Journal Name."
+        title_keywords = re.findall(r'\b\w+\b', self.article_data['title'])
+        abstract_keywords = re.findall(r'\b\w+\b', self.article_data['abstract'])
+
+        resources = [
+            f"1. Related work based on '{self.article_data['title']}' and its methodology.",
+            f"2. Previous studies that explored topics similar to '{self.article_data['title']}'.",
+            f"3. Research on areas discussed in the abstract: {' '.join(abstract_keywords[:3])}.",
+            f"4. Review articles focusing on methodologies used in '{self.article_data['title']}'.",
+            f"5. Studies by {self.article_data['authors'][0]} and other relevant authors."
         ]
 
-    def pipe(
-            self, user_message: str, model_id: str, messages: List[dict], body: dict
-            ) -> Union[str, Generator, Iterator]:
+        return resources
+
+    def pipe(self, user_message: str, model_id: str, messages: List[dict], body: dict) -> Union[str, Generator, Iterator]:
         if self.conversation_state != "finished":
             return self.handle_conversation(user_message)
 
         toc = self.generate_toc()
         resources = self.suggest_resources()
-
+        
+        # Organize output
         output = toc + "\n## Suggested Resources:\n" + "\n".join(resources)
 
         assert output is not None, "Output can't be None"
