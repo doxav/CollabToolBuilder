@@ -33,22 +33,16 @@ def definition_few_shots(trial, usr_msg: bool = False):
 
     for i in range(3):
         source = sources_list[i]
-        num = trial.suggest_int(f"num_tag_{i+1}", 0, 5)
+        num = 2
         if num > 0:
-            output_format = trial.suggest_categorical(f"format_tag_{i+1}", ["Json", "Markdown"])
+            # Fixed parameters for the few-shot tags/user message
+            output_format = "json"
             # Define separators using Optuna
-            global_prefix = trial.suggest_categorical("global_prefix_option", ["tasks: <<",
-                                                                               "List of tasks: [[",
-                                                                               "tasks: {{",
-                                                                               "List of tasks: $$"
-                                                                               ])
-            if global_prefix[-2:] in ["[[", "$$"]:
-                global_prefix = f"{global_prefix[:8]}{source} {global_prefix[8:]}"
-            else:
-                global_prefix = f"{source}{global_prefix}"
-            global_suffix = f"{global_prefix[-2:]}\n".replace("<<", ">>").replace("[[", "]]").replace("{{", "}}")
-            item_prefix = trial.suggest_categorical("item_prefix_option", ["\n|", "\n(", "\n-"])
-            item_suffix = f"{item_prefix[-1:]}\n".replace("(", ")")
+            global_prefix = "tasks: {{"
+            global_prefix = f"{source}{global_prefix}"
+            global_suffix = "}}\n"
+            item_prefix = "\n|"
+            item_suffix = "|\n"
 
             tmp_separators = {
                 "global_prefix": global_prefix,
@@ -65,7 +59,8 @@ def definition_few_shots(trial, usr_msg: bool = False):
                 "num": num,
                 "format": output_format,
                 "sort_order": "random",
-                "separators": tmp_separators
+                "separators": tmp_separators,
+                "metadata_filter": {},
             }
             if template:
                 few_shot_dict["template"] = template
