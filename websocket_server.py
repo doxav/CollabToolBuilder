@@ -1,8 +1,9 @@
 import json
 import asyncio
 import time
-
+import os
 import websockets
+import subprocess
 
 import uuid
 
@@ -49,6 +50,19 @@ class WebsocketServer:
             self.connected_clients.remove(websocket)
 
     async def main(self, stop_event):
+        # Obtenir le chemin absolu du fichier IHMv4.html
+        current_directory = os.getcwd()
+        ihm_file_path = os.path.join(current_directory, "Jquery_front", "IHMv4.html")
+        absolute_ihm_file_path = f"file://{ihm_file_path}"
+        # Afficher le lien dans le terminal
+        print(f"Access to IHM via : {absolute_ihm_file_path}")
+        try:
+            windows_ihm_file_path = subprocess.check_output(["wslpath", "-w", ihm_file_path]).decode("utf-8").strip()
+            absolute_ihm_file_path = "file:///" + windows_ihm_file_path.replace('\\', '/')
+            print(f"or on Windows WSL via : {absolute_ihm_file_path}")
+        except subprocess.CalledProcessError as e:
+            print(f"Windows WSL path not found : {e}")
+
         server = await websockets.serve(self.handler, "localhost", 6789)
         while not stop_event.is_set():
             await asyncio.sleep(1)
