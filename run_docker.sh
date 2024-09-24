@@ -15,7 +15,7 @@ docker run -d \
 
 #!/bin/bash 
 
-cd ~/Documents/CollabFunctionsGPTCreator/pipelines
+cd pipelines
 bash ./start.sh &
 echo "start.sh is running !"
 wait
