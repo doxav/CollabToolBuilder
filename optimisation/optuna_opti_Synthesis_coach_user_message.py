@@ -3,15 +3,26 @@ from optimisation.optuna_main import launch_run, definition_few_shots, global_ma
 
 def objective(trial, timestamp_exp: str):
     # Definition of the coach's prompt
-    coach_agent_role = trial.suggest_categorical("role_priming", ["In the context of a system generating efficient state-of-the-art research survey papers on a given subject, you are a researcher expert advising on the next best task to develop. This system employs a hybrid approach, leveraging both LLM capabilities and traditional algorithmic processing.",
-                                                                  "You are an AI coach"])
-    few_shots = definition_few_shots(trial)
+    coach_agent_role = "You are an AI coach"
+    # trial.suggest_categorical("role_priming", ["In the context of a system generating efficient state-of-the-art research survey papers on a given subject, you are a researcher expert advising on the next best task to develop. This system employs a hybrid approach, leveraging both LLM capabilities and traditional algorithmic processing.",
+                                                                  # "You are an AI coach"])
+    # few_shots = definition_few_shots(trial)
+    few_shots = {
+        "sources" : "exemples",
+        "num" : 1,
+        "sort_order" : "by_date_asc",
+        "format" : "json",
+
+    }
     # coach_user_input_failed_tasks = trial.suggest_categorical("coach_user_input_failed_tasks", [True, False])
     coach_user_input = "I will provide you:\n- Learnt tasks available (with information gain between 0 and 1 on plan's titles, and contents): ...\n- Failed tasks to learn that are too hard to code: ...\n- Current status of examples of technical synthesis the proposed next task will be tested on: ..."
 
-    coach_task_description = trial.suggest_categorical("task_description", [
-        "You define best next task to generate state-of-the-art research survey paper given a [Title] and an [Abstract]. Each task you propose will be prompted to a language model which will try to convert it into Python functions. If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration.",
-        "Define the next best task to generate a state-of-the-art research survey paper given a document object (containing target title and abstract/context in its properties). Each task you propose will be converted into Python functions, potentially including LLM calls when appropriate. If the implementation is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration."])
+    coach_task_description = "You define best next task to generate state-of-the-art research survey paper given a [Title] and an [Abstract]. Each task you propose will be prompted to a language model which will try to convert it into Python functions. If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration."
+        #(trial.suggest_categorical("task_description", [
+        #"You define best next task to generate state-of-the-art research survey paper given a [Title] and an [Abstract]. Each task you propose will be prompted to a language model which will try to convert it into Python functions. If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration.",
+        #"Define the next best task to generate a state-of-the-art research survey paper given a document object (containing target title and abstract/context in its properties). Each task you propose will be converted into Python functions, potentially including LLM calls when appropriate. If the implementation is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration."]))
+
+    user_message_parameters = definition_few_shots(trial, True)
 
     criteria_coach = []
     criteria_coach = [
@@ -97,20 +108,17 @@ def objective(trial, timestamp_exp: str):
                 - **Step 2**: Sub-task identification (e.g., "Identify key papers using LLM, retrieve metadata using algorithms").
                 - **Step 3**: Further decomposition and parallelizable steps (e.g., "Apply formatting, compare document consistency using algorithms")."""
 
-    coach_criterias_dict = {
-        'coach_criterias_topcurrent':coach_criterias_topcurrent,
-        'coach_criterias_newhybrid_v1':coach_criterias_newhybrid_v1,
-        'coach_criterias_newhybrid_v2':coach_criterias_newhybrid_v2}
+    # coach_criterias_dict = {
+    #     'coach_criterias_topcurrent':coach_criterias_topcurrent,
+    #     'coach_criterias_newhybrid_v1':coach_criterias_newhybrid_v1,
+    #     'coach_criterias_newhybrid_v2':coach_criterias_newhybrid_v2}
 
-    coach_criterias = coach_criterias_dict[trial.suggest_categorical("coach_criterias", ['coach_criterias_topcurrent', 'coach_criterias_newhybrid_v1', 'coach_criterias_newhybrid_v2'])]
-
-    criteria_user_message = trial.suggest_categorical("criteria_user_message",
-                                                      ["None", "learnt", "failed", "learnt failed"])
+    coach_criterias = coach_criterias_topcurrent # coach_criterias_dict[trial.suggest_categorical("coach_criterias", ['coach_criterias_topcurrent', 'coach_criterias_newhybrid_v1', 'coach_criterias_newhybrid_v2'])]
 
     #coach_format_output_type = "Markdown"
 
     coach_format_output = """You should only respond in the Markdown format as described below:
-        1. Reasoning: Analysis of the provided information to determine the next best task to develop, minimizing the distance to the goal
+        1. Reasoning: Analysis in 4 steps of the provided information to determine the next best task to develop, minimizing the distance to the goal
         2. Next Best Task:
             - Function Name: YourFunctionNameOfNextBestTaskIdentified
             - Description: .....
@@ -161,6 +169,7 @@ def objective(trial, timestamp_exp: str):
         max_execution_time=900,
         model_choice={"coach": "premium_llm", "coder": "premium_llm", "critic": "default_llm", "capitalizer": "default_llm"},
         optuna_opti="coach",
+        params_user_message=user_message_parameters,
     )
     with open(f"Optuna_results/{timestamp_exp}.txt", "a") as f:
         f.write(f"Performance: {perf}\n\n")

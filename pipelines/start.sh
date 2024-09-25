@@ -102,7 +102,7 @@ else
 fi
 
 echo "Starting Uvicorn server..."
-uvicorn main:app --host 0.0.0.0 --port 9100 --reload --reload-dir /home/hadrien/Documents/CollabFunctionsGPTCreator/pipelines/pipelines
+uvicorn main:app --host 0.0.0.0 --port 9100 --reload --reload-dir pipelines
 
 
 

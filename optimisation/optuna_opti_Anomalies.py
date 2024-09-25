@@ -1,4 +1,8 @@
-from optimisation.optuna_main import launch_run, definition_few_shots, global_main
+
+import os
+import sys
+import time
+from optimisation.optuna_main import launch_study, launch_run, definition_few_shots
 
 
 def objective(trial, timestamp_exp: str):
@@ -500,7 +504,7 @@ def objective(trial, timestamp_exp: str):
         max_execution_time=900,
         model_choice={"coach": "default_llm", "coder": "premium_llm", "critic": "default_llm", "capitalizer": "default_llm"},
         optuna_opti="coach",
-        criteria=criteria_user_message
+        params_user_message=criteria_user_message
     )
 
     with open(f"Optuna_results/{timestamp_exp}.txt", "a") as f:

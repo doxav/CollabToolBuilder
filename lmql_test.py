@@ -9,8 +9,7 @@ from functools import wraps
 
 # define OPENAI_API_KEY 
 import os
-os.environ["OPENAI_API_KEY"] = "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"
-
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 modification_history = []
 
 def simulate_changes(query_string, model=None, decoder=None, temperature=1.0, num_alternatives=1, **kwargs):

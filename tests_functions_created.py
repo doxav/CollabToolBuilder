@@ -12,8 +12,9 @@ The function retrieves and visualizes anomalies similar to a given problem by qu
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.decomposition import TruncatedSVD
     import openai
+    import os
 
-    openai.api_key = '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'
+    openai.api_key = os.getenv("OPENAI_API_KEY")
 
     # Step 1: Connect to Neo4j database
     def neo4j_connection():

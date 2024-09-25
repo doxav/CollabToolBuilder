@@ -124,7 +124,7 @@ class Pipeline:
 
         response = openai.chat.completions.create(
            
-            model="gpt-4",
+            model="gpt-4o-mini-2024-07-18",
             messages=[
                 {"role": "system", "content": "You are an expert at providing solutions for software anomalies."},
                 {"role": "user", "content": prompt}
@@ -153,7 +153,10 @@ class Pipeline:
             return "Thanks for using our pipeline. Please enter a whitespace to start again."
 
     def process_user_response(self, user_input):
-
+        if user_input == None:
+            self.reset_pipeline()
+            return "Now can you help me with providing some information about the anomaly you encountered?"
+        
         new_title = self.extract_title_from_prompt(user_input)
         if new_title:
             self.anomaly_data['title'] = new_title
@@ -201,7 +204,7 @@ class Pipeline:
                 self.anomaly_data = {}
                 return "Oh no ! Let's start again. Please provide the title of the new anomaly."
             
-        elif user_input == "reset":
+        elif user_input == "reset" or user_input == None:
             self.reset_pipeline()
             user_input = ""
             return "The conversation has been reset."

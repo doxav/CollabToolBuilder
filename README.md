@@ -8,7 +8,7 @@ This project enables the collaborative development of new functions using a lang
 - **Database (Documentary and Vectorial)**: ElasticSearch stores trial results, new functions, and pipelines, integrating with Kibana for visualization.
 - **Capacity/Functions Development Agent System**: `learn.py` manages the iterative process of task proposal, coding, validation, and capitalization.
 
-![Learning Loop](readme_learningloop.gif)
+![Learning Loop](images/readme_learningloop.gif)
 
 ## Prerequisites 
 
@@ -36,7 +36,7 @@ python learn.py
 ```
 You can start creating functions or pipelines by using **Jquery_front/IHM.html**
 
-![IMH](IHM.png)
+![IMH](images/IHM.png)
 
 ### Principles
 
@@ -57,6 +57,8 @@ The system allows human interaction both BEFORE and AFTER each inference to refi
 This continuous feedback loop ensures that the model’s outputs align more closely with the user’s objectives, enabling a more tailored and effective collaboration between human input and AI processing.
 
 *Human LLM Mechanism*: (TO EDIT CODE OR TEXT: a file is automatically opened in VSCode, it is by closing it that the text is validated and the process continues)
+
+![IHM explainations](images/ihm_explanation.PNG)
 
 ### Before Inference
 
@@ -132,7 +134,7 @@ A special environnement has recently been add to the current loop. By creating p
 Thanks to the connection to a Neo4j database which containts all of the previous anomalies, pipelines are able to solve new anomalies by using RAG method (Retrieve Augmeneted Generation)
 
 
-![RAG](rag_rm.png)
+![RAG](images/rag_rm.png)
 
 
 ### Requirements
@@ -144,7 +146,7 @@ git clone https://github.com/open-webui/pipelines.git
 ```
 
 ###  Launch Neo4J database load on your machine 
-![graph neo4j](graph_readme.png)
+![graph neo4j](images/graph_readme.png)
 
 ### Launch OpenWebUI with Docker 
 
@@ -152,7 +154,7 @@ git clone https://github.com/open-webui/pipelines.git
 
 (it launches the OpenWebUI Docker container, the `start.sh` script which loads the pipelines, and the Uvicorn servers that monitor any modifications made to `/pipelines/pipelines` directly).
 
-![maj pipe](v2.png)
+![maj pipe](images/v2.png)
 
 #### Launch it manually without ollama :
 ```bash   

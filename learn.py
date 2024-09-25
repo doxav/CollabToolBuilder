@@ -7,7 +7,9 @@ import types
 import time
 from config import *
 
-from typing import Dict
+import openai
+import json
+from typing import Dict, Optional
 
 from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, \
     is_vscode_installed, smart_print, smart_input
@@ -30,8 +32,9 @@ import json
 
 #set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
 
-#openai.api_key = os.environ['OPENAI_API_KEY']
-#if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
+openai.api_key = os.environ['OPENAI_API_KEY']
+if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
+
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
 UnifiedVectorDB.es_user = elastic_user
@@ -181,10 +184,11 @@ class EnvironmentManager:
 # Agent 1: Task Identification
 class TaskIdentificationAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
-                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, criteria=None):
+                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, criteria=None,params_user_message=None):
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         self.criteria = criteria
+        self.params_user_message = params_user_message
         self.human_llm_identify_best_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice,
                                                             premium_llm_by_default=premium_llm_by_default,
                                                             llmORchains_list=llmORchains_list)#,output_schema="identify_best_task.schema.py")
@@ -195,9 +199,13 @@ class TaskIdentificationAgent():
 
     def identify_best_task(self) -> str:
         user_message = ""
-        if not self.optuna_opti:
-            user_message = self.human_llm_identify_best_task.get_multiple_few_shots(criteria=self.criteria)
-            self.human_llm_identify_best_task.user_message_few_shots = user_message
+        # If the user provided some parameters for the user message, call get_multiple_few_shots to retrieve the tasks asked
+        if self.params_user_message:
+            user_message = self.human_llm_identify_best_task.get_multiple_few_shots(
+                few_shots_params=self.params_user_message)
+            # Set the user_message_few_shots attribute to the parameters given in params_user_message
+            self.human_llm_identify_best_task.user_message_few_shots = self.params_user_message
+
         envs_status = '\n'.join([env.get_state() for env in self.envs])
 
         user_message += f"\n- Current status of examples on which the task will be tested on: {envs_status}\n"
@@ -306,6 +314,7 @@ class CodingAgent():
                     parsed = ast.parse(code)
                     functions = []
                     imports = []
+                    classes =[]
                     
                     if len(code) == 0 or len(list(parsed.body)) == 0:
                         return False, f"Error parsing action response (No Code found): {parsed.body}"
@@ -322,13 +331,21 @@ class CodingAgent():
                                     "params": [arg.arg for arg in node.args.args],
                                 }
                             functions.append(main_function)
+                        elif isinstance(node, ast.ClassDef):
+                            node_type = "ClassDef"
+                            main_function = {
+                                    "name": node.name +".run_pipeline",
+                                    "type": node_type,
+                                    "body": ast.get_source_segment(code, node),        
+                                }
+                            functions.append(main_function)
                         elif isinstance(node, ast.Expr) or isinstance(node, ast.Expression) or isinstance(node, ast.Assign):
                             node_type = "Expression"
                             runnable_code += "\n" + ast.get_source_segment(code, node)
                         elif isinstance(node, ast.ImportFrom) or isinstance(node, ast.Import):
                             node_type = "ImportFrom"
                             imports.append(ast.get_source_segment(code, node))
-                            smart_print("ImportFrom node: IMPORT SHOULD BE DONE INSIDE FUNCTIONS !!!", self.name, "process_ai_generated_code SystemMessage")
+                            #smart_print("ImportFrom node: IMPORT SHOULD BE DONE INSIDE FUNCTIONS !!!", self.name, "process_ai_generated_code SystemMessage")
                         else:
                             smart_print(f"Unsupported node type: {type(node)} - content:  {ast.get_source_segment(code, node)}", self.name, "process_ai_generated_code SystemMessage")
                             #raise ValueError(f"Unsupported node type: {type(node)} - content:  {ast.get_source_segment(code, node)}")  # TODO: check if await is needed
@@ -452,7 +469,9 @@ class CodingAgent():
     def get_primitives(self):
         primitives = []
         # Add the pipelines folder for the primitives
-        if self.problem_prompts_subdir=="Anomalies/":
+
+        if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
+
             path_folder = "pipelines/pipelines"
         else:
             path_folder = "primitives"
@@ -517,8 +536,7 @@ class CodingAgent():
                 test_results = check_results.get("Run Tests", None)
                 if test_results:
                     results.append(test_results)
-            
-        # test if more than one code is returned, so ask to select or 
+                    
         if len(results) > 1:
             # display the list of results with success, exception and code
             results_list = ""
@@ -598,39 +616,66 @@ class CapitalizationAgent:
     def capitalize_successful_tasks(self, task_description: str, parsed_code: str) -> None:
         import socket, uuid, datetime
 
-        # Determine paths and function names
-        is_anomaly = self.problem_prompts_subdir == "Anomalies/"
-        function_name = parsed_code.get("class_name" if is_anomaly else "main_function_name", parsed_code.get("main_function", {}).get("name", "unknown"))
-        base_dir = "pipelines/pipelines" if is_anomaly else "functions"
-        file_path = os.path.join(base_dir, f"{function_name}.py")
-        tool_description = str(self.generate_tool_description(function_name, parsed_code["program_code"]))
+        if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
+            function_name = parsed_code.get("main_function_name", parsed_code.get("main_function", {}).get("name", "unknown"))
+            pipeline_file_path = os.path.join("pipelines/pipelines", function_name+".py")
+            tool_description = str(self.generate_tool_description(function_name, parsed_code["program_code"]))
+            self.learnt_tasks_repository[function_name] = [tool_description, parsed_code["program_code"]]
+            # print last added task
+            smart_print(f"************ Last added task ************\n{function_name}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
+        else:
+            function_name = parsed_code.get("main_function_name", parsed_code.get("main_function", {}).get("name", "unknown"))
+            # save function program_code in a file under the functions directory and add to the function signature the generated dosctring
+            function_file_path = os.path.join("functions", function_name+".py")
+            tool_description = str(self.generate_tool_description(function_name, parsed_code["program_code"]))
+            self.learnt_tasks_repository[function_name] = [tool_description, parsed_code["program_code"]]
+            # print last added task
+            smart_print(f"************ Last added task ************\n{function_name}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
 
-        # Store task details
-        self.learnt_tasks_repository[function_name] = [tool_description, parsed_code["program_code"]]
-        smart_print(f"************ Last added task ************\n{function_name}\n************************".replace("\\n", "\n"), self.name, "capitalize_successful_tasks SUCCESS")
+        
+        if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
+           if os.path.exists(pipeline_file_path):
+                smart_print(f"Pipeline file {pipeline_file_path} already exists, please provide a new name for the pipeline.", self.name, "capitalize_successful_tasks WARNING")
+                if self.optuna_opti:
+                    i = random.randint(0, 1000)
+                    pipeline_file_path = os.path.join("pipelines/pipelines", self.name + f"_{i}.py")
+                else:
+                    pipeline_file_path = os.path.join("pipelines/pipelines", smart_input("New pipeline name: ")+".py")
+            
+        # check if the function file already exists, if yes, ask the user a new name
+        else:    
+            if os.path.exists(function_file_path):
+                smart_print(f"Function file {function_file_path} already exists, please provide a new name for the function.", self.name, "capitalize_successful_tasks WARNING")
+                if self.optuna_opti:
+                    i = random.randint(0, 1000)
+                    function_file_path = os.path.join("functions", self.name + f"_{i}.py")
+                else:
+                    function_file_path = os.path.join("functions", smart_input("New function name: ")+".py")
+        
+        if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
+            new_path = pipeline_file_path
+        else:
+            new_path = function_file_path
 
-        # Handle existing file scenario
-        if os.path.exists(file_path):
-            smart_print(f"File {file_path} already exists, provide a new name.", self.name, "capitalize_successful_tasks WARNING")
-            new_name = f"{self.name}_{random.randint(0, 1000)}" if self.optuna_opti else smart_input(f"New {'pipeline' if is_anomaly else 'function'} name:")
-            file_path = os.path.join(base_dir, f"{new_name}.py")
 
-        # Add docstring to the function and write to file
-        with open(file_path, "w") as function_file:
-            docstring = re.search(r'(""".*?""")', tool_description, re.DOTALL)
-            docstring = docstring.group(0) if docstring else f'"""{tool_description}"""'
-            parsed_code["program_code"] = re.sub(rf"(def {function_name}\(.*?\):)", rf'\1\n    {docstring}', parsed_code["program_code"], count=1)
+        with open(new_path, "w") as function_file:
+             # use regex to extract the docstring from tool_description
+            docstring_pattern = re.compile(r'(""".*?""")', re.DOTALL)
+            docstring_matches = docstring_pattern.findall(tool_description)
+            docstring = docstring_matches[0] if docstring_matches else f'"""{tool_description}"""'
+             # use regex to add docstring to the function parsed_code["main_function_name"] after the def line in parsed_code["program_code"]
+            parsed_code["program_code"] = re.sub(r"(def "+function_name+"\(.*?\):)", r'\1\n    '+docstring, parsed_code["program_code"], count=1)
             function_file.write(parsed_code["program_code"])
 
         # Open file in VSCode if necessary
         if self.optuna_opti is None and is_vscode_installed():
             smart_print("Please modify and save the file in VSCode (Ctrl + W) when ready.", self.name, "capitalize_successful_tasks INSTRUCTIONS")
-            subprocess.run(["code", "--wait", file_path])
+            subprocess.run(["code", "--wait", new_path])
 
         # Serialize entry for logging
         serialized_entry = json.dumps({
             "time": datetime.datetime.now().isoformat(),
-            ("class_name" if is_anomaly else "main_function_name"): function_name,
+            ("class_name" if (self.problem_prompts_subdir =="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/") else "main_function_name"): function_name,
             "program_code": parsed_code["program_code"],
             "tool_description": tool_description,
             "task_description": task_description,
@@ -643,7 +688,7 @@ class CapitalizationAgent:
     def capitalize_failed_tasks(self, task_description: str, parsed_code: str) -> None:
         import socket, uuid, datetime, json
 
-        is_anomaly = self.problem_prompts_subdir == "Anomalies/"
+        is_anomaly = self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir =="pipeline_synthesis/"
         name_key = "class_name" if is_anomaly else "main_function_name"
         if parsed_code:
             task_name = parsed_code.get(name_key, "replace this text with a descriptive name of the class" if is_anomaly else "replace this text with a descriptive name of the function")
@@ -678,33 +723,147 @@ class CapitalizationAgent:
         }
         HumanLLMMonitor.add_failed_task(serialized_entry, tags)
 
-    def retrieve_saved_tasks_in_db(self, query="", max_db_results=20, include_code=None, selected_successful_functions=None, selected_failed_functions=None) -> None:
-        def process_results(results, task_type, selected_functions, repository, metadata_key, include_code_flag):
-            smart_print(f"************ Retrieving {task_type} tasks from database - LIST:", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-            id = 0
-            for result in results:
-                id += 1
-                task_data = json.loads(result.page_content)
-                name_key = "class_name" if self.problem_prompts_subdir == "Anomalies/" else "main_function_name"
-                if name_key not in task_data:
-                    task_data[name_key] = ""
+  
+    def process_results(self, results, task_type, selected_functions, repository, metadata_key, include_code_flag):
+        smart_print(f"************ Retrieving {task_type} tasks from database - LIST:", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+        id = 0
+        for result in results:
+            id += 1
+            task_data = json.loads(result.page_content)
+            name_key = "class_name" if (self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/") else "main_function_name"
+            if name_key not in task_data:
+                task_data[name_key] = ""
                 
-                task_name = task_data.get(name_key)
-                smart_print(f"{id}: {task_type} {name_key}:{task_name} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+            task_name = task_data.get(name_key)
+            smart_print(f"{id}: {task_type} {name_key}:{task_name} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
 
-            if selected_functions is None:
-                selected_functions = smart_input(f"CONFIG Please select the {task_type} functions to load (separated by comma, 'all' for all, or hit enter for none): ").strip().replace(" ","").lower().split(",")
+        if selected_functions is None:
+            selected_functions = smart_input(f"CONFIG Please select the {task_type} functions to load (separated by comma, 'all' for all, or hit enter for none): ").strip().replace(" ","").lower().split(",")
             
-            id = 0
-            for result in results:
-                id += 1
-                if selected_functions and (str(id) not in selected_functions) and (selected_functions != ["all"]):
-                    continue
-                task_data = json.loads(result.page_content)
-                task_name = task_data.get(name_key)
-                
-                if task_name in repository:
-                    smart_print(f"> {task_type} {task_name} already loaded. Skipping duplicates...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+        id = 0
+        for result in results:
+            id += 1
+            if selected_functions and (str(id) not in selected_functions) and (selected_functions != ["all"]):
+                continue
+            task_data = json.loads(result.page_content)
+            task_name = task_data.get(name_key)
+             
+            if task_name in repository:
+                smart_print(f"> {task_type} {task_name} already loaded. Skipping duplicates...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+        tags = {    "host": HumanLLMMonitor.get_host_id(),
+                        "step_id": HumanLLMMonitor.step_id,}
+
+        self.db_failed_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
+
+    def generate_tool_description(self, program_name, program_code):
+        user_message = f"MAIN FUNCTION: `{program_name}`\n\nFULL CODE:\n{program_code}"
+        tool_description = self.human_llm_generate_function_description.CallHumanLLM(system_prompt_template="generate_function_description", user_message=user_message, return_message_content_only=True, optuna=self.optuna_opti, model_choice=self.model_choice) 
+        return tool_description
+    
+    def retrieve_saved_tasks_in_db(self, query="", max_db_results=20, include_code=None, selected_successful_functions=None, selected_failed_functions=None):
+        smart_print(f"************ Retrieving successful tasks from database - LIST:", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+        # Retrieve tasks from the common vector database
+        results_success_db = self.db_successful_tasks.query(query_text="*", k=max_db_results)
+        # First step: display all the retrieved functions with time and host
+        id = 0
+        for result in results_success_db:
+            id += 1
+            # Extract the page_content field from the Document object
+            page_content = result.page_content
+            # Deserialize the JSON from the page_content string
+            task_data = json.loads(page_content)
+            if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
+                if "class_name" in task_data:
+                    smart_print(f"{id}: Pipeline name:{task_data['class_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+            else:
+                if 'main-function_name' in task_data:
+                    smart_print(f"{id}: function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+            
+            if include_code is None:
+                include_code = smart_input(f"CONFIG When adding the functions description in successful tasks, do you want to also include the code (it may overflow the maximum prompt length but can also guide generation) ? (yes/no): ").strip().lower() in ["yes", "y"]
+        # Second step: ask the user to select the functions to load
+        if selected_successful_functions is None:
+            selected_successful_functions = smart_input(f"CONFIG Please select the successful functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
+        id = 0
+        # load into self.tasks_repository
+        for result in results_success_db:
+            id += 1
+            if selected_successful_functions and (str(id) not in selected_successful_functions) and (selected_successful_functions != ["all"]):
+                continue
+            # Extract the page_content field from the Document object
+            page_content = result.page_content
+            # Deserialize the JSON from the page_content string
+            task_data = json.loads(page_content)
+            if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
+                if "class_name" in task_data:
+                    if task_data["class_name"] in self.tasks_repository:
+                        smart_print(f"> pipeline/task {task_data['class_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+                        continue
+                else:
+                    task_data['class_name']=""
+                    if 'task_description-refined' in task_data:
+                        self.failed_tasks_repository[task_data["class_name"]] = task_data["task_description_refined"]
+                        smart_print(f"> failed pipeline/task {task_data['class_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+
+            else:
+                if "main_function_name" in task_data:
+                    if task_data["main_function_name"] in self.tasks_repository:
+                        smart_print(f"> pipeline/task {task_data['main_function_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+                        continue
+                else:
+                    task_data['main_function_name']=""
+                    if 'task_description-refined' in task_data:
+                        self.failed_tasks_repository[task_data["main_function_name"]] = task_data["task_description_refined"]
+                        smart_print(f"> failed pipeline/task {task_data['main_function_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+
+                self.tasks_repository[task_data["main_function_name"]] = [task_data["tool_description"]] if not include_code else [task_data["tool_description"], task_data["program_code"]]
+                smart_print(f"> function/task {task_data['main_function_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+
+        smart_print(f"************ Retrieving failed tasks from database - LIST:", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+        # Retrieve failed tasks from the common vector database
+        results_failed_db = self.db_failed_tasks.query(query_text="*", k=max_db_results)
+        # First step: display all the retrieved functions with time and host
+        id = 0
+        for result in results_failed_db:
+            id += 1
+            # Extract the page_content field from the Document object
+            page_content = result.page_content
+            # Deserialize the JSON from the page_content string
+            task_data = json.loads(page_content)
+            if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
+                if 'class_name' in task_data:
+                    smart_print(f"{id}: failed Pipeline name:{task_data['class_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+            else:
+                if 'main_function-name'in task_data:
+                    smart_print(f"{id}: failed function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+            
+            # Second step: ask the user to select the functions to load
+        if selected_failed_functions is None:
+            selected_failed_functions = smart_input(f"CONFIG Please select the failed functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
+        id = 0
+        # load into self.tasks_repository
+        for result in results_failed_db:
+            id += 1
+            if selected_failed_functions and (str(id) not in selected_failed_functions) and (selected_failed_functions != ["all"]):
+                continue
+            # Extract the page_content field from the Document object
+            page_content = result.page_content
+            # Deserialize the JSON from the page_content string
+            task_data = json.loads(page_content)
+            if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
+                if 'class_name' in task_data:
+                    if task_data["class_name"] in self.failed_tasks_repository:
+                        smart_print(f"> failed pipeline/task {task_data['class_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+                        continue
+                    else:
+                        task_data['class_name']=""
+                        if 'task_description-refined' in task_data:
+                            self.failed_tasks_repository[task_data["class_name"]] = task_data["task_description_refined"]
+                            smart_print(f"> failed pipeline/task {task_data['class_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+
+            else:
+                if task_data["main_function_name"] in self.failed_tasks_repository:
+                    smart_print(f"> failed function/task {task_data['main_function_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
                     continue
 
                 repository[task_name] = task_data["task_description_refined"]
@@ -784,6 +943,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     if HumanLLMMonitor.use_websocket:
         if HumanLLMMonitor.websocket_server is None:
             HumanLLMMonitor.initialize_websocket_server()
+
+    smart_print(str(max_execution_time), "CONFIG", "time_end")
 
     if problem_prompts_subdir is None:
         # menu to choose the problem prompts subdirectory
@@ -1075,8 +1236,8 @@ if __name__ == "__main__":
     # Initialize the default and premium LLMs
     #from langchain_groq import ChatGroq
     llmORchains_list = {
-        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.7),
-        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"], cache=False),#, temperature=0.7),
+        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False, temperature=1.7),
+        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"], cache=False, temperature=1.7),
         #"default_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.7),
         #"premium_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["code_gpt"], cache=False),#, temperature=0.7),
         "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"], reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=3),

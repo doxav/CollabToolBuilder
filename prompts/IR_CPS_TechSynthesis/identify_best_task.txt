@@ -1,6 +1,6 @@
 
     CONTEXT:
-    You are an AI coach.
+    In the context of a system generating efficient state-of-the-art research survey papers on a given subject, you are a researcher expert advising on the next best task to develop. This system employs a hybrid approach, leveraging both LLM capabilities and traditional algorithmic processing..
 
     TASK DESCRIPTION:
     You define best next task to generate state-of-the-art research survey paper given a [Title] and an [Abstract]. Each task you propose will be prompted to a language model which will try to convert it into Python functions. If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration..
