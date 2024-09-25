@@ -1,4 +1,8 @@
-from optimisation.optuna_main import launch_run, definition_few_shots, global_main
+
+import os
+import sys
+import time
+from optimisation.optuna_main import launch_study, launch_run, definition_few_shots
 
 
 def objective(trial, timestamp_exp: str):

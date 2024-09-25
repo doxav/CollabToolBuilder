@@ -93,16 +93,16 @@ You should identify the best task following the structure of development below.
    - Tasks include clustering issues thanks to cosine_similarity with embeddings and recommending corrective actions thanks to this RAG implementation.
 
 2. Plan:
-   - Plan 1: Develop a pipeline to cluster recurring issues based on similarity with an input problem.
+   - Plan 1: Develop an useful pipeline which contains news features and creative functions to help the users to solve his issue .
    - Plan 2: Create a pipeline to show the highlight datas in the database.
    - Plan 3: Be creative to create a pipeline based on the database and ask what you need to know to user.
 
 3. Specifications:
    - Task 1:
-     - Acceptance Criteria: Accurate clustering of anomalies into meaningful groups.Output suitable for visualization.     - Best Strategies: Utilize efficient embedding models and optimize similarity calculations.
+     - Acceptance Criteria: Output suitable for visualization.     - Best Strategies: Utilize efficient embedding models and optimize similarity calculations.
      - Performance Tips: Implement batch processing and caching to handle large datasets.
    - Task 2:
-     - Acceptance Criteria: Identify and highlight relevant key data. Clear visualization for decision-making.
+     - Acceptance Criteria: Clear visualization for decision-making.
      - Best Strategies: Use a ranking system to prioritize recommendations. Use data analysis techniques to prioritize key information.
      - Performance Tips: Optimize Neo4J indexing and consider asynchronous processing for efficiency.
   - Task 3 :
@@ -117,10 +117,6 @@ You should identify the best task following the structure of development below.
   4) Task will be converted into Python code given available commands, learnt tasks. The Python code could call LLM when required.
   5) Detail specifications (acceptance criteria, strategies/alternative to compare, use of LLM agents/tools/...) to successfully prompt a coder agent to generate code implementing the task while minimizing distance to goal. Organize the requirements with clear indexing to a depth of 4.
   6) Tasks provided should be generic, not specific to given examples.
-  7) You should propose the next best novel task to implement 'given' available learnt tasks performance and LLM knowledge, 'maximizing' document generation quality, length and format, and speed to produce it.
-  8) You should propose a plan to achieve this task by breaking it down as a tree-structure. The plan tree should be of depth 3.
-  9) After the task description and plan, provide a simple unit test of the function:
-        a) Write a one liner python call to the main function for each "Document to be tested", this call should be designed to maximize the expected results for the "Document to be tested"
-        b) Precede each python test with the DocumentID value to indicate to which document the test code refers to
-
+  7) tasks should be creative and innovative
+ 
         

@@ -66,7 +66,7 @@ class Pipeline:
 
     def extract_title_from_prompt(self, user_input: str) -> str:
         # Utilise une expression régulière pour extraire la partie après "here is the title of my anomaly: "
-        match = re.search(r"the title of my anomaly: (.+)", user_input, re.IGNORECASE)
+        match = re.search(r" title of my anomaly: (.+)", user_input, re.IGNORECASE)
         if match:
             return match.group(1).strip()
         else:
@@ -274,9 +274,10 @@ class Pipeline:
 
 class AnomalyRetrievalAndRecommendationPipeline:
     @staticmethod
-    async def run_pipeline(user_message: str, model_id: str, messages: List[Dict], body: Dict) -> str:
+    async def run_pipeline(user_message: str) -> str:
         pipeline = Pipeline()
         await pipeline.on_startup()
-        pipe_result = pipeline.pipe(user_message, model_id, messages, body)
+        pipe_result = pipeline.pipe(user_message)
         await pipeline.on_shutdown()
         return pipe_result
+    
