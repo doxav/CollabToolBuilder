@@ -35,10 +35,14 @@ jobs:
         sleep 120  # Exécute le script pendant 2 minutes
         kill $!  # Arrête le processus
 
+    - name: Collect and Upload logs
+      run: |
+        mkdir -p logs_and_screenshots
+        cp logs/*.log logs_and_screenshots/
+        cp screenshots/*.png logs_and_screenshots/
+
     - name: Upload logs and screenshots
       uses: actions/upload-artifact@v2
       with:
         name: logs-and-screenshots
-        path: |
-          logs/*.log
-          screenshots/*.png
+        path: logs_and_screenshots
