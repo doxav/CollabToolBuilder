@@ -1,0 +1,44 @@
+name: Automated Tests for CollabFunctionGPTCreator
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        sudo apt-get install firefox-geckodriver scrot
+
+    - name: Set OpenAI API key
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    - name: Run Selenium script and capture logs
+      run: |
+        nohup python learn.py &
+        python test_collabfunction.py
+
+    - name: Execute run_multi.sh and capture logs
+      run: |
+        bash run_multi.sh optuna_opti_Synthesis_coder GPT4 &
+        sleep 120  # Exécute le script pendant 2 minutes
+        kill $!  # Arrête le processus
+
+    - name: Upload logs and screenshots
+      uses: actions/upload-artifact@v2
+      with:
+        name: logs-and-screenshots
+        path: |
+          logs/*.log
+          screenshots/*.png
