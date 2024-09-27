@@ -5,6 +5,8 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
     steps:
     - name: Checkout code
@@ -20,10 +22,6 @@ jobs:
         pip install -r requirements.txt
         sudo apt-get install firefox-geckodriver scrot
 
-    - name: Set OpenAI API key
-      env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-
     - name: Run Selenium script and capture logs
       run: |
         nohup python learn.py &
@@ -32,8 +30,8 @@ jobs:
     - name: Execute run_multi.sh and capture logs
       run: |
         bash run_multi.sh optuna_opti_Synthesis_coder GPT4 &
-        sleep 120  # Exécute le script pendant 2 minutes
-        kill $!  # Arrête le processus
+        sleep 120  # Run the script for 2 minutes
+        kill $!  # Stop the process
 
     - name: Collect and Upload logs
       run: |
