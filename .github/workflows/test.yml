@@ -7,6 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      # Add other environment variables as needed
 
     steps:
     - name: Checkout code
@@ -23,6 +24,16 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y scrot
 
+    - name: Set up configuration
+      run: |
+        cp config_template.py config.py
+
+    - name: Configure settings in config.py
+      run: |
+        # Replace placeholders with environment variables
+        sed -i 's/your_placeholder_api_key/'"$OPENAI_API_KEY"'/' config.py
+        # Add additional sed commands for other configurations if necessary
+
     - name: Run Selenium script and capture logs
       run: |
         nohup python learn.py &
@@ -37,8 +48,8 @@ jobs:
     - name: Collect and Upload logs
       run: |
         mkdir -p logs_and_screenshots
-        cp logs/*.log logs_and_screenshots/
-        cp screenshots/*.png logs_and_screenshots/
+        cp logs/*.log logs_and_screenshots/ || true
+        cp screenshots/*.png logs_and_screenshots/ || true
 
     - name: Upload logs and screenshots
       uses: actions/upload-artifact@v3
