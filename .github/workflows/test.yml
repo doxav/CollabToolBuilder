@@ -38,8 +38,8 @@ jobs:
 
     - name: Run Selenium script and capture logs
       run: |
-        nohup python learn.py &
-        python test_collabfunction.py
+        nohup python learn.py # &
+        # python test_collabfunction.py
 
     - name: Execute run_multi.sh and capture logs
       run: |
