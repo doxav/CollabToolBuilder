@@ -25,9 +25,23 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y scrot
 
-    - name: Set up configuration
+    - name: Create config.py
       run: |
-        cp config_template.py config.py
+        cat <<EOF > config.py
+        OPENAI_API_KEY = "${{ secrets.OPENAI_API_KEY }}"
+        MODELS_CONFIG_LIST = {
+            "code_gpt": "gpt-4o-mini-2024-07-18",
+            "smart_gpt": "gpt-4o-mini-2024-07-18",
+            "basic_gpt": "gpt-4o-mini-2024-07-18"
+            }
+        openai_api_key = OPENAI_API_KEY
+        os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
+        elastic_url_port = 'http://127.0.0.1:9200'
+        kibana_url_port = 'http://127.0.0.1:5601'
+        elastic_user=""
+        elastic_password=""
+        PickleCacheActivated = False
+        EOF
 
     - name: Configure settings in config.py
       run: |
