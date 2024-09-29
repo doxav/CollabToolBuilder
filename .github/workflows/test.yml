@@ -7,20 +7,29 @@ jobs:
     runs-on: ubuntu-latest
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      NON_SECRET_VARIABLE: "some_value"
       # Add other environment variables as needed
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v3
+
+    - name: Set up Docker
+      uses: docker/setup-buildx-action@v2
+
+    - name: Install Docker Compose
+      run: |
+        sudo curl -L "https://github.com/docker/compose/releases/download/$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep -Po '"tag_name": "\K.*?(?=")')/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        sudo chmod +x /usr/local/bin/docker-compose
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v4
       with:
         python-version: '3.x'
-        cache: 'pip' # Caching pip dependencies
 
     - name: Install dependencies
       run: |
+        python -m pip install --upgrade pip
         pip install -r requirements.txt
         sudo apt-get update
         sudo apt-get install -y scrot
@@ -44,21 +53,33 @@ jobs:
         PickleCacheActivated = False
         EOF
 
-    - name: Configure settings in config.py
+    - name: Start Elasticsearch
       run: |
-        # Replace placeholders with environment variables
-        sed -i 's/your_placeholder_api_key/'"$OPENAI_API_KEY"'/' config.py
-        # Add additional sed commands for other configurations if necessary
+        cd elasticsearch
+        docker-compose up -d
+
+    - name: Wait for Elasticsearch to be ready
+      run: |
+        for i in {1..10}; do
+          if curl -s http://localhost:9200 >/dev/null; then
+            echo "Elasticsearch is up!"
+            break
+          else
+            echo "Waiting for Elasticsearch to start..."
+            sleep 5
+          fi
+        done
 
     - name: Run Selenium script and capture logs
       run: |
-        nohup python learn.py
+        nohup python learn.py &
+        python test_collabfunction.py
 
     - name: Execute run_multi.sh and capture logs
       run: |
         bash run_multi.sh optuna_opti_Synthesis_coder GPT4 &
-        sleep 120  # Run the script for 2 minutes
-        kill $!  # Stop the process
+        sleep 120
+        kill $!
 
     - name: Collect and Upload logs
       run: |
@@ -67,7 +88,13 @@ jobs:
         cp screenshots/*.png logs_and_screenshots/ || true
 
     - name: Upload logs and screenshots
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: logs-and-screenshots
         path: logs_and_screenshots
+
+    - name: Stop Elasticsearch
+      if: always()
+      run: |
+        cd elasticsearch
+        docker-compose down
