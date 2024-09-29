@@ -28,6 +28,7 @@ jobs:
     - name: Create config.py
       run: |
         cat <<EOF > config.py
+        import os
         OPENAI_API_KEY = "${{ secrets.OPENAI_API_KEY }}"
         MODELS_CONFIG_LIST = {
             "code_gpt": "gpt-4o-mini-2024-07-18",
