@@ -19,6 +19,8 @@ jobs:
         python-version: '3.x'
 
     - name: Install dependencies
+      with:
+        cache: 'pip' # Caching pip dependencies
       run: |
         pip install -r requirements.txt
         sudo apt-get update
