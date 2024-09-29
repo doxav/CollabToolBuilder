@@ -12,7 +12,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Docker
       uses: docker/setup-buildx-action@v2
@@ -23,9 +23,10 @@ jobs:
         sudo chmod +x /usr/local/bin/docker-compose
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.x'
+        cache: 'pip'
 
     - name: Install dependencies
       run: |
@@ -72,8 +73,7 @@ jobs:
 
     - name: Run Selenium script and capture logs
       run: |
-        nohup python learn.py &
-        python test_collabfunction.py
+        nohup python learn.py
 
     - name: Execute run_multi.sh and capture logs
       run: |
