@@ -14,6 +14,34 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+     # Cache pip dependencies
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    # Cache Docker images
+    - name: Cache Docker images
+      id: docker_cache
+      uses: actions/cache@v3
+      with:
+        path: docker_image_cache
+        key: ${{ runner.os }}-docker-${{ hashFiles('**/docker-compose.yml') }}
+        restore-keys: |
+          ${{ runner.os }}-docker-
+
+    - name: Load Docker images from cache
+      if: steps.docker_cache.outputs.cache-hit == 'true'
+      run: |
+        if [ -d docker_image_cache ]; then
+          for image in docker_image_cache/*.tar; do
+            docker load -i "$image"
+          done
+        fi
+
     - name: Set up Docker
       uses: docker/setup-buildx-action@v2
 
