@@ -47,10 +47,10 @@ jobs:
             }
         openai_api_key = OPENAI_API_KEY
         os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
-        elastic_url_port = 'http://127.0.0.1:9200'
-        kibana_url_port = 'http://127.0.0.1:5601'
-        elastic_user=""
-        elastic_password=""
+        elastic_url_port = 'http://localhost:9200'
+        kibana_url_port = 'http://localhost:5601'
+        elastic_user=''
+        elastic_password=''
         PickleCacheActivated = False
         EOF
 
