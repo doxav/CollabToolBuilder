@@ -128,5 +128,6 @@ jobs:
         docker-compose down
 
     - name: Logs of learn.py execution
+      if: always()
       run: |
         cat learn_log.txt
