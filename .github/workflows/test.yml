@@ -14,7 +14,6 @@ jobs:
         ports:
           - 9200:9200
         env:
-          ELASTIC_USERNAME: ghactions
           ELASTIC_PASSWORD: changeme
           discovery.type: 'single-node'
           ES_JAVA_OPTS: '-Xms512m -Xmx512m'
@@ -25,7 +24,7 @@ jobs:
           - 5601:5601
         env:
           ELASTICSEARCH_HOSTS: 'https://elasticsearch:9200'
-          ELASTICSEARCH_USERNAME: 'ghactions'
+          ELASTICSEARCH_USERNAME: 'elastic'
           ELASTICSEARCH_PASSWORD: 'changeme'
           ELASTICSEARCH_SSL_VERIFICATIONMODE: 'none'
         options: '--health-cmd="curl -k -f https://localhost:5601/api/status || exit 1" --health-interval=10s --health-timeout=5s --health-retries=20'
@@ -70,7 +69,7 @@ jobs:
         os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
         elastic_url_port = 'https://localhost:9200'
         kibana_url_port = 'https://localhost:5601'
-        elastic_user='ghactions'
+        elastic_user='elastic'
         elastic_password='changeme'
         PickleCacheActivated = False
         EOF
@@ -98,7 +97,6 @@ jobs:
             sleep 10
           fi
         done
-
 
     - name: Run Selenium script and capture logs
       run: |
