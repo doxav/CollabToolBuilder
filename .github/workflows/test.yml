@@ -18,16 +18,6 @@ jobs:
           discovery.type: 'single-node'
           ES_JAVA_OPTS: '-Xms512m -Xmx512m'
         options: '--health-cmd="curl -k -f https://localhost:9200/ -u elastic:changeme || exit 1" --health-interval=10s --health-timeout=5s --health-retries=20'
-      kibana:
-        image: docker.elastic.co/kibana/kibana:8.10.1
-        ports:
-          - 5601:5601
-        env:
-          ELASTICSEARCH_HOSTS: 'https://elasticsearch:9200'
-          ELASTICSEARCH_USERNAME: 'elastic'
-          ELASTICSEARCH_PASSWORD: 'changeme'
-          ELASTICSEARCH_SSL_VERIFICATIONMODE: 'none'
-        options: '--health-cmd="curl -k -f https://localhost:5601/api/status || exit 1" --health-interval=10s --health-timeout=5s --health-retries=20'
 
     steps:
     - name: Checkout code
@@ -82,18 +72,6 @@ jobs:
             break
           else
             echo "Waiting for Elasticsearch to start..."
-            sleep 10
-          fi
-        done
-
-    - name: Wait for Kibana to be ready
-      run: |
-        for i in {1..30}; do
-          if curl -k -s https://localhost:5601/api/status | grep -q '"state":"available"'; then
-            echo "Kibana is up!"
-            break
-          else
-            echo "Waiting for Kibana to start..."
             sleep 10
           fi
         done
