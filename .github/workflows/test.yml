@@ -22,11 +22,11 @@ jobs:
           http.cors.enabled: 'true'
           http.cors.allow-origin: '*'
           ES_JAVA_OPTS: '-Xms4g -Xmx4g'
-        options: >-
-          --health-cmd 'curl -sS http://localhost:9200 | grep -q "You Know, for Search"' 
-          --health-interval 10s 
-          --health-timeout 5s 
-          --health-retries 5
+        options: >
+          --health-cmd="curl -sS http://localhost:9200 | grep -q 'You Know, for Search'" 
+          --health-interval=10s 
+          --health-timeout=5s 
+          --health-retries=5
       kibana:
         image: docker.elastic.co/kibana/kibana:8.10.1
         ports:
