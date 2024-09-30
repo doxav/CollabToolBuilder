@@ -984,12 +984,13 @@ class HumanLLMMonitor:
                  default_llmORchain=None,
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1,
                  llmORchains_list=None,
-                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature=0.7, optuna=False, envs=None):
+                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, optuna=False, envs=None):
         self.current_inference_context = None
         self.user_message_few_shots = None
         if llmORchains_list is None: raise ValueError("llmORchains_list must be provided")
         self.llmORchains_list = llmORchains_list
-        self.temperature = temperature
+        self.temperature_min = temperature_min
+        self.temperature_max = temperature_max if temperature_max else (temperature_min+0.2)
         self.optuna = optuna
         self.system_prompt = system_prompt
         self.set_output_schema(output_schema)
@@ -1126,7 +1127,7 @@ class HumanLLMMonitor:
        :return: A string containing the generated summary.
        """
         # Set up the language model and prompt
-        llm = OpenAI(temperature=self.temperature)
+        llm = OpenAI(temperature=self.temperature_min)
         prompt = PromptTemplate(
             input_variables=["examples"],
             template="Summarize the following examples in {char_limit} characters or less:\n\n{examples}"
@@ -2070,18 +2071,23 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
     #    def CallHumanLLM(self, original_input_messages=None, llm_function=None, premium_llm_function=None, callable_system_message=None, system_prompt_template=None, user_message=None, return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=90, stream_output=True):
     def CallHumanLLM(self, original_input_messages=None, default_llm_function=None, premium_llm_function=None,
                      callable_system_message=None, system_prompt_template=None, user_message=None,
-                     return_message_content_only=True, function_calling=False, temperature=None, timeout_seconds=300,
+                     return_message_content_only=True, function_calling=False, temperature_min=None, timeout_seconds=300,
                      stream_output=False, use_default_llm=True, optuna=None, model_choice=None,
-                     temperature_increase=0.05):
+                     temperature_max=None):
         #if not self.selected_llm_or_chain: raise ValueError("No LLM or chain selected for use.")
+        if temperature_min is None: temperature_min = self.temperature_min
+        if temperature_max is None: temperature_max = self.temperature_max
         # Define a helper function to perform the LLM calls for parallel inference.
         def perform_llm_call(input_msg, use_premium, func_calling, temperature=None, stream_output=True, color_id=None):
             if use_premium:
                 func = premium_llm_function if not func_calling else HumanLLMMonitor.call_llm_function_with_function_call
             else:
                 func = default_llm_function if not func_calling else HumanLLMMonitor.call_llm_function_with_function_call
-            if temperature:
+            if temperature or temperature == 0:
                 func = func.with_config(configurable={"llm_temperature": temperature})
+                print(f"Temperature set to {temperature}")
+            else:
+                print(f"No temperature value, not set")
 
             if stream_output:
                 if color_id is None or color_id <= 0:
@@ -2165,8 +2171,7 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
                             self.llmORchains_list.get('3_majority_chain')):
                         stream_output = True
                     futures = [executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling,
-                                               ((temperature + (
-                                                           i * temperature_increase) if temperature > 0 else 0) if temperature else None),
+                                               ((temperature_min + i*(temperature_max-temperature_min)/(self.num_parallel_inferences-1) ) if (temperature_min is not None and temperature_min >= 0.) else 0),
                                                stream_output, i) for i in
                                range(self.num_parallel_inferences)]
                     for idx, future in enumerate(futures):
