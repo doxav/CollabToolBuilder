@@ -9,12 +9,42 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       NON_SECRET_VARIABLE: "some_value"
       # Add other environment variables as needed
+    services:
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.10.1
+        ports:
+          - 9200:9200
+        env:
+          discovery.type: single-node
+          xpack.security.enabled: 'false'
+          xpack.security.http.ssl.enabled: 'false'
+          xpack.security.transport.ssl.enabled: 'false'
+          http.cors.enabled: 'true'
+          http.cors.allow-origin: '*'
+          ES_JAVA_OPTS: '-Xms4g -Xmx4g'
+        options: >-
+          --health-cmd 'curl -sS http://localhost:9200 | grep -q "You Know, for Search"' 
+          --health-interval 10s 
+          --health-timeout 5s 
+          --health-retries 5
+      kibana:
+        image: docker.elastic.co/kibana/kibana:8.10.1
+        ports:
+          - 5601:5601
+        env:
+          ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+          # Note: Adjust other environment variables if necessary
+        options: >-
+          --health-cmd 'curl -sS http://localhost:5601/api/status | grep -q "Kibana is now available"' 
+          --health-interval 10s 
+          --health-timeout 5s 
+          --health-retries 10
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-     # Cache pip dependencies
+    # Cache pip dependencies
     - name: Cache pip dependencies
       uses: actions/cache@v3
       with:
@@ -23,7 +53,7 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pip-
 
-    # Cache Docker images
+    # Cache Docker images (if your scripts use Docker)
     - name: Cache Docker images
       id: docker_cache
       uses: actions/cache@v3
@@ -82,19 +112,26 @@ jobs:
         PickleCacheActivated = False
         EOF
 
-    - name: Start Elasticsearch
-      run: |
-        cd elasticsearch
-        docker-compose up -d
-
     - name: Wait for Elasticsearch to be ready
       run: |
-        for i in {1..10}; do
+        for i in {1..20}; do
           if curl -s http://localhost:9200 >/dev/null; then
             echo "Elasticsearch is up!"
             break
           else
             echo "Waiting for Elasticsearch to start..."
+            sleep 5
+          fi
+        done
+
+    - name: Wait for Kibana to be ready
+      run: |
+        for i in {1..20}; do
+          if curl -s http://localhost:5601/api/status | grep -q '"state":"available"'; then
+            echo "Kibana is up!"
+            break
+          else
+            echo "Waiting for Kibana to start..."
             sleep 5
           fi
         done
@@ -120,12 +157,6 @@ jobs:
       with:
         name: logs-and-screenshots
         path: logs_and_screenshots
-
-    - name: Stop Elasticsearch
-      if: always()
-      run: |
-        cd elasticsearch
-        docker-compose down
 
     - name: Logs of learn.py execution
       if: always()
