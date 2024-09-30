@@ -24,7 +24,7 @@ jobs:
         ports:
           - 5601:5601
         env:
-          ELASTICSEARCH_HOSTS: 'http://elasticsearch:9200'
+          ELASTICSEARCH_HOSTS: 'https://elasticsearch:9200'
           ELASTICSEARCH_USERNAME: 'ghactions'
           ELASTICSEARCH_PASSWORD: 'changeme'
         options: '--health-cmd="curl -k -f https://localhost:5601/api/status || exit 1" --health-interval=10s --health-timeout=5s --health-retries=20'
