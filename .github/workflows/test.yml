@@ -8,39 +8,10 @@ jobs:
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       NON_SECRET_VARIABLE: "some_value"
-    services:
-      elasticsearch:
-        image: docker.elastic.co/elasticsearch/elasticsearch:8.10.1
-        ports:
-          - 9200:9200
-        env:
-          ELASTIC_PASSWORD: changeme
-          discovery.type: 'single-node'
-          ES_JAVA_OPTS: '-Xms512m -Xmx512m'
-        options: '--health-cmd="curl -k -f https://localhost:9200/ -u elastic:changeme || exit 1" --health-interval=10s --health-timeout=5s --health-retries=20'
-      kibana:
-        image: docker.elastic.co/kibana/kibana:8.10.1
-        ports:
-          - 5601:5601
-        env:
-          ELASTICSEARCH_HOSTS: 'https://elasticsearch:9200'
-          ELASTICSEARCH_USERNAME: 'elastic'
-          ELASTICSEARCH_PASSWORD: 'changeme'
-          ELASTICSEARCH_SSL_VERIFICATIONMODE: 'none'
-        options: '--health-cmd="curl -k -f https://localhost:5601/api/status || exit 1" --health-interval=10s --health-timeout=5s --health-retries=20'
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
-    # Cache pip dependencies (if needed)
-    - name: Cache pip dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -54,6 +25,51 @@ jobs:
         pip install -r requirements.txt
         sudo apt-get update
         sudo apt-get install -y scrot
+
+    - name: Start Elasticsearch
+      run: |
+        docker run -d --name elasticsearch -p 9200:9200 \
+          -e "discovery.type=single-node" \
+          -e "xpack.security.enabled=true" \
+          -e "ELASTIC_PASSWORD=changeme" \
+          docker.elastic.co/elasticsearch/elasticsearch:8.10.1
+
+    - name: Wait for Elasticsearch to be ready
+      run: |
+        for i in {1..30}; do
+          if curl -k -u elastic:changeme -s https://localhost:9200 >/dev/null; then
+            echo "Elasticsearch is up!"
+            break
+          else
+            echo "Waiting for Elasticsearch to start..."
+            sleep 10
+          fi
+        done
+
+    - name: Generate Kibana Service Account Token
+      run: |
+        SERVICE_TOKEN=$(docker exec elasticsearch bin/elasticsearch-service-tokens create elastic/kibana kibana-service-token | grep "TOKEN" | awk '{print $3}')
+        echo "SERVICE_TOKEN=${SERVICE_TOKEN}" >> $GITHUB_ENV
+
+    - name: Start Kibana
+      run: |
+        docker run -d --name kibana -p 5601:5601 \
+          -e ELASTICSEARCH_HOSTS='https://elasticsearch:9200' \
+          -e ELASTICSEARCH_SERVICEACCOUNT_TOKEN="${{ env.SERVICE_TOKEN }}" \
+          -e ELASTICSEARCH_SSL_VERIFICATIONMODE='none' \
+          docker.elastic.co/kibana/kibana:8.10.1
+
+    - name: Wait for Kibana to be ready
+      run: |
+        for i in {1..30}; do
+          if curl -k -s https://localhost:5601/api/status | grep -q '"state":"available"'; then
+            echo "Kibana is up!"
+            break
+          else
+            echo "Waiting for Kibana to start..."
+            sleep 10
+          fi
+        done
 
     - name: Create config.py
       run: |
@@ -69,34 +85,9 @@ jobs:
         os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
         elastic_url_port = 'https://localhost:9200'
         kibana_url_port = 'https://localhost:5601'
-        elastic_user='elastic'
-        elastic_password='changeme'
+        elastic_service_token="${{ env.SERVICE_TOKEN }}"
         PickleCacheActivated = False
         EOF
-
-    - name: Wait for Elasticsearch to be ready
-      run: |
-        for i in {1..30}; do
-          if curl -k -u elastic:changeme -s https://localhost:9200 >/dev/null; then
-            echo "Elasticsearch is up!"
-            break
-          else
-            echo "Waiting for Elasticsearch to start..."
-            sleep 10
-          fi
-        done
-
-    - name: Wait for Kibana to be ready
-      run: |
-        for i in {1..30}; do
-          if curl -k -s https://localhost:5601/api/status | grep -q '"state":"available"'; then
-            echo "Kibana is up!"
-            break
-          else
-            echo "Waiting for Kibana to start..."
-            sleep 10
-          fi
-        done
 
     - name: Run Selenium script and capture logs
       run: |
@@ -124,3 +115,9 @@ jobs:
       if: always()
       run: |
         cat learn_logs.txt
+
+    - name: Stop Elasticsearch and Kibana
+      if: always()
+      run: |
+        docker stop kibana
+        docker stop elasticsearch
