@@ -130,4 +130,4 @@ jobs:
     - name: Logs of learn.py execution
       if: always()
       run: |
-        cat learn_log.txt
+        cat learn_logs.txt
