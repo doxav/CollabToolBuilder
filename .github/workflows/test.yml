@@ -101,7 +101,7 @@ jobs:
 
     - name: Run Selenium script and capture logs
       run: |
-        nohup python learn.py
+        nohup python learn.py > learn_logs.txt
 
     - name: Execute run_multi.sh and capture logs
       run: |
@@ -126,3 +126,7 @@ jobs:
       run: |
         cd elasticsearch
         docker-compose down
+
+    - name: Logs of learn.py execution
+      run: |
+        cat learn_log.txt
