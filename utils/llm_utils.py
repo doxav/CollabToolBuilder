@@ -984,12 +984,13 @@ class HumanLLMMonitor:
                  default_llmORchain=None,
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1,
                  llmORchains_list=None,
-                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature=0.7, optuna=False, envs=None):
+                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, optuna=False, envs=None):
         self.current_inference_context = None
         self.user_message_few_shots = None
         if llmORchains_list is None: raise ValueError("llmORchains_list must be provided")
         self.llmORchains_list = llmORchains_list
-        self.temperature = temperature
+        self.temperature_min = temperature_min
+        self.temperature_max = temperature_max if temperature_max else (temperature_min+0.2)
         self.optuna = optuna
         self.system_prompt = system_prompt
         self.set_output_schema(output_schema)
@@ -1126,7 +1127,7 @@ class HumanLLMMonitor:
        :return: A string containing the generated summary.
        """
         # Set up the language model and prompt
-        llm = OpenAI(temperature=self.temperature)
+        llm = OpenAI(temperature=self.temperature_min)
         prompt = PromptTemplate(
             input_variables=["examples"],
             template="Summarize the following examples in {char_limit} characters or less:\n\n{examples}"
@@ -1849,42 +1850,84 @@ class HumanLLMMonitor:
                 content_pretty = json.dumps(content_structure,
                                             indent=4) if is_structure else inference_result_msg.content
                 content_annotated = _visual_input(content_pretty, filetype="py" if is_structure else "md")
-            #comments = smart_input("Provide critic/feedback/request: ", self.agent_name)
-            system_prompt = """
-Refine the **ANNOTATED ANSWER** for the **TARGET TASK**, given answer including important inline text annotated instructions on key elements to improve the answer using tags (see **ANNOTATION TAGS** for interpretation). Directly answer with the updated answer aligned with annotated instructions tags, no introduction.
 
-### TARGET TASK:
-Identify and define the best task to develop using code and LLM given the status of available developed tasks and failed tasks
+            system_prompt = """
+Refine the **ANNOTATED ANSWER** for the **TARGET TASK**, given inline text annotations instructions  using tags (see **ANNOTATION TAGS** for interpretation). Directly answer with the updated answer (tags are removed and replaced inline with instruction) with the same format, do not add introduction or comments.
+
+### TARGET TASK: {{{"""+self.llm_input_messages[0].content+"\n\nUSER MESSAGE:\n"+self.llm_input_messages[0].content+"""}}}
 
 ### ANNOTATION TAGS:
-The following annotations are provided to guide the refinement process. Each annotation is in the format `\TAG{Annotated text...}[optional explanation]`. The tags indicate specific actions you should take to improve or finalize the text. Please follow the instructions for each tag carefully:
+The following annotations are provided to guide the refinement process. Each annotation is in the format `\TAG{Annotated text...}{optional explanation}`. The tags indicate specific actions you should take to improve or finalize the text. Please follow the instructions for each tag carefully:
+
 1. **\APPROVE:**
-- **Purpose:** This tag indicates that the content is correct, clear, and relevant to the subject.
+- This tag indicates that the content is correct, clear, and relevant to the subject.
 - **Action:** **No changes are necessary.** Retain this content exactly as it is.
 - **Example:** \APPROVE{The system's reliability is essential for maintaining continuous operation.}
+
 2. **\FIX:**
-- **Purpose:** Content marked with this tag requires **correction or improvement**. There may be issues related to accuracy, clarity, or relevance.
+- Content marked with this tag requires **correction or improvement**. There may be issues related to accuracy, clarity, or relevance.
 - **Action:** Make necessary revisions to ensure the text is accurate, clear, and aligned with the overall subject matter.
-- **Example:** \FIX{tomato_sauce_recipe = rubish_llm_factory('tell me how to make tomato sauce for my italian noodles')}
+- **Example:** \FIX{tomato_sauce_recipe = rubish_llm_factory('tell me how to make tomato sauce for my italian noodles')}{it should first search on the web for a reliable recipe, then use llm}
+
 3. **\DELETE:**
-- **Purpose:** This tag is used for content that is **unnecessary, irrelevant, or detrimental** to the quality of the text.
-- **Action:** **Remove** this content entirely from the final version.
+- This tag is used for content that is **unnecessary, irrelevant, or detrimental** to the quality of the text.
+- **Action:** Remove this content entirely from the final version.
 - **Example:** \DELETE{The report includes a lengthy discussion on unrelated financial data.}
-4. **\variants:**
-- **Purpose:** Content marked with this tag requires the generation of **alternative expressions or approaches**.
-- **Action:** Create multiple appropriate variations between parenthesis after the inline text between curly braces e.g. {inline initial text...}(text of variant 1...)(text of variant 2...)
-- **Example:** \VARIANTS{The user interface should be intuitive using multi-column visual side by side comparison.}
+
 ### Your Task:
 1. **Understand** the initial task and subject matter to ensure that the text aligns with the overall objectives and audience requirements.
 2. **Interpret** the annotations in the provided text according to the guidelines above.
 3. **Revise** the text by making necessary corrections, deletions, or additions as instructed.
-4. **Generate** alternative phrasings or approaches where indicated, ensuring each variant is clearly differentiated using the inline curly braces `{}` directly followed by variants inside () without space between.
-5. Ensure that the **final text** is clear, accurate, relevant, and stylistically appropriate for the INITIAL TASK.
+4. Ensure that the **final text** is clear, accurate, relevant, and stylistically appropriate for the INITIAL TASK.
 """
+
             #system_prompt = """Refine the **ANNOTATED ANSWER** given inline text annotated instructions (format: \intruction_type{text selection}[optional comment]). Directly answer with the updated answer aligned with annotated instructions tags, no introduction."""
             user_prompt = f"### ANNOTATED ANSWER:\n{content_annotated}"
-            llm_output = self.premium_llm.invoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+            #llm_output = self.premium_llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+
+            # Task 1: System prompt for extracting and structuring feedback
+            system_prompt_1 = """
+Your task is to extract and organize feedback tags from the **ANNOTATED ANSWER** provided for the given **TARGET TASK**. Identify the instructions given by the annotation tags (\APPROVE, \FIX, \DELETE) and structure them into a list. Do not modify the content of **ANNOTATED ANSWER** at this stage.
+
+### TARGET TASK: {{{"""+self.llm_input_messages[0].content+"\n\nUSER MESSAGE:\n"+self.llm_input_messages[0].content+"""}}}
+
+### Annotation Tags:
+- **\APPROVE:** Content is correct, no changes needed.
+- **\FIX:** The content requires improvement or correction.
+- **\DELETE:** Remove this content.
+
+### Your Task:
+1. **Identify** the feedback instructions based on annotation tags.
+2. **Organize** the instructions into a list format with specific details on what needs to be done (fix, delete, etc.).
+3. **Reply** with the improved answer without any additional introduction or comments.
+
+### ANNOTATED ANSWER:
+{content_annotated}
+"""
+            # Call the LLM for inference 1
+            llm_output_1 = self.premium_llm.invoke([SystemMessage(content=system_prompt_1), HumanMessage(content=user_prompt)])
+
+            # Task 2: System prompt for refining based on structured feedback
+            system_prompt_2 = """
+Refine the provided answer for the given **TARGET TASK** based on the following structured feedback. Use the feedback to make necessary changes to the answer, following the instructions closely. 
+
+### TARGET TASK: {{{"""+self.llm_input_messages[0].content+"\n\nUSER MESSAGE:\n"+self.llm_input_messages[0].content+"""}}}
+
+### Structured Feedback:
+{structured_feedback}
+
+### Your Task:
+1. **Revise** the text according to the feedback (fix, delete, variants).
+2. **Ensure** that the final text is clear, accurate, and aligned with the initial task.
+
+### INITIAL ANSWER:
+{content_annotated}
+"""
+
+            # Call the LLM for inference 2
+            llm_output = self.premium_llm.invoke([SystemMessage(content=system_prompt_2), HumanMessage(content=llm_output_1.content)])
+
+
             # TODO: sauvegarde log_entry
             if not HumanLLMMonitor.use_websocket:
                 smart_print(f"***** PROMPT:\n{system_prompt}\n `\n{user_prompt}".replace("\\n", "\n"), self.agent_name,
@@ -2028,18 +2071,23 @@ The following annotations are provided to guide the refinement process. Each ann
     #    def CallHumanLLM(self, original_input_messages=None, llm_function=None, premium_llm_function=None, callable_system_message=None, system_prompt_template=None, user_message=None, return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=90, stream_output=True):
     def CallHumanLLM(self, original_input_messages=None, default_llm_function=None, premium_llm_function=None,
                      callable_system_message=None, system_prompt_template=None, user_message=None,
-                     return_message_content_only=True, function_calling=False, temperature=None, timeout_seconds=300,
+                     return_message_content_only=True, function_calling=False, temperature_min=None, timeout_seconds=300,
                      stream_output=False, use_default_llm=True, optuna=None, model_choice=None,
-                     temperature_increase=0.05):
+                     temperature_max=None):
         #if not self.selected_llm_or_chain: raise ValueError("No LLM or chain selected for use.")
+        if temperature_min is None: temperature_min = self.temperature_min
+        if temperature_max is None: temperature_max = self.temperature_max
         # Define a helper function to perform the LLM calls for parallel inference.
         def perform_llm_call(input_msg, use_premium, func_calling, temperature=None, stream_output=True, color_id=None):
             if use_premium:
                 func = premium_llm_function if not func_calling else HumanLLMMonitor.call_llm_function_with_function_call
             else:
                 func = default_llm_function if not func_calling else HumanLLMMonitor.call_llm_function_with_function_call
-            if temperature:
+            if temperature or temperature == 0:
                 func = func.with_config(configurable={"llm_temperature": temperature})
+                print(f"Temperature set to {temperature}")
+            else:
+                print(f"No temperature value, not set")
 
             if stream_output:
                 if color_id is None or color_id <= 0:
@@ -2111,6 +2159,7 @@ The following annotations are provided to guide the refinement process. Each ann
             llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(
                 original_input_messages, default_llm_function, premium_llm_function, function_calling,
                 callable_system_message, optuna=optuna, model_choice=model_choice)
+            self.llm_input_messages = llm_input_messages
             start_time = datetime.now()
             self.last_inference_check_results = [None] * self.num_parallel_inferences  # Pre-allocate the list with None
             if llm_input_messages and not skip_inference:
@@ -2122,8 +2171,7 @@ The following annotations are provided to guide the refinement process. Each ann
                             self.llmORchains_list.get('3_majority_chain')):
                         stream_output = True
                     futures = [executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling,
-                                               ((temperature + (
-                                                           i * temperature_increase) if temperature > 0 else 0) if temperature else None),
+                                               ((temperature_min + i*(temperature_max-temperature_min)/(self.num_parallel_inferences-1) ) if (temperature_min is not None and temperature_min >= 0.) else 0),
                                                stream_output, i) for i in
                                range(self.num_parallel_inferences)]
                     for idx, future in enumerate(futures):
