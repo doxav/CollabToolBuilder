@@ -193,7 +193,7 @@ class TaskIdentificationAgent():
         self.temperature_max = temperature_max
         self.human_llm_identify_best_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice,
                                                             premium_llm_by_default=premium_llm_by_default,
-                                                            llmORchains_list=llmORchains_list, temperature_min=temperature_min, temperature_max=temperature_max)#,output_schema="identify_best_task.schema.py")
+                                                            llmORchains_list=llmORchains_list, temperature_min=temperature_min, temperature_max=temperature_max, num_parallel_inferences=1 if optuna else 2)#,output_schema="identify_best_task.schema.py")
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         self.envs = envs
         self.optuna_opti = optuna
