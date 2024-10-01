@@ -2089,6 +2089,31 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
             metadatas=[tags]
         )
 
+    def process_llm_output(self, llm_output, counter, llm_outputs, init_skip_rounds):
+        """Traite un seul LLM output (séquentiellement ou en parallèle)."""
+        if len(llm_outputs) > 1:
+            self.skip_rounds = init_skip_rounds
+            smart_print(f"\033[31mMULTI-INFERENCE OUTPUT #{counter} > \033[0m", self.agent_name, "POST INFERENCE", append=True)
+        self.current_inference_context = {
+            'function_name': inspect.stack()[1].function,
+            'input_contents': self.llm_input_messages,
+            'output_contents': None,  # Remplir après traitement
+            'start_time': datetime.now(),
+            'input_modified': False,
+            'skipped_inference': None,
+            'input_comments': None,
+            'output_comments': None,
+            'raw_llm_outputs': None,
+            'output_modified': None,
+            'message_tokens': None,
+            'use_premium_llm': False
+        }
+        # Post-inference human intervention (traitement standard après une inférence)
+        output_messages_instance, output_comments_instance, score_instance = self._after_inference(
+            llm_output, premium_llm_function=None, output_id=counter,
+            outputs_count=len(llm_outputs), optuna=None)
+        return output_messages_instance, output_comments_instance, score_instance
+
     #    def CallHumanLLM(self, original_input_messages=None, llm_function=None, premium_llm_function=None, callable_system_message=None, system_prompt_template=None, user_message=None, return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=90, stream_output=True):
     def CallHumanLLM(self, original_input_messages=None, default_llm_function=None, premium_llm_function=None,
                      callable_system_message=None, system_prompt_template=None, user_message=None,
@@ -2248,44 +2273,41 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
                     smart_print("**** Multiple LLM ANSWERS > we will process POST INFERENCE for each ****",
                                 self.agent_name, "Multiple LLM ANSWERS", append=True)
                     init_skip_rounds = self.skip_rounds  # save the current skip_rounds value because multiple outputs decrease skip rounds for each parallel output
-                for counter, llm_output in enumerate(llm_outputs, start=1):
-                    if len(llm_outputs) > 1:
-                        self.skip_rounds = init_skip_rounds
-                        smart_print(f"\033[31mMULTI-INFERENCE OUTPUT #{counter} > \033[0m", self.agent_name,
-                                    "POST INFERENCE", append=True)
-                    self.current_inference_context = {
-                        'function_name': inspect.stack()[1].function,
-                        'input_contents': llm_input_messages,
-                        'output_contents': output_messages,
-                        'start_time': start_time,  # Store start_time instead of computing inference_time
-                        'input_modified': ((llm_input_messages[0].content + "\n" + llm_input_messages[1].content) != (
-                                input_contents_str0 + "\n" + input_contents_str1)),
-                        'skipped_inference': skip_inference,
-                        'input_comments': input_comments,
-                        'output_comments': output_comments,
-                        'raw_llm_outputs': raw_llm_outputs,
-                        'output_modified': [output_message.content != raw for output_message, raw in
-                                            zip(output_messages, raw_llm_outputs)],
-                        'message_tokens': None,  # You may want to calculate this
-                        'use_premium_llm': use_premium_llm
-                    }
-                    # Post-inference human intervention
-                    output_messages_instance, output_comments_instance, score_instance = self._after_inference(
-                        llm_output, premium_llm_function=premium_llm_function, output_id=counter,
-                        outputs_count=len(llm_outputs), optuna=optuna)
-                    output_messages.append(output_messages_instance)
-                    if output_messages_instance == -1:
-                        break
-                    output_comments.append(output_comments_instance)
-                    score.append(score_instance)
-                # test if any of output_messages instance != -1, break if True
-                if any([output_messages_instance == -1 for output_messages_instance in output_messages]):
-                    original_input_messages[0].content, original_input_messages[
-                        1].content = input_contents_str0, input_contents_str1
+                if HumanLLMMonitor.use_websocket:
+                    # Utilisez un ThreadPoolExecutor pour exécuter les réponses en parallèle en mode WebSocket.
+                    with False and concurrent.futures.ThreadPoolExecutor() as executor:
+                        futures = []
+                        for counter, llm_output in enumerate(llm_outputs, start=1):
+                            futures.append(executor.submit(self.process_llm_output, llm_output, counter, llm_outputs, init_skip_rounds))
+
+                        # Attendre que toutes les tâches soient terminées.
+                        results = [future.result() for future in futures]
+
+                        # Traiter les résultats de chaque future (en parallèle ou séquentiellement)
+                        for counter, (output_messages_instance, output_comments_instance, score_instance) in enumerate(results, start=1):
+                            output_messages.append(output_messages_instance)
+                            if output_messages_instance == -1:
+                                break
+                            output_comments.append(output_comments_instance)
+                            score.append(score_instance)
                 else:
+                    # Traitement séquentiel classique
+                    for counter, llm_output in enumerate(llm_outputs, start=1):
+                        output_messages_instance, output_comments_instance, score_instance = self.process_llm_output(llm_output, counter, llm_outputs, init_skip_rounds)
+                        output_messages.append(output_messages_instance)
+                        if output_messages_instance == -1:
+                            break
+                        output_comments.append(output_comments_instance)
+                        score.append(score_instance)
+
+                # Test si l'une des instances de output_messages == -1
+                if any([output_messages_instance == -1 for output_messages_instance in output_messages]):
+                    original_input_messages[0].content, original_input_messages[1].content = input_contents_str0, input_contents_str1
+                else:
+                    # Sortir de la boucle
                     break
 
-                    # Get the calling function's name using inspect
+        # Get the calling function's name using inspect
         caller_function_name = inspect.stack()[1].function
 
         call_duration = time.time() - call_start_time
