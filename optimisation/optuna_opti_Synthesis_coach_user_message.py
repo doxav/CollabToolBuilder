@@ -130,9 +130,9 @@ def objective(trial, timestamp_exp: str):
         5. Tests:
         ```python
         # document #125dc4bc-54e0-4336-82bc-417e40ec9b8f usage test:
-        task_function_name(bot, arguments with values describing document #125dc4bc-54e0-4336-82bc-417e40ec9b8f for the given task...)
+        task_function_name(bot)
         # document #2fa754cb-2e90-3376-3b2c-142f29c9ebf8 usage test:
-        task_function_name(bot, arguments with values describing document #2fa754cb-2e90-3376-3b2c-142f29c9ebf8 for the given task...)
+        task_function_name(bot)
         ```"""
 
     prompt_coach = f"""

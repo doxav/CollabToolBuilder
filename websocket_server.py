@@ -38,7 +38,7 @@ class WebsocketServer:
                         message = json.dumps({"status": "success", "result": result, "function": function_name})
                         #message = None
                     else:
-                        message = json.dumps({"status": "error", "message": "Monitor not found"})
+                        message = json.dumps({"status": "error", "message": f"Monitor '{agent_name}' not found"})
                         #message = None
                 for client in self.connected_clients:
                     if client != websocket and message is not None:

@@ -985,6 +985,9 @@ class HumanLLMMonitor:
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1,
                  llmORchains_list=None,
                  synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, optuna=False, envs=None):
+        # Instance properties to track time
+        self.menu_start_time = None
+        self.start_time = None
         self.current_inference_context = None
         self.user_message_few_shots = None
         if llmORchains_list is None: raise ValueError("llmORchains_list must be provided")
@@ -1049,8 +1052,43 @@ class HumanLLMMonitor:
                     raise TypeError(
                         f"Cannot match parameters to function signature. Expected {param_count} parameters but received {type(params).__name__}.")
 
+            self.track_time_spent(function_name)
         # Retourner une valeur par défaut si la fonction n'existe pas ou n'est pas callable
         return None
+
+    def track_time_spent(self, action, mode=None, reset_menu_time_after=True):
+        """
+        Track the time spent on each menu option or action.
+        
+        Args:
+        - action (str): The action being performed (e.g., 'A', 'B', etc.)
+        - is_before (bool): True if tracking for _before_inference, False for _after_inference
+        """
+        if mode == 'before' or (mode is None and self.mode == 'before'):
+            time_dict, count_dict = self.before_inference_option_times, self.before_inference_option_counts
+        elif mode == 'after' or (mode is None and self.mode == 'after'):
+            time_dict, count_dict = self.after_inference_option_times, self.after_inference_option_counts
+        else:
+            time_dict, count_dict = self.unidentified_option_times, self.unidentified_option_counts
+
+        if action:
+            if action not in time_dict:
+                time_dict[action] = 0
+                count_dict[action] = 0
+            time_dict[action] += (time.time() - self.start_time)
+            count_dict[action] += 1
+        
+        # Track total time
+        time_dict["TOTAL"] += (time.time() - self.menu_start_time)
+        count_dict["TOTAL"] += 1
+
+        # Track selection time
+        time_dict["SELECTION"] += (self.start_time - self.menu_start_time)
+        count_dict["SELECTION"] += 1
+
+        # Reset times for the next action
+        if reset_menu_time_after:
+            self.start_time, self.menu_start_time = time.time(), time.time()
 
     def load_prompt(self, function_name: str = None, agent_name: str = None, prompt: str = None) -> str:
         with open(f"prompts/{prompt}.txt", "r") as f:
@@ -1194,6 +1232,7 @@ class HumanLLMMonitor:
 
     def _before_inference(self, messages, default_llm_function, premium_llm_function, function_calling,
                           callable_system_message=None, use_premium_llm=None, optuna=None, model_choice=None):
+        self.mode = 'before'
         comments = None
         initial_user_message = messages[1].content
         function_name = inspect.stack()[2].function
@@ -1224,7 +1263,7 @@ class HumanLLMMonitor:
             menu += (f"[Z] Continue\n")
 
             smart_print(before_menu + menu, self.agent_name, "BEFORE inference action MENU")
-            menu_start_time = time.time()
+            self.menu_start_time = time.time()
             match (optuna.lower() if optuna else ""):
                 case "coach":
                     llm_keys = list(self.llmORchains_list.keys())
@@ -1252,7 +1291,7 @@ class HumanLLMMonitor:
                         self.agent_name).upper()
 
             # ACTIONS processing
-            start_time, action = time.time(), action  # Init action selected and timer to measure time spent and occurences in action processing
+            self.start_time = time.time()  # Init action selected and timer to measure time spent and occurences in action processing
 
             if action == "A":  # Modify system prompt
                 comments, forced_llm_output = self.modify_prompt(callable_system_message, comments,
@@ -1322,17 +1361,7 @@ class HumanLLMMonitor:
                 self.changeNumParallelInferencesAndSynthesize()
 
             # Count time spent and occurrences waiting and in each option
-            if action:
-                if action not in self.before_inference_option_times:
-                    self.before_inference_option_times[action] = 0
-                    self.before_inference_option_counts[action] = 0
-                self.before_inference_option_times[action] += (time.time() - start_time)
-                self.before_inference_option_counts[action] += 1
-            self.before_inference_option_times["TOTAL"] += (time.time() - menu_start_time)
-            self.before_inference_option_counts["TOTAL"] += 1
-            self.before_inference_option_times["SELECTION"] += (start_time - menu_start_time)
-            self.before_inference_option_counts["SELECTION"] += 1
-            start_time, menu_start_time = None, None
+            self.track_time_spent(action, mode='before')
 
             if action in [None, "", "P",
                           "C", "Z"]:  # P: Proceed to inference using a PREMIUM LLM; C: Set LLM output by re-using past
@@ -1350,6 +1379,7 @@ class HumanLLMMonitor:
             f"Time spent in each option and occurrences: {self.before_inference_option_times} - {self.before_inference_option_counts}",
             self.agent_name)
 
+        self.mode = None
         return messages, comments, forced_llm_output, use_premium_llm, default_llm_function, premium_llm_function, function_calling
 
     def changeNumParallelInferencesAndSynthesize(self):
@@ -1644,6 +1674,7 @@ class HumanLLMMonitor:
 
     def _after_inference(self, inference_result_msg, premium_llm_function, color="37", output_id=None,
                          outputs_count=None, optuna=None):
+        self.mode = 'after'
         comments, score = None, None
         nl = "\n"
         if inference_result_msg is None:
@@ -1678,13 +1709,13 @@ class HumanLLMMonitor:
 
             smart_print(menu, self.agent_name, "AFTER inference action MENU" + (
                 f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""))
-            menu_start_time = time.time()
+            self.menu_start_time = time.time()
             action = "" if optuna else smart_input(
                 f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
                 self.agent_name).upper()
 
             # ACTIONS processing
-            start_time, action = time.time(), action  # Init action selected and timer to measure time spent and occurences in action processing
+            self.start_time = time.time()  # Init action selected and timer to measure time spent and occurences in action processing
 
             if action == "A":  # Manually set/modify the answer/output
                 self.modifyAnswer(inference_result_msg)
@@ -1708,18 +1739,7 @@ class HumanLLMMonitor:
                 self.exitProgram()
 
             # Count time spent and occurrences waiting and in each option
-            if action and action.isalpha() and len(action) == 1:
-                # if action is set and not exist yet, also check if this is 1 single letter
-                if action not in self.after_inference_option_times:
-                    self.after_inference_option_times[action] = 0
-                    self.after_inference_option_counts[action] = 0
-                self.after_inference_option_times[action] += (time.time() - start_time)
-                self.after_inference_option_counts[action] += 1
-            self.after_inference_option_times["TOTAL"] += (time.time() - menu_start_time)
-            self.after_inference_option_counts["TOTAL"] += 1
-            self.after_inference_option_times["SELECTION"] += (start_time - menu_start_time)
-            self.after_inference_option_counts["SELECTION"] += 1
-            start_time, menu_start_time = None, None
+            self.track_time_spent(action, mode='after')
 
             if action in [None, "",
                           "E",
@@ -1745,6 +1765,7 @@ class HumanLLMMonitor:
                 f"Time spent in each option and occurrences: {self.after_inference_option_times} - {self.after_inference_option_counts}",
                 self.agent_name)
 
+        self.mode = None
         return inference_result_msg, comments, score
 
     def goBackInference(self, inference_result_msg):
@@ -2143,10 +2164,12 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
             original_input_messages[1].content)
 
         self.before_inference_option_times = {'TOTAL': 0, 'SELECTION': 0}  # then each option will be added to this dict
-        self.before_inference_option_counts = {'TOTAL': 0,
-                                               'SELECTION': 0}  # then each option will be added to this dict
+        self.before_inference_option_counts = {'TOTAL': 0, 'SELECTION': 0}  # then each option will be added to this dict
         self.after_inference_option_times = {'TOTAL': 0, 'SELECTION': 0}  # then each option will be added to this dict
         self.after_inference_option_counts = {'TOTAL': 0, 'SELECTION': 0}  # then each option will be added to this dict
+        self.unidentified_option_times = {'TOTAL': 0, 'SELECTION': 0}  # then each option will be added to this dict
+        self.unidentified_option_counts = {'TOTAL': 0, 'SELECTION': 0}  # then each option will be added to this dict
+        self.mode = None
         call_start_time = time.time()
 
         while True:
@@ -2171,7 +2194,7 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
                             self.llmORchains_list.get('3_majority_chain')):
                         stream_output = True
                     futures = [executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling,
-                                               ((temperature_min + i*(temperature_max-temperature_min)/(self.num_parallel_inferences-1) ) if (temperature_min is not None and temperature_min >= 0.) else 0),
+                                               ((temperature_min + i*(temperature_max-temperature_min)/(self.num_parallel_inferences-1) ) if (temperature_min is not None and self.num_parallel_inferences>1 and temperature_min >= 0.) else 0),
                                                stream_output, i) for i in
                                range(self.num_parallel_inferences)]
                     for idx, future in enumerate(futures):
