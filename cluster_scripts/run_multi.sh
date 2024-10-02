@@ -75,13 +75,11 @@ FIRST_EMAIL_INTERVAL=2 # First email interval in minutes
 SECOND_EMAIL_INTERVAL=7 # Second email interval in minutes
 GZ_FILE="$LOG_DIR/$NAME_EXP.tar.gz"
 ANALYSIS_FILE="$BASE_DIR/Optuna_results/"$NAME_EXP"_analysis.txt"
-touch $BASE_DIR/optimisation/$1.py
 PYTHON_FILE="$BASE_DIR/optimisation/$1.py"
 PYTHON_SHORT=$1
 
 echo "Analysis file: $ANALYSIS_FILE" | tee -a $OUTPUT_LOG
 
-echo $PYTHON_FILE
 # Check if the python file exists
 if [ ! -f "$PYTHON_FILE" ]; then
     echo "The file $PYTHON_FILE does not exist."
