@@ -24,9 +24,9 @@ ERROR_LOG="$LOG_DIR/script_error_$LOG_IDENTIFIER.log"
 touch $OUTPUT_LOG
 touch $ERROR_LOG
 
-# Check if there is the 2 parameters
-if [ "$#" -ne 2 ]; then
-  echo "Usage: $0 [optuna experiment file in optimisation without .py extension]  [LLM Mode : macstudio, gpu, other, GPT4. Default is macstudio]" | tee -a $ERROR_LOG
+# Check if there is less than 2 parameters
+if [ "$#" -lt 2 ]; then
+  echo "Usage: $0 <python_file> <mode> [num_trials]" | tee -a $ERROR_LOG
   exit 1
 fi
 
@@ -56,7 +56,7 @@ else
 fi
 
 # Set the IN_MACSTU docker environment variable to true
-export IN_MACSTU=True
+export IN_MACSTU=False
 
 # Email address
 EMAIL="xavier.daull@lis-lab.fr"
@@ -75,11 +75,13 @@ FIRST_EMAIL_INTERVAL=2 # First email interval in minutes
 SECOND_EMAIL_INTERVAL=7 # Second email interval in minutes
 GZ_FILE="$LOG_DIR/$NAME_EXP.tar.gz"
 ANALYSIS_FILE="$BASE_DIR/Optuna_results/"$NAME_EXP"_analysis.txt"
+touch $BASE_DIR/optimisation/$1.py
 PYTHON_FILE="$BASE_DIR/optimisation/$1.py"
 PYTHON_SHORT=$1
 
 echo "Analysis file: $ANALYSIS_FILE" | tee -a $OUTPUT_LOG
 
+echo $PYTHON_FILE
 # Check if the python file exists
 if [ ! -f "$PYTHON_FILE" ]; then
     echo "The file $PYTHON_FILE does not exist."
@@ -195,7 +197,6 @@ cd /home/$USER || handle_error
 
 # Check if the .sqsh file exists
 [ -f "$CONTAINER_IMAGE" ] || enroot import $DOCKER_IMAGE || handle_error
-
 # Run the container and experiment in the background
 echo "Request to run container" | tee -a $OUTPUT_LOG
 srun --partition=ouranos $GRES --container-image=$CONTAINER_IMAGE --container-mounts=$MOUNT_PATHS $SCRIPT_PATH $NAME_EXP $PYTHON_SHORT $MODE $NUM_TRIALS &
