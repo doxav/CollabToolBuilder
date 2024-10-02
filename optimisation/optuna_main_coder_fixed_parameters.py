@@ -112,7 +112,8 @@ def definition_global_parameters(temperature : float = None, presence_penalty : 
     return llmORchains_list, envs
 
 def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "premium_llm", problem_prompts_subdir : str = None, max_coding_attempts : int = 2, max_execution_time : int = 900,
-               model_choice=None, optuna_opti : str = "coach", params_user_message : str = None, special_criteria : dict = None, name_exp : str = ""):
+               model_choice=None, optuna_opti : str = "coach", params_user_message : str = None, special_criteria : dict = None, name_exp : str = "", temperature : float = None, number_inferences : int = 1,
+               fixed_coach : bool = False):
     """
     Launch the run with the specified parameters.
 
@@ -159,7 +160,10 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
                                             model_choice=model_choice,
                                             optuna_opti=optuna_opti,
                                             params_user_message=params_user_message,
-                                            special_criteria=special_criteria)
+                                            special_criteria=special_criteria,
+                                            number_inferences=number_inferences,
+                                            temperature_max=temperature,
+                                            fixed_coach=fixed_coach)
     print("Analysis...")
     analysis(name_exp)
     print("Analysis done.")

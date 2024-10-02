@@ -6,14 +6,7 @@ def objective(trial, timestamp_exp: str):
     coach_agent_role = "You are an AI coach"
     # trial.suggest_categorical("role_priming", ["In the context of a system generating efficient state-of-the-art research survey papers on a given subject, you are a researcher expert advising on the next best task to develop. This system employs a hybrid approach, leveraging both LLM capabilities and traditional algorithmic processing.",
                                                                   # "You are an AI coach"])
-    # few_shots = definition_few_shots(trial)
-    few_shots = {
-        "sources" : "exemples",
-        "num" : 1,
-        "sort_order" : "by_date_asc",
-        "format" : "json",
-
-    }
+    few_shots = definition_few_shots(trial)
     # coach_user_input_failed_tasks = trial.suggest_categorical("coach_user_input_failed_tasks", [True, False])
     coach_user_input = "I will provide you:\n- Learnt tasks available (with information gain between 0 and 1 on plan's titles, and contents): ...\n- Failed tasks to learn that are too hard to code: ...\n- Current status of examples of technical synthesis the proposed next task will be tested on: ..."
 
@@ -24,8 +17,9 @@ def objective(trial, timestamp_exp: str):
 
     user_message_parameters = definition_few_shots(trial, True)
 
-    temperature = trial.suggest_categorical("temperature", [0.5, 0.7, 0.9, 1.1, 1.3, 1.5])
-    number_inferences = trial.suggest_categorical("number_inferences", [1, 2, 4, 8])
+    # temperature = trial.suggest_categorical("temperature", [0.5, 0.7, 0.9, 1.1, 1.3, 1.5])
+    # number_inferences = trial.suggest_categorical("number_inferences", [1, 2, 4, 8])
+
 
     criteria_coach = []
     criteria_coach = [

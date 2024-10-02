@@ -15,6 +15,7 @@ def objective(trial, name_xp : str):
     max_autofix = 3
     temperature = trial.suggest_categorical("temperature", [0.5, 0.7, 0.9, 1.1, 1.3, 1.5])
     number_inferences = trial.suggest_categorical("number_inferences", [1, 2, 4, 8])
+    fixed_coach = trial.suggest_categorical("fixed_coach", [True, False])
     presence_penalty = 0.7189030356596702
     reasoning_depth = 1
 
@@ -93,7 +94,8 @@ def objective(trial, name_xp : str):
         },
         name_exp=name_xp,
         params_user_message=user_message_params,
-        number_inferences=number_inferences
+        number_inferences=number_inferences,
+        fixed_coach=fixed_coach,
     )
 
     # Log performance for analysis

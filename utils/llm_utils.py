@@ -984,7 +984,8 @@ class HumanLLMMonitor:
                  default_llmORchain=None,
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1,
                  llmORchains_list=None,
-                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, optuna=False, envs=None):
+                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, optuna=False, envs=None,
+                 fixed_coach=False):
         # Instance properties to track time
         self.menu_start_time = None
         self.start_time = None
@@ -1025,6 +1026,7 @@ class HumanLLMMonitor:
         self.last_inference_check_results = None
         self.user_message = ""
         self.envs = envs
+        self.fixed_coach = fixed_coach
 
     # New: Handling function calls via WebSocket
     def execute_function(self, function_name, params):
@@ -1276,14 +1278,19 @@ class HumanLLMMonitor:
                         new_llm_name = model_choice
                     else:
                         raise ValueError("Model choice must be an integer or a string")
+
+                    if self.agent_name == "TaskIdentificationAgent":
+                        if self.num_parallel_inferences > 1 :
+                            self.synthesize_mode = True
+                        if self.fixed_coach:
+                            forced_llm_output = self.reuse_past(forced_llm_output, function_name)
+
                     self.set_default_llmORchain(new_llm_name)
                     self.set_premium_llmORchain(new_llm_name)
                     default_llm_function = self.default_llm
                     premium_llm_function = self.premium_llm
                     self.synthesize_mode = False
                     # Default actions for all agents while running with optuna
-                    action = ""
-                case "coder":
                     action = ""
                 case _:  # Default case
                     action = smart_input(
@@ -1421,7 +1428,10 @@ class HumanLLMMonitor:
         return comments
 
     def reuse_past(self, forced_llm_output, function_name):
-        if HumanLLMMonitor.common_vectordb.count() > 0:
+        if self.fixed_coach:
+            selected_index = 1
+            log_entries, list_output = self._get_log_entries(self.agent_name, function_name), ""
+        elif HumanLLMMonitor.common_vectordb.count() > 0:
             log_entries, list_output = self._get_log_entries(self.agent_name, function_name), ""
             for idx, entry in enumerate(log_entries, start=1):
                 content = json.loads(entry.page_content)

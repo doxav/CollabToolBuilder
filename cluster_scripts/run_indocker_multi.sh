@@ -4,6 +4,7 @@ code_directory="/home/$USER/CollabFunctionsGPTCreator"
 NAME_EXP=$1
 PYTHON_SHORT=$2
 MODE=$3
+NUM_TRIALS=$4
 if [ "$MODE" = "macstudio" ]; then
 	echo "Trying to connect to macstudio via ssh tunnel..."
 	eval "$(ssh-agent -s)" && {
@@ -80,4 +81,4 @@ cd $code_directory || { print_message "31" "Failed to change directory to $code_
 print_message "32" "Activating virtual environment..."
 source /app/.venv/bin/activate || { print_message "31" "Failed to activate virtual environment."; exit 1; }
 
-python -m optimisation.$PYTHON_SHORT $NAME_EXP
+python -m optimisation.$PYTHON_SHORT $NAME_EXP $NUM_TRIALS

@@ -33,6 +33,13 @@ fi
 # Parameters for mode (gpu or nogpu)
 MODE=$(echo "${2:-macstudio}" | tr '[:upper:]' '[:lower:]') # Default is macstudio, pass 'gpu' as first argument for GPU mode
 
+NUM_TRIALS=200
+
+# If there is a 3rd parameter, it is the number of trials
+if [ "$#" -eq 3 ]; then
+  NUM_TRIALS=$3
+fi
+
 GRES=""
 # Check if we are in GPU mode and if GPUs were actually allocated
 if [ "$MODE" == "gpu" ]; then
@@ -191,7 +198,7 @@ cd /home/$USER || handle_error
 
 # Run the container and experiment in the background
 echo "Request to run container" | tee -a $OUTPUT_LOG
-srun --partition=ouranos $GRES --container-image=$CONTAINER_IMAGE --container-mounts=$MOUNT_PATHS $SCRIPT_PATH $NAME_EXP $PYTHON_SHORT $MODE &
+srun --partition=ouranos $GRES --container-image=$CONTAINER_IMAGE --container-mounts=$MOUNT_PATHS $SCRIPT_PATH $NAME_EXP $PYTHON_SHORT $MODE $NUM_TRIALS &
 echo "Waiting container | tee -a $OUTPUT_LOG"
 SRUN_PID=$!
 # Ensure SRUN_PID is logged
