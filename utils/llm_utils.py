@@ -405,6 +405,7 @@ class UnifiedVectorDB:
         self.collection_name = collection_name.lower()
         if UnifiedVectorDB.unique_collection_id is not None:
             self.collection_name += f"_{UnifiedVectorDB.unique_collection_id}"
+            self.collection_name = self.collection_name.lower()
         self.embedding_function = embedding_function
         self.persist_directory = persist_directory
 

@@ -1,3 +1,4 @@
+from datetime import datetime
 import inspect
 import random
 import string
@@ -768,125 +769,6 @@ class CapitalizationAgent:
         user_message = f"MAIN FUNCTION: `{program_name}`\n\nFULL CODE:\n{program_code}"
         tool_description = self.human_llm_generate_function_description.CallHumanLLM(system_prompt_template="generate_function_description", user_message=user_message, return_message_content_only=True, optuna=self.optuna_opti, model_choice=self.model_choice) 
         return tool_description
-    
-    def retrieve_saved_tasks_in_db(self, query="", max_db_results=20, include_code=None, selected_successful_functions=None, selected_failed_functions=None):
-        smart_print(f"************ Retrieving successful tasks from database - LIST:", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-        # Retrieve tasks from the common vector database
-        results_success_db = self.db_successful_tasks.query(query_text="*", k=max_db_results)
-        # First step: display all the retrieved functions with time and host
-        id = 0
-        for result in results_success_db:
-            id += 1
-            # Extract the page_content field from the Document object
-            page_content = result.page_content
-            # Deserialize the JSON from the page_content string
-            task_data = json.loads(page_content)
-            if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
-                if "class_name" in task_data:
-                    smart_print(f"{id}: Pipeline name:{task_data['class_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-            else:
-                if 'main-function_name' in task_data:
-                    smart_print(f"{id}: function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-            
-            if include_code is None:
-                include_code = smart_input(f"CONFIG When adding the functions description in successful tasks, do you want to also include the code (it may overflow the maximum prompt length but can also guide generation) ? (yes/no): ").strip().lower() in ["yes", "y"]
-        # Second step: ask the user to select the functions to load
-        if selected_successful_functions is None:
-            selected_successful_functions = smart_input(f"CONFIG Please select the successful functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
-        id = 0
-        # load into self.tasks_repository
-        for result in results_success_db:
-            id += 1
-            if selected_successful_functions and (str(id) not in selected_successful_functions) and (selected_successful_functions != ["all"]):
-                continue
-            # Extract the page_content field from the Document object
-            page_content = result.page_content
-            # Deserialize the JSON from the page_content string
-            task_data = json.loads(page_content)
-            if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
-                if "class_name" in task_data:
-                    if task_data["class_name"] in self.tasks_repository:
-                        smart_print(f"> pipeline/task {task_data['class_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-                        continue
-                else:
-                    task_data['class_name']=""
-                    if 'task_description-refined' in task_data:
-                        self.failed_tasks_repository[task_data["class_name"]] = task_data["task_description_refined"]
-                        smart_print(f"> failed pipeline/task {task_data['class_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-
-            else:
-                if "main_function_name" in task_data:
-                    if task_data["main_function_name"] in self.tasks_repository:
-                        smart_print(f"> pipeline/task {task_data['main_function_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-                        continue
-                else:
-                    task_data['main_function_name']=""
-                    if 'task_description-refined' in task_data:
-                        self.failed_tasks_repository[task_data["main_function_name"]] = task_data["task_description_refined"]
-                        smart_print(f"> failed pipeline/task {task_data['main_function_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-
-                self.tasks_repository[task_data["main_function_name"]] = [task_data["tool_description"]] if not include_code else [task_data["tool_description"], task_data["program_code"]]
-                smart_print(f"> function/task {task_data['main_function_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-
-        smart_print(f"************ Retrieving failed tasks from database - LIST:", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-        # Retrieve failed tasks from the common vector database
-        results_failed_db = self.db_failed_tasks.query(query_text="*", k=max_db_results)
-        # First step: display all the retrieved functions with time and host
-        id = 0
-        for result in results_failed_db:
-            id += 1
-            # Extract the page_content field from the Document object
-            page_content = result.page_content
-            # Deserialize the JSON from the page_content string
-            task_data = json.loads(page_content)
-            if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
-                if 'class_name' in task_data:
-                    smart_print(f"{id}: failed Pipeline name:{task_data['class_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-            else:
-                if 'main_function-name'in task_data:
-                    smart_print(f"{id}: failed function name:{task_data['main_function_name']} time:{task_data['time']} host:{result.metadata['host']}", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-            
-            # Second step: ask the user to select the functions to load
-        if selected_failed_functions is None:
-            selected_failed_functions = smart_input(f"CONFIG Please select the failed functions to load (separated by comma, or 'all' to load all, or just hit enter for none): ").strip().replace(" ","").lower().split(",")
-        id = 0
-        # load into self.tasks_repository
-        for result in results_failed_db:
-            id += 1
-            if selected_failed_functions and (str(id) not in selected_failed_functions) and (selected_failed_functions != ["all"]):
-                continue
-            # Extract the page_content field from the Document object
-            page_content = result.page_content
-            # Deserialize the JSON from the page_content string
-            task_data = json.loads(page_content)
-            if self.problem_prompts_subdir=="Anomalies/" or self.problem_prompts_subdir=="pipeline_synthesis/":
-                if 'class_name' in task_data:
-                    if task_data["class_name"] in self.failed_tasks_repository:
-                        smart_print(f"> failed pipeline/task {task_data['class_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-                        continue
-                    else:
-                        task_data['class_name']=""
-                        if 'task_description-refined' in task_data:
-                            self.failed_tasks_repository[task_data["class_name"]] = task_data["task_description_refined"]
-                            smart_print(f"> failed pipeline/task {task_data['class_name']} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-
-            else:
-                if task_data["main_function_name"] in self.failed_tasks_repository:
-                    smart_print(f"> failed function/task {task_data['main_function_name']} already loaded. When there are duplicates select your prefered. Skipping...", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-                    continue
-
-                repository[task_name] = task_data["task_description_refined"]
-                if include_code_flag:
-                    repository[task_name] = [task_data.get("tool_description", ""), task_data.get("program_code", "")]
-                smart_print(f"> {task_type} {task_name} from host {result.metadata['host']} generated at {task_data['time']} loaded.", self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
-        
-        # Retrieve and process successful tasks
-        results_success_db = HumanLLMMonitor.get_learnt_tasks(query_text=query, k=max_db_results)
-        process_results(results_success_db, "successful", selected_successful_functions, self.learnt_tasks_repository, "host", include_code)
-
-        # Retrieve and process failed tasks
-        results_failed_db = HumanLLMMonitor.get_failed_tasks(query_text=query, k=max_db_results)
-        process_results(results_failed_db, "failed", selected_failed_functions, self.failed_tasks_repository, "host", include_code)
 
 #        smart_print(f"Error: Could not find a valid definition for {function_name}. Please set it:", "orchestrate_agents", "orchestrate_agents ERROR")
 #        function_code = _visual_input(current_function_code, filetype="py")
@@ -944,8 +826,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     scores = None
 
     if unique_id is None:
-        # Set unique_id to the name of the machine + timestamp
-        unique_id = f"{socket.gethostname()}-{int(time.time())}"
+        # Set unique_id to the name of the machine + timestamp (dd-mm-yyyy-hh-mm-ss)
+        unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
 
     if UnifiedVectorDB.unique_collection_id is None:
         UnifiedVectorDB.set_unique_collection_id(unique_id)
@@ -1003,7 +885,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             # get input from user with the index of the task to select, manage exceptions
             while True:
                 try:
-                    id = 1 if optuna_opti else (smart_input("Enter the index of the task to select: ").strip())
+                    id = 1 if optuna_opti else int(smart_input("Enter the index of the task to select: ").strip())
                     if id in range(len(task)):
                         task = task[id]
                         break
