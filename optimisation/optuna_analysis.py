@@ -8,17 +8,19 @@ import traceback
 import numpy as np  # Added for variance calculation
 import sys
 import shutil  # For copying the SQLite file
+from datetime import datetime
 
 def analysis(name_exp: str, in_dir = False):
     try:
         # Define the path to the SQLite database
         current_folder = os.getcwd()
+        current_datetime = datetime.now().strftime('%Y%m%d_%H%M%S')
 
         # File to save results
         output_file = os.path.join(current_folder, f"{name_exp}_analysis.txt" if in_dir else f"Optuna_results/{name_exp}_analysis.txt")
 
         sqlite_file_original = os.path.join(current_folder, f"{name_exp}.db" if in_dir else f"Optuna_db/{name_exp}.db")
-        sqlite_file = os.path.join(current_folder, f"{name_exp}_copy.db" if in_dir else f"Optuna_db/{name_exp}.db")
+        sqlite_file = os.path.join(current_folder, f"{name_exp}_copy_{current_datetime}.db" if in_dir else f"Optuna_db/{name_exp}_copy_{current_datetime}.db")
 
         # Function to write results to the file
         def write_to_file(text, mode="a"):
