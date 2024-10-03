@@ -132,7 +132,7 @@ def smart_input(message: str, agent_name=None, message_type=None):
         # convert structured_message to json
         message = json.dumps(structured_message)
         HumanLLMMonitor.websocket_server.send_message(message)
-        async def receive_message(timeout=900):
+        async def receive_message(timeout=86400):
             async with websockets.connect(ws_url) as websocket:
                 try:
                     print("SMART INPUT Waiting for response from WebSocket")
@@ -369,6 +369,11 @@ class UnifiedVectorDB:
     es_password = None
     OpenAI_embedding_function_name = "text-embedding-ada-002"
     db_connection_check_done = False
+    unique_collection_id = None
+
+    @classmethod
+    def set_unique_collection_id(cls, unique_id):
+        cls.unique_collection_id = unique_id
 
     @staticmethod
     def check_db():
@@ -398,6 +403,9 @@ class UnifiedVectorDB:
     def __init__(self, collection_name, embedding_function, persist_directory, reset_db_indices=False):
         UnifiedVectorDB.check_db()
         self.collection_name = collection_name.lower()
+        if UnifiedVectorDB.unique_collection_id is not None:
+            self.collection_name += f"_{UnifiedVectorDB.unique_collection_id}"
+            self.collection_name = self.collection_name.lower()
         self.embedding_function = embedding_function
         self.persist_directory = persist_directory
 
@@ -2269,13 +2277,13 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
 
             output_messages, output_comments, score = [], [], []
             if llm_outputs:
+                init_skip_rounds = self.skip_rounds  # save the current skip_rounds value because multiple outputs decrease skip rounds for each parallel output
                 if len(llm_outputs) > 1:
                     smart_print("**** Multiple LLM ANSWERS > we will process POST INFERENCE for each ****",
                                 self.agent_name, "Multiple LLM ANSWERS", append=True)
-                    init_skip_rounds = self.skip_rounds  # save the current skip_rounds value because multiple outputs decrease skip rounds for each parallel output
-                if HumanLLMMonitor.use_websocket:
+                if False and HumanLLMMonitor.use_websocket:
                     # Utilisez un ThreadPoolExecutor pour exécuter les réponses en parallèle en mode WebSocket.
-                    with False and concurrent.futures.ThreadPoolExecutor() as executor:
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
                         futures = []
                         for counter, llm_output in enumerate(llm_outputs, start=1):
                             futures.append(executor.submit(self.process_llm_output, llm_output, counter, llm_outputs, init_skip_rounds))

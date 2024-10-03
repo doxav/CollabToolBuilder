@@ -525,6 +525,11 @@ $(function() {
         // Initialize content variable
         let content = '';
 
+        if(data.message.includes("Time spent in each option and occurrences" || data.message.includes("Choose an action (or hit Enter for inference)"))){
+            // Exit the function
+            return;
+        }
+
         // Check if message_type includes "Inference streaming output"
         if (data.message_type && data.message_type.includes("Inference streaming output")) {
             // Do not wrap the message in collapsible container
@@ -640,6 +645,8 @@ $(function() {
                 totalPages = Math.ceil(columnMax / 4);
                 $pageInfo.text(`Page ${currentPage} of ${totalPages}`);
             }
+
+        } else if(data.message.includes("Time spent in each option and occurrences" || data.message.includes("Choose an action (or hit Enter for inference)"))){
 
         } else if (data.message_type === "Scores") {
             handleEvaluationResults(data);
@@ -892,7 +899,7 @@ $(function() {
         } else if(data.agent_name === "Pipeline/Function Mode" && data.message_type === "Files loaded" ){
             // Do nothing
 
-        } else {
+        }  else {
             if ($agentAccordion.length === 0) {
                 $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
                 $("#message-accordion").append($agentAccordion);
@@ -998,7 +1005,7 @@ $(function() {
                         <!-- Slider and value container -->
                         <div style="display: flex; flex-direction: column; align-items: center; margin-right: 10px;">
                             <input type="range" min="-1" max="10" value="-1" step="1" class="slider" id="slider-${columnId}">
-                            <span id="value-${columnId}">-1</span>
+                            <span id="value-${columnId}">Unscored</span>
                         </div>
                         <input type="text" id="comment-${columnId}" placeholder="Add feedback" style="margin-right: 10px;">
                         <button id="evaluate-${columnId}"><i class="fa-regular fa-paper-plane"></i> Evaluate</button>
@@ -1027,6 +1034,9 @@ $(function() {
                     </div>
                 `;
             }
+
+            // Add the menu options for column
+            targetColumn.innerHTML += `<div id="menu-options-column"></div>`;
 
                 // Refresh value on value change
                 $(`#slider-${columnId}`).on('input', function () {
@@ -1377,22 +1387,66 @@ $(document).on('click', '.collapsible-header', function() {
         $("#send-button").show();
     }
 
+
+    function displayMenuOptions(message) {
+        // Detect if the message contains a selection list in curly braces
+        let selectionMatch = message.match(/^\{(.+?)\}/);
+        if (selectionMatch) {
+            console.log("Displaying menu options in a separate column");
+            $("#menu-options-column").empty();
+            let optionsList = selectionMatch[1].split(",");
+            // Split by comma to get the list of options
+            optionsList.forEach(option => {
+                let cleanOption = option.trim();
+                let $option = $(`<div class="menu-option" >${cleanOption}</div>`);
+                $("#menu-options-column").append($option); }); }
+        else {
+            console.log("Displaying menu options");
+            $("#menu-options").empty();
+            // Existing logic for normal menu options
+            let options = message.split("\n").filter(line => /^\[[A-Z]\]/.test(line));
+            options.forEach(option => {
+                let match = option.match(/\[(.)\](.*)/);
+                if (match && match[1]) {
+                    let letter = match[1].toUpperCase();
+                    if (!match[2].includes("Change default") && !match[2].includes("Change premium") && !match[2].includes("Exit") && !match[2].includes("Log comments")) {
+                         if (match[2].includes("Change num of parallel inferences")) {
+                        // Remove ANSI codes
+                        let cleanString = match[2].replace(/\u001b\[\d+m/g, '');
+                        let $option = $(`<div class="menu-option" data-option="${letter}">${cleanString}</div>`);
+                        $("#menu-options").append($option);
+                    } else if (match[2].includes("Continue")) {
+                        // Set button color to green
+                        let $option = $(`<div class="menu-option" data-option="${letter}" style="background-color: green;">${match[2]}</div>`);
+                        $("#menu-options").append($option);
+                    } else {
+                        let $option = $(`<div class="menu-option" data-option="${letter}">${match[2]}</div>`);
+                        $("#menu-options").append($option);
+                    }
+                    }
+                }
+            });
+        }
+    }
+
+
+/*
     function displayMenuOptions(message) {
         $("#menu-options").empty();
         // Split the message into lines and filter for those starting with a bracket and a capital letter and a closing bracket
         let options = message.split("\n").filter(line => /^\[[A-Z]\]/.test(line));
         options.forEach(option => {
-            let match = option.match(/\[(.)\](.*)/ );
+            let match = option.match(/\[(.)\](.*)/);
             if (match && match[1]) {
                 let letter = match[1].toUpperCase();
                 // Ignore specific options if needed
                 if (!match[2].includes("Change default") && !match[2].includes("Change premium") && !match[2].includes("Exit") && !match[2].includes("Log comments")) {
-                    if(match[2].includes("Change num of parallel inferences")){
+                    if (match[2].includes("Change num of parallel inferences")) {
                         // Remove ANSI codes
                         let cleanString = match[2].replace(/\u001b\[\d+m/g, '');
                         let $option = $(`<div class="menu-option" data-option="${letter}">${cleanString}</div>`);
                         $("#menu-options").append($option);
-                    } else if(match[2].includes("Continue")){
+                    } else if (match[2].includes("Continue")) {
                         // Set button color to green
                         let $option = $(`<div class="menu-option" data-option="${letter}" style="background-color: green;">${match[2]}</div>`);
                         $("#menu-options").append($option);
@@ -1404,6 +1458,7 @@ $(document).on('click', '.collapsible-header', function() {
             }
         });
     }
+    */
 
     function updateFilters(data) {
         if (!$("#filter-message-type option[value='" + data.message_type + "']").length) {

@@ -56,12 +56,6 @@ class WebsocketServer:
         absolute_ihm_file_path = f"file://{ihm_file_path}"
         # Afficher le lien dans le terminal
         print(f"Access to IHM via : {absolute_ihm_file_path}")
-        try:
-            windows_ihm_file_path = subprocess.check_output(["wslpath", "-w", ihm_file_path]).decode("utf-8").strip()
-            absolute_ihm_file_path = "file:///" + windows_ihm_file_path.replace('\\', '/')
-            print(f"or on Windows WSL via : {absolute_ihm_file_path}")
-        except subprocess.CalledProcessError as e:
-            print(f"Windows WSL path not found : {e}")
 
         server = await websockets.serve(self.handler, "localhost", 6789)
         while not stop_event.is_set():
@@ -83,6 +77,7 @@ class WebsocketServer:
             message['sender_id'] = self.server_id
         for client in self.connected_clients:
             asyncio.run(client.send(message))
+            print(message)
 
     def send_notasync_message(self, message):
         self.message_count += 1
