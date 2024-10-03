@@ -5,6 +5,7 @@ import subprocess
 import traceback
 import types
 import time
+import socket
 
 from ipywidgets import fixed
 from sympy.physics.units import temperature
@@ -938,9 +939,16 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                               optuna_opti=None, allow_custom_score_state_functions=False,
                               params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
-                              number_inferences=1, fixed_coach=False):
+                              number_inferences=1, fixed_coach=False, unique_id=None):
     time_end = time.time() + max_execution_time
     scores = None
+
+    if unique_id is None:
+        # Set unique_id to the name of the machine + timestamp
+        unique_id = f"{socket.gethostname()}-{int(time.time())}"
+
+    if UnifiedVectorDB.unique_collection_id is None:
+        UnifiedVectorDB.set_unique_collection_id(unique_id)
 
     if params_user_message is None and optuna_opti is None:
         params_user_message = {

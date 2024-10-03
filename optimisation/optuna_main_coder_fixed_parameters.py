@@ -8,7 +8,7 @@ from langchain_openai import ChatOpenAI
 from config import MODELS_CONFIG_LIST
 from learn import EnvironmentManager, run_4agents_learning_loop
 from optimisation.optuna_analysis import analysis
-from utils.llm_utils import HumanLLMMonitor
+from utils.llm_utils import HumanLLMMonitor, UnifiedVectorDB
 
 # Set the class variable
 HumanLLMMonitor.use_websocket = False
@@ -144,6 +144,7 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
             llmORchains_list, envs = definition_global_parameters(None, special_criteria["presence_penalty"])
         # Delete the presence_penalty from the special_criteria
         del special_criteria["presence_penalty"]
+    UnifiedVectorDB.set_unique_collection_id(f"{name_exp}")
     performance = run_4agents_learning_loop(default_llm_key=default_llm_key,
                                             premium_llm_key=premium_llm_key,
                                             llmORchains_list=llmORchains_list,

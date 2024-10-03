@@ -369,6 +369,11 @@ class UnifiedVectorDB:
     es_password = None
     OpenAI_embedding_function_name = "text-embedding-ada-002"
     db_connection_check_done = False
+    unique_collection_id = None
+
+    @classmethod
+    def set_unique_collection_id(cls, unique_id):
+        cls.unique_collection_id = unique_id
 
     @staticmethod
     def check_db():
@@ -398,6 +403,8 @@ class UnifiedVectorDB:
     def __init__(self, collection_name, embedding_function, persist_directory, reset_db_indices=False):
         UnifiedVectorDB.check_db()
         self.collection_name = collection_name.lower()
+        if UnifiedVectorDB.unique_collection_id is not None:
+            self.collection_name += f"_{UnifiedVectorDB.unique_collection_id}"
         self.embedding_function = embedding_function
         self.persist_directory = persist_directory
 
@@ -447,8 +454,8 @@ class UnifiedVectorDB:
             return self.db.similarity_search_with_score(query, k=k)
         elif UnifiedVectorDB.db_type == 'elasticsearch':
             return self.db.similarity_search_with_score(query, k=(k if k <= 50 else 50))  # k seems to crash when > 50
-
     # query( query_embeddings, query_texts, n_results, where, where_document, include)
+
     def query(self, query_text="", k=1, metadata_filter=None, metadata_filter_OR=False, custom_filter_chrome=None,
               custom_filter_es=None, sort_order=None):
         if UnifiedVectorDB.db_type == 'chroma':
@@ -520,7 +527,6 @@ class UnifiedVectorDB:
             print(f"Deleted {response['deleted']} documents from index {self.collection_name}")
             # sleep 2 seconds to let the index be updated
             time.sleep(2)
-
     # TODO: start by replacing UnifiedVectorDB by neo4j improving the ChatGPT generated code below, then validate the learn.py process works properly
 
 
