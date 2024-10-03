@@ -272,6 +272,21 @@ color: white;
     display: block;
 }
 
+.input-area {
+    display: flex;
+    align-items: center;
+}
+
+.input-area input[type="text"] {
+    flex: 1;
+    margin-right: 10px;
+}
+
+.input-area .auto-open-checkbox {
+    margin-left: 10px;
+}
+
+
 @media (min-width: 1200px) {
     .solution-column {
         flex: 1 1 calc(25% - 20px); /* 4 colonnes */
@@ -323,7 +338,7 @@ color: white;
       <div class="auto-open-checkbox">
             <input type="checkbox" id="auto-open-accordion" checked>
             <label style="color:black;" for="auto-open-accordion">Auto-focus new messages</label>
-        </div>
+      </div>
         <div>
              <label><input type="checkbox" id="show-concepts" checked> Show Concepts</label>
         </div>
@@ -345,8 +360,15 @@ color: white;
 
         <div id="menu-options"></div>
 
-        <input type="text" id="user-input" placeholder="Type your message...">
-        <button id="send-button">Send</button>
+        <div class="input-area">
+            <input type="text" id="user-input" placeholder="Type your message...">
+            <button id="send-button">Send</button>
+            <br>
+            <div class="auto-open-checkbox">
+                <input type="checkbox" id="auto-open-accordion-bottom" checked>
+                <label style="color:black;" for="auto-open-accordion-bottom">Auto-focus new messages</label>
+            </div>
+        </div>
 
         <div class="filter-bar-bottom">
             <select id="filter-message-type-bottom">
@@ -899,6 +921,14 @@ $(function() {
             // Wait a second then scroll to the bottom
             setTimeout(scrollToBottom, 1000);
         }
+
+        // Auto-open accordion if auto-open-accordion-bottom checkbox is checked
+        if ($("#auto-open-accordion-bottom").is(":checked")) {
+            let accordionIndex = $("#message-accordion > div").index($agentAccordion);
+            $("#message-accordion").accordion("option", "active", accordionIndex);
+            // Wait a second then scroll to the bottom
+            setTimeout(scrollToBottom, 1000);
+        }
     }
 
     $(`#temperature`).on('input', function () {
@@ -1000,7 +1030,12 @@ $(function() {
 
                 // Refresh value on value change
                 $(`#slider-${columnId}`).on('input', function () {
-                    $(`#value-${columnId}`).text(this.value);
+                    // If value is -1 display "Unscored" instead
+                    if(this.value === '-1') {
+                        $(`#value-${columnId}`).text('Unscored');
+                    } else {
+                        $(`#value-${columnId}`).text(this.value);
+                    }
                 });
 
                 $(document).on("click", `#evaluate-${columnId}`, function () {
@@ -1250,6 +1285,16 @@ $(function() {
         if ($(this).is(":checked")) {
             scrollToBottom();
         }
+        // Update the checkbox at the bottom of the page
+        $("#auto-open-accordion-bottom").prop("checked", $(this).is(":checked"));
+    });
+
+    $("#auto-open-accordion-bottom").change(function() {
+        if ($(this).is(":checked")) {
+            scrollToBottom();
+        }
+        // Update the checkbox at the top of the page
+        $("#auto-open-accordion").prop("checked", $(this).is(":checked"));
     });
 
    function formatMessage(message) {
