@@ -52,9 +52,12 @@ def analysis(name_exp: str, in_dir = False):
             study = optuna.load_study(study_name=study_name, storage=f"sqlite:///{sqlite_file}")
 
             # Check if the study has trials
-            if len(study.trials) == 0:
+            total_trials = len(study.trials)
+            if total_trials == 0:
                 write_to_file("No trials found in the study.")
                 return
+            else:
+                write_to_file("{total_trials} trials found.")
 
             # Get all trials as a DataFrame
             df = study.trials_dataframe()
@@ -63,7 +66,7 @@ def analysis(name_exp: str, in_dir = False):
                 # Sort by `value` to display top 10 trials (or fewer if less than 10)
                 sorted_df = df.sort_values(by='value', ascending=False).head(min(10, len(df)))
 
-                write_to_file("\nTop 10 Trials by Performance:\n")
+                write_to_file("\nTop 10 Trials by Performance (out of {total_trials} trials):\n")
                 write_to_file(f"{'Value':<10} | {'State':<10} | {'Params':<40} | {'Datetime':<20} | {'Trial ID'}")
                 write_to_file("-" * 120)
 
@@ -204,7 +207,10 @@ def analysis(name_exp: str, in_dir = False):
             os.remove(sqlite_file)
             write_to_file(f"Copied database file {sqlite_file} removed after analysis.")
 
+<<<<<<< Updated upstream
 
+=======
+>>>>>>> Stashed changes
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         analysis(sys.argv[1], True)
