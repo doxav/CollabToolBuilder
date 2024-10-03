@@ -184,14 +184,16 @@ class EnvironmentManager:
 # Agent 1: Task Identification
 class TaskIdentificationAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
-                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, criteria=None,params_user_message=None):
+                 premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, criteria=None,params_user_message=None, temperature_min=0., temperature_max=1.):
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         self.criteria = criteria
         self.params_user_message = params_user_message
+        self.temperature_min = temperature_min
+        self.temperature_max = temperature_max
         self.human_llm_identify_best_task = HumanLLMMonitor(default_llmORchain=default_llm_choice, premium_llmORchain=premium_llm_choice,
                                                             premium_llm_by_default=premium_llm_by_default,
-                                                            llmORchains_list=llmORchains_list)#,output_schema="identify_best_task.schema.py")
+                                                            llmORchains_list=llmORchains_list, temperature_min=temperature_min, temperature_max=temperature_max, num_parallel_inferences=1 if optuna else 2)#,output_schema="identify_best_task.schema.py")
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         self.envs = envs
         self.optuna_opti = optuna
@@ -258,7 +260,7 @@ class TaskIdentificationAgent():
 
 # Agent 2: Code Task
 class CodingAgent():
-    def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, special_criteria=None):
+    def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, special_criteria=None, temperature_min=0., temperature_max=1.):
         #super().__init__(llm)
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
@@ -272,10 +274,10 @@ class CodingAgent():
             "premium_llm_by_default": True,
             "num_parallel_inferences": 4,
             "llmORchains_list": llmORchains_list,
-            "optuna": optuna
+            "optuna": optuna,
+            "temperature_min": temperature_min,
+            "temperature_max": temperature_max
         }
-        if hasattr(self, 'temperature'):
-            kwargs["temperature"] = self.temperature
 
         self.human_llm_code_task = HumanLLMMonitor(**kwargs)
         self.human_llm_code_task.skip_rounds = skip_rounds
@@ -1277,7 +1279,7 @@ if __name__ == "__main__":
                               include_code=False, 
                               selected_successful_functions=[], 
                               selected_failed_functions=[], 
-                              max_execution_time=900,
+                              max_execution_time=1800,
                               agtask_premium_llm_by_default=False,
                               agtask_skip_rounds=0, # Auto-test: 1 
                               agcoding_skip_rounds=0, # Auto-test: 4

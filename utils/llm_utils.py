@@ -984,12 +984,16 @@ class HumanLLMMonitor:
                  default_llmORchain=None,
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1,
                  llmORchains_list=None,
-                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature=0.7, optuna=False, envs=None):
+                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, optuna=False, envs=None):
+        # Instance properties to track time
+        self.menu_start_time = None
+        self.start_time = None
         self.current_inference_context = None
         self.user_message_few_shots = None
         if llmORchains_list is None: raise ValueError("llmORchains_list must be provided")
         self.llmORchains_list = llmORchains_list
-        self.temperature = temperature
+        self.temperature_min = temperature_min
+        self.temperature_max = temperature_max if temperature_max else (temperature_min+0.2)
         self.optuna = optuna
         self.system_prompt = system_prompt
         self.set_output_schema(output_schema)
@@ -1048,8 +1052,43 @@ class HumanLLMMonitor:
                     raise TypeError(
                         f"Cannot match parameters to function signature. Expected {param_count} parameters but received {type(params).__name__}.")
 
+            self.track_time_spent(function_name)
         # Retourner une valeur par défaut si la fonction n'existe pas ou n'est pas callable
         return None
+
+    def track_time_spent(self, action, mode=None, reset_menu_time_after=True):
+        """
+        Track the time spent on each menu option or action.
+        
+        Args:
+        - action (str): The action being performed (e.g., 'A', 'B', etc.)
+        - is_before (bool): True if tracking for _before_inference, False for _after_inference
+        """
+        if mode == 'before' or (mode is None and self.mode == 'before'):
+            time_dict, count_dict = self.before_inference_option_times, self.before_inference_option_counts
+        elif mode == 'after' or (mode is None and self.mode == 'after'):
+            time_dict, count_dict = self.after_inference_option_times, self.after_inference_option_counts
+        else:
+            time_dict, count_dict = self.unidentified_option_times, self.unidentified_option_counts
+
+        if action:
+            if action not in time_dict:
+                time_dict[action] = 0
+                count_dict[action] = 0
+            time_dict[action] += (time.time() - self.start_time)
+            count_dict[action] += 1
+        
+        # Track total time
+        time_dict["TOTAL"] += (time.time() - self.menu_start_time)
+        count_dict["TOTAL"] += 1
+
+        # Track selection time
+        time_dict["SELECTION"] += (self.start_time - self.menu_start_time)
+        count_dict["SELECTION"] += 1
+
+        # Reset times for the next action
+        if reset_menu_time_after:
+            self.start_time, self.menu_start_time = time.time(), time.time()
 
     def load_prompt(self, function_name: str = None, agent_name: str = None, prompt: str = None) -> str:
         with open(f"prompts/{prompt}.txt", "r") as f:
@@ -1126,7 +1165,7 @@ class HumanLLMMonitor:
        :return: A string containing the generated summary.
        """
         # Set up the language model and prompt
-        llm = OpenAI(temperature=self.temperature)
+        llm = OpenAI(temperature=self.temperature_min)
         prompt = PromptTemplate(
             input_variables=["examples"],
             template="Summarize the following examples in {char_limit} characters or less:\n\n{examples}"
@@ -1193,6 +1232,7 @@ class HumanLLMMonitor:
 
     def _before_inference(self, messages, default_llm_function, premium_llm_function, function_calling,
                           callable_system_message=None, use_premium_llm=None, optuna=None, model_choice=None):
+        self.mode = 'before'
         comments = None
         initial_user_message = messages[1].content
         function_name = inspect.stack()[2].function
@@ -1223,7 +1263,7 @@ class HumanLLMMonitor:
             menu += (f"[Z] Continue\n")
 
             smart_print(before_menu + menu, self.agent_name, "BEFORE inference action MENU")
-            menu_start_time = time.time()
+            self.menu_start_time = time.time()
             match (optuna.lower() if optuna else ""):
                 case "coach":
                     llm_keys = list(self.llmORchains_list.keys())
@@ -1251,7 +1291,7 @@ class HumanLLMMonitor:
                         self.agent_name).upper()
 
             # ACTIONS processing
-            start_time, action = time.time(), action  # Init action selected and timer to measure time spent and occurences in action processing
+            self.start_time = time.time()  # Init action selected and timer to measure time spent and occurences in action processing
 
             if action == "A":  # Modify system prompt
                 comments, forced_llm_output = self.modify_prompt(callable_system_message, comments,
@@ -1321,17 +1361,7 @@ class HumanLLMMonitor:
                 self.changeNumParallelInferencesAndSynthesize()
 
             # Count time spent and occurrences waiting and in each option
-            if action:
-                if action not in self.before_inference_option_times:
-                    self.before_inference_option_times[action] = 0
-                    self.before_inference_option_counts[action] = 0
-                self.before_inference_option_times[action] += (time.time() - start_time)
-                self.before_inference_option_counts[action] += 1
-            self.before_inference_option_times["TOTAL"] += (time.time() - menu_start_time)
-            self.before_inference_option_counts["TOTAL"] += 1
-            self.before_inference_option_times["SELECTION"] += (start_time - menu_start_time)
-            self.before_inference_option_counts["SELECTION"] += 1
-            start_time, menu_start_time = None, None
+            self.track_time_spent(action, mode='before')
 
             if action in [None, "", "P",
                           "C", "Z"]:  # P: Proceed to inference using a PREMIUM LLM; C: Set LLM output by re-using past
@@ -1349,6 +1379,7 @@ class HumanLLMMonitor:
             f"Time spent in each option and occurrences: {self.before_inference_option_times} - {self.before_inference_option_counts}",
             self.agent_name)
 
+        self.mode = None
         return messages, comments, forced_llm_output, use_premium_llm, default_llm_function, premium_llm_function, function_calling
 
     def changeNumParallelInferencesAndSynthesize(self):
@@ -1643,6 +1674,7 @@ class HumanLLMMonitor:
 
     def _after_inference(self, inference_result_msg, premium_llm_function, color="37", output_id=None,
                          outputs_count=None, optuna=None):
+        self.mode = 'after'
         comments, score = None, None
         nl = "\n"
         if inference_result_msg is None:
@@ -1677,13 +1709,13 @@ class HumanLLMMonitor:
 
             smart_print(menu, self.agent_name, "AFTER inference action MENU" + (
                 f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""))
-            menu_start_time = time.time()
+            self.menu_start_time = time.time()
             action = "" if optuna else smart_input(
                 f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
                 self.agent_name).upper()
 
             # ACTIONS processing
-            start_time, action = time.time(), action  # Init action selected and timer to measure time spent and occurences in action processing
+            self.start_time = time.time()  # Init action selected and timer to measure time spent and occurences in action processing
 
             if action == "A":  # Manually set/modify the answer/output
                 self.modifyAnswer(inference_result_msg)
@@ -1707,18 +1739,7 @@ class HumanLLMMonitor:
                 self.exitProgram()
 
             # Count time spent and occurrences waiting and in each option
-            if action and action.isalpha() and len(action) == 1:
-                # if action is set and not exist yet, also check if this is 1 single letter
-                if action not in self.after_inference_option_times:
-                    self.after_inference_option_times[action] = 0
-                    self.after_inference_option_counts[action] = 0
-                self.after_inference_option_times[action] += (time.time() - start_time)
-                self.after_inference_option_counts[action] += 1
-            self.after_inference_option_times["TOTAL"] += (time.time() - menu_start_time)
-            self.after_inference_option_counts["TOTAL"] += 1
-            self.after_inference_option_times["SELECTION"] += (start_time - menu_start_time)
-            self.after_inference_option_counts["SELECTION"] += 1
-            start_time, menu_start_time = None, None
+            self.track_time_spent(action, mode='after')
 
             if action in [None, "",
                           "E",
@@ -1744,6 +1765,7 @@ class HumanLLMMonitor:
                 f"Time spent in each option and occurrences: {self.after_inference_option_times} - {self.after_inference_option_counts}",
                 self.agent_name)
 
+        self.mode = None
         return inference_result_msg, comments, score
 
     def goBackInference(self, inference_result_msg):
@@ -1849,42 +1871,84 @@ class HumanLLMMonitor:
                 content_pretty = json.dumps(content_structure,
                                             indent=4) if is_structure else inference_result_msg.content
                 content_annotated = _visual_input(content_pretty, filetype="py" if is_structure else "md")
-            #comments = smart_input("Provide critic/feedback/request: ", self.agent_name)
-            system_prompt = """
-Refine the **ANNOTATED ANSWER** for the **TARGET TASK**, given answer including important inline text annotated instructions on key elements to improve the answer using tags (see **ANNOTATION TAGS** for interpretation). Directly answer with the updated answer aligned with annotated instructions tags, no introduction.
 
-### TARGET TASK:
-Identify and define the best task to develop using code and LLM given the status of available developed tasks and failed tasks
+            system_prompt = """
+Refine the **ANNOTATED ANSWER** for the **TARGET TASK**, given inline text annotations instructions  using tags (see **ANNOTATION TAGS** for interpretation). Directly answer with the updated answer (tags are removed and replaced inline with instruction) with the same format, do not add introduction or comments.
+
+### TARGET TASK: {{{"""+self.llm_input_messages[0].content+"\n\nUSER MESSAGE:\n"+self.llm_input_messages[0].content+"""}}}
 
 ### ANNOTATION TAGS:
-The following annotations are provided to guide the refinement process. Each annotation is in the format `\TAG{Annotated text...}[optional explanation]`. The tags indicate specific actions you should take to improve or finalize the text. Please follow the instructions for each tag carefully:
+The following annotations are provided to guide the refinement process. Each annotation is in the format `\TAG{Annotated text...}{optional explanation}`. The tags indicate specific actions you should take to improve or finalize the text. Please follow the instructions for each tag carefully:
+
 1. **\APPROVE:**
-- **Purpose:** This tag indicates that the content is correct, clear, and relevant to the subject.
+- This tag indicates that the content is correct, clear, and relevant to the subject.
 - **Action:** **No changes are necessary.** Retain this content exactly as it is.
 - **Example:** \APPROVE{The system's reliability is essential for maintaining continuous operation.}
+
 2. **\FIX:**
-- **Purpose:** Content marked with this tag requires **correction or improvement**. There may be issues related to accuracy, clarity, or relevance.
+- Content marked with this tag requires **correction or improvement**. There may be issues related to accuracy, clarity, or relevance.
 - **Action:** Make necessary revisions to ensure the text is accurate, clear, and aligned with the overall subject matter.
-- **Example:** \FIX{tomato_sauce_recipe = rubish_llm_factory('tell me how to make tomato sauce for my italian noodles')}
+- **Example:** \FIX{tomato_sauce_recipe = rubish_llm_factory('tell me how to make tomato sauce for my italian noodles')}{it should first search on the web for a reliable recipe, then use llm}
+
 3. **\DELETE:**
-- **Purpose:** This tag is used for content that is **unnecessary, irrelevant, or detrimental** to the quality of the text.
-- **Action:** **Remove** this content entirely from the final version.
+- This tag is used for content that is **unnecessary, irrelevant, or detrimental** to the quality of the text.
+- **Action:** Remove this content entirely from the final version.
 - **Example:** \DELETE{The report includes a lengthy discussion on unrelated financial data.}
-4. **\variants:**
-- **Purpose:** Content marked with this tag requires the generation of **alternative expressions or approaches**.
-- **Action:** Create multiple appropriate variations between parenthesis after the inline text between curly braces e.g. {inline initial text...}(text of variant 1...)(text of variant 2...)
-- **Example:** \VARIANTS{The user interface should be intuitive using multi-column visual side by side comparison.}
+
 ### Your Task:
 1. **Understand** the initial task and subject matter to ensure that the text aligns with the overall objectives and audience requirements.
 2. **Interpret** the annotations in the provided text according to the guidelines above.
 3. **Revise** the text by making necessary corrections, deletions, or additions as instructed.
-4. **Generate** alternative phrasings or approaches where indicated, ensuring each variant is clearly differentiated using the inline curly braces `{}` directly followed by variants inside () without space between.
-5. Ensure that the **final text** is clear, accurate, relevant, and stylistically appropriate for the INITIAL TASK.
+4. Ensure that the **final text** is clear, accurate, relevant, and stylistically appropriate for the INITIAL TASK.
 """
+
             #system_prompt = """Refine the **ANNOTATED ANSWER** given inline text annotated instructions (format: \intruction_type{text selection}[optional comment]). Directly answer with the updated answer aligned with annotated instructions tags, no introduction."""
             user_prompt = f"### ANNOTATED ANSWER:\n{content_annotated}"
-            llm_output = self.premium_llm.invoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+            #llm_output = self.premium_llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+
+            # Task 1: System prompt for extracting and structuring feedback
+            system_prompt_1 = """
+Your task is to extract and organize feedback tags from the **ANNOTATED ANSWER** provided for the given **TARGET TASK**. Identify the instructions given by the annotation tags (\APPROVE, \FIX, \DELETE) and structure them into a list. Do not modify the content of **ANNOTATED ANSWER** at this stage.
+
+### TARGET TASK: {{{"""+self.llm_input_messages[0].content+"\n\nUSER MESSAGE:\n"+self.llm_input_messages[0].content+"""}}}
+
+### Annotation Tags:
+- **\APPROVE:** Content is correct, no changes needed.
+- **\FIX:** The content requires improvement or correction.
+- **\DELETE:** Remove this content.
+
+### Your Task:
+1. **Identify** the feedback instructions based on annotation tags.
+2. **Organize** the instructions into a list format with specific details on what needs to be done (fix, delete, etc.).
+3. **Reply** with the improved answer without any additional introduction or comments.
+
+### ANNOTATED ANSWER:
+{content_annotated}
+"""
+            # Call the LLM for inference 1
+            llm_output_1 = self.premium_llm.invoke([SystemMessage(content=system_prompt_1), HumanMessage(content=user_prompt)])
+
+            # Task 2: System prompt for refining based on structured feedback
+            system_prompt_2 = """
+Refine the provided answer for the given **TARGET TASK** based on the following structured feedback. Use the feedback to make necessary changes to the answer, following the instructions closely. 
+
+### TARGET TASK: {{{"""+self.llm_input_messages[0].content+"\n\nUSER MESSAGE:\n"+self.llm_input_messages[0].content+"""}}}
+
+### Structured Feedback:
+{structured_feedback}
+
+### Your Task:
+1. **Revise** the text according to the feedback (fix, delete, variants).
+2. **Ensure** that the final text is clear, accurate, and aligned with the initial task.
+
+### INITIAL ANSWER:
+{content_annotated}
+"""
+
+            # Call the LLM for inference 2
+            llm_output = self.premium_llm.invoke([SystemMessage(content=system_prompt_2), HumanMessage(content=llm_output_1.content)])
+
+
             # TODO: sauvegarde log_entry
             if not HumanLLMMonitor.use_websocket:
                 smart_print(f"***** PROMPT:\n{system_prompt}\n `\n{user_prompt}".replace("\\n", "\n"), self.agent_name,
@@ -2025,21 +2089,51 @@ The following annotations are provided to guide the refinement process. Each ann
             metadatas=[tags]
         )
 
+    def process_llm_output(self, llm_output, counter, llm_outputs, init_skip_rounds):
+        """Traite un seul LLM output (séquentiellement ou en parallèle)."""
+        if len(llm_outputs) > 1:
+            self.skip_rounds = init_skip_rounds
+            smart_print(f"\033[31mMULTI-INFERENCE OUTPUT #{counter} > \033[0m", self.agent_name, "POST INFERENCE", append=True)
+        self.current_inference_context = {
+            'function_name': inspect.stack()[1].function,
+            'input_contents': self.llm_input_messages,
+            'output_contents': None,  # Remplir après traitement
+            'start_time': datetime.now(),
+            'input_modified': False,
+            'skipped_inference': None,
+            'input_comments': None,
+            'output_comments': None,
+            'raw_llm_outputs': None,
+            'output_modified': None,
+            'message_tokens': None,
+            'use_premium_llm': False
+        }
+        # Post-inference human intervention (traitement standard après une inférence)
+        output_messages_instance, output_comments_instance, score_instance = self._after_inference(
+            llm_output, premium_llm_function=None, output_id=counter,
+            outputs_count=len(llm_outputs), optuna=None)
+        return output_messages_instance, output_comments_instance, score_instance
+
     #    def CallHumanLLM(self, original_input_messages=None, llm_function=None, premium_llm_function=None, callable_system_message=None, system_prompt_template=None, user_message=None, return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=90, stream_output=True):
     def CallHumanLLM(self, original_input_messages=None, default_llm_function=None, premium_llm_function=None,
                      callable_system_message=None, system_prompt_template=None, user_message=None,
-                     return_message_content_only=True, function_calling=False, temperature=None, timeout_seconds=300,
+                     return_message_content_only=True, function_calling=False, temperature_min=None, timeout_seconds=300,
                      stream_output=False, use_default_llm=True, optuna=None, model_choice=None,
-                     temperature_increase=0.05):
+                     temperature_max=None):
         #if not self.selected_llm_or_chain: raise ValueError("No LLM or chain selected for use.")
+        if temperature_min is None: temperature_min = self.temperature_min
+        if temperature_max is None: temperature_max = self.temperature_max
         # Define a helper function to perform the LLM calls for parallel inference.
         def perform_llm_call(input_msg, use_premium, func_calling, temperature=None, stream_output=True, color_id=None):
             if use_premium:
                 func = premium_llm_function if not func_calling else HumanLLMMonitor.call_llm_function_with_function_call
             else:
                 func = default_llm_function if not func_calling else HumanLLMMonitor.call_llm_function_with_function_call
-            if temperature:
+            if temperature or temperature == 0:
                 func = func.with_config(configurable={"llm_temperature": temperature})
+                print(f"Temperature set to {temperature}")
+            else:
+                print(f"No temperature value, not set")
 
             if stream_output:
                 if color_id is None or color_id <= 0:
@@ -2095,10 +2189,12 @@ The following annotations are provided to guide the refinement process. Each ann
             original_input_messages[1].content)
 
         self.before_inference_option_times = {'TOTAL': 0, 'SELECTION': 0}  # then each option will be added to this dict
-        self.before_inference_option_counts = {'TOTAL': 0,
-                                               'SELECTION': 0}  # then each option will be added to this dict
+        self.before_inference_option_counts = {'TOTAL': 0, 'SELECTION': 0}  # then each option will be added to this dict
         self.after_inference_option_times = {'TOTAL': 0, 'SELECTION': 0}  # then each option will be added to this dict
         self.after_inference_option_counts = {'TOTAL': 0, 'SELECTION': 0}  # then each option will be added to this dict
+        self.unidentified_option_times = {'TOTAL': 0, 'SELECTION': 0}  # then each option will be added to this dict
+        self.unidentified_option_counts = {'TOTAL': 0, 'SELECTION': 0}  # then each option will be added to this dict
+        self.mode = None
         call_start_time = time.time()
 
         while True:
@@ -2111,6 +2207,7 @@ The following annotations are provided to guide the refinement process. Each ann
             llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(
                 original_input_messages, default_llm_function, premium_llm_function, function_calling,
                 callable_system_message, optuna=optuna, model_choice=model_choice)
+            self.llm_input_messages = llm_input_messages
             start_time = datetime.now()
             self.last_inference_check_results = [None] * self.num_parallel_inferences  # Pre-allocate the list with None
             if llm_input_messages and not skip_inference:
@@ -2122,8 +2219,7 @@ The following annotations are provided to guide the refinement process. Each ann
                             self.llmORchains_list.get('3_majority_chain')):
                         stream_output = True
                     futures = [executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling,
-                                               ((temperature + (
-                                                           i * temperature_increase) if temperature > 0 else 0) if temperature else None),
+                                               ((temperature_min + i*(temperature_max-temperature_min)/(self.num_parallel_inferences-1) ) if (temperature_min is not None and self.num_parallel_inferences>1 and temperature_min >= 0.) else 0),
                                                stream_output, i) for i in
                                range(self.num_parallel_inferences)]
                     for idx, future in enumerate(futures):
@@ -2177,44 +2273,41 @@ The following annotations are provided to guide the refinement process. Each ann
                     smart_print("**** Multiple LLM ANSWERS > we will process POST INFERENCE for each ****",
                                 self.agent_name, "Multiple LLM ANSWERS", append=True)
                     init_skip_rounds = self.skip_rounds  # save the current skip_rounds value because multiple outputs decrease skip rounds for each parallel output
-                for counter, llm_output in enumerate(llm_outputs, start=1):
-                    if len(llm_outputs) > 1:
-                        self.skip_rounds = init_skip_rounds
-                        smart_print(f"\033[31mMULTI-INFERENCE OUTPUT #{counter} > \033[0m", self.agent_name,
-                                    "POST INFERENCE", append=True)
-                    self.current_inference_context = {
-                        'function_name': inspect.stack()[1].function,
-                        'input_contents': llm_input_messages,
-                        'output_contents': output_messages,
-                        'start_time': start_time,  # Store start_time instead of computing inference_time
-                        'input_modified': ((llm_input_messages[0].content + "\n" + llm_input_messages[1].content) != (
-                                input_contents_str0 + "\n" + input_contents_str1)),
-                        'skipped_inference': skip_inference,
-                        'input_comments': input_comments,
-                        'output_comments': output_comments,
-                        'raw_llm_outputs': raw_llm_outputs,
-                        'output_modified': [output_message.content != raw for output_message, raw in
-                                            zip(output_messages, raw_llm_outputs)],
-                        'message_tokens': None,  # You may want to calculate this
-                        'use_premium_llm': use_premium_llm
-                    }
-                    # Post-inference human intervention
-                    output_messages_instance, output_comments_instance, score_instance = self._after_inference(
-                        llm_output, premium_llm_function=premium_llm_function, output_id=counter,
-                        outputs_count=len(llm_outputs), optuna=optuna)
-                    output_messages.append(output_messages_instance)
-                    if output_messages_instance == -1:
-                        break
-                    output_comments.append(output_comments_instance)
-                    score.append(score_instance)
-                # test if any of output_messages instance != -1, break if True
-                if any([output_messages_instance == -1 for output_messages_instance in output_messages]):
-                    original_input_messages[0].content, original_input_messages[
-                        1].content = input_contents_str0, input_contents_str1
+                if HumanLLMMonitor.use_websocket:
+                    # Utilisez un ThreadPoolExecutor pour exécuter les réponses en parallèle en mode WebSocket.
+                    with False and concurrent.futures.ThreadPoolExecutor() as executor:
+                        futures = []
+                        for counter, llm_output in enumerate(llm_outputs, start=1):
+                            futures.append(executor.submit(self.process_llm_output, llm_output, counter, llm_outputs, init_skip_rounds))
+
+                        # Attendre que toutes les tâches soient terminées.
+                        results = [future.result() for future in futures]
+
+                        # Traiter les résultats de chaque future (en parallèle ou séquentiellement)
+                        for counter, (output_messages_instance, output_comments_instance, score_instance) in enumerate(results, start=1):
+                            output_messages.append(output_messages_instance)
+                            if output_messages_instance == -1:
+                                break
+                            output_comments.append(output_comments_instance)
+                            score.append(score_instance)
                 else:
+                    # Traitement séquentiel classique
+                    for counter, llm_output in enumerate(llm_outputs, start=1):
+                        output_messages_instance, output_comments_instance, score_instance = self.process_llm_output(llm_output, counter, llm_outputs, init_skip_rounds)
+                        output_messages.append(output_messages_instance)
+                        if output_messages_instance == -1:
+                            break
+                        output_comments.append(output_comments_instance)
+                        score.append(score_instance)
+
+                # Test si l'une des instances de output_messages == -1
+                if any([output_messages_instance == -1 for output_messages_instance in output_messages]):
+                    original_input_messages[0].content, original_input_messages[1].content = input_contents_str0, input_contents_str1
+                else:
+                    # Sortir de la boucle
                     break
 
-                    # Get the calling function's name using inspect
+        # Get the calling function's name using inspect
         caller_function_name = inspect.stack()[1].function
 
         call_duration = time.time() - call_start_time
