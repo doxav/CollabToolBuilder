@@ -104,4 +104,4 @@ def objective(trial, name_xp : str):
 
 
 if __name__ == "__main__":
-    global_main(objective, "coder")
+    global_main(objective, "coder", "temperature_number_inferences")

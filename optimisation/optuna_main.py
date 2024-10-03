@@ -33,7 +33,7 @@ def definition_few_shots(trial, usr_msg: bool = False):
 
     for i in range(3):
         source = sources_list[i]
-        num = trial.suggest_int(f"num_tag_{i+1}", 0, 5)
+        num = trial.suggest_int(f"num_tag_{source}", 0, 5)
         if num > 0:
             output_format = trial.suggest_categorical(f"format_tag_{i+1}", ["Json", "Markdown"])
             # Define separators using Optuna
@@ -195,13 +195,14 @@ def launch_study(objective, name_exp : str):
     study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}", study_name=name_exp)
     study.optimize(objective, n_trials=200)
 
-def global_main(objective, agent_name : str) :
+def global_main(objective, agent_name : str, params_tested : str) :
     """
     Main function to launch the Optuna study.
 
     Args:
         objective (callable): The objective function for the Optuna study.
         agent_name (str): The name of the agent.
+        params_tested (str): The parameters tested in the study.
     """
     # Change directory to the location of this script if not already in the correct directory
     if os.path.basename(os.getcwd()) == "optimisation":
@@ -211,6 +212,6 @@ def global_main(objective, agent_name : str) :
         name_exp = sys.argv[1]
     else :
         timestamp_xp = int(time.time())
-        name_exp = f"xp_{agent_name}{timestamp_xp}"
+        name_exp = f"xp_{agent_name}{params_tested}{timestamp_xp}"
     launch_study(lambda trial: objective(trial, name_exp), name_exp)
 

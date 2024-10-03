@@ -138,7 +138,10 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
     if special_criteria is None:
         llmORchains_list, envs = definition_global_parameters()
     else:
-        llmORchains_list, envs = definition_global_parameters(special_criteria["temperature"], special_criteria["presence_penalty"])
+        if "temperature" in special_criteria:
+            llmORchains_list, envs = definition_global_parameters(special_criteria["temperature"], special_criteria["presence_penalty"])
+        else:
+            llmORchains_list, envs = definition_global_parameters(None, special_criteria["presence_penalty"])
         # Delete the presence_penalty from the special_criteria
         del special_criteria["presence_penalty"]
     performance = run_4agents_learning_loop(default_llm_key=default_llm_key,
@@ -192,13 +195,14 @@ def launch_study(objective, name_exp : str):
     study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}", study_name=name_exp)
     study.optimize(objective, n_trials=200)
 
-def global_main(objective, agent_name : str) :
+def global_main(objective, agent_name : str, params_tested : str) :
     """
     Main function to launch the Optuna study.
 
     Args:
         objective (callable): The objective function for the Optuna study.
         agent_name (str): The name of the agent.
+        params_tested (str): The parameters tested in the study.
     """
     # Change directory to the location of this script if not already in the correct directory
     if os.path.basename(os.getcwd()) == "optimisation":
@@ -208,6 +212,6 @@ def global_main(objective, agent_name : str) :
         name_exp = sys.argv[1]
     else :
         timestamp_xp = int(time.time())
-        name_exp = f"xp_{agent_name}{timestamp_xp}"
+        name_exp = f"xp_{agent_name}{params_tested}{timestamp_xp}"
     launch_study(lambda trial: objective(trial, name_exp), name_exp)
 

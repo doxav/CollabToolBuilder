@@ -202,6 +202,8 @@ def analysis(name_exp: str, in_dir = False):
             os.remove(sqlite_file)
             write_to_file(f"Copied database file {sqlite_file} removed after analysis.")
 
-if len(sys.argv) > 1:
-    analysis(sys.argv[1], True)
-else: print("provide a file to analyze")
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        analysis(sys.argv[1], True)
+    else: print("provide a file to analyze")

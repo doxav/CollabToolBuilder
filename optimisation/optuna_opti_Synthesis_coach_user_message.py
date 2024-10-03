@@ -182,4 +182,4 @@ def objective(trial, timestamp_exp: str):
     return perf
 
 if __name__ == "__main__":
-    global_main(objective, "coach")
+    global_main(objective, "coach", "temperature_number_inferences")

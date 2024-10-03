@@ -13,8 +13,6 @@ def objective(trial, name_xp : str):
     # Define fixed parameters for Coder
     libraries_restriction = "Numpy, Pandas, Huggingface, Sklearn" # Can be removed: Huggingface and Sklearn, to test if 3 imposed methods offer better performance than with these libraries
     max_autofix = 3
-    temperature = trial.suggest_categorical("temperature", [0.5, 0.7, 0.9, 1.1, 1.3, 1.5])
-    number_inferences = trial.suggest_categorical("number_inferences", [1, 2, 4, 8])
     fixed_coach = trial.suggest_categorical("fixed_coach", [True, False])
     presence_penalty = 0.7189030356596702
     reasoning_depth = 1
@@ -84,7 +82,6 @@ def objective(trial, name_xp : str):
         optuna_opti="coach",
         special_criteria={
             "max_autofix": max_autofix,
-            "temperature": temperature,
             "presence_penalty": presence_penalty,
             "num_previous_attempts": num_previous_attempts,
             "parameters_previous_attempts": parameters_previous_attempts,
@@ -94,7 +91,6 @@ def objective(trial, name_xp : str):
         },
         name_exp=name_xp,
         params_user_message=user_message_params,
-        number_inferences=number_inferences,
         fixed_coach=fixed_coach,
     )
 
@@ -106,4 +102,4 @@ def objective(trial, name_xp : str):
 
 
 if __name__ == "__main__":
-    global_main(objective, "coder")
+    global_main(objective, "coder", "fixed_coach")
