@@ -113,16 +113,22 @@ def analysis(name_exp: str, in_dir = False):
                                 write_to_file(f"{param:<25} | {'Boolean':<12} | {str(bool_value):<40} | {mean_perf:<15.4f}")
 
                         elif values.dtype in ['int64', 'float64']:
-                            # Numerical parameter performance with binning
-                            min_value = values.min()
-                            max_value = values.max()
+                            # Check if values are integers and handle accordingly
+                            if pd.api.types.is_integer_dtype(values):
+                                performance_by_bin = df.groupby(values)['value'].mean().sort_index()
+                                bin_type = 'Integer'
+                            else:
+                                # For floating-point numbers, use binning
+                                min_value = values.min()
+                                max_value = values.max()
+                                bin_size = 5
+                                bins = pd.cut(values, bins=bin_size, precision=1)
+                                performance_by_bin = df.groupby(bins, observed=False)['value'].mean()
+                                bin_type = 'Numerical'
 
-                            bin_size = 5
-                            bins = pd.cut(values, bins=bin_size, precision=1)
-                            performance_by_bin = df.groupby(bins, observed=False)['value'].mean()
-
+                            # Common logic for printing results
                             for bin_range, mean_perf in performance_by_bin.items():
-                                write_to_file(f"{param:<25} | {'Numerical':<12} | {str(bin_range):<40} | {mean_perf:<15.4f}")
+                                write_to_file(f"{param:<25} | {bin_type:<12} | {str(bin_range):<40} | {mean_perf:<15.4f}")
 
                         # Add a separator line between parameters
                         write_to_file("-" * 90)
@@ -207,10 +213,6 @@ def analysis(name_exp: str, in_dir = False):
             os.remove(sqlite_file)
             write_to_file(f"Copied database file {sqlite_file} removed after analysis.")
 
-<<<<<<< Updated upstream
-
-=======
->>>>>>> Stashed changes
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         analysis(sys.argv[1], True)
