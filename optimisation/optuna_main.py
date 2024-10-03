@@ -193,7 +193,7 @@ def launch_study(objective, name_exp : str):
 
     # Create a study and optimize the objective function
     study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}", study_name=name_exp)
-    study.optimize(objective, n_trials=200)
+    study.optimize(objective, n_trials=500)
 
 def global_main(objective, agent_name : str) :
     """
