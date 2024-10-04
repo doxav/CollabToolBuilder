@@ -2101,7 +2101,7 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
         """Traite un seul LLM output (séquentiellement ou en parallèle)."""
         if len(llm_outputs) > 1:
             self.skip_rounds = init_skip_rounds
-            smart_print(f"\033[31mMULTI-INFERENCE OUTPUT #{counter} > \033[0m", self.agent_name, "POST INFERENCE", append=True)
+            smart_print(f"ANSWER NUMBER #{counter} ", self.agent_name, "POST INFERENCE", append=True)
         self.current_inference_context = {
             'function_name': inspect.stack()[1].function,
             'input_contents': self.llm_input_messages,
