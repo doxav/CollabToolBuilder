@@ -805,7 +805,7 @@ $(function() {
             // END COPY
 
         } else if (data.message_type === "fix_error"){
-            let $question = $(`<p>Do you want to edit the code to fix the error (you will also be requested first) ?</p>`);
+            let $question = $(`<p>"${data.message}"</p>`);
               let $yesButton = $(`<button id="yes-button">Yes</button>`);
               let $noButton = $(`<button id="no-button">No</button>`);
               let $autofixButton = $(`<button id="try-llm-button">Try autofix with LLM</button>`);
@@ -867,7 +867,7 @@ $(function() {
                 targetColumn.id = `column-${columnId}`;
                 targetColumn.innerHTML = `
                     <button class="expand-button"><i class="fas fa-expand"></i></button><br>
-                    <h4>Answer ${inferenceNumber + 1}</h4>
+                    <h4>Answer ${inferenceNumber}</h4>
                     <div class="message" style="max-height: 450px; overflow-y: auto;"></div>
                 `;
                 solutionColumnsContainer.appendChild(targetColumn);
@@ -984,7 +984,7 @@ $(function() {
                 const column = document.createElement('div');
                 column.className = 'solution-column';
                 column.id = `column-${colId}`;
-                column.innerHTML = `<button class="expand-button"><i class="fas fa-expand"></i></button><br><h4>Answer ${i + 1}</h4>`;
+                column.innerHTML = `<button class="expand-button"><i class="fas fa-expand"></i></button><br><h4>Answer ${i}</h4>`;
                 solutionColumnsContainer.appendChild(column);
 
                 column.innerHTML += `</div><div class="overlay"></div>`;

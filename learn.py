@@ -306,7 +306,7 @@ class CodingAgent():
         self.processed_codes = set()
 
     def parse_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None,
-                                automatic_tests=True):
+                                automatic_tests=True, output_id=None):
         import ast, time, re
         # Convert text to dictionary
         try:
@@ -419,7 +419,7 @@ class CodingAgent():
         self.parsed_code = f"Error parsing action response (before program execution): {error}"
         return False, self.parsed_code
 
-    def run_tests_on_code(self, message, parsed_code=None, skip_already_processed=False):
+    def run_tests_on_code(self, message, parsed_code=None, skip_already_processed=False, output_id=None):
         primitives = self.get_primitives()
         parsed_code = getattr(self, 'parsed_code', None) if parsed_code is None else parsed_code
         current_skip_rounds = self.human_llm_code_task.skip_rounds  # save the initial value to align it for code validation
@@ -467,13 +467,13 @@ class CodingAgent():
                         decision = "n"
                     else:
                         decision = smart_input(
-                            "Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ",
+                            f"ANSWER {output_id} Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ",
                             self.name, "fix_error").strip().lower()
                     if decision in ("no", "n", ""):
                         break
                     elif decision == "a":
                         # do not use HumanLLMMonitor because no template is available for this specific case
-                        smart_print("\033[31mTRYING TO AUTOFIX ERROR\033[0m", self.name)
+                        smart_print(f"TRYING TO AUTOFIX ERROR", self.name)
                         message_content = f"ERROR MESSAGE:[[{exec_result}]]\nCODE:[[{parsed_code['program_code']}]]"
                         edited_code_returned = self.human_llm_code_task.premium_llm.invoke([SystemMessage(
                             content=self.human_llm_code_task.load_prompt(agent_name=self.name, prompt="code_fixer")),
@@ -1168,8 +1168,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
         'validated_scores': None}
 
     # Second part: If there are successful codes, ask user to select one
-    if successful_codes and (not continue_even_if_successful or attempt >= max_attempts - 1) and (
-            end_time is None or time.time() < end_time):
+    if successful_codes :
         if len(successful_codes) == 1:
             selected_code, _, scores = successful_codes[0]
             all_scores['validated_scores'] = scores

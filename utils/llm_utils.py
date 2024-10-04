@@ -541,8 +541,8 @@ class InferenceCheck:
         self.check_name = check_name
         self.check_function = check_function
 
-    def run_check(self, *args, **kwargs):
-        return self.check_function(*args, **kwargs)
+    def run_check(self, output_id, *args, **kwargs):
+        return self.check_function(*args, **kwargs, output_id=output_id)
 
 class HumanLLMMonitor:
     default_skip_rounds = 0
@@ -1193,7 +1193,7 @@ class HumanLLMMonitor:
     def run_inference_checks(self, output_id, *args, **kwargs):
         results = {}
         for check_name, check in self.inference_checks.items():
-            result = check.run_check(*args, **kwargs)
+            result = check.run_check(output_id, *args, **kwargs)
             results[check_name] = result
         # Ensure output_id is within bounds before updating the list
         if 0 <= output_id < len(self.last_inference_check_results):
@@ -2101,7 +2101,7 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
         """Traite un seul LLM output (séquentiellement ou en parallèle)."""
         if len(llm_outputs) > 1:
             self.skip_rounds = init_skip_rounds
-            smart_print(f"ANSWER NUMBER #{counter} ", self.agent_name, "POST INFERENCE", append=True)
+            smart_print(f"ANSWER NUMBER #{counter-1} ", self.agent_name, "POST INFERENCE", append=True)
         self.current_inference_context = {
             'function_name': inspect.stack()[1].function,
             'input_contents': self.llm_input_messages,
