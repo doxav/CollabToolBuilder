@@ -47,7 +47,6 @@ UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "no
 embedding_function = "intfloat/e5-base-v2"  # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
 reset_db_indices = True  # Set to True after changing embeddings
 
-HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
 
 
 class Environment:
@@ -903,6 +902,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
 
     if UnifiedVectorDB.unique_collection_id is None:
         UnifiedVectorDB.set_unique_collection_id(unique_id)
+
+    HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
 
     if criteria is None and optuna_opti is None:
         criteria = {
