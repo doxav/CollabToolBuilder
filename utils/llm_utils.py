@@ -1193,7 +1193,7 @@ class HumanLLMMonitor:
     def run_inference_checks(self, output_id, *args, **kwargs):
         results = {}
         for check_name, check in self.inference_checks.items():
-            result = check.run_check(*args, **kwargs)
+            result = check.run_check(*args, **kwargs, output_id=output_id)
             results[check_name] = result
         # Ensure output_id is within bounds before updating the list
         if 0 <= output_id < len(self.last_inference_check_results):

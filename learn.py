@@ -40,14 +40,13 @@ if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_UR
 
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
-UnifiedVectorDB.es_user = elastic_user
-UnifiedVectorDB.es_password = elastic_password
+# UnifiedVectorDB.es_user = elastic_user
+# UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function = "intfloat/e5-base-v2"  # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
 reset_db_indices = True  # Set to True after changing embeddings
 
-HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
 
 
 class Environment:
@@ -306,7 +305,7 @@ class CodingAgent():
         self.processed_codes = set()
 
     def parse_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None,
-                                automatic_tests=True):
+                                automatic_tests=True, output_id=None):
         import ast, time, re
         # Convert text to dictionary
         try:
@@ -419,7 +418,7 @@ class CodingAgent():
         self.parsed_code = f"Error parsing action response (before program execution): {error}"
         return False, self.parsed_code
 
-    def run_tests_on_code(self, message, parsed_code=None, skip_already_processed=False):
+    def run_tests_on_code(self, message, parsed_code=None, skip_already_processed=False, output_id=None):
         primitives = self.get_primitives()
         parsed_code = getattr(self, 'parsed_code', None) if parsed_code is None else parsed_code
         current_skip_rounds = self.human_llm_code_task.skip_rounds  # save the initial value to align it for code validation
@@ -467,7 +466,7 @@ class CodingAgent():
                         decision = "n"
                     else:
                         decision = smart_input(
-                            "Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ",
+                            f"Answer #{output_id} - Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ",
                             self.name, "fix_error").strip().lower()
                     if decision in ("no", "n", ""):
                         break
@@ -903,6 +902,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
 
     if UnifiedVectorDB.unique_collection_id is None:
         UnifiedVectorDB.set_unique_collection_id(unique_id)
+
+    HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
 
     if criteria is None and optuna_opti is None:
         criteria = {
