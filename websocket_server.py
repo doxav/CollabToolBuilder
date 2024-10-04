@@ -75,7 +75,8 @@ class WebsocketServer:
         # test if message is dict
         if isinstance(message, dict) and "sender_id" not in message:
             message['sender_id'] = self.server_id
-        for client in self.connected_clients:
+        clients = set(self.connected_clients)
+        for client in clients:
             asyncio.run(client.send(message))
             print(message)
 
