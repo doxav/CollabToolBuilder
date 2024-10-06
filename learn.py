@@ -212,8 +212,8 @@ def apply_special_criteria(agent, special_criteria, available_locals=None):
             if '#' in key:
                 agent_name, key = key.split('#', 1)
                 if agent_name != class_name and agent_name not in ['all', '']: continue
-            if hasattr(class_name, key):
-                setattr(class_name, key, value)
+            if hasattr(agent, key):
+                setattr(agent, key, value)
                 print(f"Special criteria applied to {agent}'s class property: {key} = {value}")
             if key in available_locals:
                 new_params[key] = value
@@ -310,6 +310,7 @@ class CodingAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, special_criteria=None, temperature_min=0., temperature_max=1., num_parallel_inferences=4):
         #super().__init__(llm)
         self.name = self.__class__.__name__
+        self.max_autofix = None
         new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
 
@@ -484,7 +485,7 @@ class CodingAgent():
                         # do not use HumanLLMMonitor because no template is available for this specific case
                         smart_print("\033[31mTRYING TO AUTOFIX ERROR\033[0m", self.name)
                         message_content = f"ERROR MESSAGE:[[{exec_result}]]\nCODE:[[{parsed_code['program_code']}]]"
-                        edited_code_returned = self.human_llm_code_task.premium_llm.invoke([SystemMessage(content=self.human_llm_code_task.load_prompt(agent_name=self.name, prompt="code_fixer")), HumanMessage(content=message_content)])
+                        edited_code_returned = self.human_llm_code_task.premium_llm.with_config(configurable={"llm_temperature": 0.}).invoke([SystemMessage(content=self.human_llm_code_task.load_prompt(agent_name=self.name, prompt="code_fixer")), HumanMessage(content=message_content)])
                         edited_code = str(edited_code_returned) if isinstance(edited_code_returned, dict) else edited_code_returned.content
                     else:
                         edited_code = _visual_input(parsed_code["program_code"], filetype="py")
@@ -1150,8 +1151,12 @@ def format_prompt(messages):
             prompt_str += f"Type {type(message)}: " + str(message.content) + "\n"
     return prompt_str
     
-def create_Nmajority_chain(num_models=3, map_model_name="gpt-3.5", reduce_model_name="gpt-3.5", map_temperature=0.7, reduce_temperature=0.7):
+def create_Nmajority_chain(num_models=3, map_model_name=None, reduce_model_name=None, map_temperature=0.7, reduce_temperature=0.):
     # Initialize the OpenAI models
+    if map_model_name is None:
+        map_model_name = MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"]
+    if reduce_model_name is None:
+        reduce_model_name = MODELS_CONFIG_LIST["smart_gpt" if "smart_gpt" in MODELS_CONFIG_LIST else "gpt"]
     models = [ChatOpenAI(model_name=map_model_name, temperature=map_temperature, cache=False) for _ in range(num_models)]
     final_model = ChatOpenAI(model_name=reduce_model_name, temperature=reduce_temperature, cache=False)
 
@@ -1182,10 +1187,10 @@ if __name__ == "__main__":
     # Initialize the default and premium LLMs
     #from langchain_groq import ChatGroq
     llmORchains_list = {
-        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False, temperature=1.7),
-        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"], cache=False, temperature=1.7),
-        #"default_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.7),
-        #"premium_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["code_gpt"], cache=False),#, temperature=0.7),
+        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False, temperature=0.),
+        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"], cache=False, temperature=0.),
+        #"default_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.),
+        #"premium_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["code_gpt"], cache=False),#, temperature=0.),
         "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"], reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=3),
         "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"], reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=10)
     }
