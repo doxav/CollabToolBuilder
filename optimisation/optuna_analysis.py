@@ -81,10 +81,10 @@ def analysis(name_exp: str, in_dir = False):
                     datetime_short = row['datetime_start'].strftime('%Y-%m-%d %H:%M:%S') if row['datetime_start'] else "N/A"
 
                     # Extract parameter columns (columns that start with "params_")
-                    params = {col.replace('params_', ''): row[col] for col in df.columns if col.startswith('params_')}
+                    params = {col.replace('params_', ''): truncate_string(str(row[col])) for col in df.columns if col.startswith('params_')}
 
                     # Convert the params dict to a string
-                    params_str = truncate_string(str(params))
+                    params_str = str(params)
 
                     # Handle None values in 'value' and 'state'
                     trial_value = row['value'] if row['value'] is not None else "N/A"
@@ -105,10 +105,10 @@ def analysis(name_exp: str, in_dir = False):
                     datetime_short = row['datetime_start'].strftime('%Y-%m-%d %H:%M:%S') if row['datetime_start'] else "N/A"
 
                     # Extract parameter columns (columns that start with "params_")
-                    params = {col.replace('params_', ''): row[col] for col in df.columns if col.startswith('params_')}
+                    params = {col.replace('params_', ''): truncate_string(str(row[col])) for col in df.columns if col.startswith('params_')}
 
                     # Convert the params dict to a string
-                    params_str = truncate_string(str(params))
+                    params_str = str(params)
 
                     # Handle None values in 'value' and 'state'
                     trial_value = row['value'] if row['value'] is not None else "N/A"

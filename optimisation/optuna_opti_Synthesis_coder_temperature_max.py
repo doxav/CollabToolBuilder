@@ -12,7 +12,7 @@ def objective(trial, name_xp : str):
 
     # Define fixed parameters for Coder
     libraries_restriction = "Numpy, Pandas, Huggingface, Sklearn" # Can be removed: Huggingface and Sklearn, to test if 3 imposed methods offer better performance than with these libraries
-    max_autofix = 3
+    max_autofix = 2
     temperature = trial.suggest_categorical("CodingAgent#temperature_max", [0.5, 0.7, 0.9, 1.1, 1.3, 1.5])
     number_inferences = trial.suggest_categorical("CodingAgent#num_parallel_inferences", [1, 2, 4, 8])
     presence_penalty = 0.7189030356596702
