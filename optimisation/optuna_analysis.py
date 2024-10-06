@@ -10,6 +10,12 @@ import sys
 import shutil  # For copying the SQLite file
 from datetime import datetime
 
+def truncate_string(s: str, max_length: int = 40, start_len: int = 20, end_len: int = 20) -> str:
+    if len(s) > max_length:
+        s = s.replace('\n', ' ')
+        return f"{s[:start_len]}...{s[-end_len:]}"
+    return s
+
 def analysis(name_exp: str, in_dir = False):
     try:
         # Define the path to the SQLite database
@@ -78,7 +84,7 @@ def analysis(name_exp: str, in_dir = False):
                     params = {col.replace('params_', ''): row[col] for col in df.columns if col.startswith('params_')}
 
                     # Convert the params dict to a string
-                    params_str = str(params)
+                    params_str = truncate_string(str(params))
 
                     # Handle None values in 'value' and 'state'
                     trial_value = row['value'] if row['value'] is not None else "N/A"
@@ -102,7 +108,7 @@ def analysis(name_exp: str, in_dir = False):
                     params = {col.replace('params_', ''): row[col] for col in df.columns if col.startswith('params_')}
 
                     # Convert the params dict to a string
-                    params_str = str(params)
+                    params_str = truncate_string(str(params))
 
                     # Handle None values in 'value' and 'state'
                     trial_value = row['value'] if row['value'] is not None else "N/A"
@@ -130,7 +136,8 @@ def analysis(name_exp: str, in_dir = False):
                             for cat_value, row in performance_by_category.iterrows():
                                 mean_perf = row['mean']
                                 count = row['count']
-                                write_to_file(f"{param:<25} | {'Categorical':<12} | {str(cat_value):<40} | {mean_perf:<15.4f} | {count:<5}")
+                                cat_value_str = truncate_string(str(cat_value))
+                                write_to_file(f"{param:<25} | {'Categorical':<12} | {cat_value_str:<40} | {mean_perf:<15.4f} | {count:<5}")
 
                         elif values.dtype == 'bool':
                             # Boolean parameter performance
