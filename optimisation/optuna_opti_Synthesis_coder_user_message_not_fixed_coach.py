@@ -1,5 +1,5 @@
-from optimisation.optuna_main_coder_fixed_parameters import launch_run, definition_few_shots, global_main
-
+from optimisation.optuna_main import launch_run, definition_few_shots, global_main
+from optimisation.optuna_main import fixed_coach_prompt, documentation
 
 def objective(trial, name_xp : str):
     # Define parameters we want to tests
@@ -13,62 +13,13 @@ def objective(trial, name_xp : str):
     # Define fixed parameters for Coder
     libraries_restriction = "Numpy, Pandas, Huggingface, Sklearn" # Can be removed: Huggingface and Sklearn, to test if 3 imposed methods offer better performance than with these libraries
     max_autofix = 3
-    fixed_prompt = """
-1. **Reasoning**:\n   - The current environment has experienced several failures in generating 
-coherent tables of contents (TOCs) for research papers, indicating that previous attempts did not 
-effectively leverage LLM capabilities for topic extraction and organization.\n   
-- The presence of multiple failed tasks highlights the importance of developing a robust function 
-that not only extracts topics but also structures them coherently into a TOC that meets quality 
-standards, including a minimum of 3 sections and 6 subsections.\n   - Previous attempts have 
-shown that runtime errors related to missing parameters have hindered the successful execution 
-of functions. Therefore, the next task must ensure clear parameter handling and streamlined operations 
-for topic extraction and TOC generation.\n   - Given the current state of the environment with 
-empty TOCs and the need for improvement in the extraction and structuring processes, the next 
-best task should concentrate on refining the TOC generation method to enhance output quality and 
-coherence while ensuring successful execution.\n\n2. **Next Best Task**:\n   
-- **Function Name**: `generate_toc_with_fallback`\n   - **Description**: Create a structured table 
-of contents (TOC) for a research survey paper using the provided title and abstract, utilizing LLM capabilities 
-for topic extraction, and implementing a reliable fallback mechanism for organizing content if extraction fails. 
-\n\n3. **Performance Acceptance Criteria**:\n   - The generated TOC must include at least 3 relevant 
-sections and 6 subsections derived from the document's context.\n   - If topic extraction fails, the function 
-should provide a coherent default TOC structure that aligns with standard research paper outlines.\n   - The TOC 
-should maintain a clear hierarchical structure, effectively delineating main sections and subsections.\n   - The 
-function should execute within a timeframe of less than 3 seconds.\n   - The output must be coherent, relevant, 
-and free from hallucinations or irrelevant content.\n\n4. **Development Plan**:\n   - **Plan Depth**: 3\n   
-- **Steps**:\n     - **Step 1**: Use LLM to extract main topics and subtopics from the provided title and abstract.\n       
-- **LLM Call**: Perform natural language processing to identify key themes and topics.\n       
-- **Error Handling**: Implement a fallback mechanism to handle scenarios where no topics are extracted, 
-providing a predefined structure instead.\n     - **Step 2**: Organize the identified topics into a coherent 
-hierarchical structure.\n       - **Algorithmic Processing**: Create a structured outline consisting of main 
-sections and subsections based on the identified topics or a default template if extraction fails.\n     
-- **Step 3**: Format the generated TOC into a structured output suitable for inclusion in the document.\n       
-- **Algorithmic Processing**: Ensure the output is formatted as a well-structured list or dictionary for seamless 
-integration into the research paper.\n\n5. **Tests**:\n```python\n# 
-Test for document #cf0d353c-b43b-4a79-88f9-42c2c84cf75e:\ngenerate_toc_with_fallback(bot, 
-title=\"Innovations in Renewable Energy Technologies\", abstract=\"This paper examines the latest 
-advancements in renewable energy, focusing on solar, wind, and bioenergy technologies and their potential 
-impact on global energy markets.\")\n\n# Test for document #42252c6c-12f3-4edf-9045-8acd69bc3356:\ngenerate_toc_with_fallback(bot, 
-title=\"Artificial Intelligence and Machine Learning in Medicine\", abstract=\"This document reviews the integration of 
-AI and machine learning in medical diagnostics and treatment, discussing case studies and future trends.\")\n``` 
-\n\n### Summary of Component Handling:\n- **LLM Call**: The extraction of keywords and themes (Step 1) will utilize 
-LLM capabilities for effective natural language processing, enhancing the understanding of context and semantics.\n
-- **Algorithmic Processing**: Steps 2 and 3 (organization and formatting) will be performed through structured algorithmic 
-processing to ensure coherent output and effective integration into research papers.\n\n### Error Handling and Fallback 
-Mechanisms:\n- Implement error handling to manage exceptions during LLM processing, providing a fallback to a default TOC 
-structure based on common research themes if keyword extraction fails.\n- Include logging for performance monitoring to 
-ensure reliability and accountability of the task.\n\n### Scalability and Efficiency:\n- The task design should allow 
-flexibility in the number of sections generated based on the document's title and abstract, ensuring scalability across 
-various document sizes while maintaining efficiency.\n\n### Bias Detection and Mitigation:\n- Implement algorithms to 
-analyze the generated TOC for potential biases, ensuring a balanced representation of topics across diverse perspectives.
-\n\n### Explainability and Transparency:\n- Provide clear documentation of the TOC generation process, ensuring transparency 
-in how LLM outputs and algorithmic processing contribute to the final structured output.
-"""
-    fixed_coach = trial.suggest_categorical("fixed_coach", [fixed_prompt, False])
+
+    fixed_coach = trial.suggest_categorical("fixed_coach", [fixed_coach_prompt, False])
     presence_penalty = 0.7189030356596702
     reasoning_depth = 1
 
     # Few shots parameters
-    user_message_params = definition_few_shots(trial, True)
+    user_message_params = definition_few_shots(trial, True, no_params_search=True)
 
     # Reasoning and Task instructions based on file content
 
@@ -90,11 +41,15 @@ in how LLM outputs and algorithmic processing contribute to the final structured
     INSTRUCTIONS:
     1) Reason in {reasoning_depth} steps to identify the optimal way to achieve the task.
     2) Write a function taking 'bot' as the first parameter, which is an instance of the class SynthesisManager, containing all document resources.
-    3) Ensure the generated code adheres to reusability principles. The generated code should be modular and easy to maintain rather than specific to the task.
-    4) Avoid hard-coding parameters. Pass necessary data as arguments to ensure reusability.
-    5) The function should call existing helper functions as much as possible to focus on improving results, not redoing code.
-    6) Ensure the code is executable with no placeholders and fully complete for immediate testing and deployment.
-    7) Name your function meaningfully to reflect the task it is performing.
+    3) Your function should include appropriate modification to resources and sections to measure task success/performance. Main functions are:
+        - class Section(section_id: int, title: str, content: str, parent_id: int)
+        - Manipulate document sections: bot.create_and_add_section_then_return_id(title: str, content: str, section_id: int = None, parent_id: int = None) -> int, bot.get_all_sections() -> List[Section], bot.get_sections(ids: List[int]) -> List[Section], bot.edit_section(section_id: int, new_content: str = None, new_title: str = None, new_parent_id: int = None) -> bool, bot.remove_section(section_id: int) -> bool, bot.swap_sections(section_id_1: int, section_id_2: int) -> bool
+        - Manipulate document resources: bot.add_or_update_results_in_resources(results, metadatas_to_add:dict=None, store_linked_document_content:bool=False), bot.add_or_update_result_in_resources(metadatas:dict, name:str=None, content:dict=None, link:str=None, store_linked_document_content:bool=False), bot.get_all_resources(self) -> List[Dict[str, Any]], bot.semantic_search_resources(query_texts, n_results=10), bot.add_or_update_results_in_resources(results, metadatas:dict=None, store_linked_document_content:bool=False), bot.get_and_store_link_content(link:str=None, parent_id=None, chaining:bool=True), bot.remove_resource(resource_id)
+    4) Ensure the generated code adheres to reusability principles. The generated code should be modular and easy to maintain rather than specific to the task.
+    5) Avoid hard-coding parameters. Pass necessary data as arguments to ensure reusability.
+    6) The function should call existing helper functions as much as possible to focus on improving results, not redoing code.
+    7) Ensure the code is executable with no placeholders and fully complete for immediate testing and deployment.
+    8) Name your function meaningfully to reflect the task it is performing.
 
     You should then respond with:
     - Reasoning: how to best implement the task with maximum efficiency
@@ -112,7 +67,7 @@ in how LLM outputs and algorithmic processing contribute to the final structured
     """
 
     # Combine everything to generate the final prompt for the Coder agent
-    full_prompt = coder_task_description + coder_test_instructions
+    full_prompt = coder_task_description + coder_test_instructions + documentation
 
     # Write the generated prompt to a file that will be used by the Coder agent
     with open("./prompts/IR_CPS_TechSynthesis/code_task.txt", "w") as f:

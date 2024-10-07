@@ -1,4 +1,4 @@
-from optimisation.optuna_main_coder_fixed_parameters import launch_run, definition_few_shots, global_main
+from optimisation.optuna_main import launch_run, definition_few_shots, global_main
 
 
 def objective(trial, name_xp : str):
@@ -19,7 +19,7 @@ def objective(trial, name_xp : str):
     reasoning_depth = 1
 
     # Few shots parameters
-    user_message_params = definition_few_shots(trial, True)
+    user_message_params = definition_few_shots(trial, True, no_params_search=True)
 
     # Reasoning and Task instructions based on file content
 

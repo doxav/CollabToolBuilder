@@ -14,7 +14,7 @@ def objective(trial, name_xp : str):
     reasoning_depth = trial.suggest_int('reasoning_depth', 1, 4)
 
     # Few shots parameters
-    few_shots = definition_few_shots(trial)
+    few_shots = definition_few_shots(trial, no_params_search=False)
 
     # Reasoning and Task instructions based on file content
 
@@ -36,6 +36,10 @@ def objective(trial, name_xp : str):
     INSTRUCTIONS:
     1) Reason in {reasoning_depth} steps to identify the optimal way to achieve the task.
     2) Write a function taking 'bot' as the first parameter, which is an instance of the class SynthesisManager, containing all document resources.
+    Your function should include appropriate modification to resources and sections to measure task success/performance. Main functions are:
+        - class Section(section_id: int, title: str, content: str, parent_id: int)
+        - Manipulate document sections: bot.create_and_add_section_then_return_id(title: str, content: str, section_id: int = None, parent_id: int = None) -> int, bot.get_all_sections() -> List[Section], bot.get_sections(ids: List[int]) -> List[Section], bot.edit_section(section_id: int, new_content: str = None, new_title: str = None, new_parent_id: int = None) -> bool, bot.remove_section(section_id: int) -> bool, bot.swap_sections(section_id_1: int, section_id_2: int) -> bool
+        - Manipulate document resources: bot.add_or_update_results_in_resources(results, metadatas_to_add:dict=None, store_linked_document_content:bool=False), bot.add_or_update_result_in_resources(metadatas:dict, name:str=None, content:dict=None, link:str=None, store_linked_document_content:bool=False), bot.get_all_resources(self) -> List[Dict[str, Any]], bot.semantic_search_resources(query_texts, n_results=10), bot.add_or_update_results_in_resources(results, metadatas:dict=None, store_linked_document_content:bool=False), bot.get_and_store_link_content(link:str=None, parent_id=None, chaining:bool=True), bot.remove_resource(resource_id)
     3) Ensure the generated code adheres to reusability principles. The generated code should be modular and easy to maintain rather than specific to the task.
     4) Avoid hard-coding parameters. Pass necessary data as arguments to ensure reusability.
     5) The function should call existing helper functions as much as possible to focus on improving results, not redoing code.

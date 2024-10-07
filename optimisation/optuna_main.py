@@ -13,73 +13,80 @@ from utils.llm_utils import HumanLLMMonitor, UnifiedVectorDB
 # Set the class variable
 HumanLLMMonitor.use_websocket = False
 
-def definition_few_shots(trial, usr_msg: bool = False):
+def definition_few_shots(trial, usr_msg: bool = False, no_params_search: bool = False, sources_list = ["learnt", "failed", "example"]):
     """
     Define few-shot tags and separators for the trial.
 
     Args:
         trial (optuna.trial.Trial): The Optuna trial object.
         usr_msg (bool, optional): Flag to determine the format of few_shots_tags. Defaults to False.
+        static_params (bool, optional): Flag to determine whether to use static or dynamic values for few-shot tags. Defaults to True.
 
     Returns:
-        tuple: A tuple containing the few-shot tags and separators.
+        str or list: A string of few-shot tags (if usr_msg is False) or a list of few-shot tags (if usr_msg is True).
     """
-    if usr_msg:
-        few_shots_tags = []
-    else:
-        few_shots_tags = ""
-    # Determine the number of few-shot tags (between 0 and 3)
-    sources_list = ["learnt", "failed", "example"]
+    # Initialize few_shots_tags based on usr_msg flag
+    few_shots_tags = [] if usr_msg else ""
 
     for i in range(3):
         source = sources_list[i]
-        num = trial.suggest_int(f"num_tag_{source}", 0, 5)
-        if num > 0:
+
+        # Determine num based on static_params
+        if no_params_search: # Based on experiment result 108353
+            num = 2  # Static logic
+            output_format = "json"  # Static format
+            # Static separators
+            global_prefix = f"{source}_tasks: <<"
+            global_suffix = ">>\n"
+            item_prefix = "\n("
+            item_suffix = ")"
+
+        else:
+            # Dynamic values using Optuna's trial suggestions (from the second version)
+            num = trial.suggest_int(f"num_tag_{source}", 0, 5)
+            if num == 0:
+                continue  # Skip if num is 0
+            
             output_format = trial.suggest_categorical(f"format_tag_{i+1}", ["Json", "Markdown"])
-            # Define separators using Optuna
-            global_prefix = trial.suggest_categorical("global_prefix_option", ["tasks: <<",
-                                                                               "List of tasks: [[",
-                                                                               "tasks: {{",
-                                                                               "List of tasks: $$"
-                                                                               ])
-            if global_prefix[-2:] in ["[[", "$$"]:
+            global_prefix = trial.suggest_categorical("global_prefix_option", ["tasks: <<", "List of tasks: [[", "tasks: {{", "List of tasks: $$"])
+            
+            # Adjust global_prefix based on the source
+            if global_prefix[-2:] in ["[[", "$$", "<<"]:
                 global_prefix = f"{global_prefix[:8]}{source} {global_prefix[8:]}"
             else:
                 global_prefix = f"{source}{global_prefix}"
+            
+            # Define global_suffix based on global_prefix
             global_suffix = f"{global_prefix[-2:]}\n".replace("<<", ">>").replace("[[", "]]").replace("{{", "}}")
             item_prefix = trial.suggest_categorical("item_prefix_option", ["\n|", "\n(", "\n-"])
             item_suffix = f"{item_prefix[-1:]}\n".replace("(", ")")
 
-            tmp_separators = {
-                "global_prefix": global_prefix,
-                "global_suffix": global_suffix,
-                "item_prefix": item_prefix,
-                "item_suffix": item_suffix
-            }
+        # Construct the separators dictionary
+        tmp_separators = {
+            "global_prefix": global_prefix,
+            "global_suffix": global_suffix,
+            "item_prefix": item_prefix,
+            "item_suffix": item_suffix
+        }
 
-            template = None
+        # Define the few-shot dictionary
+        few_shot_dict = {
+            "sources": source,
+            "num": num,
+            "format": output_format,
+            "sort_order": "random",
+            "separators": tmp_separators,
+            "metadata_filter": {},  # Static for now, can be expanded
+        }
 
-            # Construct the dictionary for the few-shot tag
-            few_shot_dict = {
-                "sources": source,
-                "num": num,
-                "format": output_format,
-                "sort_order": "random",
-                "separators": tmp_separators
-            }
-            if template:
-                few_shot_dict["template"] = template
-
-            # Add the few-shot tag to the prompt
-            if not isinstance(few_shots_tags, list):
-                # Convert the dictionary to a JSON string with double quotes
-                few_shot_json = json.dumps(few_shot_dict)
-                few_shots_tags += f"few_shots: {few_shot_json}\n"
-            else:
-                few_shots_tags.append(few_shot_dict)
+        # Convert to JSON string if usr_msg is False (string-based format)
+        if not isinstance(few_shots_tags, list):
+            few_shot_json = json.dumps(few_shot_dict)
+            few_shots_tags += f"few_shots: {few_shot_json}\n"
+        else:
+            few_shots_tags.append(few_shot_dict)
 
     return few_shots_tags
-
 
 
 def definition_global_parameters(temperature : float = None, presence_penalty : float = None):
@@ -117,7 +124,8 @@ def definition_global_parameters(temperature : float = None, presence_penalty : 
     return llmORchains_list, envs
 
 def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "premium_llm", problem_prompts_subdir : str = None, max_coding_attempts : int = 2, max_execution_time : int = 900,
-               model_choice=None, optuna_opti : str = "coach", params_user_message : str = None, special_criteria : dict = None, name_exp : str = "", temperature : float = 1.0):
+               model_choice=None, optuna_opti : str = "coach", params_user_message : str = None, special_criteria : dict = None, name_exp : str = "", temperature_max : float = None, number_inferences : int = 1,
+               fixed_coach : bool = False):
     """
     Launch the run with the specified parameters.
 
@@ -132,7 +140,6 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
         params_user_message (str, optional): The criteria for evaluation.
         special_criteria (dict, optional): Special criteria for the run.
         name_exp (str, optional): The name of the experiment.
-        temperature (float, optional): The temperature setting for the LLMs.
 
     Returns:
         Any: The performance result of the run.
@@ -143,9 +150,10 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
     if special_criteria is None:
         llmORchains_list, envs = definition_global_parameters()
     else:
-        llmORchains_list, envs = definition_global_parameters(special_criteria["temperature"], special_criteria["presence_penalty"])
-        # Delete the presence_penalty from the special_criteria
-        del special_criteria["presence_penalty"]
+        llmORchains_list, envs = definition_global_parameters(special_criteria.get("temperature", None), special_criteria.get("presence_penalty", None))
+        # Delete the presence_penalty from the special_criteria - Why ?
+        special_criteria.pop("presence_penalty", None)
+    # Set unique collection ID based on name_exp
     UnifiedVectorDB.set_unique_collection_id(f"{name_exp}")
     performance = run_4agents_learning_loop(default_llm_key=default_llm_key,
                                             premium_llm_key=premium_llm_key,
@@ -167,13 +175,15 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
                                             optuna_opti=optuna_opti,
                                             params_user_message=params_user_message,
                                             special_criteria=special_criteria,
-                                            temperature_max=temperature)
+                                            number_inferences=number_inferences,
+                                            temperature_max=temperature_max,
+                                            fixed_coach=fixed_coach)
     print("Analysis...")
     analysis(name_exp)
     print("Analysis done.")
     return performance
 
-def launch_study(objective, name_exp : str):
+def launch_study(objective, name_exp : str, n_trials=200):
     """
     Launch the Optuna study with the specified objective and experiment name.
 
@@ -194,9 +204,9 @@ def launch_study(objective, name_exp : str):
 
     # Create a study and optimize the objective function
     study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}", study_name=name_exp)
-    study.optimize(objective, n_trials=500)
+    study.optimize(objective, n_trials=n_trials)
 
-def global_main(objective, agent_name : str, params_tested : str) :
+def global_main(objective, agent_name : str, params_tested : str = "") :
     """
     Main function to launch the Optuna study.
 
@@ -216,7 +226,7 @@ def global_main(objective, agent_name : str, params_tested : str) :
         name_exp = f"xp_{agent_name}{params_tested}{timestamp_xp}"
     launch_study(lambda trial: objective(trial, name_exp), name_exp)
 
-    documentation = """
+documentation = """
 DOCUMENTATION OF AVAILABLE FUNCTIONS IN THE "bot" OBJECT (SynthesisManager class): {{{
 # The following functions are available for use when generating code. Please leverage these pre-existing methods to avoid redundancy, maintain modularity, and ensure code reusability.
 
@@ -579,3 +589,53 @@ class SynthesisManager:
 
 }}}"""
 
+fixed_coach_prompt = """
+1. **Reasoning**:\n   - The current environment has experienced several failures in generating 
+coherent tables of contents (TOCs) for research papers, indicating that previous attempts did not 
+effectively leverage LLM capabilities for topic extraction and organization.\n   
+- The presence of multiple failed tasks highlights the importance of developing a robust function 
+that not only extracts topics but also structures them coherently into a TOC that meets quality 
+standards, including a minimum of 3 sections and 6 subsections.\n   - Previous attempts have 
+shown that runtime errors related to missing parameters have hindered the successful execution 
+of functions. Therefore, the next task must ensure clear parameter handling and streamlined operations 
+for topic extraction and TOC generation.\n   - Given the current state of the environment with 
+empty TOCs and the need for improvement in the extraction and structuring processes, the next 
+best task should concentrate on refining the TOC generation method to enhance output quality and 
+coherence while ensuring successful execution.\n\n2. **Next Best Task**:\n   
+- **Function Name**: `generate_toc_with_fallback`\n   - **Description**: Create a structured table 
+of contents (TOC) for a research survey paper using the provided title and abstract, utilizing LLM capabilities 
+for topic extraction, and implementing a reliable fallback mechanism for organizing content if extraction fails. 
+\n\n3. **Performance Acceptance Criteria**:\n   - The generated TOC must include at least 3 relevant 
+sections and 6 subsections derived from the document's context.\n   - If topic extraction fails, the function 
+should provide a coherent default TOC structure that aligns with standard research paper outlines.\n   - The TOC 
+should maintain a clear hierarchical structure, effectively delineating main sections and subsections.\n   - The 
+function should execute within a timeframe of less than 3 seconds.\n   - The output must be coherent, relevant, 
+and free from hallucinations or irrelevant content.\n\n4. **Development Plan**:\n   - **Plan Depth**: 3\n   
+- **Steps**:\n     - **Step 1**: Use LLM to extract main topics and subtopics from the provided title and abstract.\n       
+- **LLM Call**: Perform natural language processing to identify key themes and topics.\n       
+- **Error Handling**: Implement a fallback mechanism to handle scenarios where no topics are extracted, 
+providing a predefined structure instead.\n     - **Step 2**: Organize the identified topics into a coherent 
+hierarchical structure.\n       - **Algorithmic Processing**: Create a structured outline consisting of main 
+sections and subsections based on the identified topics or a default template if extraction fails.\n     
+- **Step 3**: Format the generated TOC into a structured output suitable for inclusion in the document.\n       
+- **Algorithmic Processing**: Ensure the output is formatted as a well-structured list or dictionary for seamless 
+integration into the research paper.\n\n5. **Tests**:\n```python\n# 
+Test for document #cf0d353c-b43b-4a79-88f9-42c2c84cf75e:\ngenerate_toc_with_fallback(bot, 
+title=\"Innovations in Renewable Energy Technologies\", abstract=\"This paper examines the latest 
+advancements in renewable energy, focusing on solar, wind, and bioenergy technologies and their potential 
+impact on global energy markets.\")\n\n# Test for document #42252c6c-12f3-4edf-9045-8acd69bc3356:\ngenerate_toc_with_fallback(bot, 
+title=\"Artificial Intelligence and Machine Learning in Medicine\", abstract=\"This document reviews the integration of 
+AI and machine learning in medical diagnostics and treatment, discussing case studies and future trends.\")\n``` 
+\n\n### Summary of Component Handling:\n- **LLM Call**: The extraction of keywords and themes (Step 1) will utilize 
+LLM capabilities for effective natural language processing, enhancing the understanding of context and semantics.\n
+- **Algorithmic Processing**: Steps 2 and 3 (organization and formatting) will be performed through structured algorithmic 
+processing to ensure coherent output and effective integration into research papers.\n\n### Error Handling and Fallback 
+Mechanisms:\n- Implement error handling to manage exceptions during LLM processing, providing a fallback to a default TOC 
+structure based on common research themes if keyword extraction fails.\n- Include logging for performance monitoring to 
+ensure reliability and accountability of the task.\n\n### Scalability and Efficiency:\n- The task design should allow 
+flexibility in the number of sections generated based on the document's title and abstract, ensuring scalability across 
+various document sizes while maintaining efficiency.\n\n### Bias Detection and Mitigation:\n- Implement algorithms to 
+analyze the generated TOC for potential biases, ensuring a balanced representation of topics across diverse perspectives.
+\n\n### Explainability and Transparency:\n- Provide clear documentation of the TOC generation process, ensuring transparency 
+in how LLM outputs and algorithmic processing contribute to the final structured output.
+"""

@@ -823,23 +823,36 @@ class HumanLLMMonitor:
         Returns:
             str: The modified prompt content with few shots inserted.
         """
-        # Find all 'few_shots' tags with their arguments
-        pattern = r"few_shots:\s*(\{[^}]*\})"
+        # Match 'few_shots' and capture the curly braces, manually handling nested braces
+        pattern = r"few_shots:\s*\{"
         matches = list(re.finditer(pattern, prompt, re.DOTALL))
 
         for match in reversed(matches):  # Reverse to not mess up indices when replacing
             try:
-                data_str = match.group(1)
+                start = match.start()
+                # Manually find the corresponding closing brace
+                brace_count = 1
+                end = start + match.end() - match.start()
+                while brace_count > 0 and end < len(prompt):
+                    if prompt[end] == '{':
+                        brace_count += 1
+                    elif prompt[end] == '}':
+                        brace_count -= 1
+                    end += 1
+
+                # Extract the JSON string
+                data_str = prompt[match.start() + len("few_shots:"):end]
+                print(f"Attempting to decode few_shots tag: {data_str}")  # Debug
                 data = json.loads(data_str)
                 # Combine criteria
                 combined_criteria = self.combine_criteria([data])
                 # Get the few shots string
                 few_shots_str = self.get_multiple_few_shots(combined_criteria)
                 # Replace the tag with the few shots string
-                start, end = match.span()
                 prompt = prompt[:start] + few_shots_str + prompt[end:]
             except json.JSONDecodeError as e:
                 print(f"Error decoding 'few_shots' tag: {e}")
+                print(f"Faulty JSON: {data_str}")  # Debug
                 continue
 
         return prompt
@@ -1273,37 +1286,37 @@ class HumanLLMMonitor:
 
             smart_print(before_menu + menu, self.agent_name, "BEFORE inference action MENU")
             self.menu_start_time = time.time()
-            match (optuna.lower() if optuna else ""):
-                case "coach":
-                    llm_keys = list(self.llmORchains_list.keys())
-                    if type(model_choice) == int:
-                        # Model change from choice of optuna
-                        new_llm_name = llm_keys[model_choice]
-                    elif type(model_choice) == str:
-                        if model_choice not in llm_keys:
-                            raise ValueError(f"Model choice '{model_choice}' not found in llmORchains_list {llm_keys}")
-                        new_llm_name = model_choice
-                    else:
-                        raise ValueError("Model choice must be an integer or a string")
+            if optuna:
+                llm_keys = list(self.llmORchains_list.keys())
+                if type(model_choice) == int:
+                    # Model change from choice of optuna
+                    new_llm_name = llm_keys[model_choice]
+                elif type(model_choice) == str:
+                    if model_choice not in llm_keys:
+                        raise ValueError(f"Model choice '{model_choice}' not found in llmORchains_list {llm_keys}")
+                    new_llm_name = model_choice
+                else:
+                    raise ValueError("Model choice must be an integer or a string")
 
-                    if self.agent_name == "TaskIdentificationAgent":
-                        if self.num_parallel_inferences > 1 :
-                            self.synthesize_mode = True
-                        if self.fixed_coach:
-                            # We force the output of the llm.
-                            forced_llm_output = self.fixed_coach
+                if self.agent_name == "TaskIdentificationAgent":
+                    if self.num_parallel_inferences > 1 :
+                        self.synthesize_mode = True
+                    if self.fixed_coach:
+                        # We force the output of the llm.
+                        forced_llm_output = self.fixed_coach
 
-                    self.set_default_llmORchain(new_llm_name)
-                    self.set_premium_llmORchain(new_llm_name)
-                    default_llm_function = self.default_llm
-                    premium_llm_function = self.premium_llm
-                    self.synthesize_mode = False
-                    # Default actions for all agents while running with optuna
-                    action = ""
-                case _:  # Default case
-                    action = smart_input(
-                        f"\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
-                        self.agent_name).upper()
+                self.set_default_llmORchain(new_llm_name)
+                self.set_premium_llmORchain(new_llm_name)
+                default_llm_function = self.default_llm
+                premium_llm_function = self.premium_llm
+                self.synthesize_mode = False
+                # Default actions for all agents while running with optuna
+                action = ""
+
+            else:  # Default case
+                action = smart_input(
+                    f"\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
+                    self.agent_name).upper()
 
             # ACTIONS processing
             self.start_time = time.time()  # Init action selected and timer to measure time spent and occurences in action processing
