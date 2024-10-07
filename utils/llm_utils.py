@@ -53,7 +53,7 @@ import websockets
 ws_url = "ws://localhost:6789"
 
 
-def smart_print(message: str, agent_name=None, message_type=None, append=False, column_id=None, column_max=None):
+def smart_print(message: str, agent_name=None, message_type=None, append=False, column_id=None, column_max=None, optional=False):
     global AgentDisplayManager, AGENT
     if 'IN_NOTEBOOK' not in globals():
         try:  # test if IN_NOTEBOOK
@@ -79,7 +79,7 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
             # Remove unexpected characters
             message = re.sub(r'[^\x20-\x7E\t\n\r]', "", message)
         message_dict = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'append': append,
-                        'column_id': column_id, 'column_max': column_max}
+                        'column_id': column_id, 'column_max': column_max, 'optional': optional}
         # convert message_dict to json
         message = json.dumps(message_dict)
         time.sleep(0.1)
@@ -108,7 +108,7 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
             print(message)
 
 
-def smart_input(message: str, agent_name=None, message_type=None):
+def smart_input(message: str, agent_name=None, message_type=None, column_id=None, column_max=None):
     if 'IN_NOTEBOOK' not in globals():
         try:  # test if IN_NOTEBOOK
             from IPython import get_ipython
@@ -128,7 +128,7 @@ def smart_input(message: str, agent_name=None, message_type=None):
     else:
         IN_WEBSOCKET = globals()['IN_WEBSOCKET']
     if IN_WEBSOCKET:
-        structured_message = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'input': True}
+        structured_message = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'column_id': column_id, 'column_max': column_max, 'input': True}
         # convert structured_message to json
         message = json.dumps(structured_message)
         HumanLLMMonitor.websocket_server.send_message(message)
@@ -318,10 +318,10 @@ def save_prompt(prompt_name, text, package_path="."):
     # if prompt_file_path_name exists, move existing file to prompt_file_path_name.timestamp (timestamp = datetime.now().isoformat())
     if f_exists(prompt_file_path_name):
         moved_file_path_name = prompt_file_path_name + datetime.now().strftime(".%H-%M-%S_%m-%d-%y")
-        smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}", "save_prompt")
+        smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}", "save_prompt", optional=True)
         f_move(prompt_file_path_name, moved_file_path_name)
 
-    smart_print(f"Saving new prompt file {prompt_file_path_name}", "save_prompt")
+    smart_print(f"Saving new prompt file {prompt_file_path_name}", "save_prompt", optional=True)
 
     return dump_text(text, prompt_file_path_name)
 
@@ -344,10 +344,10 @@ def save_prompt_with_tag(prompt_name, text, new_tag, package_path="."):
     if f_exists(prompt_file_path_name):
         moved_file_path_name = prompt_file_path_name + datetime.now().strftime(".%Y-%m-%d_%H-%M-%S")
         smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}",
-                    "save_prompt_with_tag")
+                    "save_prompt_with_tag", optional=True)
         f_move(prompt_file_path_name, moved_file_path_name)
 
-    smart_print(f"Saving new prompt file {prompt_file_path_name}", "save_prompt_with_tag")
+    smart_print(f"Saving new prompt file {prompt_file_path_name}", "save_prompt_with_tag", optional=True)
 
     # Save the file
     return dump_text(text, prompt_file_path_name)
@@ -875,7 +875,7 @@ class HumanLLMMonitor:
                                 except ValueError as e:
                                     smart_print(
                                         f"Sub-step {key} in step {step} does not support temperature configuration: {e}",
-                                        self.agent_name)
+                                        self.agent_name,"set_llmORchain",optional=True)
                             modified_dict[key] = sub_step
                         step.steps__ = modified_dict
                         modified_steps.append(step)
@@ -914,7 +914,7 @@ class HumanLLMMonitor:
                         configurable={"llm_temperature": temperature})  # Replace with desired default temperature
                 except ValueError as e:
                     smart_print(f"LLM/Chain '{llm_name}' does not support temperature configuration: {e}",
-                                self.agent_name)
+                                self.agent_name, optional=True)
 
             # Apply structured output if needed
             if self.output_schema:
@@ -938,7 +938,7 @@ class HumanLLMMonitor:
                     selected_llm_or_chain = selected_llm_or_chain.with_structured_output(self.output_schema)
                 else:
                     # If neither condition matches, `selected_llm_or_chain` is not modified
-                    smart_print(f"LLM/Chain '{llm_name}' does not support structured output", self.agent_name)
+                    smart_print(f"LLM/Chain '{llm_name}' does not support structured output", self.agent_name, optional=True)
 
             # Set the LLM/Chain to the possibly modified or original one
             if is_premium:
@@ -950,7 +950,7 @@ class HumanLLMMonitor:
         else:
             smart_print(
                 f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}",
-                self.agent_name)
+                self.agent_name, optional=True)
             return False
 
     def set_default_llmORchain(self, llm_name, temperature=0.7):
@@ -1212,7 +1212,7 @@ class HumanLLMMonitor:
         if token_length > self.llm_max_context_size:
             smart_print(
                 f"\033[31mCANNOT SEND MESSAGE TO LLM:\n{content}\n\nToo many tokens in human message for LLM ({token_length}). Fallback to manual feedback.\033[0m",
-                self.agent_name)
+                self.agent_name, optional=True)
             return False
         else:
             return True
@@ -1270,7 +1270,7 @@ class HumanLLMMonitor:
             menu += (f"[P] Proceed to inference using a PREMIUM LLM - Current value={use_premium_llm}\n")
             menu += (f"[Z] Continue\n")
 
-            smart_print(before_menu + menu, self.agent_name, "BEFORE inference action MENU")
+            smart_print(before_menu + menu, self.agent_name, "BEFORE inference action MENU", optional =False)
             self.menu_start_time = time.time()
             match (optuna.lower() if optuna else ""):
                 case "coach":
@@ -1343,7 +1343,7 @@ class HumanLLMMonitor:
                         HumanMessage(content=result)
                     ]
                     for message in messages:
-                        smart_print(message.content, self.agent_name, "BEFORE inference action MENU")
+                        smart_print(message.content, self.agent_name, "BEFORE inference action MENU", optional=True)
 
 
             elif action == "G":  # Skip human actions for N rounds
@@ -1357,7 +1357,7 @@ class HumanLLMMonitor:
 
                 # elif action == "I":
                 #     function_calling = not function_calling
-                #     smart_print(f"function_calling is now {function_calling}", self.agent_name, "function_calling")
+                #     smart_print(f"function_calling is now {function_calling}", self.agent_name, "function_calling", optional=True)
 
             elif action == "K":  # Exit program
                 self.exitProgram()
@@ -1385,7 +1385,7 @@ class HumanLLMMonitor:
 
         smart_print(
             f"Time spent in each option and occurrences: {self.before_inference_option_times} - {self.before_inference_option_counts}",
-            self.agent_name)
+            self.agent_name, optional=True)
 
         self.mode = None
         return messages, comments, forced_llm_output, use_premium_llm, default_llm_function, premium_llm_function, function_calling
@@ -1403,7 +1403,7 @@ class HumanLLMMonitor:
             self.synthesize_mode = synthesize_mode_input == "1"  # NEW
         else:  # NEW
             smart_print("Invalid input. Synthesize mode remains unchanged.", self.agent_name,
-                        "NUM_PARALLEL_INFERENCES SYNTHESIS MODE CHOICE")  # NEW
+                        "NUM_PARALLEL_INFERENCES SYNTHESIS MODE CHOICE", optional=True)  # NEW
 
     def changeNumParallelInferences(self):
         try:
@@ -1439,7 +1439,7 @@ class HumanLLMMonitor:
                 date = entry.metadata['time'].split('.')[0]
                 list_output += (
                     f"\033[94m{idx}.\033[0m {text[:100]}....{text[-100:]} #{entry.metadata['function_name']} @{date}\n")  # Display a snippet of each entry
-            smart_print(list_output, self.agent_name, "LOG ENTRIES LIST")
+            smart_print(list_output, self.agent_name, "LOG ENTRIES LIST", optional=True)
 
             try:
                 selected_index = int(
@@ -1478,7 +1478,7 @@ class HumanLLMMonitor:
             output += (f"{i + 1}. {variant}\n")
         output += (
             f"{len(prompt_variants) + 1}. Ask LLM to generate a new variant of the current system prompt given my instructions\n")
-        smart_print(output, self.agent_name, "PROMPT OPTIONS")
+        smart_print(output, self.agent_name, "PROMPT OPTIONS", optional=True)
         variant_choice = smart_input(
             "Select a number to modify a prompt or create a new variant (or press Enter to continue with the current selection): ",
             self.agent_name)
@@ -1545,7 +1545,7 @@ class HumanLLMMonitor:
                 new_llm_name = llm_keys[new_llm_index]
                 if self.set_premium_llmORchain(new_llm_name): break
         premium_llm_function = self.premium_llm
-        smart_print(f"Premium LLM changed to {new_llm_name}", self.agent_name, "Change Premium LLM")
+        smart_print(f"Premium LLM changed to {new_llm_name}", self.agent_name, "Change Premium LLM", optional=True)
         return premium_llm_function
 
     def changeDefaultLLM(self, default_llm_function):
@@ -1558,7 +1558,7 @@ class HumanLLMMonitor:
                 new_llm_name = llm_keys[new_llm_index]
                 if self.set_default_llmORchain(new_llm_name): break
         default_llm_function = self.default_llm
-        smart_print(f"Default LLM changed to {new_llm_name}", self.agent_name, "Change Default LLM")
+        smart_print(f"Default LLM changed to {new_llm_name}", self.agent_name, "Change Default LLM", optional=True)
         return default_llm_function
 
     def getScoredResults(self, function_name):
@@ -1771,7 +1771,7 @@ class HumanLLMMonitor:
         else:
             smart_print(
                 f"Time spent in each option and occurrences: {self.after_inference_option_times} - {self.after_inference_option_counts}",
-                self.agent_name)
+                self.agent_name, optional=True)
 
         self.mode = None
         return inference_result_msg, comments, score
@@ -2101,7 +2101,7 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
         """Traite un seul LLM output (séquentiellement ou en parallèle)."""
         if len(llm_outputs) > 1:
             self.skip_rounds = init_skip_rounds
-            smart_print(f"ANSWER NUMBER #{counter-1} ", self.agent_name, "POST INFERENCE", append=True)
+            smart_print(f"ANSWER NUMBER #{counter-1} ", self.agent_name, "POST INFERENCE", append=True, optional=True)
         self.current_inference_context = {
             'function_name': inspect.stack()[1].function,
             'input_contents': self.llm_input_messages,
@@ -2186,7 +2186,7 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
 
         smart_print(
             f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[1].function} calling HumanLLMMonitor****\033[0m",
-            self.agent_name, "HumanLLMMonitor")
+            self.agent_name, "HumanLLMMonitor", optional=True)
         if system_prompt_template: self.system_prompt = system_prompt_template
         if default_llm_function is None: default_llm_function = self.default_llm if use_default_llm else self.premium_llm
         if premium_llm_function is None: premium_llm_function = self.premium_llm if self.premium_llm else None
@@ -2209,7 +2209,7 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
             if self.skip_rounds > 0:
                 smart_print(
                     f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[2].function} skipping HumanLLMMonitor for {self.skip_rounds} rounds****\033[0m",
-                    self.agent_name, "Skipping round")
+                    self.agent_name, "Skipping round", optional=True)
 
             # Pre-inference human intervention
             llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(
@@ -2234,7 +2234,13 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
                         try:
                             llm_response = future.result(timeout=timeout_seconds)
                             outputs.append(llm_response)
-                            smart_print(
+                            if HumanLLMMonitor.use_websocket:
+                                smart_print(
+                                    f'ANSWER #{len(outputs)}\n{llm_response.content}\nEND OF ANSWER #{len(outputs)}',
+                                    self.agent_name, "NEW inference result recieved", column_id=idx,
+                                    column_max=self.num_parallel_inferences)
+                            else:
+                                smart_print(
                                 f'\033[0m**** New inference result recieved and added to outputs as #{len(outputs)}\033[0m:\n{llm_response.content}\n\033[9mEND OF #{len(outputs)}****\033[0m',
                                 self.agent_name, "NEW inference result recieved", column_id=idx,
                                 column_max=self.num_parallel_inferences)
@@ -2280,7 +2286,7 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
                 init_skip_rounds = self.skip_rounds  # save the current skip_rounds value because multiple outputs decrease skip rounds for each parallel output
                 if len(llm_outputs) > 1:
                     smart_print("**** Multiple LLM ANSWERS > we will process POST INFERENCE for each ****",
-                                self.agent_name, "Multiple LLM ANSWERS", append=True)
+                                self.agent_name, "Multiple LLM ANSWERS", append=True, optional=True)
                 if False and HumanLLMMonitor.use_websocket:
                     # Utilisez un ThreadPoolExecutor pour exécuter les réponses en parallèle en mode WebSocket.
                     with concurrent.futures.ThreadPoolExecutor() as executor:

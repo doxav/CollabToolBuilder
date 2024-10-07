@@ -288,7 +288,7 @@ class CodingAgent():
             "default_llmORchain": default_llm_choice,
             "premium_llmORchain": premium_llm_choice,
             "premium_llm_by_default": True,
-            "num_parallel_inferences": 4,
+            "num_parallel_inferences": 3,
             "llmORchains_list": llmORchains_list,
             "optuna": optuna,
             "temperature_min": temperature_min,
@@ -369,7 +369,7 @@ class CodingAgent():
                         else:
                             smart_print(
                                 f"Unsupported node type: {type(node)} - content:  {ast.get_source_segment(code, node)}",
-                                self.name, "process_ai_generated_code SystemMessage")
+                                self.name, "process_ai_generated_code SystemMessage", optional=True)
                             #raise ValueError(f"Unsupported node type: {type(node)} - content:  {ast.get_source_segment(code, node)}")  # TODO: check if await is needed
 
                     assert main_function is not None, "No main function found."
@@ -457,7 +457,7 @@ class CodingAgent():
                 no_runtime_error, exec_result = env.step(code_to_run)
                 while not no_runtime_error and current_skip_rounds <= 0:
                     smart_print("\033[31mCODE ERROR\033[0m: " + exec_result, self.name,
-                                "code_task_and_run_test SystemMessage")
+                                "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
                     if self.optuna_opti and max_autofix is not None:
                         decision = "a" if max_autofix > 1 else "no"
                         if decision == "a":
@@ -467,12 +467,12 @@ class CodingAgent():
                     else:
                         decision = smart_input(
                             f"ANSWER {output_id} Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ",
-                            self.name, "fix_error").strip().lower()
+                            self.name, "fix_error", column_id=output_id).strip().lower()
                     if decision in ("no", "n", ""):
                         break
                     elif decision == "a":
                         # do not use HumanLLMMonitor because no template is available for this specific case
-                        smart_print(f"TRYING TO AUTOFIX ERROR", self.name)
+                        smart_print(f"TRYING TO AUTOFIX ERROR", self.name, "fix_error", optional=False, column_id=output_id)
                         message_content = f"ERROR MESSAGE:[[{exec_result}]]\nCODE:[[{parsed_code['program_code']}]]"
                         edited_code_returned = self.human_llm_code_task.premium_llm.invoke([SystemMessage(
                             content=self.human_llm_code_task.load_prompt(agent_name=self.name, prompt="code_fixer")),
@@ -483,7 +483,7 @@ class CodingAgent():
                     else:
                         edited_code = _visual_input(parsed_code["program_code"], filetype="py")
                     code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
-                    smart_print("\033[31mTESTING NEW CODE\033[0m", self.name, "code_task_and_run_test SystemMessage")
+                    smart_print("TESTING NEW CODE", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
                     no_runtime_error, exec_result = env.step(code_to_run)
                     # Update parsed_code if re-run is successful
                     # if no_runtime_error:
@@ -514,7 +514,7 @@ class CodingAgent():
         # Utiliser os.listdir pour ne pas parcourir les sous-répertoires
         for file in os.listdir(folder_path):
             if file.endswith(".py"):
-                smart_print(f"File load: {file}", "CONFIG", "Files loaded")
+                smart_print(f"File load: {file}", "CONFIG", "Files loaded", optional=True)
                 file_path = os.path.join(folder_path, file)
                 with open(file_path, "r") as f:
                     primitives.append(f.read())
@@ -681,7 +681,7 @@ class CapitalizationAgent:
             smart_print(
                 f"************ Last added task ************\n{function_name}\n************************".replace("\\n",
                                                                                                                 "\n"),
-                self.name, "capitalize_successful_tasks SUCCESS")
+                self.name, "capitalize_successful_tasks SUCCESS", optional=True)
         else:
             function_name = parsed_code.get("main_function_name",
                                             parsed_code.get("main_function", {}).get("name", "unknown"))
@@ -693,7 +693,7 @@ class CapitalizationAgent:
             smart_print(
                 f"************ Last added task ************\n{function_name}\n************************".replace("\\n",
                                                                                                                 "\n"),
-                self.name, "capitalize_successful_tasks SUCCESS")
+                self.name, "capitalize_successful_tasks SUCCESS", optional=True)
 
         if self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/":
             if os.path.exists(pipeline_file_path):
@@ -778,7 +778,7 @@ class CapitalizationAgent:
         smart_print(
             f"************ Last added failed task ************\n{task_name}\n************************".replace("\\n",
                                                                                                                "\n"),
-            self.name, "capitalize_failed_tasks CAPITALIZE FAIL")
+            self.name, "capitalize_failed_tasks CAPITALIZE FAIL", optional=True)
 
         # Serialize entry
         serialized_entry = json.dumps({
@@ -798,7 +798,7 @@ class CapitalizationAgent:
 
     def process_results(self, results, task_type, selected_functions, repository, metadata_key, include_code_flag):
         smart_print(f"************ Retrieving {task_type} tasks from database - LIST:", self.name,
-                    "retrieve_saved_tasks_in_db DATABASE ACCESS")
+                    "retrieve_saved_tasks_in_db DATABASE ACCESS", optional=True)
         id = 0
         for result in results:
             id += 1
@@ -811,7 +811,7 @@ class CapitalizationAgent:
             task_name = task_data.get(name_key)
             smart_print(
                 f"{id}: {task_type} {name_key}:{task_name} time:{task_data['time']} host:{result.metadata['host']}",
-                self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS")
+                self.name, "retrieve_saved_tasks_in_db DATABASE ACCESS", optional=True)
 
         if selected_functions is None:
             selected_functions = smart_input(
@@ -828,7 +828,7 @@ class CapitalizationAgent:
 
             if task_name in repository:
                 smart_print(f"> {task_type} {task_name} already loaded. Skipping duplicates...", self.name,
-                            "retrieve_saved_tasks_in_db DATABASE ACCESS")
+                            "retrieve_saved_tasks_in_db DATABASE ACCESS", optional=True)
         tags = {"host": HumanLLMMonitor.get_host_id(),
                 "step_id": HumanLLMMonitor.step_id, }
 
@@ -990,7 +990,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         else:
             task = task[0]
         smart_print("Identified Task: " + task.content.replace("\\n", "\n"), "orchestrate_agents",
-                    "orchestrate_agents RESULT")
+                    "orchestrate_agents RESULT", optional=True)
         task_description = task.content
         # Extract potential score and state function code from the task
         if allow_custom_score_state_functions:
@@ -1322,7 +1322,7 @@ if __name__ == "__main__":
                               include_code=False,
                               selected_successful_functions=[],
                               selected_failed_functions=[],
-                              max_execution_time=1800,
+                              max_execution_time=900,
                               agtask_premium_llm_by_default=False,
                               agtask_skip_rounds=0,  # Auto-test: 1
                               agcoding_skip_rounds=0,  # Auto-test: 4

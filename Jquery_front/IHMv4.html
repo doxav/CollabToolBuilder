@@ -333,14 +333,14 @@ color: white;
     </div>
 
     <div id="main-content">
-        <div class="sidebar-toggle" id="toggle-history-main">Show History</div>
-        <div class="sidebar-toggle" id="toggle-settings-main">Show Settings</div>
+        <div class="sidebar-toggle" id="toggle-history-main">Show history</div>
+        <div class="sidebar-toggle" id="toggle-settings-main">Show settings</div>
       <div class="auto-open-checkbox">
             <input type="checkbox" id="auto-open-accordion" checked>
             <label style="color:black;" for="auto-open-accordion">Auto-focus new messages</label>
       </div>
         <div>
-             <label><input type="checkbox" id="show-concepts" checked> Show Concepts</label>
+             <label><input type="checkbox" id="show-optionals"> Show optional messages</label>
         </div>
         <div class="filter-bar">
             <select id="filter-message-type">
@@ -580,7 +580,59 @@ $(function() {
             return;
         }
 
+        if(data.optional){
+            if(!document.getElementById("show-optionals").checked) {
+                return;
+            }
+        }
+
         let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
+
+        // Places infos for each answers in columns in their columns
+
+        if(data.agent_name === "CodingAgent" && (data.message_type === "code_task_and_run_test SystemMessage" || data.message_type === "fix_error")) {
+            // Retrieve the columns of the CodingAgent
+            let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
+            let $columns = $agentAccordion.find('.solution-column');
+            const columnId = `${data.agent_name}-${data.column_id}`;
+            // Retrieve the targeted column
+            let targetColumn = document.getElementById(`column-${columnId}`);
+
+            if (data.message_type === "fix_error") {
+                // Create a question with a Yes, No and Try autofix with LLM buttons and append it to the "error-conten-${columnId}" div
+                let $question = $(`<p>Do you want to edit the code to fix the error (you will also be requested first) ?</p>`);
+                let $yesButton = $(`<button id="yes-button">Yes</button>`);
+                let $noButton = $(`<button id="no-button">No</button>`);
+                let $autofixButton = $(`<button id="autofix-button">Try autofix with LLM</button>`);
+                let $container = $(`<div></div>`);
+                $container.append($question);
+                $container.append($yesButton);
+                $container.append($noButton);
+                $container.append($autofixButton);
+                // Append container to the "error-content-${columnId}" div
+                let errorContent = targetColumn.querySelector(`#error-content-${columnId}`);
+                errorContent.appendChild($container[0]);
+                $yesButton.click(function () {
+                    socket.send(JSON.stringify({message: "yes"}));
+                    $container.remove();
+                });
+                $noButton.click(function () {
+                    socket.send(JSON.stringify({message: "no"}));
+                    $container.remove();
+                });
+                $autofixButton.click(function () {
+                    socket.send(JSON.stringify({message: "a"}));
+                    $container.remove();
+                });
+            } else {
+                // Adds the message to the "error-content-${columnId}" div
+                let errorContent = targetColumn.querySelector(`#error-content-${columnId}`);
+                errorContent.innerHTML += formatMessage(data.message);
+             }
+            return;
+
+        }
+
 
         if (data.agent_name === "TaskIdentificationAgent" && (data.message_type.includes("MULTIPLE inferences received") || data.message_type.includes("AFTER"))) {
             // Retrieve the columns of the TaskIdentificationAgent
@@ -589,13 +641,17 @@ $(function() {
             // Replace the content of message content for all the columns with a formated markdown message
             $columns.each(function (index, column) {
                 let $message = $(column).find('.message');
-                // Replace the actual content of the message with the actual content but formated with formatMarkdown
+                // Replace the actual content of the message with the actual content but formated with formlatMarkdown
                 $message.html(formatMarkdown($message.html()));
             });
         }
 
         // Generalize handling of multiple solutions
         if (data.column_max !== undefined && data.column_id !== undefined && data.message_type === "NEW inference result recieved") {
+            // Wait 2 seconds for the last streaming output being received
+            setTimeout(function() {
+                // Do nothing
+            }, 5000);
             number_created_functions++;
             document.getElementById("number-functions").textContent = number_created_functions;
             console.log("Handling multiple solutions");
@@ -804,29 +860,6 @@ $(function() {
             });
             // END COPY
 
-        } else if (data.message_type === "fix_error"){
-            let $question = $(`<p>"${data.message}"</p>`);
-              let $yesButton = $(`<button id="yes-button">Yes</button>`);
-              let $noButton = $(`<button id="no-button">No</button>`);
-              let $autofixButton = $(`<button id="try-llm-button">Try autofix with LLM</button>`);
-              let $container = $(`<div></div>`);
-              $container.append($question);
-              $container.append($yesButton);
-              $container.append($noButton);
-              $container.append($autofixButton);
-              $("#message-accordion").append($container);
-              $yesButton.click(function () {
-                  socket.send(JSON.stringify({message: "yes"}));
-                  $container.remove();
-              });
-              $noButton.click(function () {
-                  socket.send(JSON.stringify({message: "no"}));
-                  $container.remove();
-              });
-              $autofixButton.click(function () {
-                  socket.send(JSON.stringify({message: "a"}));
-                  $container.remove();
-              });
         } else if(data.message_type.includes("Inference streaming output") && data.agent_name === "TaskIdentificationAgent") {
             console.log("Inference streaming output");
             // Extract the inferenceNumber
@@ -1033,6 +1066,11 @@ $(function() {
                         <button id="score-${columnId}">Scoring ...</button>
                     </div>
                 `;
+
+            targetColumn.innerHTML += `
+                <br>
+                <div style="text-align: center;" id="error-content-${columnId}"/>
+            `;
             }
 
             // Add the menu options for column
@@ -1270,15 +1308,6 @@ $(function() {
         }
     });
 
-    // Add a listener for checkboxes of show concepts
-    // if the checkbox is checked, make classes "collapsible-message" open
-    $("#show-concepts").change(function() {
-        if ($(this).is(":checked")) {
-            $(".collapsible-message").addClass("open");
-        } else {
-            $(".collapsible-message").removeClass("open");
-        }
-    });
 
     function scrollToBottom() {
         let mainContent = document.getElementById('main-content');
