@@ -1317,7 +1317,7 @@ if __name__ == "__main__":
                               llmORchains_list=llmORchains_list,
                               test_environments=envs,
                               manual_validation_to_capitalize=False,
-                              problem_prompts_subdir=None,
+                              problem_prompts_subdir="IR_CPS_TechSynthesis",
                               max_coding_attempts=4,
                               include_code=False,
                               selected_successful_functions=[],
