@@ -917,7 +917,7 @@ $(function() {
             messageDiv.scrollTop = messageDiv.scrollHeight;
 
         } else if (data.message_type === "BEFORE inference action MENU" || data.message_type === "AFTER inference action MENU" && data.message.includes("Change default") || data.message.includes("Change premium") || data.message.includes("Exit") || data.message.includes("Log comments")) {
-                displayMenuOptions(data.message);
+                displayMenuOptions(data);
 
         } else if(data.agent_name === "CONFIG" && data.message.includes("Enter a capital letter for subdirectory")){
             // Existing code for handling this case
@@ -930,7 +930,7 @@ $(function() {
             }
             let $messageContainer = $(`<h4>${title}</h4><div class="column-container">Please, select a subdirectory </div>`);
             $configAccordion.children("div").append($messageContainer);
-            displayMenuOptions(data.message);
+            displayMenuOptions(data);
             // END COPY
 
         } else if(data.agent_name === "Pipeline/Function Mode" && data.message_type === "Files loaded" ){
@@ -1417,12 +1417,38 @@ $(document).on('click', '.collapsible-header', function() {
     }
 
 
-    function displayMenuOptions(message) {
+    function displayMenuOptions(data) {
+
+        let agentAccordion = document.querySelector(`#message-accordion > div[data-agent="${data.agent_name}"] > div`);
+        if (!agentAccordion) {
+            // Create agent accordion if it doesn't exist
+            agentAccordion = document.createElement('div');
+            agentAccordion.setAttribute('data-agent', data.agent_name);
+            agentAccordion.innerHTML = `<h3>${data.agent_name}</h3><div></div>`;
+            document.querySelector('#message-accordion').appendChild(agentAccordion);
+        }
+        let message = data.message;
+
+        // Adds a message on top of the menu options depending on the message type
+        let infos = "";
+        if(message.includes("AFTER")){
+            infos = "AFTER inference action MENU : Choose an action below";
+        }
+        else if (message.includes("BEFORE")){
+            infos = "BEFORE inference action MENU : Choose an action below";
+        }
+        else{
+            infos = "Choose an action below";
+        }
+        let $menuMessage = $(`<div style="font-weight: bold; font-size: 16px;">${infos}</div>`);
+
         // Detect if the message contains a selection list in curly braces
         let selectionMatch = message.match(/^\{(.+?)\}/);
         if (selectionMatch) {
             console.log("Displaying menu options in a separate column");
             $("#menu-options-column").empty();
+            // Adds infos
+            $("#menu-options").append($menuMessage);
             let optionsList = selectionMatch[1].split(",");
             // Split by comma to get the list of options
             optionsList.forEach(option => {
@@ -1432,6 +1458,8 @@ $(document).on('click', '.collapsible-header', function() {
         else {
             console.log("Displaying menu options");
             $("#menu-options").empty();
+            // Adds infos
+            $("#menu-options").append($menuMessage);
             // Existing logic for normal menu options
             let options = message.split("\n").filter(line => /^\[[A-Z]\]/.test(line));
             options.forEach(option => {

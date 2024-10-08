@@ -108,7 +108,7 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
             print(message)
 
 
-def smart_input(message: str, agent_name=None, message_type=None, column_id=None, column_max=None):
+def smart_input(message: str, agent_name=None, message_type=None, column_id=None, column_max=None, optional=False):
     if 'IN_NOTEBOOK' not in globals():
         try:  # test if IN_NOTEBOOK
             from IPython import get_ipython
@@ -128,7 +128,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
     else:
         IN_WEBSOCKET = globals()['IN_WEBSOCKET']
     if IN_WEBSOCKET:
-        structured_message = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'column_id': column_id, 'column_max': column_max, 'input': True}
+        structured_message = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'column_id': column_id, 'column_max': column_max, 'input': True, 'optional': optional}
         # convert structured_message to json
         message = json.dumps(structured_message)
         HumanLLMMonitor.websocket_server.send_message(message)
@@ -1296,7 +1296,7 @@ class HumanLLMMonitor:
                 case _:  # Default case
                     action = smart_input(
                         f"\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
-                        self.agent_name).upper()
+                        self.agent_name, optional=True).upper()
 
             # ACTIONS processing
             self.start_time = time.time()  # Init action selected and timer to measure time spent and occurences in action processing
@@ -1720,7 +1720,7 @@ class HumanLLMMonitor:
             self.menu_start_time = time.time()
             action = "" if optuna else smart_input(
                 f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
-                self.agent_name).upper()
+                self.agent_name, optional=True).upper()
 
             # ACTIONS processing
             self.start_time = time.time()  # Init action selected and timer to measure time spent and occurences in action processing
