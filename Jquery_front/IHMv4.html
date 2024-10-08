@@ -273,7 +273,7 @@ color: white;
 }
 
 .input-area {
-    display: flex;
+    display: none; /* Hide input area by default - replaced display: flex; */
     align-items: center;
 }
 
@@ -415,12 +415,16 @@ color: white;
 </div>
 
 <script>
+// Function to hide input area
+function hideInputField() {$(".input-area").hide();}
+
 $(function() {
     let socket = new WebSocket('ws://localhost:6789');
     let currentAgent = '';
     let savedSelection = null;
     let number_created_functions = 0;
     let number_validated_functions = 0;
+    let inputAwaited = false; // Flag to track if input is awaited
 
     // Mapping of agent names to their evaluation types
     const agentEvaluations = {
@@ -457,16 +461,7 @@ $(function() {
         }, 4000);
     };
 
-    /*function sendFunctionCall(agentName, functionName, params) {
-        let message = {
-            agent_name: agentName,
-            function: functionName,
-            params: params
-        };
-        socket.send(JSON.stringify(message));
-    }*/
-
-    let pendingCallbacks = {};
+        let pendingCallbacks = {};
 
     function sendFunctionCall(agentName, functionName, params, callback = null) {
         let message = {
@@ -492,6 +487,13 @@ $(function() {
                 delete pendingCallbacks[data.function];
             } else {
                 displayMessage(data);
+                if (data.input && !data.message.includes("Choose an action")) {
+                    inputAwaited = true; // Set input flag
+                    displayInputField(); // Show input area
+                } else {
+                    inputAwaited = false;
+                    hideInputField(); // Hide input area if not awaited
+                }
             }
         } catch (e) {
             console.log('Error parsing JSON:', e);
@@ -909,8 +911,7 @@ $(function() {
             messageDiv.scrollTop = messageDiv.scrollHeight;
 
         } else if (data.message_type === "BEFORE inference action MENU" || data.message_type === "AFTER inference action MENU" && data.message.includes("Change default") || data.message.includes("Change premium") || data.message.includes("Exit") || data.message.includes("Log comments")) {
-                displayMenuOptions(data);
-
+            displayMenuOptions(data);
         } else if(data.agent_name === "CONFIG" && data.message.includes("Enter a capital letter for subdirectory")){
             // Existing code for handling this case
             // COPIED CODE
@@ -1401,10 +1402,8 @@ $(document).on('click', '.collapsible-header', function() {
 });
 
 
-
-
-
     function displayInputField() {
+        $(".input-area").show();
         $("#user-input").show();
         $("#send-button").show();
     }
@@ -1563,9 +1562,10 @@ $(document).on('click', '.collapsible-header', function() {
         if (message) {
             socket.send(JSON.stringify({ message: message }));
             $("#user-input").val('');
+            inputAwaited = false; // Reset input flag
+            hideInputField(); // Hide input area after sending message
         }
     }
-
 
     $("#apply-settings").click(function() {
         let settings = {
