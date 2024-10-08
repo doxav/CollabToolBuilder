@@ -82,10 +82,10 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
                         'column_id': column_id, 'column_max': column_max, 'optional': optional}
         # convert message_dict to json
         message = json.dumps(message_dict)
-        time.sleep(0.1)
+        time.sleep(0.05)
         # Wait a second every 500 messages to avoid flooding the WebSocket server
         if HumanLLMMonitor.websocket_server.message_count % 500 == 0:
-            time.sleep(1)
+            time.sleep(0.5)
         HumanLLMMonitor.websocket_server.send_message(message)
 
     elif IN_NOTEBOOK and agent_name:
@@ -1253,21 +1253,20 @@ class HumanLLMMonitor:
             before_menu = f"\033[{self.print_color}m***** {self.agent_name}->{function_name}  BEFORE *****\nSYSTEM PROMPT:\n{messages[0].content}\n\nUSER MESSAGE:\n{messages[1].content}\n***** {self.agent_name}->{function_name} BEFORE *****\033[0m\n"
             if not self._max_tokens_ok(messages[0].content + "\n" + messages[1].content):
                 before_menu += ("WARNING!!!! Max tokens exceeded, you should refactor user message or system prompt!\n")
-            menu += (
-                "[A] Modify agent's 'system prompt' (role, global context, constraints, examples) OR the answer SCHEMA output.\n")
-            menu += ("[B] Add instruction or information to agent.\n")
-            menu += ("[C] Skip and set LLM output from recent outputs or manually define it.\n")
-            menu += ("[D] Log comments (not used by the model, just for information).\n")
-            menu += ("[E] See all previous results for this agent.\n")
-            menu += ("[F] See previous MODIFIED/SCORED/COMMENTED results for this agent.\n")
-            menu += ("[G] Skip human actions for N rounds.\n")
-            menu += ("[H] Change default LLM.\n")
-            menu += ("[I] Change premium LLM.\n")
+            menu += ("[A] Modify agent's system prompt\n") #Modify agent's 'system prompt' (role, global context, constraints, examples) OR the answer SCHEMA output.\n")
+            menu += ("[B] Give instruction or information to agent\n")
+            menu += ("[C] Skip & set agent output (from recent or manually)\n")
+            menu += ("[D] Log comments (not used by the model, just for information)\n")
+            menu += ("[E] See previous results\n")
+            menu += ("[F] See MODIFIED/SCORED/COMMENTED results\n")
+            menu += ("[G] Skip for N rounds (auto mode)\n")
+            menu += ("[H] Change default agent\n")
+            menu += ("[I] Change premium agent\n")
             #menu += (f"[I] Activate/de-activate function calling to allow model request external knowledge - current status: {function_calling}\n")
             menu += (
-                f"[J] Change num of parallel inferences - Current value={self.num_parallel_inferences}, Synthesize mode=\033[32m{'ON' if self.synthesize_mode else 'OFF'}\033[0m\n")  # UPDATED
-            menu += ("[K] Exit program.\n")
-            menu += (f"[P] Proceed to inference using a PREMIUM LLM - Current value={use_premium_llm}\n")
+                f"[J] Set num of parallel inferences ({self.num_parallel_inferences}, Synthesis={'ON' if self.synthesize_mode else 'OFF'})\n")  # UPDATED
+            menu += ("[K] Exit\n")
+            menu += (f"[P] Generate with a PREMIUM agent (default:{use_premium_llm})\n")
             menu += (f"[Z] Continue\n")
 
             smart_print(before_menu + menu, self.agent_name, "BEFORE inference action MENU", optional =False)
@@ -1705,15 +1704,14 @@ class HumanLLMMonitor:
                 f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n{check_display}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")
 
             menu += (
-                "[A] Manually set/modify the answer/output (I don't want to try to improve agent's system prompt).\n")  # je voudrais le corriger uniquement pour demander une suggestion d'amélioration du prompt (d'un autre côté, je peux aussi le faire dans le menu précédent)
-            menu += ("[B] Critic this answer/output to get an improved answer/output.\n")
-            menu += ("[C] Find a better Prompt by providing critic and ideal answer.\n")
-            menu += (
-                "[D] Evaluate & comment answer (Score between 0(worst)-1(top), and explain) to improve future results by using scored/commented examples.\n")
-            menu += ("[E] Go back BEFORE inference to improve system prompt or add information to user message.\n")
-            menu += ("[G] Skip human actions for N rounds.\n")
+                "[A] Modify answer\n")  # je voudrais le corriger uniquement pour demander une suggestion d'amélioration du prompt (d'un autre côté, je peux aussi le faire dans le menu précédent)
+            menu += ("[B] Critic answer to regenerate it\n")
+            menu += ("[C] Critic to improve agent's behavior\n")
+            menu += ("[D] Evaluate answer\n")
+            menu += ("[E] Go back (to BEFORE menu)\n")
+            menu += ("[G] Skip for N rounds (auto mode)\n")
             menu += ("[Z] Continue\n")
-            menu += ("[H] Exit program.\n")
+            menu += ("[H] Exit\n")
 
             smart_print(menu, self.agent_name, "AFTER inference action MENU" + (
                 f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""))

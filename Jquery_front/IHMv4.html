@@ -336,11 +336,8 @@ color: white;
         <div class="sidebar-toggle" id="toggle-history-main">Show history</div>
         <div class="sidebar-toggle" id="toggle-settings-main">Show settings</div>
       <div class="auto-open-checkbox">
-            <input type="checkbox" id="auto-open-accordion" checked>
-            <label style="color:black;" for="auto-open-accordion">Auto-focus new messages</label>
-      </div>
-        <div>
-             <label><input type="checkbox" id="show-optionals"> Show optional messages</label>
+            <label style="color:black;" for="auto-open-accordion"><input type="checkbox" id="auto-open-accordion" checked>Auto-focus new messages</label>
+            <label style="color:black;"><input type="checkbox" id="show-optionals">Show optional messages</label>
         </div>
         <div class="filter-bar">
             <select id="filter-message-type">
@@ -368,16 +365,6 @@ color: white;
                 <input type="checkbox" id="auto-open-accordion-bottom" checked>
                 <label style="color:black;" for="auto-open-accordion-bottom">Auto-focus new messages</label>
             </div>
-        </div>
-
-        <div class="filter-bar-bottom">
-            <select id="filter-message-type-bottom">
-                <option value="all">All Message Types</option>
-            </select>
-            <select id="filter-agent-type-bottom">
-                <option value="all">All Agent Types</option>
-            </select>
-            <input type="text" id="search-filter-bottom" placeholder="Search...">
         </div>
     </div>
 
@@ -527,10 +514,11 @@ $(function() {
         // Initialize content variable
         let content = '';
 
-        if(data.message.includes("Time spent in each option and occurrences" || data.message.includes("Choose an action (or hit Enter for inference)"))){
+        if(data.message.includes("Time spent in each option and occurrences") || data.message.includes("inference results received") || data.message.includes("Choose an action (or hit Enter for inference)")){
             // Exit the function
+            console.log('NOT Displaying message:', data);
             return;
-        }
+        } else console.log('Displaying message:', data);
 
         // Check if message_type includes "Inference streaming output"
         if (data.message_type && data.message_type.includes("Inference streaming output")) {
@@ -655,7 +643,7 @@ $(function() {
             // Wait 2 seconds for the last streaming output being received
             setTimeout(function() {
                 // Do nothing
-            }, 5000);
+            }, 2000);
             number_created_functions++;
             document.getElementById("number-functions").textContent = number_created_functions;
             console.log("Handling multiple solutions");
@@ -1041,7 +1029,6 @@ $(function() {
 
             targetColumn.innerHTML += `
                 <div style="text-align: center;">
-                    <p>Score the solution:</p>
                     <div style="display: flex; justify-content: center; align-items: flex-start;">
                         <!-- Slider and value container -->
                         <div style="display: flex; flex-direction: column; align-items: center; margin-right: 10px;">
@@ -1062,7 +1049,7 @@ $(function() {
                    <button id="delete-${columnId}"><i class="fa-regular fa-trash-can"></i> Remove solution</button>
                 </div>
                 <div style="text-align: center;">
-                    <button id="regenwithmymodifbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Apply this answer's annotations</button>
+                    <button id="regenwithmymodifbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Apply answer's annotations</button>
                 </div>
                 <div style="text-align: center;">
                     <button id="regenallbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Mix all annotated answers</button>
@@ -1439,11 +1426,11 @@ $(document).on('click', '.collapsible-header', function() {
         let infos = "";
         let $menuMessage;
         if(message.includes("AFTER")){
-            infos = "AFTER inference action MENU : Choose an action below";
+            infos = "AFTER agent's action MENU : Choose an action below";
             $menuMessage = $(`<div style="font-weight: bold; font-size: 24px; color: #4CAF50;">${infos}</div>`);
         }
         else if (message.includes("BEFORE")){
-            infos = "BEFORE inference action MENU : Choose an action below";
+            infos = "BEFORE agent's MENU : Choose an action below";
             $menuMessage = $(`<div style="font-weight: bold; font-size: 24px; color: #1976D2;">${infos}</div>`);
         }
         else{
