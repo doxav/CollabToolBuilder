@@ -2155,8 +2155,7 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
                 previous_chunk_str = ""
                 # Regex to match the end of a typical JSON structure
                 json_trail_re = re.compile(r'[\'\}\]]$')
-                for chunk in func.stream(
-                        input_msg):  #, temperature=temperature):  # Ensure 'llm' is correctly initialized with temperature
+                for chunk in func.stream(input_msg):  #, temperature=temperature):  # Ensure 'llm' is correctly initialized with temperature
                     if hasattr(chunk, 'content'):
                         chunk_content = chunk.content
                         final_output += chunk_content
@@ -2175,7 +2174,7 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
                         final_output = str(chunk)
                     if HumanLLMMonitor.use_websocket:
                         smart_print(chunk_content, self.agent_name, "Inference streaming output " + str(color_id),
-                                    append=True)
+                                    append=True, column_id=color_id, column_max=self.num_parallel_inferences)
                     else:
                         smart_print(start_color + chunk_content + end_color, self.agent_name,
                                     "Inference streaming output " + str(color_id), append=True)

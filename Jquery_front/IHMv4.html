@@ -479,6 +479,8 @@ $(function() {
         socket.send(JSON.stringify(message));
     }*/
 
+    let pendingCallbacks = {};
+
     function sendFunctionCall(agentName, functionName, params, callback = null) {
         let message = {
             agent_name: agentName,
@@ -489,26 +491,26 @@ $(function() {
 
         if (callback) {
             console.log('Setting up callback for', functionName);
-            socket.onmessage = function(event) {
-                console.log('Reception event');
-                console.log('Received message:', event.data);
-                try {
-                    data = JSON.parse(event.data);
-                } catch (e) {console.log('Error parsing JSON:', e); return;}
-                console.log('Parsed data:', data);
-                if (data.function === functionName) {
-                    console.log('Calling callback with data:', data);
-                    console.log('Data.message:', data.result);
-                    // Add a text at the begginning of the message
-                    callback(data.result);  // Call the callback with the response
-                    console.log('Callback called');
-                } else {
-                    console.log('Function name does not match for callback, displaying message instead');
-                    displayMessage(data);
-                }
-            };
+            pendingCallbacks[functionName] = callback;
         }
     }
+
+    socket.onmessage = function(event) {
+        console.log('Received message');
+        try {
+            let data = JSON.parse(event.data);
+            if (data.function && pendingCallbacks[data.function]) {
+                console.log('Calling callback for', data.function);
+                pendingCallbacks[data.function](data.result);
+                delete pendingCallbacks[data.function];
+            } else {
+                displayMessage(data);
+            }
+        } catch (e) {
+            console.log('Error parsing JSON:', e);
+        }
+    };
+
 
     function addHistoryEntry(actionDescription) {
         let timestamp = new Date().toLocaleTimeString();
@@ -1055,14 +1057,16 @@ $(function() {
             // Boutons supplémentaires avec identifiants mis à jour
             targetColumn.innerHTML += `
                 <br>
+                <div style="display: flex; justify-content: center; gap: 10px;">
                 <div style="text-align: center;">
-                   <button id="delete-${columnId}"><i class="fa-regular fa-trash-can"></i> Do not keep this solution</button>
+                   <button id="delete-${columnId}"><i class="fa-regular fa-trash-can"></i> Remove solution</button>
                 </div>
                 <div style="text-align: center;">
-                    <button id="regenwithmymodifbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Regenerate with my modifications</button>
+                    <button id="regenwithmymodifbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Apply this answer's annotations</button>
                 </div>
                 <div style="text-align: center;">
-                    <button id="regenallbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Regenerate with all modifications</button>
+                    <button id="regenallbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Mix all annotated answers</button>
+                </div>
                 </div>
             `;
             if(evaluationType === 'score') {
