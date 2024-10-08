@@ -1433,16 +1433,20 @@ $(document).on('click', '.collapsible-header', function() {
 
         // Adds a message on top of the menu options depending on the message type
         let infos = "";
+        let $menuMessage;
         if(message.includes("AFTER")){
             infos = "AFTER inference action MENU : Choose an action below";
+            $menuMessage = $(`<div style="font-weight: bold; font-size: 24px; color: #4CAF50;">${infos}</div>`);
         }
         else if (message.includes("BEFORE")){
             infos = "BEFORE inference action MENU : Choose an action below";
+            $menuMessage = $(`<div style="font-weight: bold; font-size: 24px; color: #1976D2;">${infos}</div>`);
         }
         else{
             infos = "Choose an action below";
+            $menuMessage = $(`<div style="font-weight: bold; font-size: 24px;">${infos}</div>`);
         }
-        let $menuMessage = $(`<div style="font-weight: bold; font-size: 16px;">${infos}</div>`);
+
 
         // Detect if the message contains a selection list in curly braces
         let selectionMatch = message.match(/^\{(.+?)\}/);
