@@ -628,6 +628,8 @@ $(function() {
                 // Adds the message to the "error-content-${columnId}" div
                 let errorContent = targetColumn.querySelector(`#error-content-${columnId}`);
                 errorContent.innerHTML += formatMessage(data.message);
+                // Adds a newlines to separate the messages
+                errorContent.innerHTML += "<br>";
              }
             return;
 
