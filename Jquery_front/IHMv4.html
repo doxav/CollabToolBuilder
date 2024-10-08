@@ -705,6 +705,10 @@ $(function() {
         } else if(data.message.includes("Time spent in each option and occurrences" || data.message.includes("Choose an action (or hit Enter for inference)"))){
 
         } else if (data.message_type === "Scores") {
+            // Enable continue-button-${data.agent_name}
+            let $continueButton = $(`#continue-button-${data.agent_name}`);
+            $continueButton.prop('disabled', false);
+
             handleEvaluationResults(data);
              let $scoreButtons = $agentAccordion.find("button[id^='score-']");
         // Stock scores in an array retrieved with the regex "const regex = new RegExp(`^${i}\\.\\s+(SUCCESS|FAILED)`, 'm');"
@@ -1193,24 +1197,26 @@ $(function() {
                 return;
             }
             // Ajouter le bouton "Continue"
-            let $continueButton = $(`<button id="continue-button-${data.agent_name}">Continue</button>`);
-            $(solutionColumnsContainer).after($continueButton);
-            $continueButton.click(function () {
-                console.log("Continue button clicked");
-                let columnsToDelete = JSON.parse(localStorage.getItem(`columnsToDelete-${data.agent_name}`)) || [];
-                let columnsToKeep = [];
-                for (let i = 0; i < columnMax; i++) {
-                    if (!columnsToDelete.includes(i)) {
-                        columnsToKeep.push(i);
+            if(data.agent_name === "CodingAgent") {
+                let $continueButton = $(`<button id="continue-button-${data.agent_name}" disabled>Continue</button>`);
+                $(solutionColumnsContainer).after($continueButton);
+                $continueButton.click(function () {
+                    console.log("Continue button clicked");
+                    let columnsToDelete = JSON.parse(localStorage.getItem(`columnsToDelete-${data.agent_name}`)) || [];
+                    let columnsToKeep = [];
+                    for (let i = 0; i < columnMax; i++) {
+                        if (!columnsToDelete.includes(i)) {
+                            columnsToKeep.push(i);
+                        }
                     }
-                }
-                number_validated_functions += columnsToKeep.length;
-                document.getElementById("number-validated-functions").textContent = number_validated_functions;
-                console.log("Columns to keep:", columnsToKeep.join(','));
-                socket.send(JSON.stringify({message: columnsToKeep.join(',')}));
-                let actionDescription = `User clicked continue, keeping solutions: ${columnsToKeep.map(num => num + 1).join(', ')}`;
-                addHistoryEntry(actionDescription);
-            });
+                    number_validated_functions += columnsToKeep.length;
+                    document.getElementById("number-validated-functions").textContent = number_validated_functions;
+                    console.log("Columns to keep:", columnsToKeep.join(','));
+                    socket.send(JSON.stringify({message: columnsToKeep.join(',')}));
+                    let actionDescription = `User clicked continue, keeping solutions: ${columnsToKeep.map(num => num + 1).join(', ')}`;
+                    addHistoryEntry(actionDescription);
+                });
+            }
         }
 
         if (columnMax > 4) {
