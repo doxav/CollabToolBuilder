@@ -564,9 +564,8 @@ $(function() {
 
         if(data.message.includes("Time spent in each option and occurrences") || data.message.includes("inference results received") || data.message.includes("Choose an action (or hit Enter for inference)")){
             // Exit the function
-            console.log('NOT Displaying message:', data);
             return;
-        } else console.log('Displaying message:', data);
+        }
 
         // Check if message_type includes "Inference streaming output"
         if (data.message_type && data.message_type.includes("Inference streaming output")) {
@@ -755,10 +754,10 @@ $(function() {
 
         // for each button, we retrieve the score and we change the text of the button
         $scoreButtons.each(function (index, button) {
-            const regex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m(SUCCESS|FAILED)\\u001b\\[0m`, 'm');
+            const regex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m(SUCCESS|FAILED)\\u001b\\[0m`, 'm');
             const match = data.message.match(regex);
             if (match) {
-                console.log("Match found:", match);
+                console.log("Match found", match);
                 const score = match[1];
                 button.textContent = score;
                 if (score === "SUCCESS") {
@@ -767,7 +766,7 @@ $(function() {
                     button.style.backgroundColor = "red";
                 }
                 // Extract the full text following the solution number
-                const fullTextRegex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
+                const fullTextRegex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
                 const fullTextMatch = data.message.match(fullTextRegex);
 
                 if (fullTextMatch) {
@@ -775,7 +774,7 @@ $(function() {
 
                     // Attach a click event to display the full text in a pop-up
                     button.addEventListener('click', function () {
-                        alert(`Score of solution ${index + 1}:\n\n${fullText}`);
+                        alert(`Score of solution ${index}:\n\n${fullText}`);
                     });
                 }
             } else {
@@ -905,7 +904,6 @@ $(function() {
             // END COPY
 
         } else if(data.message_type.includes("Inference streaming output") && data.agent_name === "TaskIdentificationAgent") {
-            console.log("Inference streaming output");
             // Extract the inferenceNumber
             let inferenceNumber = parseInt(data.message_type.slice(-1));
             if (isNaN(inferenceNumber)) {
@@ -917,7 +915,6 @@ $(function() {
 
             if (!targetColumn) {
                 // Column doesn't exist yet, create it
-                console.log(`Creating column for inference ${inferenceNumber}`);
 
                 // Ensure the solutionColumnsContainer exists
                 let solutionColumnsContainer = document.querySelector(`#message-accordion > div[data-agent="${data.agent_name}"] > div > .solution-columns`);
@@ -1133,7 +1130,7 @@ $(function() {
                     }
                 });
 
-                $(document).on("click", `#evaluate-${columnId}`, function () {
+                $(`#evaluate-${columnId}`).click(function () {
                     if ($(`#slider-${columnId}`).val() === '-1') {
                         alert('-1 is not a valid score, so please select a valid score.');
                         return;
@@ -1161,7 +1158,7 @@ $(function() {
                 });
 
                 // Gestionnaire pour le bouton "Select solution"
-                $(document).on("click", `#select-${columnId}`, function () {
+                $(`#select-${columnId}`).click(function () {
                     let targetColumn = document.getElementById(`column-${columnId}`);
                     let deleteButton = document.getElementById(`delete-${columnId}`);
 
@@ -1206,7 +1203,7 @@ $(function() {
                 });
 
             // Mise à jour des événements pour les boutons
-            $(document).on("click", `#delete-${columnId}`, function () {
+            $(`#delete-${columnId}`).click(function () {
                 let targetColumn = document.getElementById(`column-${columnId}`);
                 if (targetColumn.style.backgroundColor === 'lightcoral') {
                     targetColumn.style.backgroundColor = '';
@@ -1225,9 +1222,9 @@ $(function() {
                 console.log('Columns to delete:', columnsToDelete);
                 let actionDescription;
                 if (targetColumn.style.backgroundColor === 'lightcoral') {
-                    actionDescription = `User marked solution ${columnIndex + 1} for deletion`;
+                    actionDescription = `User marked solution ${columnIndex} for deletion`;
                 } else {
-                    actionDescription = `User unmarked solution ${columnIndex + 1} for deletion`;
+                    actionDescription = `User unmarked solution ${columnIndex} for deletion`;
                 }
                 addHistoryEntry(actionDescription);
             });
@@ -1236,6 +1233,7 @@ $(function() {
                 let targetColumn = document.getElementById(`column-${columnId}`);
                 let text = targetColumn.querySelector('.message').textContent;
                 let textWithoutHtml = text.replace(/<[^>]*>/g, '');
+                console.log('Regenerating with modifications');
 
                 sendFunctionCall(data.agent_name, "criticAnswer", {content_annotated: textWithoutHtml, inference_result_msg: ""}, function(responseMessage) {
                     console.log("responseMessage:"+responseMessage);
@@ -1308,6 +1306,9 @@ $(function() {
                     socket.send(JSON.stringify({message: columnsToKeep.join(',')}));
                     let actionDescription = `User clicked continue, keeping solutions: ${columnsToKeep.map(num => num + 1).join(', ')}`;
                     addHistoryEntry(actionDescription);
+
+                    // Clear the columns to delete
+                    localStorage.removeItem(`columnsToDelete-${data.agent_name}`);
                 });
             }
         }
