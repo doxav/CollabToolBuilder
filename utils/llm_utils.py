@@ -1704,7 +1704,7 @@ class HumanLLMMonitor:
                 f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n{check_display}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")
 
             menu += (
-                "[A] Modify answer\n")  # je voudrais le corriger uniquement pour demander une suggestion d'amélioration du prompt (d'un autre côté, je peux aussi le faire dans le menu précédent)
+                "[A] Edit answer\n")  # je voudrais le corriger uniquement pour demander une suggestion d'amélioration du prompt (d'un autre côté, je peux aussi le faire dans le menu précédent)
             menu += ("[B] Critic answer to regenerate it\n")
             menu += ("[C] Critic to improve agent's behavior\n")
             menu += ("[D] Evaluate answer\n")

@@ -415,6 +415,8 @@ color: white;
 </div>
 
 <script>
+// Global variables
+let selectedSolution = null;
 // Function to hide input area
 function hideInputField() {$(".input-area").hide();}
 
@@ -1047,13 +1049,16 @@ $(function() {
                 <br>
                 <div style="display: flex; justify-content: center; gap: 10px;">
                 <div style="text-align: center;">
-                   <button id="delete-${columnId}"><i class="fa-regular fa-trash-can"></i> Remove solution</button>
+                    <button id="select-${columnId}"><i class="fa-regular fa-check-circle"></i> Select</button>
+                </div>
+                <div style="text-align: center;">
+                   <button id="delete-${columnId}"><i class="fa-regular fa-trash-can"></i> Remove</button>
                 </div>
                 <div style="text-align: center;">
                     <button id="regenwithmymodifbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Apply answer's annotations</button>
                 </div>
                 <div style="text-align: center;">
-                    <button id="regenallbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Mix all annotated answers</button>
+                    <button id="regenallbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Merge all answers & annotations</button>
                 </div>
                 </div>
             `;
@@ -1108,6 +1113,51 @@ $(function() {
                     let comment = $(`#comment-${columnId}`).val();
                     sendFunctionCall(data.agent_name, "evaluateCommentAnswerForLater", {comment: comment, score: score, output_id: columnIndex});
                     let actionDescription = `User evaluated solution ${columnIndex} with score ${score} and comment "${comment}"`;
+                    addHistoryEntry(actionDescription);
+                });
+
+                // Gestionnaire pour le bouton "Select solution"
+                $(document).on("click", `#select-${columnId}`, function () {
+                    let targetColumn = document.getElementById(`column-${columnId}`);
+                    let deleteButton = document.getElementById(`delete-${columnId}`);
+
+                    // Si "Remove solution" est déjà sélectionné, désactiver "Select solution"
+                    if (targetColumn.style.backgroundColor === 'lightcoral') {
+                        alert('Cannot select this solution because it is marked for deletion.');
+                        return;
+                    }
+
+                    // Si cette solution est déjà sélectionnée
+                    if (selectedSolution === columnIndex) {
+                        // La désélectionner
+                        targetColumn.style.backgroundColor = '';
+                        this.style.backgroundColor = '';
+                        deleteButton.disabled = false;
+                        selectedSolution = null;
+                        localStorage.removeItem(`selectedSolution-${data.agent_name}`);
+                        console.log('Selected solution cleared');
+                    } else {
+                        // Désélectionner la précédente sélection
+                        if (selectedSolution !== null) {
+                            let previousColumnId = `${data.agent_name}-${selectedSolution}`;
+                            let previousColumn = document.getElementById(`column-${previousColumnId}`);
+                            let previousSelectButton = document.getElementById(`select-${previousColumnId}`);
+                            let previousDeleteButton = document.getElementById(`delete-${previousColumnId}`);
+                            if (previousColumn) {
+                                previousColumn.style.backgroundColor = '';
+                                previousSelectButton.style.backgroundColor = '';
+                                previousDeleteButton.disabled = false;
+                            }
+                        }
+                        // Sélectionner cette solution
+                        targetColumn.style.backgroundColor = 'lightgreen';
+                        this.style.backgroundColor = 'lightgreen';
+                        deleteButton.disabled = true;
+                        selectedSolution = columnIndex;
+                        localStorage.setItem(`selectedSolution-${data.agent_name}`, columnIndex);
+                        console.log('Selected solution:', selectedSolution);
+                    }
+                    let actionDescription = `User selected solution ${columnIndex + 1}`;
                     addHistoryEntry(actionDescription);
                 });
 
@@ -1197,10 +1247,15 @@ $(function() {
                 $continueButton.click(function () {
                     console.log("Continue button clicked");
                     let columnsToDelete = JSON.parse(localStorage.getItem(`columnsToDelete-${data.agent_name}`)) || [];
+                    let selectedSolutionIndex = parseInt(localStorage.getItem(`selectedSolution-${data.agent_name}`));
                     let columnsToKeep = [];
-                    for (let i = 0; i < columnMax; i++) {
-                        if (!columnsToDelete.includes(i)) {
-                            columnsToKeep.push(i);
+                    if (!isNaN(selectedSolutionIndex)) {
+                        columnsToKeep = [selectedSolutionIndex];
+                    } else {
+                        for (let i = 0; i < columnMax; i++) {
+                            if (!columnsToDelete.includes(i)) {
+                                columnsToKeep.push(i);
+                            }
                         }
                     }
                     number_validated_functions += columnsToKeep.length;

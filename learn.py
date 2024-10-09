@@ -45,9 +45,9 @@ UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function = "intfloat/e5-base-v2"  # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
-reset_db_indices = True  # Set to True after changing embeddings
+reset_db_indices = False  # Set to True after changing embeddings
 
-
+HumanLLMMonitor.use_websocket = True
 
 class Environment:
     def __init__(self, temp_root_dir: str = None, data_dir: str = "data"):
@@ -1098,7 +1098,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
         results = agent_coding.code_task_and_run_test(task_description, previous_errors, previous_scores,
                                                       previous_codes)
         all_results.extend(results)  # Store all results for statistics
-        previous_errors, previous_codes, previous_scores = [], [], []  #TEST reset
+        #previous_errors, previous_codes, previous_scores = [], [], []  #TEST reset
 
         # First part: Process all codes and collect results
         current_skip_rounds = agent_validation.human_llm_validate_code.skip_rounds
