@@ -286,6 +286,20 @@ color: white;
     margin-left: 10px;
 }
 
+.buffering-circle {
+            width: 15px;
+            height: 15px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: none; /* Hide by default */
+        }
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
 
 @media (min-width: 1200px) {
     .solution-column {
@@ -311,6 +325,17 @@ color: white;
     }
 }
 
+/* Floating div style */
+#floating-div {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: white;
+    border: 1px solid #90CAF9;
+    padding: 10px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+}
 </style>
 </head>
 <body>
@@ -348,12 +373,11 @@ color: white;
             </select>
             <input type="text" id="search-filter" placeholder="Search...">
         </div>
-        <div style="font-size: medium; font-weight: bold;">
-            <label>Experience remaining time:</label>
-            <span id="remaining-time">0</span>
-        </div>
+
 
         <div id="message-accordion" class="accordion"></div>
+
+        <div class="buffering-circle"></div>
 
         <div id="menu-options"></div>
 
@@ -397,6 +421,13 @@ color: white;
     </div>
 </div>
 
+<div id="floating-div">
+    <div style="font-size: medium; font-weight: bold;">
+        <label>Experience remaining time:</label>
+        <span id="remaining-time">0</span>
+    </div>
+</div>
+
 <div class="annotation-menu">
     <button class="close-btn">&times;</button>
     <select id="annotation-scope">
@@ -418,7 +449,13 @@ color: white;
 // Global variables
 let selectedSolution = null;
 // Function to hide input area
-function hideInputField() {$(".input-area").hide();}
+function hideInputField() {
+    $(".input-area").hide();
+    // Show buffering circle
+    $(".buffering-circle").show();
+}
+
+
 
 $(function() {
     let socket = new WebSocket('ws://localhost:6789');
@@ -427,6 +464,7 @@ $(function() {
     let number_created_functions = 0;
     let number_validated_functions = 0;
     let inputAwaited = false; // Flag to track if input is awaited
+
 
     // Mapping of agent names to their evaluation types
     const agentEvaluations = {
@@ -489,13 +527,19 @@ $(function() {
                 delete pendingCallbacks[data.function];
             } else {
                 displayMessage(data);
-                if (data.input && !data.message.includes("Choose an action")) {
+                if (data.input && !data.message.includes("Choose an action") && !data.message.includes("Do you want to edit the code") && !data.message.includes("CODE SELECTION Please select the code to keep")) {
                     inputAwaited = true; // Set input flag
                     displayInputField(); // Show input area
+                    $(".buffering-circle").hide();
+
                 } else {
                     inputAwaited = false;
                     hideInputField(); // Hide input area if not awaited
                 }
+                if(data.input || data.message.includes("Choose an action")){
+                    $(".buffering-circle").hide();
+                }
+
             }
         } catch (e) {
             console.log('Error parsing JSON:', e);
@@ -1461,6 +1505,9 @@ $(document).on('click', '.collapsible-header', function() {
         $(".input-area").show();
         $("#user-input").show();
         $("#send-button").show();
+        // Hide buffering
+        console.log("Hiding buffering")
+        $(".buffering-circle").hide();
     }
 
 
