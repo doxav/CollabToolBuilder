@@ -994,6 +994,7 @@ class HumanLLMMonitor:
                  llmORchains_list=None,
                  synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, optuna=False, envs=None):
         # Instance properties to track time
+        self.selected_outputs = []
         self.menu_start_time = None
         self.start_time = None
         self.current_inference_context = None
@@ -1034,6 +1035,21 @@ class HumanLLMMonitor:
         self.user_message = ""
         self.envs = envs
 
+    # Clears the selected answers before processing new outputs.
+    # This should be called at the beginning of a new inference process.
+    def clear_selected_outputs(self):
+        self.selected_outputs = []
+
+    # Store the list of selected answers/outputs provided by the frontend.
+    # This should be called during the after_inference process.
+    def set_selected_outputs(self, selected_outputs):
+        self.selected_outputs = selected_outputs
+
+    # Retrieve the list of selected answers/outputs.
+    # External agents can use this method to access the selected outputs.
+    def get_selected_outputs(self):
+        return self.selected_outputs
+    
     # New: Handling function calls via WebSocket
     def execute_function(self, function_name, params):
         if hasattr(self, function_name):
@@ -1714,11 +1730,11 @@ class HumanLLMMonitor:
             menu += ("[H] Exit\n")
 
             smart_print(menu, self.agent_name, "AFTER inference action MENU" + (
-                f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""))
+                f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""), column_id=output_id, column_max=outputs_count)
             self.menu_start_time = time.time()
             action = "" if optuna else smart_input(
                 f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
-                self.agent_name, optional=True).upper()
+                self.agent_name, optional=True, column_id=output_id, column_max=outputs_count).upper()
 
             # ACTIONS processing
             self.start_time = time.time()  # Init action selected and timer to measure time spent and occurences in action processing
@@ -1751,7 +1767,7 @@ class HumanLLMMonitor:
                           "E",
                           "Z"]: break  # E: Go back BEFORE inference to improve system prompt or add information to user message
 
-            proceed = smart_input("Continue 'y' (or 'n' to go back to menu) ? ", self.agent_name).lower()
+            proceed = smart_input("Continue 'y' (or 'n' to go back to menu) ? ", self.agent_name, column_id=output_id, column_max=outputs_count).lower()
             if proceed in ["y", ""]:
                 break
 
@@ -1764,12 +1780,12 @@ class HumanLLMMonitor:
 
             smart_print(
                 f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[2].function} LLM ANSWER content****\n{inference_result_msg.content}\n{check_display}\n*****************\033[0m",
-                self.agent_name, "LLM ANSWER content")
+                self.agent_name, "LLM ANSWER content", column_id=output_id)
             self.skip_rounds -= 1
         else:
             smart_print(
                 f"Time spent in each option and occurrences: {self.after_inference_option_times} - {self.after_inference_option_counts}",
-                self.agent_name, optional=True)
+                self.agent_name, optional=True, column_max=outputs_count)
 
         self.mode = None
         return inference_result_msg, comments, score
@@ -2100,6 +2116,7 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
         if len(llm_outputs) > 1:
             self.skip_rounds = init_skip_rounds
             smart_print(f"ANSWER NUMBER #{counter-1} ", self.agent_name, "POST INFERENCE", append=True, optional=True)
+
         self.current_inference_context = {
             'function_name': inspect.stack()[1].function,
             'input_contents': self.llm_input_messages,
@@ -2213,6 +2230,7 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
                 original_input_messages, default_llm_function, premium_llm_function, function_calling,
                 callable_system_message, optuna=optuna, model_choice=model_choice)
             self.llm_input_messages = llm_input_messages
+            self.clear_selected_outputs()
             start_time = datetime.now()
             self.last_inference_check_results = [None] * self.num_parallel_inferences  # Pre-allocate the list with None
             if llm_input_messages and not skip_inference:

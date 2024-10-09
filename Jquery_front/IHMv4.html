@@ -444,10 +444,9 @@ color: white;
     <input type="text" id="annotation-input" placeholder="Enter your annotation">
     <button id="apply-annotation">Apply</button>
 </div>
-
 <script>
 // Global variables
-let selectedSolution = null;
+let selectedSolution = [];
 // Function to hide input area
 function hideInputField() {
     $(".input-area").hide();
@@ -564,8 +563,10 @@ $(function() {
 
         if(data.message.includes("Time spent in each option and occurrences") || data.message.includes("inference results received") || data.message.includes("Choose an action (or hit Enter for inference)")){
             // Exit the function
+            // console.log('NOT Displaying message:', data);
             return;
         }
+        // else console.log('Displaying message:', data);
 
         // Check if message_type includes "Inference streaming output"
         if (data.message_type && data.message_type.includes("Inference streaming output")) {
@@ -754,10 +755,10 @@ $(function() {
 
         // for each button, we retrieve the score and we change the text of the button
         $scoreButtons.each(function (index, button) {
-            const regex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m(SUCCESS|FAILED)\\u001b\\[0m`, 'm');
+            const regex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m(SUCCESS|FAILED)\\u001b\\[0m`, 'm');
             const match = data.message.match(regex);
             if (match) {
-                console.log("Match found", match);
+                console.log("Match found:", match);
                 const score = match[1];
                 button.textContent = score;
                 if (score === "SUCCESS") {
@@ -766,7 +767,7 @@ $(function() {
                     button.style.backgroundColor = "red";
                 }
                 // Extract the full text following the solution number
-                const fullTextRegex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
+                const fullTextRegex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
                 const fullTextMatch = data.message.match(fullTextRegex);
 
                 if (fullTextMatch) {
@@ -774,7 +775,7 @@ $(function() {
 
                     // Attach a click event to display the full text in a pop-up
                     button.addEventListener('click', function () {
-                        alert(`Score of solution ${index}:\n\n${fullText}`);
+                        alert(`Score of solution ${index + 1}:\n\n${fullText}`);
                     });
                 }
             } else {
@@ -904,6 +905,7 @@ $(function() {
             // END COPY
 
         } else if(data.message_type.includes("Inference streaming output") && data.agent_name === "TaskIdentificationAgent") {
+            // console.log("Inference streaming output");
             // Extract the inferenceNumber
             let inferenceNumber = parseInt(data.message_type.slice(-1));
             if (isNaN(inferenceNumber)) {
@@ -915,6 +917,7 @@ $(function() {
 
             if (!targetColumn) {
                 // Column doesn't exist yet, create it
+                console.log(`Creating column for inference ${inferenceNumber}`);
 
                 // Ensure the solutionColumnsContainer exists
                 let solutionColumnsContainer = document.querySelector(`#message-accordion > div[data-agent="${data.agent_name}"] > div > .solution-columns`);
@@ -1130,7 +1133,7 @@ $(function() {
                     }
                 });
 
-                $(`#evaluate-${columnId}`).click(function () {
+                $(document).on("click", `#evaluate-${columnId}`, function () {
                     if ($(`#slider-${columnId}`).val() === '-1') {
                         alert('-1 is not a valid score, so please select a valid score.');
                         return;
@@ -1157,28 +1160,19 @@ $(function() {
                     addHistoryEntry(actionDescription);
                 });
 
-                // Gestionnaire pour le bouton "Select solution"
                 $(`#select-${columnId}`).click(function () {
                     let targetColumn = document.getElementById(`column-${columnId}`);
                     let deleteButton = document.getElementById(`delete-${columnId}`);
 
-                    // Si "Remove solution" est déjà sélectionné, désactiver "Select solution"
-                    if (targetColumn.style.backgroundColor === 'lightcoral') {
-                        alert('Cannot select this solution because it is marked for deletion.');
-                        return;
-                    }
-
-                    // Si cette solution est déjà sélectionnée
+                    // If this solution is already selected, deselect it
                     if (selectedSolution === columnIndex) {
-                        // La désélectionner
                         targetColumn.style.backgroundColor = '';
                         this.style.backgroundColor = '';
                         deleteButton.disabled = false;
                         selectedSolution = null;
-                        localStorage.removeItem(`selectedSolution-${data.agent_name}`);
                         console.log('Selected solution cleared');
                     } else {
-                        // Désélectionner la précédente sélection
+                        // Deselect the previous selection if any
                         if (selectedSolution !== null) {
                             let previousColumnId = `${data.agent_name}-${selectedSolution}`;
                             let previousColumn = document.getElementById(`column-${previousColumnId}`);
@@ -1190,50 +1184,48 @@ $(function() {
                                 previousDeleteButton.disabled = false;
                             }
                         }
-                        // Sélectionner cette solution
+                        // Select this solution
                         targetColumn.style.backgroundColor = 'lightgreen';
                         this.style.backgroundColor = 'lightgreen';
                         deleteButton.disabled = true;
                         selectedSolution = columnIndex;
-                        localStorage.setItem(`selectedSolution-${data.agent_name}`, columnIndex);
                         console.log('Selected solution:', selectedSolution);
                     }
-                    let actionDescription = `User selected solution ${columnIndex + 1}`;
-                    addHistoryEntry(actionDescription);
+
+                    // Send the updated list of selected solutions to the backend
+                    let columnsToKeep = selectedSolution !== null ? [selectedSolution] : [];
+                    console.log(data.agent_name + ' - Columns to keep:', columnsToKeep);
+                    sendFunctionCall(data.agent_name, "set_selected_outputs", { selected_outputs: columnsToKeep });
                 });
 
-            // Mise à jour des événements pour les boutons
-            $(`#delete-${columnId}`).click(function () {
-                let targetColumn = document.getElementById(`column-${columnId}`);
-                if (targetColumn.style.backgroundColor === 'lightcoral') {
-                    targetColumn.style.backgroundColor = '';
-                    this.style.backgroundColor = '';
-                    let columnsToDelete = JSON.parse(localStorage.getItem(`columnsToDelete-${data.agent_name}`)) || [];
-                    columnsToDelete = columnsToDelete.filter(column => column !== columnIndex);
-                    localStorage.setItem(`columnsToDelete-${data.agent_name}`, JSON.stringify(columnsToDelete));
-                    console.log('Columns to delete:', columnsToDelete);
-                    return;
-                }
-                targetColumn.style.backgroundColor = 'lightcoral';
-                this.style.backgroundColor = 'lightcoral';
-                let columnsToDelete = JSON.parse(localStorage.getItem(`columnsToDelete-${data.agent_name}`)) || [];
-                columnsToDelete.push(columnIndex);
-                localStorage.setItem(`columnsToDelete-${data.agent_name}`, JSON.stringify(columnsToDelete));
-                console.log('Columns to delete:', columnsToDelete);
-                let actionDescription;
-                if (targetColumn.style.backgroundColor === 'lightcoral') {
-                    actionDescription = `User marked solution ${columnIndex} for deletion`;
-                } else {
-                    actionDescription = `User unmarked solution ${columnIndex} for deletion`;
-                }
-                addHistoryEntry(actionDescription);
-            });
+                $(`#delete-${columnId}`).click(function () {
+                    let targetColumn = document.getElementById(`column-${columnId}`);
+                    let isMarkedForDeletion = targetColumn.style.backgroundColor === 'lightcoral';
+
+                    // Toggle the background color for marking removal
+                    targetColumn.style.backgroundColor = isMarkedForDeletion ? '' : 'lightcoral';
+
+                    // If marked for deletion, clear the selected solution if it matches
+                    if (isMarkedForDeletion) {if (selectedSolution === columnIndex) {selectedSolution = null;}}
+
+                    // Compute the updated list of selected solutions, excluding the marked-for-deletion columns
+                    let columnsToKeep = [];
+                    let totalColumns = document.querySelectorAll(`.solution-column[id^='column-${data.agent_name}-']`).length;
+
+                    for (let i = 0; i < totalColumns; i++) {
+                        let col = document.getElementById(`column-${data.agent_name}-${i}`);
+                        if (col.style.backgroundColor !== 'lightcoral') {
+                            columnsToKeep.push(i);}}
+
+                    // Send the updated list to the backend
+                    sendFunctionCall(data.agent_name, "set_selected_outputs", { selected_outputs: columnsToKeep });
+                });
+
 
             $(`#regenwithmymodifbutton-${columnId}`).click(function () {
                 let targetColumn = document.getElementById(`column-${columnId}`);
                 let text = targetColumn.querySelector('.message').textContent;
                 let textWithoutHtml = text.replace(/<[^>]*>/g, '');
-                console.log('Regenerating with modifications');
 
                 sendFunctionCall(data.agent_name, "criticAnswer", {content_annotated: textWithoutHtml, inference_result_msg: ""}, function(responseMessage) {
                     console.log("responseMessage:"+responseMessage);
@@ -1306,9 +1298,6 @@ $(function() {
                     socket.send(JSON.stringify({message: columnsToKeep.join(',')}));
                     let actionDescription = `User clicked continue, keeping solutions: ${columnsToKeep.map(num => num + 1).join(', ')}`;
                     addHistoryEntry(actionDescription);
-
-                    // Clear the columns to delete
-                    localStorage.removeItem(`columnsToDelete-${data.agent_name}`);
                 });
             }
         }
@@ -1513,7 +1502,6 @@ $(document).on('click', '.collapsible-header', function() {
 
 
     function displayMenuOptions(data) {
-
         let agentAccordion = document.querySelector(`#message-accordion > div[data-agent="${data.agent_name}"] > div`);
         if (!agentAccordion) {
             // Create agent accordion if it doesn't exist
@@ -1528,11 +1516,11 @@ $(document).on('click', '.collapsible-header', function() {
         let infos = "";
         let $menuMessage;
         if(message.includes("AFTER")){
-            infos = "AFTER agent's action MENU : Choose an action below";
+            infos = `AFTER ${data.agent_name} inference MENU : Choose an action below`;
             $menuMessage = $(`<div style="font-weight: bold; font-size: 24px; color: #4CAF50;">${infos}</div>`);
         }
         else if (message.includes("BEFORE")){
-            infos = "BEFORE agent's MENU : Choose an action below";
+            infos = `BEFORE ${data.agent_name} inference MENU : Choose an action below`;
             $menuMessage = $(`<div style="font-weight: bold; font-size: 24px; color: #1976D2;">${infos}</div>`);
         }
         else{
@@ -1540,7 +1528,10 @@ $(document).on('click', '.collapsible-header', function() {
             $menuMessage = $(`<div style="font-weight: bold; font-size: 24px;">${infos}</div>`);
         }
 
-
+        if(data.column_id !== undefined && data.column_max > 1) {
+            console.log(`Should display menu in columns here  - column_id:${data.column_id} max:${data.column_max}`);
+            //$(`column-${columnId}`).append($menuMessage);
+        }
         // Detect if the message contains a selection list in curly braces
         let selectionMatch = message.match(/^\{(.+?)\}/);
         if (selectionMatch) {
@@ -1584,37 +1575,6 @@ $(document).on('click', '.collapsible-header', function() {
             });
         }
     }
-
-
-/*
-    function displayMenuOptions(message) {
-        $("#menu-options").empty();
-        // Split the message into lines and filter for those starting with a bracket and a capital letter and a closing bracket
-        let options = message.split("\n").filter(line => /^\[[A-Z]\]/.test(line));
-        options.forEach(option => {
-            let match = option.match(/\[(.)\](.*)/);
-            if (match && match[1]) {
-                let letter = match[1].toUpperCase();
-                // Ignore specific options if needed
-                if (!match[2].includes("Change default") && !match[2].includes("Change premium") && !match[2].includes("Exit") && !match[2].includes("Log comments")) {
-                    if (match[2].includes("Change num of parallel inferences")) {
-                        // Remove ANSI codes
-                        let cleanString = match[2].replace(/\u001b\[\d+m/g, '');
-                        let $option = $(`<div class="menu-option" data-option="${letter}">${cleanString}</div>`);
-                        $("#menu-options").append($option);
-                    } else if (match[2].includes("Continue")) {
-                        // Set button color to green
-                        let $option = $(`<div class="menu-option" data-option="${letter}" style="background-color: green;">${match[2]}</div>`);
-                        $("#menu-options").append($option);
-                    } else {
-                        let $option = $(`<div class="menu-option" data-option="${letter}">${match[2]}</div>`);
-                        $("#menu-options").append($option);
-                    }
-                }
-            }
-        });
-    }
-    */
 
     function updateFilters(data) {
         if (!$("#filter-message-type option[value='" + data.message_type + "']").length) {

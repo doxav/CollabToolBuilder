@@ -970,23 +970,26 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
 
         # Handle multiple-tasks case
         if len(task) > 1:
-            # list all tasks with their index and the 200 first characters of their content
-            task_list = "Multiple task output, only one allowed - PLEASE SELECT:\n"
-            for i, t in enumerate(task):
-                task_list += f"\n\nTask id :  {i}\n Content :\n{t.content[:200]}\n"
-            smart_print(task_list, "TaskIdentificationAgent", "TASK SELECTION")
-            # get input from user with the index of the task to select, manage exceptions
-            while True:
-                try:
-                    id = int(smart_input("Enter the index of the task to select: ", "TaskIdentificationAgent",
-                                         "TASK SELECTION").strip())
-                    if id in range(len(task)):
-                        task = task[id]
-                        break
-                    else:
-                        raise Exception("Index out of range")
-                except Exception as e:
-                    smart_print(f"Error: {e}\n\nEnter a valid index")
+            if agent_taskreco.human_llm_identify_best_task.selected_outputs and len(agent_taskreco.human_llm_identify_best_task.selected_outputs) == 1:
+                task = task[agent_taskreco.human_llm_identify_best_task.selected_outputs[0]]
+            else:
+                # list all tasks with their index and the 200 first characters of their content
+                task_list = "Multiple task output, only one allowed - PLEASE SELECT:\n"
+                for i, t in enumerate(task):
+                    task_list += f"\n\nTask id :  {i}\n Content :\n{t.content[:200]}\n"
+                smart_print(task_list, "TaskIdentificationAgent", "TASK SELECTION")
+                # get input from user with the index of the task to select, manage exceptions
+                while True:
+                    try:
+                        id = int(smart_input("Enter the index of the task to select: ", "TaskIdentificationAgent",
+                                            "TASK SELECTION").strip())
+                        if id in range(len(task)):
+                            task = task[id]
+                            break
+                        else:
+                            raise Exception("Index out of range")
+                    except Exception as e:
+                        smart_print(f"Error: {e}\n\nEnter a valid index")
         else:
             task = task[0]
         smart_print("Identified Task: " + task.content.replace("\\n", "\n"), "orchestrate_agents",
@@ -1095,8 +1098,9 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
     for attempt in range(max_attempts):
         if end_time is not None and time.time() >= end_time:
             break
-        results = agent_coding.code_task_and_run_test(task_description, previous_errors, previous_scores,
-                                                      previous_codes)
+        results = agent_coding.code_task_and_run_test(task_description, previous_errors, previous_scores, previous_codes)
+        if(len(results)>1 and agent_coding.human_llm_code_task.selected_outputs and len(agent_coding.human_llm_code_task.selected_outputs)>0):
+            results = [result for i, result in enumerate(results) if i in agent_coding.human_llm_code_task.selected_outputs]
         all_results.extend(results)  # Store all results for statistics
         #previous_errors, previous_codes, previous_scores = [], [], []  #TEST reset
 
@@ -1106,15 +1110,15 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
             agent_validation.human_llm_validate_code.skip_rounds = current_skip_rounds  # to prevent skip_rounds decreased multiple times by multiple calls of HumanLLMMonitor
             smart_print(
                 f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace(
-                    "\\n", "\n"), None, "coding_and_validation_loop RESULT")
+                    "\\n", "\n"), "coding_and_validation_loop", "coding_and_validation_loop RESULT")
             validation_agent_feedback = agent_validation.validate_code(parsed_code["program_code"], no_runtime_error,
                                                                        exec_result, task=task_description,
                                                                        scores=scores, env_states=env_states)
-            smart_print("Agent validation 'feedback' currently only support 1 feedback", None,
+            smart_print("Agent validation 'feedback' currently only support 1 feedback", "coding_and_validation_loop",
                         "coding_and_validation_loop WARNING")
             validation_agent_feedback = validation_agent_feedback[0]
             afb = validation_agent_feedback.content.replace('\\n', '\n')
-            smart_print("#" * 20 + f"\nAgent validation feedback: {afb}", None, "coding_and_validation_loop RESULT")
+            smart_print("#" * 20 + f"\nAgent validation feedback: {afb}", "coding_and_validation_loop", "coding_and_validation_loop RESULT")
 
             if extra_manual_validation_to_capitalize:
                 validated = (input(
