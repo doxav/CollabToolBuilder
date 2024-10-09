@@ -525,7 +525,7 @@ $(function() {
                 delete pendingCallbacks[data.function];
             } else {
                 displayMessage(data);
-                if (data.input && !data.message.includes("Choose an action") && !data.message.includes("Do you want to edit the code")) {
+                if (data.input && !data.message.includes("Choose an action") && !data.message.includes("Do you want to edit the code") && !data.message.includes("CODE SELECTION Please select the code to keep")) {
                     inputAwaited = true; // Set input flag
                     displayInputField(); // Show input area
                     $(".buffering-circle").hide();
