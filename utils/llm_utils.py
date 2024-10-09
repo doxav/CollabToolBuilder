@@ -369,6 +369,11 @@ class UnifiedVectorDB:
     es_password = None
     OpenAI_embedding_function_name = "text-embedding-ada-002"
     db_connection_check_done = False
+    unique_collection_id = None
+
+    @classmethod
+    def set_unique_collection_id(cls, unique_id):
+        cls.unique_collection_id = unique_id
 
     @staticmethod
     def check_db():
@@ -398,6 +403,9 @@ class UnifiedVectorDB:
     def __init__(self, collection_name, embedding_function, persist_directory, reset_db_indices=False):
         UnifiedVectorDB.check_db()
         self.collection_name = collection_name.lower()
+        if UnifiedVectorDB.unique_collection_id is not None:
+            self.collection_name += f"_{UnifiedVectorDB.unique_collection_id}"
+            self.collection_name = self.collection_name.lower()
         self.embedding_function = embedding_function
         self.persist_directory = persist_directory
 
@@ -447,8 +455,8 @@ class UnifiedVectorDB:
             return self.db.similarity_search_with_score(query, k=k)
         elif UnifiedVectorDB.db_type == 'elasticsearch':
             return self.db.similarity_search_with_score(query, k=(k if k <= 50 else 50))  # k seems to crash when > 50
-
     # query( query_embeddings, query_texts, n_results, where, where_document, include)
+
     def query(self, query_text="", k=1, metadata_filter=None, metadata_filter_OR=False, custom_filter_chrome=None,
               custom_filter_es=None, sort_order=None):
         if UnifiedVectorDB.db_type == 'chroma':
@@ -520,7 +528,6 @@ class UnifiedVectorDB:
             print(f"Deleted {response['deleted']} documents from index {self.collection_name}")
             # sleep 2 seconds to let the index be updated
             time.sleep(2)
-
     # TODO: start by replacing UnifiedVectorDB by neo4j improving the ChatGPT generated code below, then validate the learn.py process works properly
 
 
@@ -816,23 +823,36 @@ class HumanLLMMonitor:
         Returns:
             str: The modified prompt content with few shots inserted.
         """
-        # Find all 'few_shots' tags with their arguments
-        pattern = r"few_shots:\s*(\{[^}]*\})"
+        # Match 'few_shots' and capture the curly braces, manually handling nested braces
+        pattern = r"few_shots:\s*\{"
         matches = list(re.finditer(pattern, prompt, re.DOTALL))
 
         for match in reversed(matches):  # Reverse to not mess up indices when replacing
             try:
-                data_str = match.group(1)
+                start = match.start()
+                # Manually find the corresponding closing brace
+                brace_count = 1
+                end = start + match.end() - match.start()
+                while brace_count > 0 and end < len(prompt):
+                    if prompt[end] == '{':
+                        brace_count += 1
+                    elif prompt[end] == '}':
+                        brace_count -= 1
+                    end += 1
+
+                # Extract the JSON string
+                data_str = prompt[match.start() + len("few_shots:"):end]
+                print(f"Attempting to decode few_shots tag: {data_str}")  # Debug
                 data = json.loads(data_str)
                 # Combine criteria
                 combined_criteria = self.combine_criteria([data])
                 # Get the few shots string
                 few_shots_str = self.get_multiple_few_shots(combined_criteria)
                 # Replace the tag with the few shots string
-                start, end = match.span()
                 prompt = prompt[:start] + few_shots_str + prompt[end:]
             except json.JSONDecodeError as e:
                 print(f"Error decoding 'few_shots' tag: {e}")
+                print(f"Faulty JSON: {data_str}")  # Debug
                 continue
 
         return prompt
@@ -984,7 +1004,8 @@ class HumanLLMMonitor:
                  default_llmORchain=None,
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1,
                  llmORchains_list=None,
-                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, optuna=False, envs=None):
+                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, optuna=False, envs=None,
+                 fixed_coach=False):
         # Instance properties to track time
         self.menu_start_time = None
         self.start_time = None
@@ -1025,6 +1046,7 @@ class HumanLLMMonitor:
         self.last_inference_check_results = None
         self.user_message = ""
         self.envs = envs
+        self.fixed_coach = fixed_coach
 
     # New: Handling function calls via WebSocket
     def execute_function(self, function_name, params):
@@ -1264,31 +1286,37 @@ class HumanLLMMonitor:
 
             smart_print(before_menu + menu, self.agent_name, "BEFORE inference action MENU")
             self.menu_start_time = time.time()
-            match (optuna.lower() if optuna else ""):
-                case "coach":
-                    llm_keys = list(self.llmORchains_list.keys())
-                    if type(model_choice) == int:
-                        # Model change from choice of optuna
-                        new_llm_name = llm_keys[model_choice]
-                    elif type(model_choice) == str:
-                        if model_choice not in llm_keys:
-                            raise ValueError(f"Model choice '{model_choice}' not found in llmORchains_list {llm_keys}")
-                        new_llm_name = model_choice
-                    else:
-                        raise ValueError("Model choice must be an integer or a string")
-                    self.set_default_llmORchain(new_llm_name)
-                    self.set_premium_llmORchain(new_llm_name)
-                    default_llm_function = self.default_llm
-                    premium_llm_function = self.premium_llm
-                    self.synthesize_mode = False
-                    # Default actions for all agents while running with optuna
-                    action = ""
-                case "coder":
-                    action = ""
-                case _:  # Default case
-                    action = smart_input(
-                        f"\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
-                        self.agent_name).upper()
+            if optuna:
+                llm_keys = list(self.llmORchains_list.keys())
+                if type(model_choice) == int:
+                    # Model change from choice of optuna
+                    new_llm_name = llm_keys[model_choice]
+                elif type(model_choice) == str:
+                    if model_choice not in llm_keys:
+                        raise ValueError(f"Model choice '{model_choice}' not found in llmORchains_list {llm_keys}")
+                    new_llm_name = model_choice
+                else:
+                    raise ValueError("Model choice must be an integer or a string")
+
+                if self.agent_name == "TaskIdentificationAgent":
+                    if self.num_parallel_inferences > 1 :
+                        self.synthesize_mode = True
+                    if self.fixed_coach:
+                        # We force the output of the llm.
+                        forced_llm_output = self.fixed_coach
+
+                self.set_default_llmORchain(new_llm_name)
+                self.set_premium_llmORchain(new_llm_name)
+                default_llm_function = self.default_llm
+                premium_llm_function = self.premium_llm
+                self.synthesize_mode = False
+                # Default actions for all agents while running with optuna
+                action = ""
+
+            else:  # Default case
+                action = smart_input(
+                    f"\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
+                    self.agent_name).upper()
 
             # ACTIONS processing
             self.start_time = time.time()  # Init action selected and timer to measure time spent and occurences in action processing
@@ -1421,7 +1449,10 @@ class HumanLLMMonitor:
         return comments
 
     def reuse_past(self, forced_llm_output, function_name):
-        if HumanLLMMonitor.common_vectordb.count() > 0:
+        if self.fixed_coach:
+            selected_index = 1
+            log_entries, list_output = self._get_log_entries(self.agent_name, function_name), ""
+        elif HumanLLMMonitor.common_vectordb.count() > 0:
             log_entries, list_output = self._get_log_entries(self.agent_name, function_name), ""
             for idx, entry in enumerate(log_entries, start=1):
                 content = json.loads(entry.page_content)
@@ -2314,3 +2345,5 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
         )
 
         return [message.content for message in output_messages] if return_message_content_only else output_messages
+    
+## END OF HumanLLMMonitor class

@@ -1,232 +1,33 @@
-import json
-import sys
-
-import optuna as opt
-import time
-import os
-from langchain_openai import ChatOpenAI
-from config import MODELS_CONFIG_LIST
-from learn import EnvironmentManager, run_4agents_learning_loop
-from optimisation.optuna_analysis import analysis
-from utils.llm_utils import HumanLLMMonitor, UnifiedVectorDB
-
-# Set the class variable
-HumanLLMMonitor.use_websocket = False
-
-def definition_few_shots(trial, usr_msg: bool = False, no_params_search: bool = False, sources_list = ["learnt", "failed", "example"]):
-    """
-    Define few-shot tags and separators for the trial.
-
-    Args:
-        trial (optuna.trial.Trial): The Optuna trial object.
-        usr_msg (bool, optional): Flag to determine the format of few_shots_tags. Defaults to False.
-        static_params (bool, optional): Flag to determine whether to use static or dynamic values for few-shot tags. Defaults to True.
-
-    Returns:
-        str or list: A string of few-shot tags (if usr_msg is False) or a list of few-shot tags (if usr_msg is True).
-    """
-    # Initialize few_shots_tags based on usr_msg flag
-    few_shots_tags = [] if usr_msg else ""
-
-    for i in range(3):
-        source = sources_list[i]
-
-        # Determine num based on static_params
-        if no_params_search: # Based on experiment result 108353
-            num = 2  # Static logic
-            output_format = "json"  # Static format
-            # Static separators
-            global_prefix = f"{source}_tasks: <<"
-            global_suffix = ">>\n"
-            item_prefix = "\n("
-            item_suffix = ")"
-
-        else:
-            # Dynamic values using Optuna's trial suggestions (from the second version)
-            num = trial.suggest_int(f"num_tag_{source}", 0, 5)
-            if num == 0:
-                continue  # Skip if num is 0
-            
-            output_format = trial.suggest_categorical(f"format_tag_{i+1}", ["Json", "Markdown"])
-            global_prefix = trial.suggest_categorical("global_prefix_option", ["tasks: <<", "List of tasks: [[", "tasks: {{", "List of tasks: $$"])
-            
-            # Adjust global_prefix based on the source
-            if global_prefix[-2:] in ["[[", "$$", "<<"]:
-                global_prefix = f"{global_prefix[:8]}{source} {global_prefix[8:]}"
-            else:
-                global_prefix = f"{source}{global_prefix}"
-            
-            # Define global_suffix based on global_prefix
-            global_suffix = f"{global_prefix[-2:]}\n".replace("<<", ">>").replace("[[", "]]").replace("{{", "}}")
-            item_prefix = trial.suggest_categorical("item_prefix_option", ["\n|", "\n(", "\n-"])
-            item_suffix = f"{item_prefix[-1:]}\n".replace("(", ")")
-
-        # Construct the separators dictionary
-        tmp_separators = {
-            "global_prefix": global_prefix,
-            "global_suffix": global_suffix,
-            "item_prefix": item_prefix,
-            "item_suffix": item_suffix
-        }
-
-        # Define the few-shot dictionary
-        few_shot_dict = {
-            "sources": source,
-            "num": num,
-            "format": output_format,
-            "sort_order": "random",
-            "separators": tmp_separators,
-            "metadata_filter": {},  # Static for now, can be expanded
-        }
-
-        # Convert to JSON string if usr_msg is False (string-based format)
-        if not isinstance(few_shots_tags, list):
-            few_shot_json = json.dumps(few_shot_dict)
-            few_shots_tags += f"few_shots: {few_shot_json}\n"
-        else:
-            few_shots_tags.append(few_shot_dict)
-
-    return few_shots_tags
+from optimisation.optuna_main import launch_run, definition_few_shots, global_main
 
 
-def definition_global_parameters(temperature : float = None, presence_penalty : float = None):
-    """
-    Define global parameters for the LLMs and environments.
+def objective(trial, name_xp : str):
+    # Define parameters we want to tests
 
-    Args:
-        temperature (float, optional): The temperature setting for the LLMs.
-        presence_penalty (float, optional): The presence penalty setting for the LLMs.
+    num_previous_attempts = 4
+    parameters_previous_attempts = "code & task"
+    primitives_selection = "primitives/generate_primitives"
+    prev_failed_task = ("36dd8e77-829d-48c9-8f6c-3d7bc8dfa3aa", "c7159fce-e204-4909-b156-299d698bc456")
+    prev_learnt_task = "set2"
 
-    Returns:
-        tuple: A tuple containing the LLM or chains list and the environments list.
-    """
-    llmORchains_list = {
-        "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt"], **{k: v for k, v in {"temperature": temperature, "presence_penalty": presence_penalty}.items() if v is not None}),
-        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"], **{k: v for k, v in {"temperature": temperature, "presence_penalty": presence_penalty}.items() if v is not None}),
-    }
+    # Define fixed parameters for Coder
+    libraries_restriction = "Numpy, Pandas, Huggingface, Sklearn" # Can be removed: Huggingface and Sklearn, to test if 3 imposed methods offer better performance than with these libraries
+    max_autofix = 3
+    # temperature = trial.suggest_categorical("temperature", [0.5, 0.7, 0.9, 1.1, 1.3, 1.5])
+    # number_inferences = trial.suggest_categorical("number_inferences", [1, 2, 4, 8])
+    presence_penalty = 0.7189030356596702
+    reasoning_depth = 1
 
-    # Set the documents to test/validate as a list of environments
-    documents = [{'id': "cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
-                  'title': "Complex QA and language models hybrid architectures, Survey",
-                  'context': "This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
-                  'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"},
-                 {'id': "42252c6c-12f3-4edf-9045-8acd69bc3356",
-                  'title': "Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
-                  'context': "This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
-                  'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
+    # Few shots parameters
+    user_message_params = definition_few_shots(trial, True, no_params_search=True)
 
-    envs = []
-    for doc in documents:
-        env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
-                                target_file_path=doc['target_file_path'], id=doc['id']).get_environment()
-        envs.append(env)
+    synthesis_code = trial.suggest_categorical("synthesis_code", [True, False])
 
-    return llmORchains_list, envs
+    synthesis_code_string = ""
 
-def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "premium_llm", problem_prompts_subdir : str = None, max_coding_attempts : int = 2, max_execution_time : int = 900,
-               model_choice=None, optuna_opti : str = "coach", params_user_message : str = None, special_criteria : dict = None, name_exp : str = "", temperature_max : float = None, number_inferences : int = 1,
-               fixed_coach : bool = False):
-    """
-    Launch the run with the specified parameters.
-
-    Args:
-        default_llm_key (str): The key for the default LLM.
-        premium_llm_key (str): The key for the premium LLM.
-        problem_prompts_subdir (str, optional): The subdirectory for problem prompts.
-        max_coding_attempts (int, optional): The maximum number of coding attempts.
-        max_execution_time (int, optional): The maximum execution time in seconds.
-        model_choice (dict, optional): The model choices for different roles.
-        optuna_opti (str, optional): The Optuna optimization target.
-        params_user_message (str, optional): The criteria for evaluation.
-        special_criteria (dict, optional): Special criteria for the run.
-        name_exp (str, optional): The name of the experiment.
-
-    Returns:
-        Any: The performance result of the run.
-    """
-    if model_choice is None:
-        model_choice = {"coach": "default", "coder": "premium_llm", "critic": "default_llm",
-                        "capitalizer": "default_llm"}
-    if special_criteria is None:
-        llmORchains_list, envs = definition_global_parameters()
-    else:
-        llmORchains_list, envs = definition_global_parameters(special_criteria.get("temperature", None), special_criteria.get("presence_penalty", None))
-        # Delete the presence_penalty from the special_criteria - Why ?
-        special_criteria.pop("presence_penalty", None)
-    # Set unique collection ID based on name_exp
-    UnifiedVectorDB.set_unique_collection_id(f"{name_exp}")
-    performance = run_4agents_learning_loop(default_llm_key=default_llm_key,
-                                            premium_llm_key=premium_llm_key,
-                                            llmORchains_list=llmORchains_list,
-                                            test_environments=envs,
-                                            manual_validation_to_capitalize=False,
-                                            problem_prompts_subdir=problem_prompts_subdir,
-                                            max_coding_attempts=max_coding_attempts,
-                                            include_code=False,
-                                            selected_successful_functions=[],
-                                            selected_failed_functions=[],
-                                            agtask_premium_llm_by_default=True,
-                                            max_execution_time=max_execution_time,
-                                            agtask_skip_rounds=0,
-                                            agcoding_skip_rounds=0,
-                                            agvalidation_skip_rounds=0,
-                                            agcapitalize_skip_rounds=0,
-                                            model_choice=model_choice,
-                                            optuna_opti=optuna_opti,
-                                            params_user_message=params_user_message,
-                                            special_criteria=special_criteria,
-                                            number_inferences=number_inferences,
-                                            temperature_max=temperature_max,
-                                            fixed_coach=fixed_coach)
-    print("Analysis...")
-    analysis(name_exp)
-    print("Analysis done.")
-    return performance
-
-def launch_study(objective, name_exp : str, n_trials=200):
-    """
-    Launch the Optuna study with the specified objective and experiment name.
-
-    Args:
-        objective (callable): The objective function for the Optuna study.
-        name_exp (str): The name of the experiment.
-    """
-    # get current folder
-    current_folder = os.getcwd()
-
-    # Define the directory and file path
-    sqlite_dir = os.path.join(current_folder, "Optuna_db")
-    sqlite_file = os.path.join(sqlite_dir, f"{name_exp}.db")
-
-    # Create the directory if it does not exist
-    if not os.path.exists(sqlite_dir):
-        os.makedirs(sqlite_dir)
-
-    # Create a study and optimize the objective function
-    study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}", study_name=name_exp)
-    study.optimize(objective, n_trials=n_trials)
-
-def global_main(objective, agent_name : str, params_tested : str = "") :
-    """
-    Main function to launch the Optuna study.
-
-    Args:
-        objective (callable): The objective function for the Optuna study.
-        agent_name (str): The name of the agent.
-        params_tested (str): The parameters tested in the study.
-    """
-    # Change directory to the location of this script if not already in the correct directory
-    if os.path.basename(os.getcwd()) == "optimisation":
-        os.chdir("../")
-    # Recuperate name_exp from terminal argument:
-    if len(sys.argv) > 1:
-        name_exp = sys.argv[1]
-    else :
-        timestamp_xp = int(time.time())
-        name_exp = f"xp_{agent_name}{params_tested}{timestamp_xp}"
-    launch_study(lambda trial: objective(trial, name_exp), name_exp)
-
-documentation = """
+    if synthesis_code:
+        synthesis_code_string = """
+    
 DOCUMENTATION OF AVAILABLE FUNCTIONS IN THE "bot" OBJECT (SynthesisManager class): {{{
 # The following functions are available for use when generating code. Please leverage these pre-existing methods to avoid redundancy, maintain modularity, and ensure code reusability.
 
@@ -392,15 +193,17 @@ class SynthesisManager:
 
     @method_call_counter
     def get_and_store_link_content(self, link: str = None, parent_id = None, chaining: bool = True):
-            # Downloads an online document from the given link and stores it in the resources database.
+            \"""
+            Downloads an online document from the given link and stores it in the resources database.
             
-            # Args:
-            # link (str): The URL of the online document to download.
-            # parent_id: The ID of the parent document, if any.
-            # chaining (bool): Whether to return the current object or the IDs of the stored documents.
+            Args:
+            link (str): The URL of the online document to download.
+            parent_id: The ID of the parent document, if any.
+            chaining (bool): Whether to return the current object or the IDs of the stored documents.
             
-            # Returns:
-            # If chaining is True, returns the current object. Otherwise, returns the IDs of the stored documents.
+            Returns:
+            If chaining is True, returns the current object. Otherwise, returns the IDs of the stored documents.
+            \"""
             from langchain.document_loaders import WebBaseLoader
             if link is None:
                 raise ValueError("Please provide a link to download the document from")
@@ -587,55 +390,92 @@ class SynthesisManager:
         
         return resources_status
 
-}}}"""
+        }}}
 
-fixed_coach_prompt = """
-1. **Reasoning**:\n   - The current environment has experienced several failures in generating 
-coherent tables of contents (TOCs) for research papers, indicating that previous attempts did not 
-effectively leverage LLM capabilities for topic extraction and organization.\n   
-- The presence of multiple failed tasks highlights the importance of developing a robust function 
-that not only extracts topics but also structures them coherently into a TOC that meets quality 
-standards, including a minimum of 3 sections and 6 subsections.\n   - Previous attempts have 
-shown that runtime errors related to missing parameters have hindered the successful execution 
-of functions. Therefore, the next task must ensure clear parameter handling and streamlined operations 
-for topic extraction and TOC generation.\n   - Given the current state of the environment with 
-empty TOCs and the need for improvement in the extraction and structuring processes, the next 
-best task should concentrate on refining the TOC generation method to enhance output quality and 
-coherence while ensuring successful execution.\n\n2. **Next Best Task**:\n   
-- **Function Name**: `generate_toc_with_fallback`\n   - **Description**: Create a structured table 
-of contents (TOC) for a research survey paper using the provided title and abstract, utilizing LLM capabilities 
-for topic extraction, and implementing a reliable fallback mechanism for organizing content if extraction fails. 
-\n\n3. **Performance Acceptance Criteria**:\n   - The generated TOC must include at least 3 relevant 
-sections and 6 subsections derived from the document's context.\n   - If topic extraction fails, the function 
-should provide a coherent default TOC structure that aligns with standard research paper outlines.\n   - The TOC 
-should maintain a clear hierarchical structure, effectively delineating main sections and subsections.\n   - The 
-function should execute within a timeframe of less than 3 seconds.\n   - The output must be coherent, relevant, 
-and free from hallucinations or irrelevant content.\n\n4. **Development Plan**:\n   - **Plan Depth**: 3\n   
-- **Steps**:\n     - **Step 1**: Use LLM to extract main topics and subtopics from the provided title and abstract.\n       
-- **LLM Call**: Perform natural language processing to identify key themes and topics.\n       
-- **Error Handling**: Implement a fallback mechanism to handle scenarios where no topics are extracted, 
-providing a predefined structure instead.\n     - **Step 2**: Organize the identified topics into a coherent 
-hierarchical structure.\n       - **Algorithmic Processing**: Create a structured outline consisting of main 
-sections and subsections based on the identified topics or a default template if extraction fails.\n     
-- **Step 3**: Format the generated TOC into a structured output suitable for inclusion in the document.\n       
-- **Algorithmic Processing**: Ensure the output is formatted as a well-structured list or dictionary for seamless 
-integration into the research paper.\n\n5. **Tests**:\n```python\n# 
-Test for document #cf0d353c-b43b-4a79-88f9-42c2c84cf75e:\ngenerate_toc_with_fallback(bot, 
-title=\"Innovations in Renewable Energy Technologies\", abstract=\"This paper examines the latest 
-advancements in renewable energy, focusing on solar, wind, and bioenergy technologies and their potential 
-impact on global energy markets.\")\n\n# Test for document #42252c6c-12f3-4edf-9045-8acd69bc3356:\ngenerate_toc_with_fallback(bot, 
-title=\"Artificial Intelligence and Machine Learning in Medicine\", abstract=\"This document reviews the integration of 
-AI and machine learning in medical diagnostics and treatment, discussing case studies and future trends.\")\n``` 
-\n\n### Summary of Component Handling:\n- **LLM Call**: The extraction of keywords and themes (Step 1) will utilize 
-LLM capabilities for effective natural language processing, enhancing the understanding of context and semantics.\n
-- **Algorithmic Processing**: Steps 2 and 3 (organization and formatting) will be performed through structured algorithmic 
-processing to ensure coherent output and effective integration into research papers.\n\n### Error Handling and Fallback 
-Mechanisms:\n- Implement error handling to manage exceptions during LLM processing, providing a fallback to a default TOC 
-structure based on common research themes if keyword extraction fails.\n- Include logging for performance monitoring to 
-ensure reliability and accountability of the task.\n\n### Scalability and Efficiency:\n- The task design should allow 
-flexibility in the number of sections generated based on the document's title and abstract, ensuring scalability across 
-various document sizes while maintaining efficiency.\n\n### Bias Detection and Mitigation:\n- Implement algorithms to 
-analyze the generated TOC for potential biases, ensuring a balanced representation of topics across diverse perspectives.
-\n\n### Explainability and Transparency:\n- Provide clear documentation of the TOC generation process, ensuring transparency 
-in how LLM outputs and algorithmic processing contribute to the final structured output.
-"""
+    """
+
+    # Reasoning and Task instructions based on file content
+
+    coder_task_description = f"""
+    CONTEXT:
+    You are a helpful assistant that writes Python code to be executed using a restricted list of packages ({libraries_restriction}) to complete the task specified by me.
+
+    At each round of conversation, I will give you:
+    - Reasoning: explanation of the task chosen...
+    - Task: defined based on the current stage of progress
+    - Plan: how to proceed and complete the current task
+    - Tests: to validate that the task was correctly implemented and generates expected results
+
+    CURRENT STATE OF THE ENVIRONMENT:
+    Document #.... : 1.title: ...; 2. abstract: ...; 3. table of content; 4. resources; 5. section progress; 6. events counted
+
+    TASK: You should respond with the best Python code to perform the task.
+
+    INSTRUCTIONS:
+    1) Reason in {reasoning_depth} steps to identify the optimal way to achieve the task.
+    2) Write a function taking 'bot' as the first parameter, which is an instance of the class SynthesisManager, containing all document resources.
+    3) Ensure the generated code adheres to reusability principles. The generated code should be modular and easy to maintain rather than specific to the task.
+    4) Avoid hard-coding parameters. Pass necessary data as arguments to ensure reusability.
+    5) The function should call existing helper functions as much as possible to focus on improving results, not redoing code.
+    6) Ensure the code is executable with no placeholders and fully complete for immediate testing and deployment.
+    7) Name your function meaningfully to reflect the task it is performing.
+    
+    {synthesis_code_string}
+    
+
+    You should then respond with:
+    - Reasoning: how to best implement the task with maximum efficiency
+    - Code: fully executable Python code adhering to the task constraints
+    """
+    coder_test_instructions = f"""
+    RESPONSE FORMAT:
+    Reasoning: Your detailed thought process and why the chosen solution is optimal
+    Code: Python implementation of the solution
+    ```python
+    # Example Python code here
+    def your_function(bot):
+        # implementation here... 
+    ```
+    """
+
+    # Combine everything to generate the final prompt for the Coder agent
+    full_prompt = coder_task_description + coder_test_instructions
+
+    # Write the generated prompt to a file that will be used by the Coder agent
+    with open("./prompts/IR_CPS_TechSynthesis/code_task.txt", "w") as f:
+        f.write(full_prompt)
+
+    # Log the prompt and parameters for this trial
+    with open(f"Optuna_results/{name_xp}.txt", "a") as f:
+        f.write(f"Trial: {trial.number}\nGenerated Coder Prompt: \n{full_prompt}\n")
+
+    performance = launch_run(
+        default_llm_key="default_llm",
+        premium_llm_key="premium_llm",
+        problem_prompts_subdir="IR_CPS_TechSynthesis",
+        max_coding_attempts=2,
+        max_execution_time=900,
+        model_choice={"coach": "default_llm","coder": "premium_llm","critic": "default_llm","capitalizer": "default_llm"},
+        optuna_opti="coach",
+        special_criteria={
+            "max_autofix": max_autofix,
+            "presence_penalty": presence_penalty,
+            "num_previous_attempts": num_previous_attempts,
+            "parameters_previous_attempts": parameters_previous_attempts,
+            "primitives_selection": primitives_selection,
+            "prev_failed_task": prev_failed_task,
+            "prev_learnt_task": prev_learnt_task
+        },
+        name_exp=name_xp,
+        params_user_message=user_message_params
+    )
+
+    # Log performance for analysis
+    with open(f"Optuna_results/{name_xp}.txt", "a") as f:
+        f.write(f"Performance: {performance}\n\n")
+
+    return performance
+
+
+if __name__ == "__main__":
+    global_main(objective, "coder", "synthesis_code")

@@ -1,30 +1,25 @@
-from optimisation.optuna_main_coder_fixed_parameters import launch_run, definition_few_shots, global_main
+from optimisation.optuna_main import launch_run, definition_few_shots, global_main
 
 
 def objective(trial, name_xp : str):
     # Define parameters we want to tests
 
-    num_previous_attempts = trial.suggest_categorical("num_previous_attempts", [0, 2, 4, 8])
-    parameters_previous_attempts = trial.suggest_categorical("parameters_previous_attempts", ["code",
-                                                                                              "code & score",
-                                                                                              "code & feedback",
-                                                                                              "code & score & feedback",
-                                                                                              "feedback"])
-    primitives_selection = trial.suggest_categorical("primitives_selection", ["None", "primitives/generate_primitives", "primitives/primitives_to_add_later", ("primitives/generate_primitives", "primitives/primitives_to_add_later")])
-    prev_failed_task = trial.suggest_categorical("prev_failed_task", ["None",
-                                                                      ("b8b4938a-ff6c-4d2f-8513-adec299541c5", "4d7dda08-4db3-4f22-908d-db78e72c7f13"),
-                                                                      ("36dd8e77-829d-48c9-8f6c-3d7bc8dfa3aa", "c7159fce-e204-4909-b156-299d698bc456")])
-    prev_learnt_task = trial.suggest_categorical("prev_learnt_task", ["None", "set1", "set2"])
+    num_previous_attempts = 4
+    parameters_previous_attempts = "code & task"
+    primitives_selection = "primitives/generate_primitives"
+    prev_failed_task = ("36dd8e77-829d-48c9-8f6c-3d7bc8dfa3aa", "c7159fce-e204-4909-b156-299d698bc456")
+    prev_learnt_task = "set2"
 
     # Define fixed parameters for Coder
     libraries_restriction = "Numpy, Pandas, Huggingface, Sklearn" # Can be removed: Huggingface and Sklearn, to test if 3 imposed methods offer better performance than with these libraries
     max_autofix = 3
-    temperature = 0.5
+    temperature = trial.suggest_categorical("temperature", [0.5, 0.7, 0.9, 1.1, 1.3, 1.5])
+    number_inferences = trial.suggest_categorical("number_inferences", [1, 2, 4, 8])
     presence_penalty = 0.7189030356596702
     reasoning_depth = 1
 
     # Few shots parameters
-    user_message_params = definition_few_shots(trial, True)
+    user_message_params = definition_few_shots(trial, True, no_params_search=True)
 
     # Reasoning and Task instructions based on file content
 
@@ -85,7 +80,7 @@ def objective(trial, name_xp : str):
         max_coding_attempts=2,
         max_execution_time=900,
         model_choice={"coach": "default_llm","coder": "premium_llm","critic": "default_llm","capitalizer": "default_llm"},
-        optuna_opti="coder",
+        optuna_opti="coach",
         special_criteria={
             "max_autofix": max_autofix,
             "temperature": temperature,
@@ -97,7 +92,8 @@ def objective(trial, name_xp : str):
             "prev_learnt_task": prev_learnt_task
         },
         name_exp=name_xp,
-        params_user_message=user_message_params
+        params_user_message=user_message_params,
+        number_inferences=number_inferences
     )
 
     # Log performance for analysis
@@ -108,4 +104,4 @@ def objective(trial, name_xp : str):
 
 
 if __name__ == "__main__":
-    global_main(objective, "coder")
+    global_main(objective, "coder", "temperature_number_inferences")

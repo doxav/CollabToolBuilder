@@ -17,23 +17,29 @@ def objective(trial, timestamp_exp: str):
     # coach_user_input_failed_tasks = trial.suggest_categorical("coach_user_input_failed_tasks", [True, False])
     coach_user_input = "I will provide you:\n- Learnt tasks available (with information gain between 0 and 1 on plan's titles, and contents): ...\n- Failed tasks to learn that are too hard to code: ...\n- Current status of examples of technical synthesis the proposed next task will be tested on: ..."
 
-    coach_task_description = "You define best next task to generate state-of-the-art research survey paper given a [Title] and an [Abstract]. Each task you propose will be prompted to a language model which will try to convert it into Python functions. If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration."
+    coach_task_description = "You define best next task to generate state-of-the-art research survey paper given a [Title] and an [Abstract] (properties from the bot object provided). Each task you propose will be prompted to a language model which will try to convert it into Python functions. If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration."
         #(trial.suggest_categorical("task_description", [
         #"You define best next task to generate state-of-the-art research survey paper given a [Title] and an [Abstract]. Each task you propose will be prompted to a language model which will try to convert it into Python functions. If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration.",
         #"Define the next best task to generate a state-of-the-art research survey paper given a document object (containing target title and abstract/context in its properties). Each task you propose will be converted into Python functions, potentially including LLM calls when appropriate. If the implementation is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration."]))
 
-    user_message_parameters = definition_few_shots(trial, True)
+    user_message_parameters = definition_few_shots(trial, True, no_params_search=True)
+
+    temperature = trial.suggest_categorical("temperature", [0.5, 0.7, 0.9, 1.1, 1.3, 1.5])
+    number_inferences = trial.suggest_categorical("number_inferences", [1, 2, 4, 8])
 
     criteria_coach = []
-    criteria_coach = [
-        f"{len(criteria_coach) + 1}) Task should challenge the LLM while remaining solvable with available resources.",
-        f"{len(criteria_coach) + 1}) Reason in 4 steps to find out the best task to minimize distance to goal.",
-        f"{len(criteria_coach) + 1}) Task should be written in the form of \"Task should be written in the form of [verb] [quantity if applicable] [object] [tools] [detailed instructions and parameters]\"",
-        f"{len(criteria_coach) + 1}) Task will be converted into Python code given available commands, learnt tasks. The Python code could call LLM when required.",
-        f"{len(criteria_coach) + 1}) Task should be novel compared to learnt and failed tasks.",
-        f"{len(criteria_coach) + 1}) Detail specifications (acceptance criteria, strategies/alternative to compare, use of LLM agents/tools/...) to successfully prompt a coder agent to generate code implementing the task while minimizing distance to goal. Organize the requirements with clear indexing to a depth of 3.",
-        f"{len(criteria_coach) + 1}) You should propose the next best novel task to implement 'given' available learnt tasks performance and LLM knowledge, 'maximizing' document generation quality, length and format, and speed to produce it.",
-        f"{len(criteria_coach) + 1}) You should propose a plan to achieve this task by breaking it down as a tree-structure. The plan tree should be of depth 3."]
+    criteria_coach += [f"{len(criteria_coach) + 1}) Task should challenge the LLM while remaining solvable with available resources."]
+    criteria_coach += [f"""{len(criteria_coach) + 1}) Your function should include appropriate modification to resources and sections to measure task success/performance. Main functions are:
+        - class Section(section_id: int, title: str, content: str, parent_id: int)
+        - Manipulate document sections: bot.create_and_add_section_then_return_id(title: str, content: str, section_id: int = None, parent_id: int = None) -> int, bot.get_all_sections() -> List[Section], bot.get_sections(ids: List[int]) -> List[Section], bot.edit_section(section_id: int, new_content: str = None, new_title: str = None, new_parent_id: int = None) -> bool, bot.remove_section(section_id: int) -> bool, bot.swap_sections(section_id_1: int, section_id_2: int) -> bool
+        - Manipulate document resources: bot.add_or_update_results_in_resources(results, metadatas_to_add:dict=None, store_linked_document_content:bool=False), bot.add_or_update_result_in_resources(metadatas:dict, name:str=None, content:dict=None, link:str=None, store_linked_document_content:bool=False), bot.get_all_resources(self) -> List[Dict[str, Any]], bot.semantic_search_resources(query_texts, n_results=10), bot.add_or_update_results_in_resources(results, metadatas:dict=None, store_linked_document_content:bool=False), bot.get_and_store_link_content(link:str=None, parent_id=None, chaining:bool=True), bot.remove_resource(resource_id)"""]
+    criteria_coach += [f"{len(criteria_coach) + 1}) Reason in 4 steps to find out the best task to minimize distance to goal."]
+    criteria_coach += [f"{len(criteria_coach) + 1}) Task should be written in the form of \"Task should be written in the form of [verb] [quantity if applicable] [object] [tools] [detailed instructions and parameters]\""]
+    criteria_coach += [f"{len(criteria_coach) + 1}) Task will be converted into Python code given available commands, learnt tasks. The Python code could call LLM when required."]
+    criteria_coach += [f"{len(criteria_coach) + 1}) Task should be novel compared to learnt and failed tasks."]
+    criteria_coach += [f"{len(criteria_coach) + 1}) Detail specifications (acceptance criteria, strategies/alternative to compare, use of LLM agents/tools/...) to successfully prompt a coder agent to generate code implementing the task while minimizing distance to goal. Organize the requirements with clear indexing to a depth of 3."]
+    criteria_coach += [f"{len(criteria_coach) + 1}) You should propose the next best novel task to implement 'given' available learnt tasks performance and LLM knowledge, 'maximizing' document generation quality, length and format, and speed to produce it."]
+    criteria_coach += [f"{len(criteria_coach) + 1}) You should propose a plan to achieve this task by breaking it down as a tree-structure. The plan tree should be of depth 3."]
 
     coach_criterias_topcurrent = "\n".join(criteria_coach)
     coach_criterias_newhybrid_v1 = """1) Task should be designed with a hybrid approach in mind, leveraging both LLM strengths and algorithmic processing.
@@ -170,6 +176,9 @@ def objective(trial, timestamp_exp: str):
         model_choice={"coach": "premium_llm", "coder": "premium_llm", "critic": "default_llm", "capitalizer": "default_llm"},
         optuna_opti="coach",
         params_user_message=user_message_parameters,
+        temperature_max=temperature,
+        special_criteria={"CodingAgent#max_autofix": 1},
+        number_inferences=number_inferences
     )
     with open(f"Optuna_results/{timestamp_exp}.txt", "a") as f:
         f.write(f"Performance: {perf}\n\n")
@@ -177,4 +186,4 @@ def objective(trial, timestamp_exp: str):
     return perf
 
 if __name__ == "__main__":
-    global_main(objective, "coach")
+    global_main(objective, "coach", "temperature_number_inferences")

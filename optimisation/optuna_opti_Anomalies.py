@@ -2,10 +2,23 @@
 import os
 import sys
 import time
-from optimisation.optuna_main import launch_study, launch_run, definition_few_shots
-
+from optimisation.optuna_main import launch_study, launch_run, definition_few_shots, global_main
 
 def objective(trial, timestamp_exp: str):
+    structure_FA = ""
+    cypher_request = ""
+    available_commands_detail = ""
+    role_priming = ""
+    goal_definition = ""
+    task_complexity = "Task shouldn’t be too difficult to convert into Python code given available commands and learnt tasks."
+    goal_function = ""
+    few_shots_tags = ""
+    reasoning_steps = 2
+    task_format = ""
+    include_failed_tasks = False
+    use_examples = False
+    test_example = ""
+    plan_depth = 2
 
     # Define parameters for Coach
 
@@ -13,12 +26,12 @@ def objective(trial, timestamp_exp: str):
     reset_env_end = trial.suggest_categorical("reset_env_end", [True])
 
     # Define the few shots parameters and if they are used
-    few_shots = definition_few_shots(trial)
+    few_shots = definition_few_shots(trial, no_params_search=False)
     # Definition of the coach's prompt
     coach_agent_role = trial.suggest_categorical("role_priming", [ "You are a research assistant", "You are an AI coach", "You are a task optimizer", "You are a technical synthesis expert"])
     #coach_user_input_failed_tasks = trial.suggest_categorical("coach_user_input_failed_tasks", [True, False])
     coach_user_input = "I will provide you:\n- Learnt tasks available (with information gain between 0 and 1 on plan's titles, and contents): ...\n- Failed tasks to learn that are too hard to code: ...\n- Current status of examples of technical synthesis the proposed next task will be tested on: ..."
-    coach_task_description = "You define best next task to generate state-of-the-art research survey paper given a [Title] and an [Abstract]. Each task you propose will be prompted to a language model which will try to convert it into Python functions. If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration."
+    coach_task_description = "You define best next task to generate state-of-the-art research survey paper given a [Title] and an [Abstract] (properties from the bot object provided). Each task you propose will be prompted to a language model which will try to convert it into Python functions. If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration."
 
     coach_format_output_type = trial.suggest_categorical("coach_format_output_type", ["JSON", "Markdown"])
 
@@ -125,7 +138,7 @@ def objective(trial, timestamp_exp: str):
         f"e) Your only source of data will be the Neo4j graph provide in the primitives. Do not use the date."
     ]
 
-    del criteria_coach[criteria_to_remove - 1]
+    #del criteria_coach[criteria_to_remove - 1]
 
     for i in range(len(criteria_coach)):
         coach_text = "\n".join(criteria_coach[i])
@@ -504,6 +517,7 @@ def objective(trial, timestamp_exp: str):
         max_execution_time=900,
         model_choice={"coach": "default_llm", "coder": "premium_llm", "critic": "default_llm", "capitalizer": "default_llm"},
         optuna_opti="coach",
+        special_criteria={"CodingAgent#max_autofix": 2},
         params_user_message=criteria_user_message
     )
 

@@ -24,14 +24,21 @@ ERROR_LOG="$LOG_DIR/script_error_$LOG_IDENTIFIER.log"
 touch $OUTPUT_LOG
 touch $ERROR_LOG
 
-# Check if there is the 2 parameters
-if [ "$#" -ne 2 ]; then
-  echo "Usage: $0 [optuna experiment file in optimisation without .py extension]  [LLM Mode : macstudio, gpu, other, GPT4. Default is macstudio]" | tee -a $ERROR_LOG
+# Check if there is less than 2 parameters
+if [ "$#" -lt 2 ]; then
+  echo "Usage: $0 <python_file> <mode> [num_trials]" | tee -a $ERROR_LOG
   exit 1
 fi
 
 # Parameters for mode (gpu or nogpu)
 MODE=$(echo "${2:-macstudio}" | tr '[:upper:]' '[:lower:]') # Default is macstudio, pass 'gpu' as first argument for GPU mode
+
+NUM_TRIALS=200
+
+# If there is a 3rd parameter, it is the number of trials
+if [ "$#" -eq 3 ]; then
+  NUM_TRIALS=$3
+fi
 
 GRES=""
 # Check if we are in GPU mode and if GPUs were actually allocated
@@ -49,7 +56,7 @@ else
 fi
 
 # Set the IN_MACSTU docker environment variable to true
-export IN_MACSTU=True
+export IN_MACSTU=False
 
 # Email address
 EMAIL="xavier.daull@lis-lab.fr"
@@ -188,10 +195,9 @@ cd /home/$USER || handle_error
 
 # Check if the .sqsh file exists
 [ -f "$CONTAINER_IMAGE" ] || enroot import $DOCKER_IMAGE || handle_error
-
 # Run the container and experiment in the background
 echo "Request to run container" | tee -a $OUTPUT_LOG
-srun --partition=ouranos $GRES --container-image=$CONTAINER_IMAGE --container-mounts=$MOUNT_PATHS $SCRIPT_PATH $NAME_EXP $PYTHON_SHORT $MODE &
+srun --partition=ouranos $GRES --container-image=$CONTAINER_IMAGE --container-mounts=$MOUNT_PATHS $SCRIPT_PATH $NAME_EXP $PYTHON_SHORT $MODE $NUM_TRIALS &
 echo "Waiting container | tee -a $OUTPUT_LOG"
 SRUN_PID=$!
 # Ensure SRUN_PID is logged
