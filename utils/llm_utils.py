@@ -1730,11 +1730,11 @@ class HumanLLMMonitor:
             menu += ("[H] Exit\n")
 
             smart_print(menu, self.agent_name, "AFTER inference action MENU" + (
-                f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""), column_id=output_id, column_max=outputs_count)
+                f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""), column_id=output_id-1, column_max=outputs_count)
             self.menu_start_time = time.time()
             action = "" if optuna else smart_input(
                 f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
-                self.agent_name, optional=True, column_id=output_id, column_max=outputs_count).upper()
+                self.agent_name, optional=True, column_id=output_id-1, column_max=outputs_count).upper()
 
             # ACTIONS processing
             self.start_time = time.time()  # Init action selected and timer to measure time spent and occurences in action processing
@@ -1743,7 +1743,7 @@ class HumanLLMMonitor:
                 self.modifyAnswer(inference_result_msg)
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
-                comments = self.criticAnswer(comments, inference_result_msg)
+                comments = self.criticAnswer(comments, inference_result_msg, annotated_critics=False)
 
             elif action == "C":  # Find a better Prompt by providing critic and ideal answer
                 comments = self.findBetterPrompt(comments, inference_result_msg, premium_llm_function)
@@ -1877,7 +1877,7 @@ class HumanLLMMonitor:
 
         return comments
 
-    def criticAnswer(self, content_annotated, inference_result_msg):
+    def criticAnswer(self, content_annotated, inference_result_msg, annotated_critics=True):
         def is_valid_python_structure(s):
             import ast
             output = None
@@ -1887,13 +1887,11 @@ class HumanLLMMonitor:
             except (ValueError, SyntaxError):
                 return output, False
 
-        while True:
-            if not HumanLLMMonitor.use_websocket:
+        if(annotated_critics):
+            if content_annotated is None:
                 content_structure, is_structure = is_valid_python_structure(inference_result_msg.content)
-                content_pretty = json.dumps(content_structure,
-                                            indent=4) if is_structure else inference_result_msg.content
+                content_pretty = json.dumps(content_structure, indent=4) if is_structure else inference_result_msg.content
                 content_annotated = _visual_input(content_pretty, filetype="py" if is_structure else "md")
-
             system_prompt = """
 Refine the **ANNOTATED ANSWER** for the **TARGET TASK**, given inline text annotations instructions  using tags (see **ANNOTATION TAGS** for interpretation). Directly answer with the updated answer (tags are removed and replaced inline with instruction) with the same format, do not add introduction or comments.
 
@@ -1923,9 +1921,8 @@ The following annotations are provided to guide the refinement process. Each ann
 3. **Revise** the text by making necessary corrections, deletions, or additions as instructed.
 4. Ensure that the **final text** is clear, accurate, relevant, and stylistically appropriate for the INITIAL TASK.
 """
-
-            #system_prompt = """Refine the **ANNOTATED ANSWER** given inline text annotated instructions (format: \intruction_type{text selection}[optional comment]). Directly answer with the updated answer aligned with annotated instructions tags, no introduction."""
             user_prompt = f"### ANNOTATED ANSWER:\n{content_annotated}"
+
             #llm_output = self.premium_llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
 
             # Task 1: System prompt for extracting and structuring feedback
@@ -1966,25 +1963,21 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
 ### INITIAL ANSWER:
 {content_annotated}
 """
-
             # Call the LLM for inference 2
             llm_output = self.premium_llm.invoke([SystemMessage(content=system_prompt_2), HumanMessage(content=llm_output_1.content)])
+        else:
+            if content_annotated is None:
+                content_annotated = smart_input("Provide critic/feedback/request: ", self.agent_name, column_max=self.num_parallel_inferences)
+            refine_prompt = f"Refine the answer: {self.llm_input_messages[0].content}.\n*******************\nHuman provided feedback: {content_annotated}"
+            llm_output = self.premium_llm.invoke([SystemMessage(content="You are a helpful assistant"), HumanMessage(content=refine_prompt)])
 
+        if not annotated_critics:
+            try:
+                smart_print(f"***** REFINED ANSWER:\n\033[33m{llm_output}\033[0m\n".replace("\\n", "\n"), self.agent_name, "REFINED ANSWER", column_max=self.num_parallel_inferences)
+            except:
+                print("Error in displaying the refined answer - coomm.")
 
-            # TODO: sauvegarde log_entry
-            if not HumanLLMMonitor.use_websocket:
-                smart_print(f"***** PROMPT:\n{system_prompt}\n `\n{user_prompt}".replace("\\n", "\n"), self.agent_name,
-                            "PROMPT")
-                smart_print(f"***** REFINED ANSWER:\n\033[33m{llm_output.content}\033[0m\n".replace("\\n", "\n"),
-                            self.agent_name, "REFINED ANSWER")
-                if smart_input("Is the task refinement adequate? (yes/no): ", self.agent_name).strip().lower() in [
-                    "yes", "y"]:
-                    inference_result_msg.content = llm_output.content
-                    break
-            else:
-                return llm_output.content
-
-        return llm_output
+        return llm_output.content
 
     def modifyAnswer(self, inference_result_msg):
         inference_result_msg.content = _visual_input(inference_result_msg.content)

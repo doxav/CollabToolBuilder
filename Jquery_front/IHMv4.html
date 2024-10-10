@@ -1078,12 +1078,12 @@ $(function() {
             <div style="text-align: center;">
                 <div style="display: flex; justify-content: center; align-items: flex-start;">
                     <!-- Slider and value container -->
-                    <div style="display: flex; flex-direction: column; align-items: center; margin-right: 10px;">
+                    <div style="display: none; flex-direction: column; align-items: center; margin-right: 10px;">
                         <input type="range" min="-1" max="10" value="-1" step="1" class="slider" id="slider-${columnId}">
                         <span id="value-${columnId}" style="font-size: smaller;">Unscored</span>
                     </div>
-                    <input type="text" id="comment-${columnId}" placeholder="Write feedback or instruction..." style="margin-right: 10px; width: 350px;">
-                    <button id="evaluate-${columnId}"><i class="fa-regular fa-paper-plane"></i> Evaluate</button>
+                    <input type="text" id="comment-${columnId}" placeholder="Write instructions to regenerate..." style="margin-right: 10px; width: 350px;">
+                    <button id="evaluate-${columnId}"><i class="fa-regular fa-paper-plane"></i> Regenerate</button>
                 </div>
             </div>`;
 
@@ -1119,7 +1119,9 @@ $(function() {
             }
 
             // Add the menu options for column
-            targetColumn.innerHTML += `<div id="menu-options-column"></div>`;
+            targetColumn.innerHTML += `<div id="menu-options-column-${columnId}"></div>`;
+
+
 
                 // Refresh value on value change
                 $(`#slider-${columnId}`).on('input', function () {
@@ -1132,7 +1134,7 @@ $(function() {
                 });
 
                 $(document).on("click", `#evaluate-${columnId}`, function () {
-                    if ($(`#slider-${columnId}`).val() === '-1') {
+                    /*if ($(`#slider-${columnId}`).val() === '-1') {
                         alert('-1 is not a valid score, so please select a valid score.');
                         return;
                     }
@@ -1141,7 +1143,7 @@ $(function() {
                         return;
                     }
                     console.log('Evaluate button clicked');
-                    alert('Evaluation submitted ! Thanks you !');
+                    alert('Evaluation submitted ! Thanks you !');*/
                     // Make button disabled
                     $(`#evaluate-${columnId}`).prop('disabled', true);
                     // If a slider exists, get the score of it, else get the value of the compliance select
@@ -1153,7 +1155,15 @@ $(function() {
                         score = $(`#compliance-${columnId}`).val();
                     }
                     let comment = $(`#comment-${columnId}`).val();
-                    sendFunctionCall(data.agent_name, "evaluateCommentAnswerForLater", {comment: comment, score: score, output_id: columnIndex});
+                    sendFunctionCall(data.agent_name, "criticAnswer", {content_annotated: comment, inference_result_msg: "", annotated_critics: false}, function(responseMessage) {
+                    console.log("responseMessage:"+responseMessage);
+                    // Replace the content of the column with the new response
+                    targetColumn.querySelector('.message').innerHTML = formatMessage(responseMessage);
+                    // Set the button enable and change the text with the icon and text
+                    $(`#evaluate-${columnId}`).prop('disabled', false);
+                    $(`#evaluate-${columnId}`).html('<i class="fa-solid fa-rotate"></i> Regenerate');
+                });                    
+                    //sendFunctionCall(data.agent_name, "evaluateCommentAnswerForLater", {comment: comment, score: score, output_id: columnIndex});
                     let actionDescription = `User evaluated solution ${columnIndex} with score ${score} and comment "${comment}"`;
                     addHistoryEntry(actionDescription);
                 });
@@ -1231,7 +1241,7 @@ $(function() {
                     targetColumn.querySelector('.message').innerHTML = formatMessage(responseMessage);
                     // Set the button enable and change the text with the icon and text
                     $(`#regenwithmymodifbutton-${columnId}`).prop('disabled', false);
-                    $(`#regenwithmymodifbutton-${columnId}`).html('<i class="fa-solid fa-rotate"></i> Regenerate with my modifications');
+                    $(`#regenwithmymodifbutton-${columnId}`).html('<i class="fa-solid fa-rotate"></i> Apply answer s annotations');
                 });
                 let actionDescription = `User requested regeneration of solution ${columnIndex + 1} with modifications`;
                 addHistoryEntry(actionDescription);
@@ -1514,8 +1524,8 @@ $(document).on('click', '.collapsible-header', function() {
         let infos = "";
         let $menuMessage;
         if(message.includes("AFTER")){
-            infos = `AFTER ${data.agent_name} inference MENU : Choose an action below`;
-            $menuMessage = $(`<div style="font-weight: bold; font-size: 24px; color: #4CAF50;">${infos}</div>`);
+            infos = `AFTER ${data.agent_name}`;
+            $menuMessage = $(``);
         }
         else if (message.includes("BEFORE")){
             infos = `BEFORE ${data.agent_name} inference MENU : Choose an action below`;
@@ -1528,21 +1538,38 @@ $(document).on('click', '.collapsible-header', function() {
 
         if(data.column_id !== undefined && data.column_max > 1) {
             console.log(`Should display menu in columns here  - column_id:${data.column_id} max:${data.column_max}`);
-            //$(`column-${columnId}`).append($menuMessage);
-        }
-        // Detect if the message contains a selection list in curly braces
-        let selectionMatch = message.match(/^\{(.+?)\}/);
-        if (selectionMatch) {
             console.log("Displaying menu options in a separate column");
-            $("#menu-options-column").empty();
+            let columnIdentifier = `${data.agent_name}-${data.column_id}`;
+            // retrieve the column
+            let $menuOptionsColumn = $(`#menu-options-column-${columnIdentifier}`);
+            // clear the menu options column
+            $menuOptionsColumn.empty();
             // Adds infos
-            $("#menu-options").append($menuMessage);
-            let optionsList = selectionMatch[1].split(",");
-            // Split by comma to get the list of options
-            optionsList.forEach(option => {
-                let cleanOption = option.trim();
-                let $option = $(`<div class="menu-option" >${cleanOption}</div>`);
-                $("#menu-options-column").append($option); }); }
+            $menuOptionsColumn.append($menuMessage);
+            // Existing logic for normal menu options
+            let options = message.split("\n").filter(line => /^\[[A-Z]\]/.test(line));
+            options.forEach(option => {
+                let match = option.match(/\[(.)\](.*)/);
+                if (match && match[1]) {
+                    let letter = match[1].toUpperCase();
+                    if (!match[2].includes("Change default") && !match[2].includes("Change premium") && !match[2].includes("Exit") && !match[2].includes("Log comments")) {
+                        if (match[2].includes("Change num of parallel inferences")) {
+                            // Remove ANSI codes
+                            let cleanString = match[2].replace(/\u001b\[\d+m/g, '');
+                            let $option = $(`<div class="menu-option" data-option="${letter}">${cleanString}</div>`);
+                            $menuOptionsColumn.append($option);
+                        } else if (match[2].includes("Continue")) {
+                            // Set button color to green
+                            let $option = $(`<div class="menu-option" data-option="${letter}" style="background-color: green;">${match[2]}</div>`);
+                            $menuOptionsColumn.append($option);
+                        } else {
+                            let $option = $(`<div class="menu-option" data-option="${letter}">${match[2]}</div>`);
+                            $menuOptionsColumn.append($option);
+                        }
+                        }
+                }
+            });
+        }
         else {
             console.log("Displaying menu options");
             $("#menu-options").empty();
@@ -1806,6 +1833,8 @@ $(document).on('click', '.collapsible-header', function() {
         socket.send(JSON.stringify({ message: `${option}` }));
         // Hide the menu options after selecting one
         $("#menu-options").empty();
+        // Hide all the menu options starting with menu-options-column-
+        $("div[id^='menu-options-column-']").empty();
         // Retrieve the text of the selected option
         let text = $(this).text();
         let actionDescription = `User selected menu option "${text}"`;
