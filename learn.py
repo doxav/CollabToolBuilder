@@ -1245,7 +1245,7 @@ def format_prompt(messages):
     return prompt_str
 
 
-def create_Nmajority_chain(num_models=3, map_model_name="gpt-3.5", reduce_model_name="gpt-3.5", map_temperature=0.7,
+def create_Nmajority_chain(num_models=3, map_model_name="gpt-4o-mini", reduce_model_name="gpt-4o-mini", map_temperature=0.7,
                            reduce_temperature=0.7):
     # Initialize the OpenAI models
     models = [ChatOpenAI(model_name=map_model_name, temperature=map_temperature, cache=False) for _ in

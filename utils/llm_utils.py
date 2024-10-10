@@ -1222,7 +1222,7 @@ class HumanLLMMonitor:
 
     def _max_tokens_ok(self, content):
         import tiktoken
-        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")  # TODO: replace by appropriate call to self.xxxxxx
+        encoding = tiktoken.encoding_for_model("gpt-4o-mini")  # TODO: replace by appropriate call to self.xxxxxx
         token_length = len(encoding.encode(content))
 
         if token_length > self.llm_max_context_size:
