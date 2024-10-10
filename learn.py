@@ -160,7 +160,7 @@ class Environment:
                     score = None
             except ValueError:
                 pass
-        return {'score (best=1, worst=0)': score}
+        return {'score (top:1, worst:0)': score}
 
     def set_score_function(self, score_function_code: str):
         local_scope = {'self': self}
@@ -443,6 +443,8 @@ class CodingAgent():
         max_autofix = None
         if hasattr(self, 'max_autofix'):
             max_autofix = self.max_autofix
+        # Start the timer before the environments loop
+        start_time = time.time()  # Added line
         for env in self.envs:
             env.backup_state()
             # Determine tests to run or set default runnable code
@@ -491,10 +493,12 @@ class CodingAgent():
             # Append the results for each environment
             no_runtime_errors.append(no_runtime_error)
             exec_results.append(exec_result)
+        # Calculate total time taken  # Added line
+        total_execution_time = time.time() - start_time 
 
         # Return combined results
         result = (parsed_code, all(no_runtime_errors), exec_results, [env.get_score() for env in self.envs],
-                  [env.get_state(extended=True) for env in self.envs])
+                  [env.get_state(extended=True) for env in self.envs], total_execution_time)
 
         for env in self.envs:
             env.restore_last_state()
@@ -579,13 +583,13 @@ class CodingAgent():
             top_results, top_indice = 0, 1
             for id, result in enumerate(results):
                 if result[1]:
-                    results_list += f"{id}. \033[32mSUCCESS\033[0m / SCORE: {result[3]} / CODE: {result[0]['program_code'][:100]}\n"
+                    results_list += f"{id}. \033[32mSUCCESS\033[0m / SCORE: {result[3]} / TIME: {result[5]}s / CODE: {result[0]['program_code'][:100]}\n"
                     temp = sum(result[3][i][j] for i in range(len(result[3])) for j in result[3][i]) / len(result[3])
                     if temp > top_results:
                         top_results = temp
                         top_indice = id
                 else:
-                    results_list += f"{id}. \033[31mFAILED\033[0m / SCORE: {result[3]} / EXCEPTION: {result[2][0][:100]} / CODE: {result[0]['program_code'][:100]}\n"
+                    results_list += f"{id}. \033[31mFAILED\033[0m / SCORE: {result[3]} / TIME: {result[5]}s / EXCEPTION: {result[2][0][:100]} / CODE: {result[0]['program_code'][:100]}\n"
 
             # ask the user to select the code to keep
             if current_skip_rounds <= 0:
