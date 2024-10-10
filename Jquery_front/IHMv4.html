@@ -330,11 +330,14 @@ color: white;
     position: fixed;
     bottom: 20px;
     right: 20px;
-    background-color: white;
+    max-width: 40%; /* Limit the width to 40% of the page */
+    background-color: rgba(255, 255, 255, 0.8); /* White with 80% opacity */
     border: 1px solid #90CAF9;
     padding: 10px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
     z-index: 1000;
+    border-radius: 5px; /* Optional: Add rounded corners */
+    overflow-wrap: break-word; /* Ensure text wraps within the div */
 }
 </style>
 </head>
@@ -426,7 +429,26 @@ color: white;
         <label>Experience remaining time:</label>
         <span id="remaining-time">0</span>
     </div>
+    <div id="your-goal-section" style="font-size: small; margin-top: 10px; cursor: pointer;">
+        <div id="your-goal-header" style="font-weight: bold;">INSTRUCTIONS FOR THESE SESSIONS</div>
+        <div id="your-goal-content" style="display: true; margin-top: 5px;">
+            Your GOAL is to drive & help the AI agents (1: TaskIdentification/Coach > 2: Coding/Coder > 3: Validation/Validator > 4: Capitalizer) 
+            to create efficient tools/functions for research papers.
+            <br>Efficiency is measured through the "Scoring" test on 2 papers 
+            by evaluating the semantic distance (click the Score button when green).
+            1st 30mn session: you can only select text
+            <br><b>1st SESSION</b>: Only guide agents by clicking on Select/Remove buttons or enter Y/N (no textual feedback)
+            <br><b>2nd SESSION</b>: Guide agents mainly by providing feedback/critics/instructions
+        </div>
+    </div>
 </div>
+
+<script>
+    document.getElementById("your-goal-header").onclick = () => {
+        const content = document.getElementById("your-goal-content");
+        content.style.display = content.style.display === "none" ? "block" : "none";
+    };
+</script>
 
 <div class="annotation-menu">
     <button class="close-btn">&times;</button>
