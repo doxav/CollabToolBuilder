@@ -226,6 +226,7 @@ class TaskIdentificationAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
                  premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, criteria=None,params_user_message=None, temperature_min=0., temperature_max=1.,
                  num_parallel_inferences=1, fixed_coach=False, special_criteria=None):
+        self.additional_check_list = None
         self.name = self.__class__.__name__
         self.criteria = criteria
         self.params_user_message = params_user_message
@@ -245,6 +246,9 @@ class TaskIdentificationAgent():
         #self.criteria = criteria, self.params_user_message = params_user_message, self.temperature_min = temperature_min, self.temperature_max = temperature_max
         self.human_llm_identify_best_task = HumanLLMMonitor(**kw_common_args)#,output_schema="identify_best_task.schema.py")
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
+        if self.additional_check_list:
+            for key, value in self.additional_check_list.items():
+                self.human_llm_identify_best_task.add_inference_check(key, value)
 
     def identify_best_task(self) -> str:
         user_message = ""
@@ -309,6 +313,7 @@ class TaskIdentificationAgent():
 class CodingAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, special_criteria=None, temperature_min=0., temperature_max=1., num_parallel_inferences=4):
         #super().__init__(llm)
+        self.additional_check_list = None
         self.name = self.__class__.__name__
         self.max_autofix = None
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
@@ -327,6 +332,10 @@ class CodingAgent():
         self.human_llm_code_task.skip_rounds = skip_rounds
         self.human_llm_code_task.add_inference_check("Code Parsing", self.parse_ai_generated_code)
         self.human_llm_code_task.add_inference_check("Run Tests", self.run_tests_on_code)
+        if self.additional_check_list:
+            for key, value in self.additional_check_list.items():
+                self.human_llm_code_task.add_inference_check(key, value)
+        # "CodingAgent#additional_check_list": [(check_name, check_function), ...]
 
     def parse_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None, automatic_tests=True):
         import ast, time, re
@@ -516,7 +525,7 @@ class CodingAgent():
 
             path_folder = "pipelines/pipelines"
         else:
-            path_folder = "primitives"
+            path_folder = "primitives/generate_primitives"
         folder_path = os.path.join(os.path.dirname(__file__), path_folder)
         # Utiliser os.listdir pour ne pas parcourir les sous-répertoires
         for file in os.listdir(folder_path):
@@ -614,6 +623,7 @@ class CodingAgent():
 class ValidationAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, special_criteria=None):
         #super().__init__(llm)
+        self.additional_check_list = None
         self.name = self.__class__.__name__
 
         new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
@@ -627,6 +637,9 @@ class ValidationAgent():
         self.envs = envs
         self.optuna_opti = optuna
         self.model_choice = model_choice
+        if self.additional_check_list:
+            for key, value in self.additional_check_list.items():
+                self.human_llm_validate_code.add_inference_check(key, value)
 
 
     def validate_code(self, code: str, no_runtime_error:bool, exec_result:str, task:str=None, human_evaluation_required=False, scores=None, env_states=None) -> str:
@@ -653,6 +666,7 @@ class ValidationAgent():
 # Agent 4: Code Capitalization
 class CapitalizationAgent:
     def __init__(self, default_llm_choice, premium_llm_choice=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", db_embedding_function=None, db_perist_directory=None, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, problem_prompts_subdir=None, special_criteria=None):
+        self.additional_check_list = None
         self.name = self.__class__.__name__
 
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
@@ -669,6 +683,9 @@ class CapitalizationAgent:
         self.human_llm_generate_function_description.skip_rounds = skip_rounds
         self.optuna_opti = optuna
         self.model_choice = model_choice
+        if self.additional_check_list:
+            for key, value in self.additional_check_list.items():
+                self.human_llm_generate_function_description.add_inference_check(key, value)
 
     def capitalize_successful_tasks(self, task_description: str, parsed_code: str) -> None:
         import socket, uuid, datetime

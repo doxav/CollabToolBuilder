@@ -999,13 +999,12 @@ class HumanLLMMonitor:
 
         raise ValueError("No Pydantic BaseModel class found in the provided file.")
 
-
     def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_max_context_size=16000,
                  default_llmORchain=None,
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1,
                  llmORchains_list=None,
                  synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, optuna=False, envs=None,
-                 fixed_coach=False):
+                 fixed_coach=False, prompt_critic=None):
         # Instance properties to track time
         self.menu_start_time = None
         self.start_time = None
@@ -1016,6 +1015,7 @@ class HumanLLMMonitor:
         self.temperature_min = temperature_min
         self.temperature_max = temperature_max if temperature_max else (temperature_min+0.2)
         self.optuna = optuna
+        self.prompt_critic = prompt_critic
         self.system_prompt = system_prompt
         self.set_output_schema(output_schema)
         self.set_default_llmORchain(
@@ -1718,7 +1718,8 @@ class HumanLLMMonitor:
                         output_id and outputs_count and (outputs_count > 1)) else "")
 
             # Run inference checks if any
-            check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
+            check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content, self.prompt_critic)
+            check_display = ""
             check_display = ""
             # Display inference check results
             for check_name, result in check_results.items():
@@ -1781,7 +1782,7 @@ class HumanLLMMonitor:
                 break
 
         if self.skip_rounds > 0:
-            check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
+            check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content, self.prompt_critic)
             check_display = ""
             # Display inference check results
             for check_name, result in check_results.items():
