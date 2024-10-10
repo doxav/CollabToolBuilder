@@ -498,6 +498,29 @@ $(function() {
         console.log('WebSocket connection established');
     };
 
+    function formatPythonDict2Table(fullText, includeHeader = false) {
+        try {
+            const dataArray = JSON.parse(fullText.replace(/'/g, '"')); // Parse the JSON string
+
+            let tableContent = '';
+            if (includeHeader) {
+                tableContent += 'Value\tKey\n';
+                tableContent += '------------------------------------------\n';
+            }
+
+            dataArray.forEach(dict => {
+                for (const [key, value] of Object.entries(dict)) {
+                    tableContent += `${value}\t${key}\n`;}
+                if (includeHeader) {
+                    tableContent += '------------------------------------------\n';}
+            });
+
+            return tableContent;
+        } catch (e) {
+            return `Failed to format data. Original content:\n\n${fullText}`;
+        }
+    }
+
     socket.onmessage = function(event) {
         console.log('Received message1');
         try {
@@ -797,7 +820,7 @@ $(function() {
 
                     // Attach a click event to display the full text in a pop-up
                     button.addEventListener('click', function () {
-                        alert(`Score of solution ${index}:\n\n${fullText}`);
+                        alert(`Score of solution ${index}:\n${formatPythonDict2Table(fullText)}`);
                     });
                 }
             } else {
@@ -1130,7 +1153,7 @@ $(function() {
                 targetColumn.innerHTML += `
                     <br>
                     <div style="text-align: center;">
-                        <button id="score-${columnId}">Scoring ...</button>
+                        <button id="score-${columnId}">Testing for scoring...</button>
                     </div>
                 `;
 
@@ -1388,7 +1411,7 @@ $(function() {
                     if (fullTextMatch) {
                         const fullText = fullTextMatch[1].trim();
                         button.addEventListener('click', function () {
-                            alert(`Score of solution ${index}:\n\n${fullText}`);
+                            alert(`Score of solution ${index}:\n${formatPythonDict2Table(fullText)}`);
                         });
                     }
                 } else {
