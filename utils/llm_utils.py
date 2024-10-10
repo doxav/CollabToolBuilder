@@ -2251,7 +2251,7 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
                             outputs.append(llm_response)
                             if HumanLLMMonitor.use_websocket:
                                 smart_print(
-                                    f'ANSWER #{len(outputs)}\n{llm_response.content}\nEND OF ANSWER #{len(outputs)}',
+                                    llm_response.content,
                                     self.agent_name, "NEW inference result recieved", column_id=idx,
                                     column_max=self.num_parallel_inferences)
                             else:

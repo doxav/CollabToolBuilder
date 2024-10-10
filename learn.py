@@ -472,7 +472,7 @@ class CodingAgent():
                         break
                     elif decision == "a":
                         # do not use HumanLLMMonitor because no template is available for this specific case
-                        smart_print(f"TRYING TO AUTOFIX ERROR", self.name, "fix_error", optional=False, column_id=output_id)
+                        smart_print(f"TRYING TO AUTOFIX ERROR", self.name, "trying_to_fix_error", optional=True, column_id=output_id)
                         message_content = f"ERROR MESSAGE:[[{exec_result}]]\nCODE:[[{parsed_code['program_code']}]]"
                         edited_code_returned = self.human_llm_code_task.premium_llm.invoke([SystemMessage(
                             content=self.human_llm_code_task.load_prompt(agent_name=self.name, prompt="code_fixer")),

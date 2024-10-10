@@ -755,7 +755,7 @@ $(function() {
 
         // for each button, we retrieve the score and we change the text of the button
         $scoreButtons.each(function (index, button) {
-            const regex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m(SUCCESS|FAILED)\\u001b\\[0m`, 'm');
+            const regex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m(SUCCESS|FAILED)\\u001b\\[0m`, 'm');
             const match = data.message.match(regex);
             if (match) {
                 console.log("Match found:", match);
@@ -767,7 +767,7 @@ $(function() {
                     button.style.backgroundColor = "red";
                 }
                 // Extract the full text following the solution number
-                const fullTextRegex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
+                const fullTextRegex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
                 const fullTextMatch = data.message.match(fullTextRegex);
 
                 if (fullTextMatch) {
@@ -775,7 +775,7 @@ $(function() {
 
                     // Attach a click event to display the full text in a pop-up
                     button.addEventListener('click', function () {
-                        alert(`Score of solution ${index + 1}:\n\n${fullText}`);
+                        alert(`Score of solution ${index}:\n\n${fullText}`);
                     });
                 }
             } else {
@@ -943,9 +943,9 @@ $(function() {
                 targetColumn.className = 'solution-column';
                 targetColumn.id = `column-${columnId}`;
                 targetColumn.innerHTML = `
-                    <button class="expand-button"><i class="fas fa-expand"></i></button><br>
+                    <button class="expand-button"><i class="fas fa-expand"></i></button>
                     <h4>Answer ${inferenceNumber}</h4>
-                    <div class="message" style="max-height: 450px; overflow-y: auto;"></div>
+                    <div class="message" style="max-height: 500px; overflow-y: auto;"></div>
                 `;
                 solutionColumnsContainer.appendChild(targetColumn);
                 adjustColumnWidths();
@@ -1060,7 +1060,7 @@ $(function() {
                 const column = document.createElement('div');
                 column.className = 'solution-column';
                 column.id = `column-${colId}`;
-                column.innerHTML = `<button class="expand-button"><i class="fas fa-expand"></i></button><br><h4>Answer ${i}</h4>`;
+                column.innerHTML = `<button class="expand-button"><i class="fas fa-expand"></i></button><h4>Answer ${i}</h4>`;
                 solutionColumnsContainer.appendChild(column);
 
                 column.innerHTML += `</div><div class="overlay"></div>`;
@@ -1070,28 +1070,26 @@ $(function() {
         const targetColumn = document.getElementById(`column-${columnId}`);
         const formattedMessage = formatMessage(content);
         if (targetColumn) {
-            targetColumn.innerHTML += `<div class="message" style="max-height: 450px; overflow-y: auto;">${formattedMessage}</div>`;
+            targetColumn.innerHTML += `<div class="message" style="max-height: 500px; overflow-y: auto;">${formattedMessage}</div>`;
 
             const evaluationType = agentEvaluations[data.agent_name] || 'default';
 
             targetColumn.innerHTML += `
-                <div style="text-align: center;">
-                    <div style="display: flex; justify-content: center; align-items: flex-start;">
-                        <!-- Slider and value container -->
-                        <div style="display: flex; flex-direction: column; align-items: center; margin-right: 10px;">
-                            <input type="range" min="-1" max="10" value="-1" step="1" class="slider" id="slider-${columnId}">
-                            <span id="value-${columnId}">Unscored</span>
-                        </div>
-                        <input type="text" id="comment-${columnId}" placeholder="Add feedback" style="margin-right: 10px;">
-                        <button id="evaluate-${columnId}"><i class="fa-regular fa-paper-plane"></i> Evaluate</button>
+            <div style="text-align: center;">
+                <div style="display: flex; justify-content: center; align-items: flex-start;">
+                    <!-- Slider and value container -->
+                    <div style="display: flex; flex-direction: column; align-items: center; margin-right: 10px;">
+                        <input type="range" min="-1" max="10" value="-1" step="1" class="slider" id="slider-${columnId}">
+                        <span id="value-${columnId}" style="font-size: smaller;">Unscored</span>
                     </div>
+                    <input type="text" id="comment-${columnId}" placeholder="Write feedback or instruction..." style="margin-right: 10px; width: 350px;">
+                    <button id="evaluate-${columnId}"><i class="fa-regular fa-paper-plane"></i> Evaluate</button>
                 </div>
-            `;
+            </div>`;
 
             // Boutons supplémentaires avec identifiants mis à jour
             targetColumn.innerHTML += `
-                <br>
-                <div style="display: flex; justify-content: center; gap: 10px;">
+            <div style="display: flex; justify-content: center; gap: 10px;">
                 <div style="text-align: center;">
                     <button id="select-${columnId}"><i class="fa-regular fa-check-circle"></i> Select</button>
                 </div>
@@ -1104,8 +1102,8 @@ $(function() {
                 <div style="text-align: center;">
                     <button id="regenallbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Merge all answers & annotations</button>
                 </div>
-                </div>
-            `;
+            </div>`;
+
             if(evaluationType === 'score') {
                 targetColumn.innerHTML += `
                     <br>
@@ -1341,7 +1339,7 @@ $(function() {
             // COPIED CODE
             let $scoreButtons = $agentAccordion.find("button[id^='score-']");
             $scoreButtons.each(function (index, button) {
-                const regex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m(SUCCESS|FAILED)\\u001b\\[0m`, 'm');
+                const regex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m(SUCCESS|FAILED)\\u001b\\[0m`, 'm');
                 const match = data.message.match(regex);
                 if (match) {
                     console.log("Match found:", match);
@@ -1358,7 +1356,7 @@ $(function() {
                     if (fullTextMatch) {
                         const fullText = fullTextMatch[1].trim();
                         button.addEventListener('click', function () {
-                            alert(`Score of solution ${index + 1}:\n\n${fullText}`);
+                            alert(`Score of solution ${index}:\n\n${fullText}`);
                         });
                     }
                 } else {
