@@ -506,10 +506,9 @@ class CodingAgent():
         # Add the pipelines folder for the primitives
 
         if self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/":
-
             path_folder = "pipelines/pipelines"
         else:
-            path_folder = "primitives"
+            path_folder = "primitives/generate_primitives"
         folder_path = os.path.join(os.path.dirname(__file__), path_folder)
         # Utiliser os.listdir pour ne pas parcourir les sous-répertoires
         for file in os.listdir(folder_path):
