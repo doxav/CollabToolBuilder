@@ -469,21 +469,32 @@ class CodingAgent():
                     else:
                         decision = smart_input(
                             f"ANSWER {output_id} Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ",
-                            self.name, "fix_error", column_id=output_id).strip().lower()
-                    if decision in ("no", "n", ""):
+                            self.name, "fix_error", column_id=output_id).strip()
+                    decision_lower = decision.lower()
+                    if decision_lower in ("no", "n", ""):
                         break
-                    elif decision == "a":
-                        # do not use HumanLLMMonitor because no template is available for this specific case
-                        smart_print(f"TRYING TO AUTOFIX ERROR", self.name, "trying_to_fix_error", optional=True, column_id=output_id)
-                        message_content = f"ERROR MESSAGE:[[{exec_result}]]\nCODE:[[{parsed_code['program_code']}]]"
-                        edited_code_returned = self.human_llm_code_task.premium_llm.invoke([SystemMessage(
-                            content=self.human_llm_code_task.load_prompt(agent_name=self.name, prompt="code_fixer")),
-                                                                                            HumanMessage(
-                                                                                                content=message_content)])
-                        edited_code = str(edited_code_returned) if isinstance(edited_code_returned,
-                                                                              dict) else edited_code_returned.content
-                    else:
+                    elif decision_lower == "y":
                         edited_code = _visual_input(parsed_code["program_code"], filetype="py")
+                    else:
+                        if decision_lower == "a":
+                            # Do not use HumanLLMMonitor because no template is available for this specific case
+                            smart_print("TRYING TO AUTOFIX ERROR", self.name, "trying_to_fix_error", optional=True, column_id=output_id)
+                            instructions = ""
+                        else:
+                            # User provided custom instructions
+                            instructions = decision
+                        system_prompt = f"""You are a Python expert.
+                        You are provided with error information and the code.
+                        {instructions}
+                        Reply with the full Python code fixed and ready to be executed without the triple quotes and python tags. You can insert a short comment to explain your fix where the code has been modified."""
+                        message_content = f"ERROR MESSAGE:[[ {exec_result} ]]\nCODE:[[ {parsed_code['program_code']} ]]"
+                        edited_code_returned = self.human_llm_code_task.premium_llm.invoke([
+                            SystemMessage(content=system_prompt),
+                            HumanMessage(content=message_content)
+                        ])
+                        edited_code = (str(edited_code_returned) if isinstance(edited_code_returned, dict)
+                                    else edited_code_returned.content)
+
                     code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
                     smart_print("TESTING NEW CODE", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
                     no_runtime_error, exec_result = env.step(code_to_run)
@@ -1109,7 +1120,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
 
         # First part: Process all codes and collect results
         current_skip_rounds = agent_validation.human_llm_validate_code.skip_rounds
-        for index, (parsed_code, no_runtime_error, exec_result, scores, env_states) in enumerate(results):
+        for index, (parsed_code, no_runtime_error, exec_result, scores, env_states, times) in enumerate(results):
             agent_validation.human_llm_validate_code.skip_rounds = current_skip_rounds  # to prevent skip_rounds decreased multiple times by multiple calls of HumanLLMMonitor
             smart_print(
                 f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace(

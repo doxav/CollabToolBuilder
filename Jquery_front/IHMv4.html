@@ -366,8 +366,6 @@ color: white;
       <div class="auto-open-checkbox">
             <label style="color:black;" for="auto-open-accordion"><input type="checkbox" id="auto-open-accordion" checked>Auto-focus new messages</label>
             <label style="color:black;"><input type="checkbox" id="show-optionals">Show optional messages</label>
-        </div>
-        <div class="filter-bar">
             <select id="filter-message-type">
                 <option value="all">All Message Types</option>
             </select>
@@ -376,7 +374,12 @@ color: white;
             </select>
             <input type="text" id="search-filter" placeholder="Search...">
         </div>
-
+        <select id="button-visibility-selector">
+            <option value="ALL">ALL (no EXPERIMENT FILTER)</option>
+            <option value="SESSION_1">SESSION 1 FOCUS SELECTION</option>
+            <option value="SESSION_2">SESSION 2 FOCUS TEXT FEEDBACK</option>
+        </select>
+        
 
         <div id="message-accordion" class="accordion"></div>
 
@@ -426,11 +429,11 @@ color: white;
 
 <div id="floating-div">
     <div style="font-size: medium; font-weight: bold;">
-        <label>Experience remaining time:</label>
+        <label>Experiment remaining time:</label>
         <span id="remaining-time">0</span>
     </div>
     <div id="your-goal-section" style="font-size: small; margin-top: 10px; cursor: pointer;">
-        <div id="your-goal-header" style="font-weight: bold;">INSTRUCTIONS FOR THESE SESSIONS</div>
+        <div id="your-goal-header" style="font-weight: bold;">[show/hide] INSTRUCTIONS for experiment & sessions</div>
         <div id="your-goal-content" style="display: true; margin-top: 5px;">
             Your GOAL is to drive & help the AI agents (1: TaskIdentification/Coach > 2: Coding/Coder > 3: Validation/Validator > 4: Capitalizer) 
             to create efficient tools/functions for research papers.
@@ -467,6 +470,74 @@ color: white;
     <button id="apply-annotation">Apply</button>
 </div>
 <script>
+// Function to update button visibility based on the selector
+function updateButtonVisibility() {
+    const selection = $('#button-visibility-selector').val();
+
+    // Define selectors for buttons and inputs based on their IDs or other attributes
+    const session1Selectors = [
+        'button[id^="select-"]',
+        'button[id^="delete-"]',
+        'button#autofix-button',
+        'button#no-button',
+        "button[id^='score-']",
+        'button[id^="continue-button"]',
+        // Include any other session 1 specific buttons here
+    ];
+    const session2Selectors = [
+        "button[id^='score-']",
+        'button[id^="evaluate-"]',
+        'button[id^="regenwithmymodifbutton-"]',
+        'button[id^="regenallbutton-"]',
+        'button#custom-autofix-button',
+        'button[id^="continue-button"]',
+        'input[id^="comment-"]', // Include the input fields in SESSION_2
+        // Include any other session 2 specific buttons or inputs here
+    ];
+
+    if (selection === 'ALL') {
+        // Show all buttons and inputs
+        $('button').show();
+        $('input').show();
+        // Show all menu options
+        $('.menu-option').show();
+    } else if (selection === 'SESSION_1') {
+        // Hide all buttons, inputs, and menu options first
+        $('button').hide();
+        $('input').hide();
+        $('.menu-option').hide();
+
+        // Show only session 1 buttons
+        session1Selectors.forEach(selector => {
+            $(selector).show();
+        });
+
+        // Show Continue menu-option
+        $('.menu-option[style*="background-color: green"]').show();
+
+    } else if (selection === 'SESSION_2') {
+        // Hide all buttons, inputs, and menu options first
+        $('button').hide();
+        $('input').hide();
+        $('.menu-option').hide();
+
+        // Show only session 2 buttons and inputs
+        session2Selectors.forEach(selector => {
+            $(selector).show();
+        });
+
+        // Show Continue menu-option
+        $('.menu-option[style*="background-color: green"]').show();
+    }
+}
+// Call updateButtonVisibility when the selector changes
+$('#button-visibility-selector').change(function() {
+    updateButtonVisibility();
+});
+
+// Set up the periodic execution every 300ms
+setInterval(updateButtonVisibility, 300);
+
 // Global variables
 let selectedSolution = [];
 // Function to hide input area
@@ -688,10 +759,12 @@ $(function() {
                 let $yesButton = $(`<button id="yes-button">Edit in VSCode</button>`);
                 let $noButton = $(`<button id="no-button">No</button>`);
                 let $autofixButton = $(`<button id="autofix-button">Try autofix with LLM</button>`);
+                let $customAutofixButton = $(`<button id="custom-autofix-button">Add instruction to autofix with LLM</button>`);
                 let $container = $(`<div></div>`);
                 $container.append($question);
                 $container.append($noButton);
                 $container.append($autofixButton);
+                $container.append($customAutofixButton);
                 $container.append($yesButton);
                 // Append container to the "error-content-${columnId}" div
                 let errorContent = targetColumn.querySelector(`#error-content-${columnId}`);
@@ -708,13 +781,22 @@ $(function() {
                     socket.send(JSON.stringify({message: "a"}));
                     $container.remove();
                 });
+                $customAutofixButton.click(function () {
+                    let instruction = prompt("Please enter your instruction for the LLM autofix:");
+                    if (instruction !== null && instruction.trim() !== "") {
+                        socket.send(JSON.stringify({message: instruction}));
+                    } else {
+                        alert("No instruction provided.");
+                    }
+                    $container.remove();
+                });
             } else {
                 // Adds the message to the "error-content-${columnId}" div
                 let errorContent = targetColumn.querySelector(`#error-content-${columnId}`);
                 errorContent.innerHTML += formatMessage(data.message);
                 // Adds a newlines to separate the messages
                 errorContent.innerHTML += "<br>";
-             }
+            }
             return;
 
         }
