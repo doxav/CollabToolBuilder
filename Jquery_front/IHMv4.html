@@ -639,14 +639,14 @@ $(function() {
             if (data.message_type === "fix_error") {
                 // Create a question with a Yes, No and Try autofix with LLM buttons and append it to the "error-conten-${columnId}" div
                 let $question = $(`<p>Do you want to edit the code to fix the error (you will also be requested first) ?</p>`);
-                let $yesButton = $(`<button id="yes-button">Yes</button>`);
+                let $yesButton = $(`<button id="yes-button">Edit in VSCode</button>`);
                 let $noButton = $(`<button id="no-button">No</button>`);
                 let $autofixButton = $(`<button id="autofix-button">Try autofix with LLM</button>`);
                 let $container = $(`<div></div>`);
                 $container.append($question);
-                $container.append($yesButton);
                 $container.append($noButton);
                 $container.append($autofixButton);
+                $container.append($yesButton);
                 // Append container to the "error-content-${columnId}" div
                 let errorContent = targetColumn.querySelector(`#error-content-${columnId}`);
                 errorContent.appendChild($container[0]);

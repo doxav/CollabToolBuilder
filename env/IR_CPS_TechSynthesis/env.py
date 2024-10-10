@@ -81,7 +81,9 @@ class DocumentStructure:
                  embedding_model_query_prefix: str = '', # e.g. "query: " for intfloat/e5-base-v2 should improve for QA but we are in estimating straight semantic similarity
                  title: str = None,
                  context: str = None,
+                 abstract: str = None,
                  ): 
+        if abstract is not None: context = abstract if context is None else context + "\n" + abstract
         self.embedding_model_query_prefix = embedding_model_query_prefix
         self.embedding_model_name = embedding_model_name
         if embedding_model_name == "text-embedding-ada-002":
@@ -873,7 +875,7 @@ class SynthesisManager:
 
     # add event using the document object add_event method add_event
     @method_call_counter
-    def add_event(self, event: str, data: Dict[str, Any]):
+    def add_event(self, event: str, data: Dict[str, Any]=None):
         self.document.add_event(event, data)
 
     def normalized_cosine_similarity(self, a: List[float], b: List[float], min_cs: float = None) -> float:
