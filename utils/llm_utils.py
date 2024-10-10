@@ -553,7 +553,7 @@ class HumanLLMMonitor:
     common_vectordb_collection_name = "human_llm_monitor_logs"
     common_vectordb_persist_directory = "human_llm_monitor_vectordb"
     websocket_server = None
-    use_websocket = True
+    use_websocket = False
     ws_thread = None
     stop_event = threading.Event()
 

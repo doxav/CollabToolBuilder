@@ -1,4 +1,4 @@
-from optimisation.optuna_main import launch_run, definition_few_shots, global_main
+from optimisation.optuna_main import launch_run, definition_few_shots, global_main, init_prompts_directory
 from optimisation.optuna_main import fixed_coach_prompt, documentation
 
 def objective(trial, name_xp : str):
@@ -69,8 +69,10 @@ def objective(trial, name_xp : str):
     # Combine everything to generate the final prompt for the Coder agent
     full_prompt = coder_task_description + coder_test_instructions + documentation
 
+    init_prompts_directory(name_xp, "coder")
+
     # Write the generated prompt to a file that will be used by the Coder agent
-    with open("./prompts/IR_CPS_TechSynthesis/code_task.txt", "w") as f:
+    with open(f"./prompts/IR_CPS_TechSynthesis/{name_xp}/code_task.txt", "w") as f:
         f.write(full_prompt)
 
     # Log the prompt and parameters for this trial

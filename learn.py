@@ -43,8 +43,8 @@ if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_UR
 
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
-UnifiedVectorDB.es_user = elastic_user
-UnifiedVectorDB.es_password = elastic_password
+# UnifiedVectorDB.es_user = elastic_user
+# UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002" # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function="intfloat/e5-base-v2" # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
@@ -215,7 +215,7 @@ def apply_special_criteria(agent, special_criteria, available_locals=None):
             if hasattr(agent, key):
                 setattr(agent, key, value)
                 print(f"Special criteria applied to {agent}'s class property: {key} = {value}")
-            if key in available_locals:
+            elif key in available_locals:
                 new_params[key] = value
                 print(f"Special criteria applicable to {agent}'s local variables: {key} = {value}")
 
@@ -231,8 +231,11 @@ class TaskIdentificationAgent():
         self.params_user_message = params_user_message
         self.temperature_min = temperature_min
         self.temperature_max = temperature_max
-        new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
+        self.envs = envs
+        self.optuna_opti = optuna
+        self.model_choice = model_choice
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
+        new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
 
         HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
@@ -242,9 +245,6 @@ class TaskIdentificationAgent():
         #self.criteria = criteria, self.params_user_message = params_user_message, self.temperature_min = temperature_min, self.temperature_max = temperature_max
         self.human_llm_identify_best_task = HumanLLMMonitor(**kw_common_args)#,output_schema="identify_best_task.schema.py")
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
-        self.envs = envs
-        self.optuna_opti = optuna
-        self.model_choice = model_choice
 
     def identify_best_task(self) -> str:
         user_message = ""
@@ -311,8 +311,12 @@ class CodingAgent():
         #super().__init__(llm)
         self.name = self.__class__.__name__
         self.max_autofix = None
-        new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
+        self.envs = envs
+        self.optuna_opti = optuna
+        self.model_choice = model_choice
+        self.processed_codes = set()
+        new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
 
         HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
@@ -323,10 +327,6 @@ class CodingAgent():
         self.human_llm_code_task.skip_rounds = skip_rounds
         self.human_llm_code_task.add_inference_check("Code Parsing", self.parse_ai_generated_code)
         self.human_llm_code_task.add_inference_check("Run Tests", self.run_tests_on_code)
-        self.envs = envs
-        self.optuna_opti = optuna
-        self.model_choice = model_choice
-        self.processed_codes = set()
 
     def parse_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None, automatic_tests=True):
         import ast, time, re
@@ -615,8 +615,8 @@ class ValidationAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, special_criteria=None):
         #super().__init__(llm)
         self.name = self.__class__.__name__
-        new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
 
+        new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
         HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
         print(f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
@@ -654,10 +654,10 @@ class ValidationAgent():
 class CapitalizationAgent:
     def __init__(self, default_llm_choice, premium_llm_choice=None, db_collection_success="successful_tasks", db_collection_failed="failed_tasks", db_embedding_function=None, db_perist_directory=None, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, problem_prompts_subdir=None, special_criteria=None):
         self.name = self.__class__.__name__
-        new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
 
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
 
+        new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
         HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
         print(f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
@@ -876,8 +876,9 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         # Set unique_id to the name of the machine + timestamp (dd-mm-yyyy-hh-mm-ss)
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
 
-    if UnifiedVectorDB.unique_collection_id is None:
-        UnifiedVectorDB.set_unique_collection_id(unique_id)
+    if unique_id is not False :
+        if UnifiedVectorDB.unique_collection_id is None:
+            UnifiedVectorDB.set_unique_collection_id(unique_id)
 
     if params_user_message is None and optuna_opti is None:
         params_user_message = {
@@ -1033,13 +1034,25 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
     previous_errors, previous_codes, previous_scores = [], [], []
     successful_codes = []  # To store successful codes
     all_results = []  # Store all results from each attempt for statistics
+    unique_codes = set()
 
     for attempt in range(max_attempts):
         if end_time is not None and time.time() >= end_time:
             break
+
+        # Remove duplicates before passing to agent_coding
+        temp_errors, temp_codes, temp_scores = [], [], []
+        for err, code, score in zip(previous_errors, previous_codes, previous_scores):
+            if code not in unique_codes:
+                unique_codes.add(code)
+                temp_errors.append(err)
+                temp_codes.append(code)
+                temp_scores.append(score)
+        previous_errors, previous_codes, previous_scores = temp_errors, temp_codes, temp_scores
+
         results = agent_coding.code_task_and_run_test(task_description, previous_errors, previous_scores, previous_codes)
         all_results.extend(results) # Store all results for statistics
-        previous_errors, previous_codes, previous_scores = [], [], [] #TEST reset
+        # previous_errors, previous_codes, previous_scores = [], [], [] #TEST reset
 
         # First part: Process all codes and collect results
         current_skip_rounds = agent_validation.human_llm_validate_code.skip_rounds

@@ -13,14 +13,30 @@ from utils.llm_utils import HumanLLMMonitor, UnifiedVectorDB
 # Set the class variable
 HumanLLMMonitor.use_websocket = False
 
-def definition_few_shots(trial, usr_msg: bool = False, no_params_search: bool = False, sources_list = ["learnt", "failed", "example"]):
+def init_prompts_directory(name_xp: str, agent_name : str):
+    # Create if not exists the directory to store the prompts
+    if not os.path.exists(f"./prompts/IR_CPS_TechSynthesis/{name_xp}"):
+        os.makedirs(f"./prompts/IR_CPS_TechSynthesis/{name_xp}")
+
+    # Copy others prompts to this directory but not the subdirectory, depends on the agent_name.
+    # Also do not copy the file code_task.txt and identify_best_task.txt from prompts/
+    if agent_name == "coder":
+        os.system(f"cp ./prompts/IR_CPS_TechSynthesis/identify_best_task.txt ./prompts/IR_CPS_TechSynthesis/{name_xp}/")
+    elif agent_name == "coach":
+        os.system(f"cp ./prompts/IR_CPS_TechSynthesis/code_task.txt ./prompts/IR_CPS_TechSynthesis/{name_xp}/")
+
+    os.system(f"find ./prompts -maxdepth 1 -type f ! -name 'code_task.*' ! -name 'identify_best_task.*' -exec cp {{}} ./prompts/IR_CPS_TechSynthesis/{name_xp}/ \;")
+
+
+def definition_few_shots(trial, usr_msg: bool = False, no_params_search: bool = False, sources_list : list= ["learnt", "failed", "example"]):
     """
     Define few-shot tags and separators for the trial.
 
     Args:
         trial (optuna.trial.Trial): The Optuna trial object.
         usr_msg (bool, optional): Flag to determine the format of few_shots_tags. Defaults to False.
-        static_params (bool, optional): Flag to determine whether to use static or dynamic values for few-shot tags. Defaults to True.
+        no_params_search (bool, optional): Flag to determine the search logic. Defaults to False.
+        sources_list (list, optional): The list of sources for the few-shot tags. Defaults to ["learnt", "failed", "example"].
 
     Returns:
         str or list: A string of few-shot tags (if usr_msg is False) or a list of few-shot tags (if usr_msg is True).
