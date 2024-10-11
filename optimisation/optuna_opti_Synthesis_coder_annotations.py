@@ -24,7 +24,7 @@ def objective(trial, name_xp : str):
     # Few shots parameters
     user_message_params = definition_few_shots(trial, True, no_params_search=True)
 
-    tries_annotations = 'CodingAgent'#trial.suggest_categorical("tries_annotations", ['TaskIdentificationAgent', 'CodingAgent'])
+    tries_annotations = trial.suggest_categorical("tries_annotations", ['TaskIdentificationAgent', 'CodingAgent'])
     annotations_critic_system_prompt = trial.suggest_categorical("annotations_system_prompt", [
         """Your Task:
 
@@ -49,9 +49,7 @@ Determine the action to be taken.
 Note the exact content involved.
 Arrange all findings into a clear, itemized list.
 Provide only this list as your output, without any extra comments or modifications to the original content.
-### TARGET TASK:
 
-{{{}}}
 """,
         """Your Task:
 
@@ -76,9 +74,6 @@ Note the type of action (approve, fix, or delete).
 Record the specific content associated with the tag.
 Compile this information into a clear and concise list.
 Output only the organized list without any additional commentary or modification of the ANNOTATED ANSWER.
-### TARGET TASK:
-
-{{{}}}
 """,
         """
 Your task is to extract and organize feedback tags from the **ANNOTATED ANSWER** provided for the given **TARGET TASK**. Identify the instructions given by the annotation tags (\APPROVE, \FIX, \DELETE) and structure them into a list. Do not modify the content of **ANNOTATED ANSWER** at this stage.
@@ -93,8 +88,6 @@ Your task is to extract and organize feedback tags from the **ANNOTATED ANSWER**
 1. **Identify** the feedback instructions based on annotation tags.
 2. **Organize** the instructions into a list format with specific details on what needs to be done (fix, delete, etc.).
 3. **Reply** with the improved answer without any additional introduction or comments.
-
-### TARGET TASK: {{{}}}
 """
     ])
 
@@ -143,10 +136,15 @@ Your task is to extract and organize feedback tags from the **ANNOTATED ANSWER**
     ```
     """
 
+    os.environ['NAME_XP'] = name_xp
+
     # Combine everything to generate the final prompt for the Coder agent
     full_prompt = coder_task_description + coder_test_instructions + documentation
 
     init_prompts_directory(name_xp, "coder")
+
+    with open(f"./prompts/IR_CPS_TechSynthesis/{name_xp}/apply_annotations.txt", "w") as f:
+        f.write(annotations_critic_system_prompt)
 
     # Write the generated prompt to a file that will be used by the Coder agent
     with open(f"./prompts/IR_CPS_TechSynthesis/{name_xp}/code_task.txt", "w") as f:
@@ -170,7 +168,6 @@ Your task is to extract and organize feedback tags from the **ANNOTATED ANSWER**
             "CodingAgent#num_parallel_inferences": number_inferences,
             "all#problem_prompts_subdir": f"IR_CPS_TechSynthesis/{name_xp}/",
             f"{tries_annotations}#additional_check_list": {"Generate annotations": generate_annotations},
-            f"{tries_annotations}#system_prompt": annotations_critic_system_prompt,
             "presence_penalty": presence_penalty,
             "num_previous_attempts": num_previous_attempts,
             "parameters_previous_attempts": parameters_previous_attempts,

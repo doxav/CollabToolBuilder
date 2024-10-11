@@ -815,7 +815,8 @@ class HumanLLMMonitor:
                 reset_db_indices=reset_db_indices
             )
 
-    def get_few_shots_tag_args(self, prompt):
+    @staticmethod
+    def get_few_shots_tag_args(prompt):
         """
         Removes the 'few_shots' tag from the prompt and inserts the string received from
         get_multiple_few_shots at each location where the tag was removed.
@@ -845,9 +846,9 @@ class HumanLLMMonitor:
                 print(f"Attempting to decode few_shots tag: {data_str}")  # Debug
                 data = json.loads(data_str)
                 # Combine criteria
-                combined_criteria = self.combine_criteria([data])
+                combined_criteria = HumanLLMMonitor.combine_criteria([data])
                 # Get the few shots string
-                few_shots_str = self.get_multiple_few_shots(combined_criteria)
+                few_shots_str = HumanLLMMonitor.get_multiple_few_shots(combined_criteria)
                 # Replace the tag with the few shots string
                 prompt = prompt[:start] + few_shots_str + prompt[end:]
             except json.JSONDecodeError as e:
@@ -1112,15 +1113,17 @@ class HumanLLMMonitor:
         if reset_menu_time_after:
             self.start_time, self.menu_start_time = time.time(), time.time()
 
-    def load_prompt(self, function_name: str = None, agent_name: str = None, prompt: str = None) -> str:
+    @staticmethod
+    def load_prompt(function_name: str = None, agent_name: str = None, prompt: str = None) -> str:
         with open(f"prompts/{prompt}.txt", "r") as f:
             prompt_content = f.read()
 
-        prompt_content = self.get_few_shots_tag_args(prompt_content)
+        prompt_content = HumanLLMMonitor.get_few_shots_tag_args(prompt_content)
 
         return prompt_content
 
-    def combine_criteria(self, criteria_list):
+    @staticmethod
+    def combine_criteria(criteria_list):
         """
         Formats the criteria list into the required output format.
 
@@ -1718,11 +1721,13 @@ class HumanLLMMonitor:
                         output_id and outputs_count and (outputs_count > 1)) else "")
 
             # Run inference checks if any
-            check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content, self.prompt_critic)
+            check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
             check_display = ""
             check_display = ""
             # Display inference check results
             for check_name, result in check_results.items():
+                if check_name == "Generate annotations" :
+                    inference_result_msg.content = result
                 check_display += f"{nl}CHECK {check_name} result: " + str(result).replace("\\n", "\n")
 
             menu = (
@@ -1782,7 +1787,7 @@ class HumanLLMMonitor:
                 break
 
         if self.skip_rounds > 0:
-            check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content, self.prompt_critic)
+            check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
             check_display = ""
             # Display inference check results
             for check_name, result in check_results.items():
