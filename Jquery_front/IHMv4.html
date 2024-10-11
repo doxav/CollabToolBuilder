@@ -1367,66 +1367,79 @@ $(function() {
                     addHistoryEntry(actionDescription);
                 });
 
-                $(`#select-${columnId}`).click(function () {
-                    let targetColumn = document.getElementById(`column-${columnId}`);
-                    let deleteButton = document.getElementById(`delete-${columnId}`);
+            // Update the event handlers for the "Select" and "Remove" buttons
+            $(`#select-${columnId}`).click(function () {
+                let targetColumn = document.getElementById(`column-${columnId}`);
+                let deleteButton = document.getElementById(`delete-${columnId}`);
 
-                    // If this solution is already selected, deselect it
-                    if (selectedSolution === columnIndex) {
-                        targetColumn.style.backgroundColor = '';
-                        this.style.backgroundColor = '';
-                        deleteButton.disabled = false;
-                        selectedSolution = null;
-                        console.log('Selected solution cleared');
-                    } else {
-                        // Deselect the previous selection if any
-                        if (selectedSolution !== null) {
-                            let previousColumnId = `${data.agent_name}-${selectedSolution}`;
-                            let previousColumn = document.getElementById(`column-${previousColumnId}`);
-                            let previousSelectButton = document.getElementById(`select-${previousColumnId}`);
-                            let previousDeleteButton = document.getElementById(`delete-${previousColumnId}`);
-                            if (previousColumn) {
-                                previousColumn.style.backgroundColor = '';
-                                previousSelectButton.style.backgroundColor = '';
-                                previousDeleteButton.disabled = false;
-                            }
-                        }
-                        // Select this solution
-                        targetColumn.style.backgroundColor = 'lightgreen';
-                        this.style.backgroundColor = 'lightgreen';
-                        deleteButton.disabled = true;
-                        selectedSolution = columnIndex;
-                        console.log('Selected solution:', selectedSolution);
+                // Toggle selection of this solution
+                let isSelected = targetColumn.classList.contains('selected');
+                if (isSelected) {
+                    // Deselect this solution
+                    targetColumn.classList.remove('selected');
+                    targetColumn.style.backgroundColor = '';
+                    this.style.backgroundColor = '';
+                    deleteButton.disabled = false;
+                    console.log('Deselected solution:', columnIndex);
+                } else {
+                    // Select this solution
+                    targetColumn.classList.add('selected');
+                    targetColumn.style.backgroundColor = 'lightgreen';
+                    this.style.backgroundColor = 'lightgreen';
+                    deleteButton.disabled = true;
+                    console.log('Selected solution:', columnIndex);
+                }
+
+                // Compute the updated list of columns to keep (not deleted)
+                let columnsToKeep = [];
+                let totalColumns = document.querySelectorAll(`.solution-column[id^='column-${data.agent_name}-']`).length;
+                for (let i = 0; i < totalColumns; i++) {
+                    let col = document.getElementById(`column-${data.agent_name}-${i}`);
+                    if (!col.classList.contains('deleted')) {
+                        columnsToKeep.push(i);
                     }
+                }
 
-                    // Send the updated list of selected solutions to the backend
-                    let columnsToKeep = selectedSolution !== null ? [selectedSolution] : [];
-                    console.log(data.agent_name + ' - Columns to keep:', columnsToKeep);
-                    sendFunctionCall(data.agent_name, "set_selected_outputs", { selected_outputs: columnsToKeep });
-                });
+                // Send the updated list of columns to keep to the backend
+                console.log(data.agent_name + ' - Columns to keep:', columnsToKeep);
+                sendFunctionCall(data.agent_name, "set_selected_outputs", { selected_outputs: columnsToKeep });
+            });
 
-                $(`#delete-${columnId}`).click(function () {
-                    let targetColumn = document.getElementById(`column-${columnId}`);
-                    let isMarkedForDeletion = targetColumn.style.backgroundColor === 'lightcoral';
+            $(`#delete-${columnId}`).click(function () {
+                let targetColumn = document.getElementById(`column-${columnId}`);
+                let isMarkedForDeletion = targetColumn.classList.contains('deleted');
 
-                    // Toggle the background color for marking removal
-                    targetColumn.style.backgroundColor = isMarkedForDeletion ? '' : 'lightcoral';
+                // Toggle the 'deleted' class
+                if (isMarkedForDeletion) {
+                    targetColumn.classList.remove('deleted');
+                    targetColumn.style.backgroundColor = '';
+                } else {
+                    targetColumn.classList.add('deleted');
+                    targetColumn.style.backgroundColor = 'lightcoral';
+                    // If the column is selected, deselect it
+                    if (targetColumn.classList.contains('selected')) {
+                        targetColumn.classList.remove('selected');
+                        let selectButton = document.getElementById(`select-${columnId}`);
+                        if (selectButton) {
+                            selectButton.style.backgroundColor = '';
+                        }
+                    }
+                }
 
-                    // If marked for deletion, clear the selected solution if it matches
-                    if (isMarkedForDeletion) {if (selectedSolution === columnIndex) {selectedSolution = null;}}
+                // Recompute columnsToKeep
+                let columnsToKeep = [];
+                let totalColumns = document.querySelectorAll(`.solution-column[id^='column-${data.agent_name}-']`).length;
+                for (let i = 0; i < totalColumns; i++) {
+                    let col = document.getElementById(`column-${data.agent_name}-${i}`);
+                    if (!col.classList.contains('deleted')) {
+                        columnsToKeep.push(i);
+                    }
+                }
 
-                    // Compute the updated list of selected solutions, excluding the marked-for-deletion columns
-                    let columnsToKeep = [];
-                    let totalColumns = document.querySelectorAll(`.solution-column[id^='column-${data.agent_name}-']`).length;
-
-                    for (let i = 0; i < totalColumns; i++) {
-                        let col = document.getElementById(`column-${data.agent_name}-${i}`);
-                        if (col.style.backgroundColor !== 'lightcoral') {
-                            columnsToKeep.push(i);}}
-
-                    // Send the updated list to the backend
-                    sendFunctionCall(data.agent_name, "set_selected_outputs", { selected_outputs: columnsToKeep });
-                });
+                // Send the updated list to the backend
+                console.log(data.agent_name + ' - Columns to keep:', columnsToKeep);
+                sendFunctionCall(data.agent_name, "set_selected_outputs", { selected_outputs: columnsToKeep });
+            });
 
 
             $(`#regenwithmymodifbutton-${columnId}`).click(function () {
