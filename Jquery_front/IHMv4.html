@@ -503,22 +503,26 @@ function updateButtonVisibility() {
         'button[id^="regenwithmymodifbutton-"]',
         'button[id^="regenallbutton-"]',
         'button#custom-autofix-button',
+        'button[id^="apply-annotation"]',
         'button[id^="continue-button"]',
+        'input[id^="annotation-"]', // Include the input fields in SESSION_2
         'input[id^="comment-"]', // Include the input fields in SESSION_2
         // Include any other session 2 specific buttons or inputs here
     ];
 
     if (selection === 'ALL') {
         // Show all buttons and inputs
-        $('button').show();
-        $('input').show();
+        $('button').not('#send-button').show();
+        $('input').not('#user-input').show();
         // Show all menu options
         $('.menu-option').show();
     } else if (selection === 'SESSION_1') {
         // Hide all buttons, inputs, and menu options first
-        $('button').hide();
-        $('input').hide();
+        $('button').not('#send-button').hide();
+        $('input').not('#user-input').hide();
         $('.menu-option').hide();
+
+        $('.input-area').show();
 
         // Show only session 1 buttons
         session1Selectors.forEach(selector => {
@@ -528,11 +532,16 @@ function updateButtonVisibility() {
         // Show Continue menu-option
         $('.menu-option[style*="background-color: green"]').show();
 
+        $('.menu-option').filter(function() {
+        return $(this).text().toLowerCase().includes('edit answer');
+        }).show();
     } else if (selection === 'SESSION_2') {
         // Hide all buttons, inputs, and menu options first
-        $('button').hide();
-        $('input').hide();
+        $('button').not('#send-button').hide();
+        $('input').not('#user-input').hide();
         $('.menu-option').hide();
+
+        $('.input-area').show();
 
         // Show only session 2 buttons and inputs
         session2Selectors.forEach(selector => {
