@@ -1154,12 +1154,12 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
                 previous_codes.append(parsed_code["program_code"])
 
         if not optuna and not successful_codes:
-            stop = smart_input("No successful code yet, do you want to stop coding attempts ? (yes/no): ","ValidationAgent").lower() in ["yes", "y", True]
+            stop = smart_input("No successful code yet, do you want to stop coding attempts for this task ? (yes/no): ","ValidationAgent").lower() in ["yes", "y", True]
             if stop:
                 break
 
         if not optuna and successful_codes:
-            stop = smart_input("A successful code has been found, do you want to stop coding attempts ? (yes/no): ","ValidationAgent").lower() in ["yes", "y", True]
+            stop = smart_input("A successful code has been found, do you want to stop coding attempts for this task ? (yes/no): ","ValidationAgent").lower() in ["yes", "y", True]
             if stop:
                 break
 

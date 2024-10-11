@@ -1280,21 +1280,17 @@ $(function() {
                 </div>
             </div>`;
 
-            // Boutons supplémentaires avec identifiants mis à jour
+            // Add Select and Remove buttons if more than 1 solution
+            let selectionButtonsHtml = (data.column_max > 1) ?
+                    `<div style="text-align: center;"><button id="select-${columnId}"><i class="fa-regular fa-check-circle"></i> Select</button></div> 
+                    <div style="text-align: center;"><button id="delete-${columnId}"><i class="fa-regular fa-trash-can"></i> Remove</button></div>` : "";
+
+            // Add the regenerate buttons (regardless of the number of solutions)
             targetColumn.innerHTML += `
-            <div style="display: flex; justify-content: center; gap: 10px;">
-                <div style="text-align: center;">
-                    <button id="select-${columnId}"><i class="fa-regular fa-check-circle"></i> Select</button>
-                </div>
-                <div style="text-align: center;">
-                   <button id="delete-${columnId}"><i class="fa-regular fa-trash-can"></i> Remove</button>
-                </div>
-                <div style="text-align: center;">
-                    <button id="regenwithmymodifbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Apply answer's annotations</button>
-                </div>
-                <div style="text-align: center;">
-                    <button id="regenallbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Merge all answers & annotations</button>
-                </div>
+            '<div style="display: flex; justify-content: center; gap: 10px;">';
+                ${selectionButtonsHtml}
+                <div style="text-align: center;"><button id="regenwithmymodifbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Apply answer's annotations</button></div>
+                <div style="text-align: center;"><button id="regenallbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Merge all answers & annotations</button></div>
             </div>`;
 
             if(evaluationType === 'score') {
