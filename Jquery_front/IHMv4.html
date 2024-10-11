@@ -375,7 +375,7 @@ color: white;
             <input type="text" id="search-filter" placeholder="Search...">
         </div>
         <select id="button-visibility-selector">
-            <option value="ALL">ALL (no EXPERIMENT FILTER)</option>
+            <option value="ALL">ALL (no BUTTON FILTER)</option>
             <option value="SESSION_1">SESSION 1 FOCUS SELECTION</option>
             <option value="SESSION_2">SESSION 2 FOCUS TEXT FEEDBACK</option>
         </select>
@@ -427,31 +427,44 @@ color: white;
     </div>
 </div>
 
-<div id="floating-div">
+<div id="floating-div" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); transition: all 0.5s;">
     <div style="font-size: medium; font-weight: bold;">
         <label>Experiment remaining time:</label>
         <span id="remaining-time">0</span>
     </div>
     <div id="your-goal-section" style="font-size: small; margin-top: 10px; cursor: pointer;">
         <div id="your-goal-header" style="font-weight: bold;">[show/hide] INSTRUCTIONS for experiment & sessions</div>
-        <div id="your-goal-content" style="display: true; margin-top: 5px;">
+        <div id="your-goal-content" style="display: block; margin-top: 5px;">
             Your GOAL is to drive & help the AI agents (1: TaskIdentification/Coach > 2: Coding/Coder > 3: Validation/Validator > 4: Capitalizer) 
             to create efficient tools/functions for research papers.
             <br>Efficiency is measured through the "Scoring" test on 2 papers 
             by evaluating the semantic distance (click the Score button when green).
             1st 30mn session: you can only select text
-            <br><b>1st SESSION</b>: Only guide agents by clicking on Select/Remove buttons or enter Y/N (no textual feedback)
-            <br><b>2nd SESSION</b>: Guide agents mainly by providing feedback/critics/instructions
+            <br><br><b>1st SESSION (change the BUTTON FILTER)</b>: Only guide agents by clicking on Select/Remove buttons or enter Y/N (no textual feedback)
+            <br><br><b>2nd SESSION (change the BUTTON FILTER)</b>: Guide agents mainly by providing feedback/critics/instructions
         </div>
     </div>
 </div>
 
 <script>
+    // Show the floating div in the center for 5 seconds
+    setTimeout(() => {
+        const floatingDiv = document.getElementById("floating-div");
+        floatingDiv.style.position = "fixed";
+        floatingDiv.style.top = "auto";
+        floatingDiv.style.left = "auto";
+        floatingDiv.style.bottom = "20px"; // Position from the bottom
+        floatingDiv.style.right = "20px"; // Position from the right
+        floatingDiv.style.transform = "none";
+    }, 5000);
+
+    // Toggle instructions visibility
     document.getElementById("your-goal-header").onclick = () => {
         const content = document.getElementById("your-goal-content");
         content.style.display = content.style.display === "none" ? "block" : "none";
     };
 </script>
+
 
 <div class="annotation-menu">
     <button class="close-btn">&times;</button>
@@ -529,6 +542,10 @@ function updateButtonVisibility() {
         // Show Continue menu-option
         $('.menu-option[style*="background-color: green"]').show();
     }
+
+    $('.menu-option').filter(function() {
+        return $(this).text().toLowerCase().includes('Go back');
+        }).show();
 }
 // Call updateButtonVisibility when the selector changes
 $('#button-visibility-selector').change(function() {
