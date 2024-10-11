@@ -1176,10 +1176,10 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
                 smart_print("Max attempts reached. Trying a new task.", None, "coding_and_validation_loop WARNING")
 
     # Calculate metrics over all attempts
-    percentage_no_runtime_error = (sum(1 for _, no_runtime_error, _, _, _ in all_results if no_runtime_error) / len(
+    percentage_no_runtime_error = (sum(1 for _, no_runtime_error, _, _, _, _ in all_results if no_runtime_error) / len(
         all_results)) if all_results else 0
     best_score_without_validation = (
-        max(max(sum(scores.values()) for scores in score_dict) for _, _, _, score_dict, _ in all_results)) if len(
+        max(max(sum(scores.values()) for scores in score_dict) for _, _, _, score_dict, _, _ in all_results)) if len(
         all_results) > 0 else 0
     all_scores = {
         'percentage_no_runtime_error': percentage_no_runtime_error,
