@@ -872,6 +872,43 @@ $(function() {
 
         } else if(data.message.includes("Time spent in each option and occurrences" || data.message.includes("Choose an action (or hit Enter for inference)"))){
 
+        } else if (data.message.includes("Do you want to reset the environment for searching a new task")){
+            // Hide the input area
+            $(".input-area").hide();
+            // Delete all agent accordions
+            $("#message-accordion").empty();
+
+            // Show the question to reset the environment
+            let $question = $(`<p>Do you want to reset the environment for searching a new task (Y/YES) or search a new task by keeping what has been created by this task (N/NO/Enter) ? or just exit (E/EXIT) ?</p>`);
+            let $yesButton = $(`<button id="yes-button">Yes</button>`);
+            let $noButton = $(`<button id="no-button">No</button>`);
+            let $exitButton = $(`<button id="exit-button">Exit</button>`);
+            let $container = $(`<div style="font-size: large;"></div>`);
+            $container.append($question);
+            $container.append($yesButton);
+            $container.append($noButton);
+            $container.append($exitButton);
+            // Ajouter le conteneur sous l'accordéon
+            $("#message-accordion").append($container);
+            // Gérer l'événement du bouton
+            $yesButton.click(function () {
+                socket.send(JSON.stringify({message: "yes"}));
+                $container.remove();
+                // Reset the number of created functions
+                number_created_functions = 0;
+                document.getElementById("number-functions").textContent = number_created_functions;
+            });
+            $noButton.click(function () {
+                socket.send(JSON.stringify({message: "no"}));
+                $container.remove();
+            });
+            $exitButton.click(function () {
+                socket.send(JSON.stringify({message: "exit"}));
+                $container.remove();
+            });
+
+
+
         } else if (data.message_type === "Scores") {
             // Enable continue-button-${data.agent_name}
             let $continueButton = $(`#continue-button-${data.agent_name}`);
