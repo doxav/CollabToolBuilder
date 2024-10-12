@@ -473,12 +473,12 @@ class CodingAgent():
                     decision_lower = decision.lower()
                     if decision_lower in ("no", "n", ""):
                         break
-                    elif decision_lower == "y":
-                        edited_code = _visual_input(parsed_code["program_code"], filetype="py")
+                    elif decision_lower in ["y", "yes"]:
+                        edited_code = _visual_input(parsed_code["program_code"], filetype="py", message_type="fix_error", agent_name=self.name, column_id=output_id)
                     else:
                         if decision_lower == "a":
                             # Do not use HumanLLMMonitor because no template is available for this specific case
-                            smart_print("TRYING TO AUTOFIX ERROR", self.name, "trying_to_fix_error", optional=True, column_id=output_id)
+                            smart_print("TRYING TO AUTOFIX ERROR", self.name, "fix_error", optional=True, column_id=output_id)
                             instructions = ""
                         else:
                             # User provided custom instructions

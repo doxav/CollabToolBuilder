@@ -195,7 +195,7 @@ def is_vscode_installed():
         return False
 
 
-def _visual_input(initial_string="", filetype="md"):
+def _visual_input(initial_string="", filetype="md", agent_name=None, column_id=None, column_max=None, message_type=None):
     """
     Open a visual editor (VSCode or Tkinter) to interactively edit a given string or list.
 
@@ -224,6 +224,7 @@ def _visual_input(initial_string="", filetype="md"):
         with open(file_path, 'w') as file:
             file.write(initial_string_serialized)
 
+        smart_print(f"Please edit and save the file opened in VSCode (Ctrl + W) when ready ({file_path})", optional=False, agent_name=agent_name, column_id=column_id, column_max=column_id, message_type=message_type)
         # Step 3: Open the file in VSCode
         subprocess.run(["code", "--wait", file_path])
 

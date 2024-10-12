@@ -51,6 +51,8 @@ body {
     overflow-y: auto;
     box-sizing: border-box;
     background-color: #FFFFFF; /* White */
+    margin-top: 0;
+    padding-top: 0;
 }
 
 .accordion {
@@ -78,6 +80,23 @@ body {
     border: 1px solid #1976D2; /* Darker Blue */
     margin-bottom: 10px;
     color: white;
+}
+
+/* New CSS for the toggle-buttons container */
+#main-content .toggle-buttons {
+    display: flex;
+}
+
+/* Ensure the buttons inside toggle-buttons take equal space */
+#main-content .toggle-buttons .sidebar-toggle {
+    flex: 1;
+    text-align: center; /* Center the text inside the buttons */
+    margin-bottom: 0; /* Remove bottom margin since buttons are side by side */
+}
+
+/* Optional: Add a small margin between the buttons */
+#main-content .toggle-buttons .sidebar-toggle:not(:last-child) {
+    margin-right: 10px;
 }
 
 .expand-button {
@@ -344,7 +363,6 @@ color: white;
 <body>
 <div id="main-container">
     <div id="history-sidebar">
-        <div class="sidebar-toggle" id="toggle-history">Hide History</div>
         <div id="history-accordion" class="accordion">
             <h3>History</h3>
             <div id="history-content">
@@ -361,9 +379,11 @@ color: white;
     </div>
 
     <div id="main-content">
-        <div class="sidebar-toggle" id="toggle-history-main">Show history</div>
-        <div class="sidebar-toggle" id="toggle-settings-main">Show settings</div>
-      <div class="auto-open-checkbox">
+        <div class="toggle-buttons">
+            <div class="sidebar-toggle" id="toggle-history-main">Show history</div>
+            <div class="sidebar-toggle" id="toggle-settings-main">Show settings</div>
+        </div>
+        <div class="auto-open-checkbox">
             <label style="color:black;" for="auto-open-accordion"><input type="checkbox" id="auto-open-accordion" checked>Auto-focus new messages</label>
             <label style="color:black;"><input type="checkbox" id="show-optionals">Show optional messages</label>
             <select id="filter-message-type">
@@ -393,7 +413,6 @@ color: white;
     </div>
 
     <div id="settings-sidebar">
-        <div class="sidebar-toggle" id="toggle-settings">Hide Settings</div>
         <h3>Settings</h3>
         <center>
             <label for="default-llm">Default LLM:</label><br><br>
@@ -484,10 +503,18 @@ color: white;
     <button id="apply-annotation">Apply</button>
 </div>
 <script>
+function hideAgentButtons(agentName) {
+    $(`div[data-agent="${agentName}"]`).find('button#autofix-button, button[id^="select-"], button[id^="delete-"], button[id^="evaluate-"], button[id^="regenwithmymodifbutton-"], button[id^="regenallbutton-"], input[id^="comment-"], button#custom-autofix-button').hide();
+}
+
+function showAgentButtons(agentName) {
+    $(`div[data-agent="${agentName}"]`).find('button#autofix-button, button[id^="select-"], button[id^="delete-"], button[id^="evaluate-"], button[id^="regenwithmymodifbutton-"], button[id^="regenallbutton-"], input[id^="comment-"], button#custom-autofix-button').show();
+}
 
 // Function to update button visibility based on the selector
 function updateButtonVisibility() {
     const selection = $('#button-visibility-selector').val();
+    const continueButton = $('.menu-option[style*="background-color: green"]');
 
     // Define selectors for buttons and inputs to show/hide for each session
     const session1ShowSelectors = [
@@ -506,7 +533,7 @@ function updateButtonVisibility() {
     ];
 
     const session2ShowSelectors = [
-    'button[id^="evaluate-"]',
+        'button[id^="evaluate-"]',
         'button[id^="regenwithmymodifbutton-"]',
         'button[id^="regenallbutton-"]',
         'input[id^="comment-"]',
@@ -517,38 +544,40 @@ function updateButtonVisibility() {
         'button#autofix-button',
         'button[id^="select-"]',
         'button[id^="delete-"]',
-        // Include any other buttons/inputs to hide in SESSION_2
     ];
 
     // First, reset any previous visibility changes
     // Show all elements that might have been hidden in previous sessions
-    session1ShowSelectors.concat(session1HideSelectors, session2ShowSelectors, session2HideSelectors).forEach(selector => {$(selector).show();});
+    if (continueButton.is(':visible'))
+        session1ShowSelectors.concat(session1HideSelectors, session2ShowSelectors, session2HideSelectors).forEach(selector => {$(selector).show();});
+    else
+        session1ShowSelectors.concat(session1HideSelectors, session2ShowSelectors, session2HideSelectors).forEach(selector => {$(selector).hide();});
     
     if (selection === 'SESSION_1') {
-        // Hide elements specific to SESSION_1
         session1HideSelectors.forEach(selector => {$(selector).hide();});
-        // Show elements specific to SESSION_1
-        session1ShowSelectors.forEach(selector => {$(selector).show();});
-        // Show "Go back" menu-option
+        if (continueButton.is(':visible'))
+            session1ShowSelectors.forEach(selector => {$(selector).show();});
+        else
+            $('button#autofix-button').show();
         $('.menu-option').hide();
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('go back');}).show();
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('edit answer');}).show();
-    } else if (selection === 'SESSION_2') {
-        // Hide elements specific to SESSION_2
+    }
+    else if (
+        selection === 'SESSION_2') {
         session2HideSelectors.forEach(selector => {$(selector).hide();});
-        // Show elements specific to SESSION_2
-        session2ShowSelectors.forEach(selector => {$(selector).show();});
-        // Show "Go back" menu-option
+        if (continueButton.is(':visible'))
+            session2ShowSelectors.forEach(selector => {$(selector).show();});
+        else
+            $('button#custom-autofix-button').show();
         $('.menu-option').hide();
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('go back');}).show();
-    } else if (selection === 'ALL') {
-        // Show all elements
-        session1ShowSelectors.concat(session1HideSelectors, session2ShowSelectors, session2HideSelectors).forEach(selector => {$(selector).show();});
-        // Show all menu options
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('give instruction or');}).show();
+    }
+    else if (selection === 'ALL' || selection === 'ALL_SEND') {
         $('.menu-option').show();
-    } else if (selection === 'ALL_SEND') { // Same with forced send buttons
-            session1ShowSelectors.concat(session1HideSelectors, session2ShowSelectors, session2HideSelectors).forEach(selector => {$(selector).show();});
-            $('.menu-option').show();
+        $('button#autofix-button, button#custom-autofix-button').show();
+        if (selection === 'ALL_SEND') // Display input & send buttons
             $(".input-area, #user-input, #send-button").show();
     }
     // Show Continue menu-option for all sessions
@@ -572,11 +601,10 @@ function hideInputField() {
     $(".buffering-circle").show();
 }
 
-
+currentAgent = '';
 
 $(function() {
     let socket = new WebSocket('ws://localhost:6789');
-    let currentAgent = '';
     let savedSelection = null;
     let number_created_functions = 0;
     let number_validated_functions = 0;
@@ -779,6 +807,8 @@ $(function() {
             let targetColumn = document.getElementById(`column-${columnId}`);
 
             if (data.message_type === "fix_error") {
+                // if Edition in VSCode, alert and do not display the buttons
+                if (data.message.startsWith("Please edit and save")) {alert(data.message); return;}
                 // Create a question with a Yes, No and Try autofix with LLM buttons and append it to the "error-conten-${columnId}" div
                 let $question = $(`<p>Do you want to edit the code to fix the error (you will also be requested first) ?</p>`);
                 let $editButton = $(`<button id="edit-button">Edit in VSCode</button>`);
