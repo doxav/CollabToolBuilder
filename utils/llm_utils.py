@@ -226,7 +226,7 @@ def _visual_input(initial_string="", filetype="md", agent_name=None, column_id=N
 
         smart_print(f"Please edit and save the file opened in VSCode (Ctrl + W) when ready ({file_path})", optional=False, agent_name=agent_name, column_id=column_id, column_max=column_id, message_type=message_type)
         # Step 3: Open the file in VSCode
-        subprocess.run(["code", "--wait", file_path])
+        subprocess.run(["code", "--wait", "--new-window", file_path])
 
         # Step 4: Read the edited content
         with open(file_path, 'r') as file:
