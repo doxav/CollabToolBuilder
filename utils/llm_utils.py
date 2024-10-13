@@ -392,7 +392,7 @@ class UnifiedVectorDB:
                 print("Elasticsearch response:", response.text)
                 UnifiedVectorDB.db_connection_check_done = True
             except requests.exceptions.RequestException as e:
-                print(f"Error: {e}\nURL: {UnifiedVectorDB.es_url}\nCheck Elasticsearch and credentials.")
+                print(f"Error: {e}\nURL: {UnifiedVectorDB.es_url}\nCheck Elasticsearch and credentials. UnifiedVectorDB.es_user:{UnifiedVectorDB.es_user}, UnifiedVectorDB.es_password:{UnifiedVectorDB.es_password}")
                 exit(1)
         elif UnifiedVectorDB.db_type == 'chroma':
             print("Chroma DB check is not yet implemented")
