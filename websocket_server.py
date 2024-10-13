@@ -51,7 +51,7 @@ class WebsocketServer:
                     if agent_name in self.monitors:
                         monitor = self.monitors[agent_name]
                         result = monitor.execute_function(function_name, params)
-                        message = json.dumps({"status": "success", "result": result, "function": function_name})
+                        message = json.dumps({"status": "success", "message": None, "result": result, "function": function_name})
                     else:
                         message = json.dumps({"status": "error", "message": f"Monitor '{agent_name}' not found"})
                 

@@ -400,7 +400,7 @@ $(function() {
             let data = JSON.parse(event.data);
             displayMessage(data);
         } catch (e) {
-            console.log('Error parsing JSON:', e);
+            console.log('Error parsing JSON:', e, "event.data:", event.data);
         }
     };
 

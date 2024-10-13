@@ -601,6 +601,22 @@ function hideInputField() {
     $(".buffering-circle").show();
 }
 
+function getColumnsToKeep(agent) {
+    console.log(1);
+    let columnsToKeep = [];
+    console.log(2);
+    let totalColumns = document.querySelectorAll(`.solution-column[id^='column-${agent}-']`).length;
+    console.log(`.solution-column[id^='column-${agent}-']`);
+    for (let i = 0; i < totalColumns; i++) {
+        console.log(4);
+        let col = document.getElementById(`column-${agent}-${i}`);
+        console.log(5);
+        if (!col.classList.contains('deleted')) columnsToKeep.push(i);
+    }
+    console.log(6);
+    return columnsToKeep;
+}
+
 currentAgent = '';
 
 $(function() {
@@ -652,7 +668,7 @@ $(function() {
             let data = JSON.parse(event.data);
             displayMessage(data);
         } catch (e) {
-            console.log('Error parsing JSON:', e);
+            console.log('Error parsing JSON (1):', e, "event.data:", event.data);
         }
     };
 
@@ -689,14 +705,20 @@ $(function() {
     socket.onmessage = function(event) {
         console.log('Received message');
         try {
-            let data = JSON.parse(event.data);
-            if (data.function && pendingCallbacks[data.function]) {
-                console.log('Calling callback for', data.function);
+            if ('data' in event) {
+                data = JSON.parse(event.data);
+                // .replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g,"")
+            } else {
+                console.log('No data in event:', event);
+                //let data = JSON.parse(event);
+                return;
+            }
+            if ('function' in data && data.function && pendingCallbacks[data.function]) {
                 pendingCallbacks[data.function](data.result);
                 delete pendingCallbacks[data.function];
             } else {
                 displayMessage(data);
-                if (data.input && !data.message.includes("Choose an action") && !data.message.includes("Do you want to edit the code") && !data.message.includes("CODE SELECTION Please select the code to keep")) {
+                if ('input' in data && data.input && !data.message.includes("Choose an action") && !data.message.includes("Do you want to edit the code") && !data.message.includes("CODE SELECTION Please select the code to keep")) {
                     inputAwaited = true; // Set input flag
                     displayInputField(); // Show input area
                     $(".buffering-circle").hide();
@@ -705,13 +727,14 @@ $(function() {
                     inputAwaited = false;
                     hideInputField(); // Hide input area if not awaited
                 }
-                if(data.input || data.message.includes("Choose an action")){
+                if('input' in data && data.input || data.message.includes("Choose an action")){
                     $(".buffering-circle").hide();
                 }
 
             }
         } catch (e) {
-            console.log('Error parsing JSON:', e);
+            console.log('Error parsing JSON(2):', e, "event:", event);
+            if ('data' in event) console.log('event.data:', event.data);
         }
     };
 
@@ -731,7 +754,7 @@ $(function() {
         // Initialize content variable
         let content = '';
 
-        if(data.message.includes("Time spent in each option and occurrences") || data.message.includes("inference results received") || data.message.includes("Choose an action (or hit Enter for inference)")){
+        if('message' in data && data.message.includes("Time spent in each option and occurrences") || data.message.includes("inference results received") || data.message.includes("Choose an action (or hit Enter for inference)")){
             // Exit the function
             // console.log('NOT Displaying message:', data);
             return;
@@ -739,7 +762,7 @@ $(function() {
         // else console.log('Displaying message:', data);
 
         // Check if message_type includes "Inference streaming output"
-        if (data.message_type && data.message_type.includes("Inference streaming output")) {
+        if ('message' in data && data.message_type && data.message_type.includes("Inference streaming output")) {
             // Do not wrap the message in collapsible container
             content = `${formatMessage(data.message)}`;
         } else {
@@ -865,7 +888,9 @@ $(function() {
             $columns.each(function (index, column) {
                 let $message = $(column).find('.message');
                 // Replace the actual content of the message with the actual content but formated with formlatMarkdown
-                $message.html(formatMarkdown($message.html()));
+                if($message && $message.html())
+                    $message.html(formatMarkdown($message.html()));
+                else console.log(`No message or no html content for agent ${data.agent_name} column $(index)`);
             });
         }
 
@@ -1135,8 +1160,8 @@ $(function() {
                 return;
             }
 
-            const columnId = `${data.agent_name}-${inferenceNumber}`;
-            let targetColumn = document.getElementById(`column-${columnId}`);
+            const columnId = `${inferenceNumber}`;
+            let targetColumn = document.getElementById(`column-${data.agent_name}-${columnId}`);
 
             if (!targetColumn) {
                 // Column doesn't exist yet, create it
@@ -1160,11 +1185,11 @@ $(function() {
 
                     agentAccordion.appendChild(solutionColumnsContainer);
                 }
-
                 // Create the column
                 targetColumn = document.createElement('div');
                 targetColumn.className = 'solution-column';
-                targetColumn.id = `column-${columnId}`;
+                targetColumn.id = `column-${data.agent_name}-${columnId}`;
+                console.log("adding column:", targetColumn.id);
                 targetColumn.innerHTML = `
                     <button class="expand-button"><i class="fas fa-expand"></i></button>
                     <h4>Answer ${inferenceNumber}</h4>
@@ -1176,8 +1201,10 @@ $(function() {
 
             // Append the message to the column's message div
             const messageDiv = targetColumn.querySelector('.message');
-            messageDiv.innerHTML += formatMessage(data.message);
-            messageDiv.scrollTop = messageDiv.scrollHeight;
+            if(messageDiv) {
+                messageDiv.innerHTML += formatMessage(data.message);
+                messageDiv.scrollTop = messageDiv.scrollHeight;
+            } else  console.log(`No message div found for column-${data.agent_name}-${columnId}`);
 
         } else if (data.message_type === "BEFORE inference action MENU" || data.message_type === "AFTER inference action MENU" && data.message.includes("Change default") || data.message.includes("Change premium") || data.message.includes("Exit") || data.message.includes("Log comments")) {
             displayMenuOptions(data);
@@ -1245,7 +1272,7 @@ $(function() {
     try {
         const columnMax = data.column_max;
         const columnIndex = data.column_id; // Index numérique
-        const columnId = `${data.agent_name}-${data.column_id}`; // Identifiant chaîne pour les éléments HTML
+        const agent_columnId = `${data.agent_name}-${data.column_id}`; // Identifiant chaîne pour les éléments HTML
         const content = data.message;
 
         let solutionColumnsContainer = document.querySelector(`#message-accordion > div[data-agent="${data.agent_name}"] > div > .solution-columns`);
@@ -1290,7 +1317,7 @@ $(function() {
             }
         }
 
-        const targetColumn = document.getElementById(`column-${columnId}`);
+        const targetColumn = document.getElementById(`column-${agent_columnId}`);
         const formattedMessage = formatMessage(content);
         if (targetColumn) {
             targetColumn.innerHTML += `<div class="message" style="max-height: 500px; overflow-y: auto;">${formattedMessage}</div>`;
@@ -1302,57 +1329,57 @@ $(function() {
                 <div style="display: flex; justify-content: center; align-items: flex-start;">
                     <!-- Slider and value container -->
                     <div style="display: none; flex-direction: column; align-items: center; margin-right: 10px;">
-                        <input type="range" min="-1" max="10" value="-1" step="1" class="slider" id="slider-${columnId}">
-                        <span id="value-${columnId}" style="font-size: smaller;">Unscored</span>
+                        <input type="range" min="-1" max="10" value="-1" step="1" class="slider" id="slider-${agent_columnId}">
+                        <span id="value-${agent_columnId}" style="font-size: smaller;">Unscored</span>
                     </div>
-                    <input type="text" id="comment-${columnId}" placeholder="Write instructions to regenerate..." style="margin-right: 10px; width: 350px;">
-                    <button id="evaluate-${columnId}"><i class="fa-regular fa-paper-plane"></i> Regenerate</button>
+                    <input type="text" id="comment-${agent_columnId}" placeholder="Write instructions to regenerate..." style="margin-right: 10px; width: 350px;">
+                    <button id="evaluate-${agent_columnId}"><i class="fa-regular fa-paper-plane"></i> Regenerate</button>
                 </div>
             </div>`;
 
             // Add Select and Remove buttons if more than 1 solution
             let selectionButtonsHtml = (data.column_max > 1) ?
-                    `<div style="text-align: center;"><button id="select-${columnId}"><i class="fa-regular fa-check-circle"></i> Select</button></div> 
-                    <div style="text-align: center;"><button id="delete-${columnId}"><i class="fa-regular fa-trash-can"></i> Remove</button></div>` : "";
+                    `<div style="text-align: center;"><button id="select-${agent_columnId}"><i class="fa-regular fa-check-circle"></i> Select</button></div> 
+                    <div style="text-align: center;"><button id="delete-${agent_columnId}"><i class="fa-regular fa-trash-can"></i> Remove</button></div>` : "";
 
             // Add the regenerate buttons (regardless of the number of solutions)
             targetColumn.innerHTML += `
             '<div style="display: flex; justify-content: center; gap: 10px;">';
                 ${selectionButtonsHtml}
-                <div style="text-align: center;"><button id="regenwithmymodifbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Apply answer's annotations</button></div>
-                <div style="text-align: center;"><button id="regenallbutton-${columnId}"><i class="fa-solid fa-rotate"></i> Merge all answers & annotations</button></div>
+                <div style="text-align: center;"><button id="regenwithmymodifbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i> Apply answer's annotations</button></div>
+                <div style="text-align: center;"><button id="regenallbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i> Merge all answers & annotations</button></div>
             </div>`;
 
             if(evaluationType === 'score') {
                 targetColumn.innerHTML += `
                     <br>
                     <div style="text-align: center;">
-                        <button id="score-${columnId}">Testing for scoring...</button>
+                        <button id="score-${agent_columnId}">Testing for scoring...</button>
                     </div>
                 `;
 
             targetColumn.innerHTML += `
                 <br>
-                <div style="text-align: center;" id="error-content-${columnId}"/>
+                <div style="text-align: center;" id="error-content-${agent_columnId}"/>
             `;
             }
 
             // Add the menu options for column
-            targetColumn.innerHTML += `<div id="menu-options-column-${columnId}"></div>`;
+            targetColumn.innerHTML += `<div id="menu-options-column-${agent_columnId}"></div>`;
 
 
 
                 // Refresh value on value change
-                $(`#slider-${columnId}`).on('input', function () {
+                $(`#slider-${agent_columnId}`).on('input', function () {
                     // If value is -1 display "Unscored" instead
                     if(this.value === '-1') {
-                        $(`#value-${columnId}`).text('Unscored');
+                        $(`#value-${agent_columnId}`).text('Unscored');
                     } else {
-                        $(`#value-${columnId}`).text(this.value);
+                        $(`#value-${agent_columnId}`).text(this.value);
                     }
                 });
 
-                $(document).on("click", `#evaluate-${columnId}`, function () {
+                $(document).on("click", `#evaluate-${agent_columnId}`, function () {
                     /*if ($(`#slider-${columnId}`).val() === '-1') {
                         alert('-1 is not a valid score, so please select a valid score.');
                         return;
@@ -1364,112 +1391,60 @@ $(function() {
                     console.log('Evaluate button clicked');
                     alert('Evaluation submitted ! Thanks you !');*/
                     // Check if the input field is empty
-                    if($(`#comment-${columnId}`).val() === '') {
+                    if($(`#comment-${agent_columnId}`).val() === '') {
                         // Show an alert if the input field is empty
                         alert("Write your instructions first");
                         return; // Prevent further execution
                     }
                     // Make button disabled
-                    $(`#evaluate-${columnId}`).prop('disabled', true);
+                    $(`#evaluate-${agent_columnId}`).prop('disabled', true);
                     // If a slider exists, get the score of it, else get the value of the compliance select
                     let score;
-                    if($(`#slider-${columnId}`).length) {
-                        score = $(`#slider-${columnId}`).val() / 10;
+                    if($(`#slider-${agent_columnId}`).length) {
+                        score = $(`#slider-${agent_columnId}`).val() / 10;
 
                     } else {
-                        score = $(`#compliance-${columnId}`).val();
+                        score = $(`#compliance-${agent_columnId}`).val();
                     }
-                    let comment = $(`#comment-${columnId}`).val();
+                    let comment = $(`#comment-${agent_columnId}`).val();
                     sendFunctionCall(data.agent_name, "criticAnswer", {content_annotated: comment, inference_result_msg: "", annotated_critics: false}, function(responseMessage) {
                     console.log("responseMessage:"+responseMessage);
                     // Replace the content of the column with the new response
                     targetColumn.querySelector('.message').innerHTML = formatMessage(responseMessage);
                     // Set the button enable and change the text with the icon and text
-                    $(`#evaluate-${columnId}`).prop('disabled', false);
-                    $(`#evaluate-${columnId}`).html('<i class="fa-solid fa-rotate"></i> Regenerate');
+                    $(`#evaluate-${agent_columnId}`).prop('disabled', false);
+                    $(`#evaluate-${agent_columnId}`).html('<i class="fa-solid fa-rotate"></i> Regenerate');
                 });                    
                     //sendFunctionCall(data.agent_name, "evaluateCommentAnswerForLater", {comment: comment, score: score, output_id: columnIndex});
                     let actionDescription = `User evaluated solution ${columnIndex} with score ${score} and comment "${comment}"`;
                     addHistoryEntry(actionDescription);
                 });
 
-            // Update the event handlers for the "Select" and "Remove" buttons
-            $(`#select-${columnId}`).click(function () {
-                let targetColumn = document.getElementById(`column-${columnId}`);
-                let deleteButton = document.getElementById(`delete-${columnId}`);
-
-                // Toggle selection of this solution
-                let isSelected = targetColumn.classList.contains('selected');
-                if (isSelected) {
-                    // Deselect this solution
-                    targetColumn.classList.remove('selected');
-                    targetColumn.style.backgroundColor = '';
-                    this.style.backgroundColor = '';
-                    deleteButton.disabled = false;
-                    console.log('Deselected solution:', columnIndex);
-                } else {
-                    // Select this solution
-                    targetColumn.classList.add('selected');
-                    targetColumn.style.backgroundColor = 'lightgreen';
-                    this.style.backgroundColor = 'lightgreen';
-                    deleteButton.disabled = true;
-                    console.log('Selected solution:', columnIndex);
-                }
-
-                // Compute the updated list of columns to keep (not deleted)
-                let columnsToKeep = [];
-                let totalColumns = document.querySelectorAll(`.solution-column[id^='column-${data.agent_name}-']`).length;
-                for (let i = 0; i < totalColumns; i++) {
-                    let col = document.getElementById(`column-${data.agent_name}-${i}`);
-                    if (!col.classList.contains('deleted')) {
-                        columnsToKeep.push(i);
-                    }
-                }
-
-                // Send the updated list of columns to keep to the backend
-                console.log(data.agent_name + ' - Columns to keep:', columnsToKeep);
-                sendFunctionCall(data.agent_name, "set_selected_outputs", { selected_outputs: columnsToKeep });
-            });
-
-            $(`#delete-${columnId}`).click(function () {
-                let targetColumn = document.getElementById(`column-${columnId}`);
+            $(`#delete-${agent_columnId}`).click(function () {
+                let targetColumn = document.getElementById(`column-${agent_columnId}`);
                 let isMarkedForDeletion = targetColumn.classList.contains('deleted');
-
+                console.log(`#delete: column-${agent_columnId}`);
                 // Toggle the 'deleted' class
                 if (isMarkedForDeletion) {
+                    console.log('Removing deleted class');
                     targetColumn.classList.remove('deleted');
                     targetColumn.style.backgroundColor = '';
                 } else {
+                    console.log('Add deleted class');
                     targetColumn.classList.add('deleted');
                     targetColumn.style.backgroundColor = 'lightcoral';
-                    // If the column is selected, deselect it
-                    if (targetColumn.classList.contains('selected')) {
-                        targetColumn.classList.remove('selected');
-                        let selectButton = document.getElementById(`select-${columnId}`);
-                        if (selectButton) {
-                            selectButton.style.backgroundColor = '';
-                        }
-                    }
                 }
 
                 // Recompute columnsToKeep
-                let columnsToKeep = [];
-                let totalColumns = document.querySelectorAll(`.solution-column[id^='column-${data.agent_name}-']`).length;
-                for (let i = 0; i < totalColumns; i++) {
-                    let col = document.getElementById(`column-${data.agent_name}-${i}`);
-                    if (!col.classList.contains('deleted')) {
-                        columnsToKeep.push(i);
-                    }
-                }
-
+                let columnsToKeep = getColumnsToKeep(data.agent_name); // currentAgent
                 // Send the updated list to the backend
                 console.log(data.agent_name + ' - Columns to keep:', columnsToKeep);
                 sendFunctionCall(data.agent_name, "set_selected_outputs", { selected_outputs: columnsToKeep });
             });
 
 
-            $(`#regenwithmymodifbutton-${columnId}`).click(function () {
-                let targetColumn = document.getElementById(`column-${columnId}`);
+            $(`#regenwithmymodifbutton-${agent_columnId}`).click(function () {
+                let targetColumn = document.getElementById(`column-${agent_columnId}`);
                 // Check if at least one annotation exists
                 let messageDiv = targetColumn.querySelector('.message');
                 let annotations = messageDiv.querySelectorAll('.applied-annotation');
@@ -1485,8 +1460,8 @@ $(function() {
                     // Replace the content of the column with the new response
                     targetColumn.querySelector('.message').innerHTML = formatMessage(responseMessage);
                     // Set the button enable and change the text with the icon and text
-                    $(`#regenwithmymodifbutton-${columnId}`).prop('disabled', false);
-                    $(`#regenwithmymodifbutton-${columnId}`).html('<i class="fa-solid fa-rotate"></i> Apply answer s annotations');
+                    $(`#regenwithmymodifbutton-${agent_columnId}`).prop('disabled', false);
+                    $(`#regenwithmymodifbutton-${agent_columnId}`).html('<i class="fa-solid fa-rotate"></i> Apply answer s annotations');
                 });
                 let actionDescription = `User requested regeneration of solution ${columnIndex + 1} with modifications`;
                 addHistoryEntry(actionDescription);
@@ -1495,9 +1470,9 @@ $(function() {
                 this.textContent = 'Regenerating...';
             });
 
-            $(`#regenallbutton-${columnId}`).click(function () {
+            $(`#regenallbutton-${agent_columnId}`).click(function () {
                 let columns = document.querySelectorAll(`.solution-column[id^='column-${data.agent_name}-'] .message`);
-                let targetColumn = document.getElementById(`column-${columnId}`);
+                let targetColumn = document.getElementById(`column-${agent_columnId}`);
                 let messageDiv = targetColumn.querySelector('.message');
                 let annotations = messageDiv.querySelectorAll('.applied-annotation');
                 if (annotations.length === 0) {
@@ -1513,8 +1488,8 @@ $(function() {
                     // Replace the content of the column with the new response
                     targetColumn.querySelector('.message').innerHTML = formatMessage(responseMessage);
                     // Set the button enable and change the text with the icon and text
-                    $(`#regenallbutton-${columnId}`).prop('disabled', false);
-                    $(`#regenallbutton-${columnId}`).html('<i class="fa-solid fa-rotate"></i> Regenerate with all modifications');
+                    $(`#regenallbutton-${agent_columnId}`).prop('disabled', false);
+                    $(`#regenallbutton-${agent_columnId}`).html('<i class="fa-solid fa-rotate"></i> Regenerate with all modifications');
                 });
                 let actionDescription = `User requested regeneration of solution ${columnIndex + 1} with all modifications`;
                 addHistoryEntry(actionDescription);
@@ -1540,22 +1515,11 @@ $(function() {
                 $(solutionColumnsContainer).after($continueButton);
                 $continueButton.click(function () {
                     console.log("Continue button clicked");
-                    let columnsToDelete = JSON.parse(localStorage.getItem(`columnsToDelete-${data.agent_name}`)) || [];
-                    let selectedSolutionIndex = parseInt(localStorage.getItem(`selectedSolution-${data.agent_name}`));
-                    let columnsToKeep = [];
-                    if (!isNaN(selectedSolutionIndex)) {
-                        columnsToKeep = [selectedSolutionIndex];
-                    } else {
-                        for (let i = 0; i < columnMax; i++) {
-                            if (!columnsToDelete.includes(i)) {
-                                columnsToKeep.push(i);
-                            }
-                        }
-                    }
-                    number_validated_functions += columnsToKeep.length;
-                    document.getElementById("number-validated-functions").textContent = number_validated_functions;
+                    let columnsToKeep = getColumnsToKeep(data.agent_name);
                     console.log("Columns to keep:", columnsToKeep.join(','));
                     socket.send(JSON.stringify({message: columnsToKeep.join(',')}));
+                    number_validated_functions += columnsToKeep.length;
+                    document.getElementById("number-validated-functions").textContent = number_validated_functions;
                     let actionDescription = `User clicked continue, keeping solutions: ${columnsToKeep.map(num => num + 1).join(', ')}`;
                     addHistoryEntry(actionDescription);
                 });
