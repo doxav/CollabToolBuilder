@@ -7,7 +7,7 @@ import os
 def objective(trial, name_xp : str):
     # Define parameters we want to tests
 
-    num_previous_attempts = 4
+    num_previous_attempts = 3
     parameters_previous_attempts = "code & task"
     primitives_selection = "primitives/generate_primitives"
     prev_failed_task = ("36dd8e77-829d-48c9-8f6c-3d7bc8dfa3aa", "c7159fce-e204-4909-b156-299d698bc456")
@@ -16,8 +16,8 @@ def objective(trial, name_xp : str):
     # Define fixed parameters for Coder
     libraries_restriction = "Numpy, Pandas, Huggingface, Sklearn" # Can be removed: Huggingface and Sklearn, to test if 3 imposed methods offer better performance than with these libraries
     max_autofix = 2
-    temperature = 1.3
-    number_inferences = 4
+    temperature_max = 1.3
+    number_inferences = 3
     presence_penalty = 0.7189030356596702
     reasoning_depth = 1
 
@@ -25,6 +25,9 @@ def objective(trial, name_xp : str):
     user_message_params = definition_few_shots(trial, True, no_params_search=True)
 
     tries_annotations = trial.suggest_categorical("tries_annotations", ['TaskIdentificationAgent', 'CodingAgent'])
+    
+    #annotation_types_filter = trial.suggest_categorical("annotation_types_filter", ['FIX', 'DELETE', 'APPROVE', 'ALL'])
+    
     annotations_critic_system_prompt = trial.suggest_categorical("annotations_system_prompt", [
         """Your Task:
 
@@ -37,10 +40,10 @@ Reminder: Do not modify the ANNOTATED ANSWER in any way during this process.
 
 
 ### Annotation Tags Explanation:
-
 \APPROVE: Indicates the content is satisfactory as is.
 \FIX: Indicates the content requires changes or improvements.
 \DELETE: Indicates the content should be removed entirely.
+
 ### Instructions:
 
 Examine the ANNOTATED ANSWER carefully.
@@ -62,12 +65,11 @@ Important: Do not modify or alter the content of the ANNOTATED ANSWER during thi
 
 
 ### Annotation Tags Explanation:
-
-\APPROVE: The content is correct; no changes are needed.
+\APPROVE: This content is great, must not be changed.
 \FIX: The content requires improvement or correction.
 \DELETE: The content should be removed.
-### Instructions:
 
+### Instructions:
 Carefully read the ANNOTATED ANSWER.
 For each annotation tag found:
 Note the type of action (approve, fix, or delete).
@@ -80,7 +82,7 @@ Your task is to extract and organize feedback tags from the **ANNOTATED ANSWER**
 
 
 ### Annotation Tags:
-- **\APPROVE:** Content is correct, no changes needed.
+- **\APPROVE:** This content is great, must not be changed.
 - **\FIX:** The content requires improvement or correction.
 - **\DELETE:** Remove this content.
 
@@ -164,7 +166,7 @@ Your task is to extract and organize feedback tags from the **ANNOTATED ANSWER**
         optuna_opti="coach",
         special_criteria={
             "CodingAgent#max_autofix": max_autofix,
-            "CodingAgent#temperature_max": temperature,
+            "CodingAgent#temperature_max": temperature_max,
             "CodingAgent#num_parallel_inferences": number_inferences,
             "all#problem_prompts_subdir": f"IR_CPS_TechSynthesis/{name_xp}/",
             f"{tries_annotations}#additional_check_list": {"Generate annotations": generate_annotations},
