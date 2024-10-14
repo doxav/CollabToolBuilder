@@ -508,7 +508,8 @@ function hideAgentButtons(agentName) {
 }
 
 function showAgentButtons(agentName) {
-    $(`div[data-agent="${agentName}"]`).find('button#autofix-button, button[id^="select-"], button[id^="delete-"], button[id^="evaluate-"], button[id^="regenwithmymodifbutton-"], button[id^="regenallbutton-"], input[id^="comment-"], button#custom-autofix-button').show();
+    //$(`div[data-agent="${agentName}"]`).find('button#autofix-button, button[id^="select-"], button[id^="delete-"], button[id^="evaluate-"], button[id^="regenwithmymodifbutton-"], button[id^="regenallbutton-"], input[id^="comment-"], button#custom-autofix-button').show();
+    $(`div[data-agent="${agentName}"]`).find('button#autofix-button, button[id^="delete-"], button[id^="evaluate-"], button[id^="regenwithmymodifbutton-"], button[id^="regenallbutton-"], input[id^="comment-"], button#custom-autofix-button').show();
 }
 
 // Function to update button visibility based on the selector
@@ -519,7 +520,7 @@ function updateButtonVisibility() {
     // Define selectors for buttons and inputs to show/hide for each session
     const session1ShowSelectors = [
         'button#autofix-button',
-        'button[id^="select-"]',
+        //'button[id^="select-"]',
         'button[id^="delete-"]',
         // Include any other session 1 specific buttons here
     ];
@@ -1339,8 +1340,9 @@ $(function() {
 
             // Add Select and Remove buttons if more than 1 solution
             let selectionButtonsHtml = (data.column_max > 1) ?
-                    `<div style="text-align: center;"><button id="select-${agent_columnId}"><i class="fa-regular fa-check-circle"></i> Select</button></div> 
-                    <div style="text-align: center;"><button id="delete-${agent_columnId}"><i class="fa-regular fa-trash-can"></i> Remove</button></div>` : "";
+                    `<div style="text-align: center;"><button id="delete-${agent_columnId}"><i class="fa-regular fa-trash-can"></i> Remove</button></div>` : "";
+                    //`<div style="text-align: center;"><button id="select-${agent_columnId}"><i class="fa-regular fa-check-circle"></i> Select</button></div> 
+                    //<div style="text-align: center;"><button id="delete-${agent_columnId}"><i class="fa-regular fa-trash-can"></i> Remove</button></div>` : "";
 
             // Add the regenerate buttons (regardless of the number of solutions)
             targetColumn.innerHTML += `
