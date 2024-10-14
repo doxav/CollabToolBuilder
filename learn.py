@@ -483,8 +483,8 @@ class CodingAgent():
                         else:
                             # User provided custom instructions
                             instructions = decision
-                        system_prompt = f"""You are a Python expert.
-                        You are provided with error information and the code.
+                        system_prompt = f"""You are a Python expert in code debugging.
+                        You are provided with ERROR MESSAGE and the CODE.
                         {instructions}
                         Reply with the full Python code fixed and ready to be executed without the triple quotes and python tags. You can insert a short comment to explain your fix where the code has been modified."""
                         message_content = f"ERROR MESSAGE:[[ {exec_result} ]]\nCODE:[[ {parsed_code['program_code']} ]]"

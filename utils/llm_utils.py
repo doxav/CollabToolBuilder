@@ -1721,7 +1721,7 @@ class HumanLLMMonitor:
                 f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n{check_display}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")
 
             menu += (
-                "[A] Edit answer\n")  # je voudrais le corriger uniquement pour demander une suggestion d'amélioration du prompt (d'un autre côté, je peux aussi le faire dans le menu précédent)
+                "[A] Edit answer in VSCode\n")  # je voudrais le corriger uniquement pour demander une suggestion d'amélioration du prompt (d'un autre côté, je peux aussi le faire dans le menu précédent)
             menu += ("[B] Critic answer to regenerate it\n")
             menu += ("[C] Critic to improve agent's behavior\n")
             menu += ("[D] Evaluate answer\n")
@@ -2162,32 +2162,87 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
                 final_output = ""  # Initialize an empty string to hold the full response
                 smart_print("", self.agent_name, "Inference streaming output")
                 previous_chunk_str = ""
-                # Regex to match the end of a typical JSON structure
                 json_trail_re = re.compile(r'[\'\}\]]$')
-                for chunk in func.stream(input_msg):  #, temperature=temperature):  # Ensure 'llm' is correctly initialized with temperature
+                
+                buffer = ""
+                buffer_start_time = time.time()
+                flush_interval = 5.0  # seconds
+
+                for chunk in func.stream(input_msg):
                     if hasattr(chunk, 'content'):
                         chunk_content = chunk.content
                         final_output += chunk_content
                     else:
-                        # Convert the current chunk to string
                         current_chunk_str = str(chunk)
-                        # Check and remove trailing characters for accurate comparison
                         while json_trail_re.search(current_chunk_str):
                             current_chunk_str = current_chunk_str[:-1]
-
-                        # Find the new part by removing the common prefix with the previous state
                         new_part_index = len(previous_chunk_str)
                         chunk_content = current_chunk_str[new_part_index:]
-                        # Store the current chunk as the previous one for the next iteration
                         previous_chunk_str = current_chunk_str
-                        final_output = str(chunk)
+                        final_output += chunk_content
+
+                    buffer += chunk_content
+
+                    current_time = time.time()
+                    time_elapsed = current_time - buffer_start_time
+
+                    # Check if buffer should be flushed
+                    should_flush = False
+                    delimiter_pos = -1
+                    delimiter_length = 0
+
+                    if time_elapsed >= flush_interval:
+                        should_flush = True
+                        delimiter_pos = len(buffer)  # Flush the entire buffer
+                    elif ('\n\n' in buffer or '<br>' in buffer) and len(buffer) >= 100:
+                        # Find the last occurrence of "\n\n" or "<br>"
+                        pos_newline = buffer.rfind('\n\n')
+                        pos_br = buffer.rfind('<br>')
+                        if pos_newline > pos_br:
+                            delimiter_pos = pos_newline
+                            delimiter_length = 2  # Length of "\n\n"
+                        else:
+                            delimiter_pos = pos_br
+                            delimiter_length = 4  # Length of "<br>"
+                        
+                        if delimiter_pos != -1:
+                            should_flush = True
+
+                    if should_flush:
+                        if delimiter_pos == len(buffer):
+                            # Time-based flush: send the entire buffer
+                            to_send = buffer
+                            buffer = ""
+                        elif delimiter_pos != -1:
+                            # Delimiter-based flush: send up to the last delimiter
+                            to_send = buffer[:delimiter_pos + delimiter_length]
+                            buffer = buffer[delimiter_pos + delimiter_length:]
+                        else:
+                            # No delimiter found, flush entire buffer
+                            to_send = buffer
+                            buffer = ""
+
+                        if HumanLLMMonitor.use_websocket:
+                            smart_print(to_send, self.agent_name, f"Inference streaming output {color_id}",
+                                        append=True, column_id=color_id, column_max=self.num_parallel_inferences)
+                        else:
+                            smart_print(start_color + to_send + end_color, self.agent_name,
+                                        f"Inference streaming output {color_id}", append=True)
+                        
+                        # Reset the timer after flushing
+                        buffer_start_time = current_time
+
+                # Final flush after streaming ends
+                if buffer:
                     if HumanLLMMonitor.use_websocket:
-                        smart_print(chunk_content, self.agent_name, "Inference streaming output " + str(color_id),
+                        smart_print(buffer, self.agent_name, f"Inference streaming output {color_id}",
                                     append=True, column_id=color_id, column_max=self.num_parallel_inferences)
                     else:
-                        smart_print(start_color + chunk_content + end_color, self.agent_name,
-                                    "Inference streaming output " + str(color_id), append=True)
-                return AIMessage(content=final_output)  # Return the concatenated full respons
+                        smart_print(start_color + buffer + end_color, self.agent_name,
+                                    f"Inference streaming output {color_id}", append=True)
+
+                return AIMessage(content=final_output)
+
             else:
                 value = func.invoke(input_msg)
                 return AIMessage(content=value.content if hasattr(value, 'content') else str(value))
