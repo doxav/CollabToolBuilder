@@ -1392,9 +1392,7 @@ class HumanLLMMonitor:
                 if action == "P": use_premium_llm = True
                 break
             else:
-                proceed = "y" if optuna else smart_input(
-                    "Proceed to inference (y/n) ? You can also hit 'p' to proceed using a premium llm.",
-                    self.agent_name, "INFERENCE CHOICE").lower()
+                proceed = "y" if optuna else "n" # smart_input("Proceed to inference (y/n) ? You can also hit 'p' to proceed using a premium llm.", self.agent_name, "INFERENCE CHOICE").lower()
                 if proceed in ["y", "p", ""]:
                     if proceed == "p": use_premium_llm = True
                     break
@@ -1764,13 +1762,12 @@ class HumanLLMMonitor:
             # Count time spent and occurrences waiting and in each option
             self.track_time_spent(action, mode='after')
 
-            if action in [None, "",
-                          "E",
-                          "Z"]: break  # E: Go back BEFORE inference to improve system prompt or add information to user message
+            if action in [None, "", "E", "Z"]:
+                break  # E: Go back BEFORE inference to improve system prompt or add information to user message
 
-            proceed = smart_input("Continue 'y' (or 'n' to go back to menu) ? ", self.agent_name, column_id=output_id, column_max=outputs_count).lower()
-            if proceed in ["y", ""]:
-                break
+            # proceed = smart_input("Continue 'y' (or 'n' to go back to menu) ? ", self.agent_name, column_id=output_id, column_max=outputs_count).lower()
+            # if proceed in ["y", ""]:
+            #     break
 
         if self.skip_rounds > 0:
             check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)

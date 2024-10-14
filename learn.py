@@ -283,6 +283,7 @@ class CodingAgent():
         if special_criteria is not None:
             for key, value in special_criteria.items():
                 setattr(self, key, value)
+        self.last_user_message = None
 
         kwargs = {
             "default_llmORchain": default_llm_choice,
@@ -440,67 +441,73 @@ class CodingAgent():
         common_code += "\n".join(primitives) + "\n"
 
         # Run the code & tests in each environment
-        max_autofix = None
+        max_autofix, decision_lower = None, None
         if hasattr(self, 'max_autofix'):
             max_autofix = self.max_autofix
         # Start the timer before the environments loop
         start_time = time.time()  # Added line
-        for env in self.envs:
+        for idx, env in enumerate(self.envs):
             env.backup_state()
-            # Determine tests to run or set default runnable code
-            matching_tests = [test for doc_id, test in parsed_code["tests"] if doc_id == env.id] if parsed_code[
-                "tests"] else [parsed_code['runnable_code']]
-            if not matching_tests:
-                no_runtime_error, exec_result = False, f"Error: no test found for given id {env.id}" if parsed_code[
-                    "tests"] else f"Error: no runnable code found nor tests"
+            # If it's the first environment and the user chose not to fix, exit the loop
+            if idx > 0 and decision_lower in ("no", "n", ""):
+                smart_print(f"SKIPPING TEST: code error on first env, skipping test {idx}", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
             else:
-                # Concatenate common code with program and tests or runnable code
-                code_to_run = common_code + parsed_code["program_code"] + "\n" + "\n".join(matching_tests)
-                no_runtime_error, exec_result = env.step(code_to_run)
-                while not no_runtime_error and current_skip_rounds <= 0:
-                    smart_print("\033[31mCODE ERROR\033[0m: " + exec_result, self.name,
-                                "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
-                    if self.optuna_opti and max_autofix is not None:
-                        decision = "a" if max_autofix > 1 else "no"
-                        if decision == "a":
-                            max_autofix -= 1
-                    elif self.optuna_opti:
-                        decision = "n"
-                    else:
-                        decision = smart_input(
-                            f"ANSWER {output_id} Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ",
-                            self.name, "fix_error", column_id=output_id).strip()
-                    decision_lower = decision.lower()
-                    if decision_lower in ("no", "n", ""):
-                        break
-                    elif decision_lower in ["y", "yes"]:
-                        edited_code = _visual_input(parsed_code["program_code"], filetype="py", message_type="fix_error", agent_name=self.name, column_id=output_id)
-                    else:
-                        if decision_lower == "a":
-                            # Do not use HumanLLMMonitor because no template is available for this specific case
-                            smart_print("TRYING TO AUTOFIX ERROR", self.name, "fix_error", optional=True, column_id=output_id)
-                            instructions = ""
-                        else:
-                            # User provided custom instructions
-                            instructions = decision
-                        system_prompt = f"""You are a Python expert in code debugging.
-                        You are provided with ERROR MESSAGE and the CODE.
-                        {instructions}
-                        Reply with the full Python code fixed and ready to be executed without the triple quotes and python tags. You can insert a short comment to explain your fix where the code has been modified."""
-                        message_content = f"ERROR MESSAGE:[[ {exec_result} ]]\nCODE:[[ {parsed_code['program_code']} ]]"
-                        edited_code_returned = self.human_llm_code_task.premium_llm.invoke([
-                            SystemMessage(content=system_prompt),
-                            HumanMessage(content=message_content)
-                        ])
-                        edited_code = (str(edited_code_returned) if isinstance(edited_code_returned, dict)
-                                    else edited_code_returned.content)
-
-                    code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
-                    smart_print("TESTING NEW CODE", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                # Determine tests to run or set default runnable code
+                matching_tests = [test for doc_id, test in parsed_code["tests"] if doc_id == env.id] if parsed_code[
+                    "tests"] else [parsed_code['runnable_code']]
+                if not matching_tests:
+                    no_runtime_error, exec_result = False, f"Error: no test found for given id {env.id}" if parsed_code[
+                        "tests"] else f"Error: no runnable code found nor tests"
+                else:
+                    # Concatenate common code with program and tests or runnable code
+                    code_to_run = common_code + parsed_code["program_code"] + "\n" + "\n".join(matching_tests)
                     no_runtime_error, exec_result = env.step(code_to_run)
-                    # Update parsed_code if re-run is successful
-                    # if no_runtime_error:
-                    parsed_code["program_code"] = edited_code
+                    while not no_runtime_error and current_skip_rounds <= 0:
+                        smart_print("\033[31mCODE ERROR\033[0m: " + exec_result, self.name,
+                                    "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                        if self.optuna_opti and max_autofix is not None:
+                            decision = "a" if max_autofix > 1 else "no"
+                            if decision == "a":
+                                max_autofix -= 1
+                        elif self.optuna_opti:
+                            decision = "n"
+                        else:
+                            decision = smart_input(
+                                f"ANSWER {output_id} Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ",
+                                self.name, "fix_error", column_id=output_id).strip()
+                        decision_lower = decision.lower()
+                        if decision_lower in ("no", "n", ""):
+                            break
+                        elif decision_lower in ["y", "yes"]:
+                            edited_code = _visual_input(parsed_code["program_code"], filetype="py", message_type="fix_error", agent_name=self.name, column_id=output_id)
+                        else:
+                            if decision_lower == "a":
+                                # Do not use HumanLLMMonitor because no template is available for this specific case
+                                smart_print("TRYING TO AUTOFIX ERROR", self.name, "fix_error", optional=True, column_id=output_id)
+                                instructions = ""
+                            else:
+                                # User provided custom instructions
+                                instructions = decision
+                            fix_system_prompt = f"""You are a Python expert in code debugging.
+                            You are provided with ERROR MESSAGE and the CODE TO FIX.
+                            {instructions}
+                            Reply with the full Python code fixed and ready to be executed without the triple quotes and python tags. You add comments in the code to explain your fix.
+                            
+                            """
+                            help_for_fixing_system_prompt = f"""You help an LLM to fix code errors which has no access to documentation or internet by extracting key code information from the INFORMATION/DOCUMENTATION provided given CODE TO FIX and ERROR MESSAGE."""
+                            error_with_info_to_help_prompt = f"ERROR MESSAGE:<<\n{exec_result}\n>>\n\nCODE TO FIX:<<\n{parsed_code['program_code']}\n>>\n\INFORMATION/DOCUMENTATION:<<\n{self.last_user_message}\n>>"
+                            help_code_returned = self.human_llm_code_task.premium_llm.invoke([SystemMessage(content=help_for_fixing_system_prompt),HumanMessage(content=error_with_info_to_help_prompt)])
+                            fix_description_prompt = f"ERROR MESSAGE:<<\n{exec_result}\n>>\n\nCODE TO FIX:<<\n{parsed_code['program_code']}\n>>\n\nHELPFUL INFORMATION:<<\n{getattr(help_code_returned,'content',help_code_returned)}\n>>"
+                            edited_code_returned = self.human_llm_code_task.premium_llm.invoke([SystemMessage(content=fix_system_prompt),HumanMessage(content=fix_description_prompt)])
+                            edited_code = str(getattr(edited_code_returned,'content',edited_code_returned))
+
+                        code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
+                        smart_print("TESTING UPDATED CODE.....", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                        no_runtime_error, exec_result = env.step(code_to_run)
+                        # Update parsed_code if re-run is successful
+                        # if no_runtime_error:
+                        parsed_code["program_code"] = edited_code
+                        smart_print(f"# UPDATED **{'SUCCESFUL' if no_runtime_error else 'FAILED'}** CODE:\n{edited_code}", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
             # Append the results for each environment
             no_runtime_errors.append(no_runtime_error)
             exec_results.append(exec_result)
@@ -528,7 +535,7 @@ class CodingAgent():
         # Utiliser os.listdir pour ne pas parcourir les sous-répertoires
         for file in os.listdir(folder_path):
             if file.endswith(".py"):
-                smart_print(f"File load: {file}", "CONFIG", "Files loaded", optional=True)
+                smart_print(f"File load: {file}", "CodingAgent", "Files loaded", optional=True)
                 file_path = os.path.join(folder_path, file)
                 with open(file_path, "r") as f:
                     primitives.append(f.read())
@@ -558,6 +565,8 @@ class CodingAgent():
                 user_message += f"{nl}<<ATTEMPT FEEDBACK: {previous_error.content}" + (
                     f"{dnl}SCORE: {previous_score}" if previous_score else "") + f"{dnl}CODE: {previous_code}{nl}>>"
             user_message += f"{nl}]]]"
+
+        self.last_user_message = user_message
 
         current_skip_rounds = self.human_llm_code_task.skip_rounds  # save the initial value to align it for code validation
         # Initialisation des kwargs avec les paramètres requis
@@ -780,7 +789,7 @@ class CapitalizationAgent:
                 task_name = f"{task_description[:500]}"
             else:
                 task_name = smart_input(
-                    f"CONFIG Please provide a name for the {'pipeline' if is_anomaly else 'function'}: ").strip()
+                    f"CONFIG Please provide a name for the {'pipeline' if is_anomaly else 'function'}: {task_description}").strip()
         if not self.optuna_opti or is_anomaly:
             task_name = _visual_input(task_name)
             task_description_refined = _visual_input(task_description)
@@ -1108,22 +1117,30 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
     previous_errors, previous_codes, previous_scores = [], [], []
     successful_codes = []  # To store successful codes
     all_results = []  # Store all results from each attempt for statistics
+    unique_codes = set()
 
     for attempt in range(max_attempts):
         if end_time is not None and time.time() >= end_time:
             break
+        # Remove duplicates before passing to agent_coding
+        temp_errors, temp_codes, temp_scores = [], [], []
+        for err, code, score in zip(previous_errors, previous_codes, previous_scores):
+            if code not in unique_codes:
+                unique_codes.add(code)
+                temp_errors.append(err)
+                temp_codes.append(code)
+                temp_scores.append(score)
+        previous_errors, previous_codes, previous_scores = temp_errors, temp_codes, temp_scores
+
         results = agent_coding.code_task_and_run_test(task_description, previous_errors, previous_scores, previous_codes)
-        if(len(results)>1 and agent_coding.human_llm_code_task.selected_outputs and len(agent_coding.human_llm_code_task.selected_outputs)>0):
-            results = [result for i, result in enumerate(results) if i in agent_coding.human_llm_code_task.selected_outputs]
-        all_results.extend(results)  # Store all results for statistics
+        all_results.extend(results) # Store all results for statistics
         #previous_errors, previous_codes, previous_scores = [], [], []  #TEST reset
 
         # First part: Process all codes and collect results
         current_skip_rounds = agent_validation.human_llm_validate_code.skip_rounds
         for index, (parsed_code, no_runtime_error, exec_result, scores, env_states, times) in enumerate(results):
             agent_validation.human_llm_validate_code.skip_rounds = current_skip_rounds  # to prevent skip_rounds decreased multiple times by multiple calls of HumanLLMMonitor
-            smart_print(
-                f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace(
+            smart_print(f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace(
                     "\\n", "\n"), "coding_and_validation_loop", "coding_and_validation_loop RESULT")
             validation_agent_feedback = agent_validation.validate_code(parsed_code["program_code"], no_runtime_error,
                                                                        exec_result, task=task_description,
@@ -1159,7 +1176,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
                 break
 
         if not optuna and successful_codes:
-            stop = smart_input("A successful code has been found, do you want to stop coding attempts for this task (too hard) and try a new one ? (yes/no): ","ValidationAgent").lower() in ["yes", "y", True]
+            stop = smart_input("A successful code has been found, do you want to stop coding attempts for this task (performance is sufficient) and try a new one ? (yes/no): ","ValidationAgent").lower() in ["yes", "y", True]
             if stop:
                 break
 

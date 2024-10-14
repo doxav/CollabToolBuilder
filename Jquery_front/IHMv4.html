@@ -447,21 +447,27 @@ color: white;
     </div>
     <div id="your-goal-section" style="font-size: small; margin-top: 10px; cursor: pointer;">
         <div><select id="button-visibility-selector">
+            <option value="SESSION_3">SESSION 3 CHOICE & CONTEXT</option>
+            <!--<option value="SESSION_1">SESSION 1 FOCUS SELECTION</option>-->
+            <!--<option value="SESSION_2">SESSION 2 FOCUS TEXT FEEDBACK</option>-->
             <option value="ALL">ALL (no BUTTON FILTER)</option>
-            <option value="SESSION_1">SESSION 1 FOCUS SELECTION</option>
-            <option value="SESSION_2">SESSION 2 FOCUS TEXT FEEDBACK</option>
             <option value="ALL_SEND">ALL + force display of input/send</option>
         </select>
         </div>
-        <div id="your-goal-header" style="font-weight: bold;">[HIDE/SHOW INSTRUCTIONS for experiment / sessions ]</div>
+        <div id="your-goal-header" style="font-weight: bold;">[ HIDE/SHOW ]</div>
         <div id="your-goal-content" style="display: block; margin-top: 5px;">
-            Your GOAL is to drive & help the AI agents (1: TaskIdentification/Coach > 2: Coding/Coder > 3: Validation/Validator > 4: Capitalizer) 
-            to create efficient tools/functions for research papers.
-            <br>Efficiency is measured through the "Scoring" test on 2 papers 
-            by evaluating the semantic distance (click the Score button when green).
-            1st 30mn session: you can only select text
-            <br><br><b>1st SESSION (change the BUTTON FILTER)</b>: Only guide agents by clicking on Select/Remove buttons or enter Y/N (no textual feedback)
-            <br><br><b>2nd SESSION (change the BUTTON FILTER)</b>: Guide agents mainly by providing feedback/critics/instructions
+            Your GOAL is to guide AI agents at each step to create the most efficient functions (aka tools or tasks) to build good research papers.
+            Steps in this loop are: 1. Task Identification > 2: Coding > 3: Validation > 4: Capitalization
+            <br><br>In this experiment, each function created must take 1 parameter "bot". It is a virtual document called "bot" which is empty at the beginning,
+            just initialized with title and abstract for each research paper your code will be tested on to check its efficiency.
+            <br><br>Efficiency is then measured by running each generated function/tool on different empty "bot" which only have their name and abstract. 
+            We then measure the distance (structure, semantic meaning, lengths) between the updated "bot" and the current full research paper.
+            <br><br><b>Choose most appropriate actions for each agent</b>:
+                <br>- <b>Give instructions "before"</b> to the agent.
+                <br>- <b>Eliminate</b> answers which doesn't match.
+                <br>- <b>Send post instructions for regeneration</b> to help the agent to improve its answer.
+                <br>- <b>Edit</b> the answer directly to exactly match your expectations.
+                <br>- <b>Go back</b> "before" agent's action to give new instructions.
         </div>
     </div>
 </div>
@@ -515,7 +521,7 @@ function showAgentButtons(agentName) {
 // Function to update button visibility based on the selector
 function updateButtonVisibility() {
     const selection = $('#button-visibility-selector').val();
-    const continueButton = $('.menu-option[style*="background-color: green"]');
+    const continueButton_isVisible = $('.menu-option[style*="background-color: green"]').is(':visible') || $(`#continue-button-${currentAgent}`).is(':visible') || $(`button[id^="score-${currentAgent}"]`).is(':visible'); // continue-button-
 
     // Define selectors for buttons and inputs to show/hide for each session
     const session1ShowSelectors = [
@@ -546,17 +552,28 @@ function updateButtonVisibility() {
         'button[id^="select-"]',
         'button[id^="delete-"]',
     ];
+    const session3ShowSelectors = [
+        'button#autofix-button',
+        'button[id^="delete-"]',
+        'button[id^="evaluate-"]',
+        'button[id^="regenwithmymodifbutton-"]',
+        'button[id^="regenallbutton-"]',
+        'input[id^="comment-"]',
+        'button#custom-autofix-button',
+        // Include any other session 2 specific buttons or inputs here
+    ];
+    const session3HideSelectors = [];
 
     // First, reset any previous visibility changes
     // Show all elements that might have been hidden in previous sessions
-    if (continueButton.is(':visible'))
+    if (continueButton_isVisible)
         session1ShowSelectors.concat(session1HideSelectors, session2ShowSelectors, session2HideSelectors).forEach(selector => {$(selector).show();});
     else
         session1ShowSelectors.concat(session1HideSelectors, session2ShowSelectors, session2HideSelectors).forEach(selector => {$(selector).hide();});
     
     if (selection === 'SESSION_1') {
         session1HideSelectors.forEach(selector => {$(selector).hide();});
-        if (continueButton.is(':visible'))
+        if (continueButton_isVisible)
             session1ShowSelectors.forEach(selector => {$(selector).show();});
         else
             $('button#autofix-button').show();
@@ -567,13 +584,25 @@ function updateButtonVisibility() {
     else if (
         selection === 'SESSION_2') {
         session2HideSelectors.forEach(selector => {$(selector).hide();});
-        if (continueButton.is(':visible'))
+        if (continueButton_isVisible)
             session2ShowSelectors.forEach(selector => {$(selector).show();});
         else
             $('button#custom-autofix-button').show();
         $('.menu-option').hide();
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('go back');}).show();
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('give instruction or');}).show();
+    }
+    else if (
+        selection === 'SESSION_3') {
+        session3HideSelectors.forEach(selector => {$(selector).hide();});
+        if (continueButton_isVisible)
+            session3ShowSelectors.forEach(selector => {$(selector).show();});
+        else
+            $('button#custom-autofix-button, button#autofix-button').show();
+        $('.menu-option').hide();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('go back');}).show();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('give instruction or');}).show();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('edit answer');}).show();
     }
     else if (selection === 'ALL' || selection === 'ALL_SEND') {
         $('.menu-option').show();
@@ -747,7 +776,8 @@ $(function() {
     }
 
     function displayMessage(data) {
-        currentAgent = data.agent_name;
+        if (data.agent_name !== undefined)
+            currentAgent = data.agent_name;
         let title = `${data.agent_name} | ${data.message_type} | ${new Date().toLocaleTimeString()}`;
         if (data.message_type === null) {
             title = `${data.agent_name} | ${new Date().toLocaleTimeString()}`;
@@ -834,7 +864,7 @@ $(function() {
                 // if Edition in VSCode, alert and do not display the buttons
                 if (data.message.startsWith("Please edit and save")) {alert(data.message); return;}
                 // Create a question with a Yes, No and Try autofix with LLM buttons and append it to the "error-conten-${columnId}" div
-                let $question = $(`<p>Do you want to edit the code to fix the error (you will also be requested first) ?</p>`);
+                let $question = $(`<p>Do you want to fix the error ?</p>`);
                 let $editButton = $(`<button id="edit-button">Edit in VSCode</button>`);
                 let $noButton = $(`<button id="no-button">No</button>`);
                 let $autofixButton = $(`<button id="autofix-button">Try autofix with LLM</button>`);
@@ -1007,11 +1037,10 @@ $(function() {
                 console.log("Match found:", match);
                 const score = match[1];
                 button.textContent = score + " : see details";
-                if (score === "SUCCESS") {
-                    button.style.backgroundColor = "green";
-                } else {
-                    button.style.backgroundColor = "red";
-                }
+                score_result = `Test score of solution ${index} in ${timeT}s:\n${formatPythonDict2Table(fullText)}`
+                if (score === "SUCCESS") button.style.backgroundColor = "green";
+                else button.style.backgroundColor = "red";
+                button.content = score_result;
                 // Extract the full text following the solution number
                 //const fullTextRegex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
                 const fullTextRegex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/\\s+TIME:([^s]+)s`, 'm');
@@ -1024,7 +1053,7 @@ $(function() {
                     // Attach a click event to display the full text in a pop-up
                     button.addEventListener('click', function () {
                         //alert(`Score of solution ${index}:\n${formatPythonDict2Table(fullText)}`);
-                        alert(`Test score of solution ${index} in ${timeT}s:\n${formatPythonDict2Table(fullText)}`);
+                        alert(score_result);
                     });
                 }
             } else {
@@ -1194,7 +1223,7 @@ $(function() {
                 targetColumn.innerHTML = `
                     <button class="expand-button"><i class="fas fa-expand"></i></button>
                     <h4>Answer ${inferenceNumber}</h4>
-                    <div class="message" style="max-height: 500px; overflow-y: auto;"></div>
+                    <div class="message" style="max-height: 600px; overflow-y: auto;"></div>
                 `;
                 solutionColumnsContainer.appendChild(targetColumn);
                 adjustColumnWidths();
@@ -1204,7 +1233,7 @@ $(function() {
             const messageDiv = targetColumn.querySelector('.message');
             if(messageDiv) {
                 messageDiv.innerHTML += formatMessage(data.message);
-                messageDiv.scrollTop = messageDiv.scrollHeight;
+                // messageDiv.scrollTop = messageDiv.scrollHeight;
             } else  console.log(`No message div found for column-${data.agent_name}-${columnId}`);
 
         } else if (data.message_type === "BEFORE inference action MENU" || data.message_type === "AFTER inference action MENU" && data.message.includes("Change default") || data.message.includes("Change premium") || data.message.includes("Exit") || data.message.includes("Log comments")) {
@@ -1513,7 +1542,7 @@ $(function() {
             }
             // Ajouter le bouton "Continue"
             if(data.agent_name === "CodingAgent") {
-                let $continueButton = $(`<button id="continue-button-${data.agent_name}" disabled>Continue</button>`);
+                let $continueButton = $(`<button id="continue-button-${data.agent_name}"Keep 0, 1 or more propositions, then continue</button>`);
                 $(solutionColumnsContainer).after($continueButton);
                 $continueButton.click(function () {
                     console.log("Continue button clicked");
