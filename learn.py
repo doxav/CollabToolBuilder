@@ -276,7 +276,7 @@ class CodingAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
                  db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0,
                  llmORchains_list=None, optuna=None, model_choice=None, special_criteria=None, temperature_min=0.,
-                 temperature_max=1.):
+                 temperature_max=1., num_parallel_inferences=2):
         #super().__init__(llm)
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
@@ -289,7 +289,7 @@ class CodingAgent():
             "default_llmORchain": default_llm_choice,
             "premium_llmORchain": premium_llm_choice,
             "premium_llm_by_default": True,
-            "num_parallel_inferences": 3,
+            "num_parallel_inferences": num_parallel_inferences,
             "llmORchains_list": llmORchains_list,
             "optuna": optuna,
             "temperature_min": temperature_min,
@@ -461,7 +461,10 @@ class CodingAgent():
                 else:
                     # Concatenate common code with program and tests or runnable code
                     code_to_run = common_code + parsed_code["program_code"] + "\n" + "\n".join(matching_tests)
+                    smart_print("TESTING GENERATED CODE.....", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
                     no_runtime_error, exec_result = env.step(code_to_run)
+                    if no_runtime_error:
+                        smart_print("TEST SUCCESSFUL", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
                     while not no_runtime_error and current_skip_rounds <= 0:
                         smart_print("\033[31mCODE ERROR\033[0m: " + exec_result, self.name,
                                     "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
@@ -494,9 +497,11 @@ class CodingAgent():
                             Reply with the full Python code fixed and ready to be executed without the triple quotes and python tags. You add comments in the code to explain your fix.
                             
                             """
+                            smart_print("ANALYZING ERROR.....", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
                             help_for_fixing_system_prompt = f"""You help an LLM to fix code errors which has no access to documentation or internet by extracting key code information from the INFORMATION/DOCUMENTATION provided given CODE TO FIX and ERROR MESSAGE."""
                             error_with_info_to_help_prompt = f"ERROR MESSAGE:<<\n{exec_result}\n>>\n\nCODE TO FIX:<<\n{parsed_code['program_code']}\n>>\n\INFORMATION/DOCUMENTATION:<<\n{self.last_user_message}\n>>"
                             help_code_returned = self.human_llm_code_task.premium_llm.invoke([SystemMessage(content=help_for_fixing_system_prompt),HumanMessage(content=error_with_info_to_help_prompt)])
+                            smart_print("ANALYSIS RECIEVED, GENERATING A FIX", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
                             fix_description_prompt = f"ERROR MESSAGE:<<\n{exec_result}\n>>\n\nCODE TO FIX:<<\n{parsed_code['program_code']}\n>>\n\nHELPFUL INFORMATION:<<\n{getattr(help_code_returned,'content',help_code_returned)}\n>>"
                             edited_code_returned = self.human_llm_code_task.premium_llm.invoke([SystemMessage(content=fix_system_prompt),HumanMessage(content=fix_description_prompt)])
                             edited_code = str(getattr(edited_code_returned,'content',edited_code_returned))
@@ -505,7 +510,6 @@ class CodingAgent():
                         smart_print("TESTING UPDATED CODE.....", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
                         no_runtime_error, exec_result = env.step(code_to_run)
                         # Update parsed_code if re-run is successful
-                        # if no_runtime_error:
                         parsed_code["program_code"] = edited_code
                         smart_print(f"# UPDATED **{'SUCCESFUL' if no_runtime_error else 'FAILED'}** CODE:\n{edited_code}", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
             # Append the results for each environment
@@ -915,7 +919,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0,
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                               optuna_opti=None, allow_custom_score_state_functions=False,
-                              criteria=None, max_execution_time=900, special_criteria=None, unique_id=None):
+                              criteria=None, max_execution_time=900, special_criteria=None, unique_id=None, agcoding_num_parallel_inferences=2):
     time_end = time.time() + max_execution_time
     scores = None
 
@@ -966,16 +970,19 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                              optuna=optuna_opti, model_choice=(
             model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(
                 model_choice) == dict else model_choice), criteria=criteria)
+
     agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds,
                                llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(
             model_choice['coding' if 'coding' in model_choice else 'coder'] if type(
-                model_choice) == dict else model_choice), special_criteria=special_criteria)
+                model_choice) == dict else model_choice), special_criteria=special_criteria, num_parallel_inferences=agcoding_num_parallel_inferences)
+
     agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                        skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list,
                                        optuna=optuna_opti, model_choice=(
             model_choice['validation' if 'validation' in model_choice else 'critic'] if type(
                 model_choice) == dict else model_choice))
+
     agent_capitalize = CapitalizationAgent(default_llm_key, premium_llm_choice=premium_llm_key,
                                            skip_rounds=agcapitalize_skip_rounds,
                                            problem_prompts_subdir=problem_prompts_subdir,
@@ -1212,7 +1219,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
         if current_skip_rounds <= 0:
             for i, (parsed_code, feedback, scores) in enumerate(successful_codes):
                 smart_print(
-                    f"\033[91mOption {i + 1}:\033[0m\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {scores}\033[0m\n",
+                    f"\033Option {i + 1}:\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {scores}\033[0m\n",
                     None, "coding_and_validation_loop RESULT")
             if optuna:
                 highest_score_index = get_highest_score_index([scores for _, _, scores in successful_codes],
@@ -1362,4 +1369,5 @@ if __name__ == "__main__":
                               agtask_skip_rounds=0,  # Auto-test: 1
                               agcoding_skip_rounds=0,  # Auto-test: 4
                               agvalidation_skip_rounds=0,  # Auto-test: 4
-                              agcapitalize_skip_rounds=0)  # Auto-test: 0"""
+                              agcapitalize_skip_rounds=0,
+                              agcoding_num_parallel_inferences=2)  # Auto-test: 0"""

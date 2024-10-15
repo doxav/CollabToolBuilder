@@ -460,9 +460,9 @@ color: white;
             Steps in this loop are: 1. Task Identification > 2: Coding > 3: Validation > 4: Capitalization
             <br><br>In this experiment, each function created must take 1 parameter "bot". It is a virtual document called "bot" which is empty at the beginning,
             just initialized with title and abstract for each research paper your code will be tested on to check its efficiency.
-            <br><br>Efficiency is then measured by running each generated function/tool on different empty "bot" which only have their name and abstract. 
+            <br><br>Each generated function/tool is tested with different empty document ("bot") containing only their name and abstract.
             We then measure the distance (structure, semantic meaning, lengths) between the updated "bot" and the current full research paper.
-            <br><br><b>Choose most appropriate actions for each agent</b>:
+            <br><br><b>To maximize your result, choose most appropriate actions for each agent</b>:
                 <br>- <b>Give instructions "before"</b> to the agent.
                 <br>- <b>Eliminate</b> answers which doesn't match.
                 <br>- <b>Send post instructions for regeneration</b> to help the agent to improve its answer.
@@ -904,7 +904,7 @@ $(function() {
                 let errorContent = targetColumn.querySelector(`#error-content-${columnId}`);
                 errorContent.innerHTML += formatMessage(data.message);
                 // Adds a newlines to separate the messages
-                errorContent.innerHTML += "<br>";
+                errorContent.innerHTML; // += "<br>";
             }
             return;
 
@@ -1027,40 +1027,6 @@ $(function() {
 
             handleEvaluationResults(data);
              let $scoreButtons = $agentAccordion.find("button[id^='score-']");
-        // Stock scores in an array retrieved with the regex "const regex = new RegExp(`^${i}\\.\\s+(SUCCESS|FAILED)`, 'm');"
-
-        // for each button, we retrieve the score and we change the text of the button
-        $scoreButtons.each(function (index, button) {
-            const regex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m(SUCCESS|FAILED)\\u001b\\[0m`, 'm');
-            const match = data.message.match(regex);
-            if (match) {
-                console.log("Match found:", match);
-                const score = match[1];
-                button.textContent = score + " : see details";
-                score_result = `Test score of solution ${index} in ${timeT}s:\n${formatPythonDict2Table(fullText)}`
-                if (score === "SUCCESS") button.style.backgroundColor = "green";
-                else button.style.backgroundColor = "red";
-                button.content = score_result;
-                // Extract the full text following the solution number
-                //const fullTextRegex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
-                const fullTextRegex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/\\s+TIME:([^s]+)s`, 'm');
-                const fullTextMatch = data.message.match(fullTextRegex);
-
-                if (fullTextMatch) {
-                    const fullText = fullTextMatch[1].trim();
-                    const timeT = fullTextMatch[2].trim();
-                    console.log("TimeT:", timeT);
-                    // Attach a click event to display the full text in a pop-up
-                    button.addEventListener('click', function () {
-                        //alert(`Score of solution ${index}:\n${formatPythonDict2Table(fullText)}`);
-                        alert(score_result);
-                    });
-                }
-            } else {
-                button.textContent = "Scoring failed";
-                button.style.backgroundColor = "red";
-            }
-        });
 
         } else if (data.message === "Skip for how many rounds? ") {
             // Existing code for handling this case
@@ -1385,7 +1351,7 @@ $(function() {
                 targetColumn.innerHTML += `
                     <br>
                     <div style="text-align: center;">
-                        <button id="score-${agent_columnId}">Testing for scoring...</button>
+                        <button id="score-${agent_columnId}">Waiting score...</button>
                     </div>
                 `;
 
@@ -1607,16 +1573,18 @@ $(function() {
                     } else {
                         button.style.backgroundColor = "red";
                     }
-                    const fullTextRegex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
+                    //const fullTextRegex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
                     //const fullTextRegex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/\\s+TIME:([^s]+)s`, 'm');
                     const fullTextMatch = data.message.match(fullTextRegex);
 
                     if (fullTextMatch) {
                         const fullText = fullTextMatch[1].trim();
+                        // add to button content the first 50 first characters of the full text
+                        button.textContent += "\n" + fullText.substring(0, 70) + "...[see details]";
                         //const timeT = fullTextMatch[2].trim().toFixed(1);
                         button.addEventListener('click', function () {
-                            alert(`Score of solution ${index}:\n${formatPythonDict2Table(fullText)}`);
-                            //alert(`Test score of solution ${index} in ${timeT}s:\n${formatPythonDict2Table(fullText)}`);
+                            //alert(`Test score of solution ${index}:\n${formatPythonDict2Table(fullText)}`);
+                            alert(`Test score of solution ${index} in ${timeT}s:\n${formatPythonDict2Table(fullText)}`);
                         });
                     }
                 } else {
