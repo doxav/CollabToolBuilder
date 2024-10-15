@@ -226,7 +226,7 @@ def _visual_input(initial_string="", filetype="md", agent_name=None, column_id=N
 
         smart_print(f"Please edit and save the file opened in VSCode (Ctrl + W) when ready ({file_path})", optional=False, agent_name=agent_name, column_id=column_id, column_max=column_id, message_type=message_type)
         # Step 3: Open the file in VSCode
-        subprocess.run(["code", "--wait", "--new-window", file_path])
+        subprocess.run(["code", "--wait", file_path])
 
         # Step 4: Read the edited content
         with open(file_path, 'r') as file:
@@ -1704,6 +1704,7 @@ class HumanLLMMonitor:
             inference_result_msg = type('InferenceResult', (object,), {'content': None})
 
         while self.skip_rounds <= 0:
+            self.temp_inference_result_msg = None # to capture the inference message done from functions outside of the menu
             # MENU
             multiple_ref = (f"OUTPUT \033[31m{output_id} OUT OF {outputs_count}\033[0m OUTPUTS" if (
                         output_id and outputs_count and (outputs_count > 1)) else "")
@@ -1735,6 +1736,9 @@ class HumanLLMMonitor:
                 f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
                 self.agent_name, optional=True, column_id=output_id-1, column_max=outputs_count).upper()
 
+            if self.temp_inference_result_msg: # if modified async, it is important in case of edition ("A") to keep the modified content
+                inference_result_msg = self.temp_inference_result_msg
+
             # ACTIONS processing
             self.start_time = time.time()  # Init action selected and timer to measure time spent and occurences in action processing
 
@@ -1742,7 +1746,7 @@ class HumanLLMMonitor:
                 self.modifyAnswer(inference_result_msg)
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
-                comments = self.criticAnswer(comments, inference_result_msg, annotated_critics=False)
+                inference_result_msg = self.criticAnswer(comments, inference_result_msg, annotated_critics=False)
 
             elif action == "C":  # Find a better Prompt by providing critic and ideal answer
                 comments = self.findBetterPrompt(comments, inference_result_msg, premium_llm_function)
@@ -1763,6 +1767,10 @@ class HumanLLMMonitor:
             self.track_time_spent(action, mode='after')
 
             if action in [None, "", "E", "Z"]:
+                if self.temp_inference_result_msg:
+                    inference_result_msg = self.temp_inference_result_msg
+                    smart_print(menu, self.agent_name, "RUNNING CHECKS ON MODIFIED LLM OUTPUT...", column_id=output_id-1, column_max=outputs_count)
+                    check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
                 break  # E: Go back BEFORE inference to improve system prompt or add information to user message
 
             # proceed = smart_input("Continue 'y' (or 'n' to go back to menu) ? ", self.agent_name, column_id=output_id, column_max=outputs_count).lower()
@@ -1890,79 +1898,50 @@ class HumanLLMMonitor:
                 content_structure, is_structure = is_valid_python_structure(inference_result_msg.content)
                 content_pretty = json.dumps(content_structure, indent=4) if is_structure else inference_result_msg.content
                 content_annotated = _visual_input(content_pretty, filetype="py" if is_structure else "md")
-            system_prompt = """
-Refine the **ANNOTATED ANSWER** for the **TARGET TASK**, given inline text annotations instructions  using tags (see **ANNOTATION TAGS** for interpretation). Directly answer with the updated answer (tags are removed and replaced inline with instruction) with the same format, do not add introduction or comments.
+            system_prompt = f"""
+Your task is to refine the **ANNOTATED ANSWER** given inline annotation of ths answer and the **INITIAL PROMPT**.
+Inline text annotations instructions use tags (see **ANNOTATION TAGS** for interpretation).
+Before answering, put between [[<< and >>]] your reasoning process of the list of text annotated and instructions, the solutions to apply each tagged instructions to the annotated text.
+Iterate for each annotation tag until you are sure to process them properly and to not forget to apply them in the improved answer.
+Then generate the improved answer applying instructions from tags, do not add introduction or comments except your [[<< your full reasoning >>]] .
 
-### TARGET TASK: {{{"""+self.llm_input_messages[0].content+"\n\nUSER MESSAGE:\n"+self.llm_input_messages[0].content+"""}}}
+### INITIAL PROMPT: << {self.llm_input_messages[0].content} >>
 
-### ANNOTATION TAGS:
-The following annotations are provided to guide the refinement process. Each annotation is in the format `\TAG{Annotated text...}{optional explanation}`. The tags indicate specific actions you should take to improve or finalize the text. Please follow the instructions for each tag carefully:
+### ANNOTATION TAGS: <<
+The following annotations are provided to guide the refinement process. Each annotation is in the format `\TAG[optional instruction]{{original text...}}`. The tags indicate specific actions you should take to improve or finalize the text. Please follow the instructions for each tag carefully:
 
-1. **\APPROVE:**
-- This tag indicates that the content is correct, clear, and relevant to the subject.
-- **Action:** **No changes are necessary.** Retain this content exactly as it is.
-- **Example:** \APPROVE{The system's reliability is essential for maintaining continuous operation.}
+1. **\KEEP:**
+   - This tag indicates that the content is correct, clear, and relevant to the subject.
+   - **Action:** **No changes are necessary.** Retain this content exactly as it is.
+   - **Example:** \KEEP{{The system's reliability is essential for maintaining continuous operation.}}
 
 2. **\FIX:**
-- Content marked with this tag requires **correction or improvement**. There may be issues related to accuracy, clarity, or relevance.
-- **Action:** Make necessary revisions to ensure the text is accurate, clear, and aligned with the overall subject matter.
-- **Example:** \FIX{tomato_sauce_recipe = rubish_llm_factory('tell me how to make tomato sauce for my italian noodles')}{it should first search on the web for a reliable recipe, then use llm}
+   - Content marked with this tag requires **correction or improvement**. There may be issues related to accuracy, clarity, or relevance.
+   - **Action:** Make necessary revisions to ensure the text is accurate, clear, and aligned with the overall subject matter.
+   - **Example:** \FIX[it should first search on the web for a reliable recipe, then use llm.]{{tomato_sauce_recipe = rubish_llm_factory('tell me how to make tomato sauce for my italian noodles')}}
 
-3. **\DELETE:**
-- This tag is used for content that is **unnecessary, irrelevant, or detrimental** to the quality of the text.
-- **Action:** Remove this content entirely from the final version.
-- **Example:** \DELETE{The report includes a lengthy discussion on unrelated financial data.}
+3. **\IMPROVE:**
+   - This tag suggests enhancing the content by making it more complete, efficient, or stylistically refined.
+   - **Action:** Improve the marked text by expanding, rewording, or refining it to better suit the purpose.
+   - **Example:** \IMPROVE[Explain why a more efficient algorithm might be necessary for large datasets.]{{The algorithm finishes in O(n^2) time.}}
+
+4. **\EXPLORE:**
+   - This tag encourages exploring alternative ideas, methods, or perspectives to provide a richer or broader answer.
+   - **Action:** Propose new angles, approaches, or solutions for the marked text, considering alternative possibilities.
+   - **Example:** \EXPLORE[Explore whether parallelization could speed up the process.]{{The standard approach is sufficient.}}
 
 ### Your Task:
 1. **Understand** the initial task and subject matter to ensure that the text aligns with the overall objectives and audience requirements.
 2. **Interpret** the annotations in the provided text according to the guidelines above.
-3. **Revise** the text by making necessary corrections, deletions, or additions as instructed.
-4. Ensure that the **final text** is clear, accurate, relevant, and stylistically appropriate for the INITIAL TASK.
-"""
-            user_prompt = f"### ANNOTATED ANSWER:\n{content_annotated}"
+3. **Revise** the text by making necessary corrections, improvements, or explorations as instructed.
+4. Ensure that the **final text** is clear, accurate, relevant, and stylistically appropriate for the INITIAL TASK and expected format.
+>>"""
+            user_prompt = f"ANNOTATED ANSWER: << {content_annotated} >>"
 
-            #llm_output = self.premium_llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
-
-            # Task 1: System prompt for extracting and structuring feedback
-            system_prompt_1 = """
-Your task is to extract and organize feedback tags from the **ANNOTATED ANSWER** provided for the given **TARGET TASK**. Identify the instructions given by the annotation tags (\APPROVE, \FIX, \DELETE) and structure them into a list. Do not modify the content of **ANNOTATED ANSWER** at this stage.
-
-### TARGET TASK: {{{"""+self.llm_input_messages[0].content+"\n\nUSER MESSAGE:\n"+self.llm_input_messages[0].content+"""}}}
-
-### Annotation Tags:
-- **\APPROVE:** Content is correct, no changes needed.
-- **\FIX:** The content requires improvement or correction.
-- **\DELETE:** Remove this content.
-
-### Your Task:
-1. **Identify** the feedback instructions based on annotation tags.
-2. **Organize** the instructions into a list format with specific details on what needs to be done (fix, delete, etc.).
-3. **Reply** with the improved answer without any additional introduction or comments.
-
-### ANNOTATED ANSWER:
-{content_annotated}
-"""
-            # Call the LLM for inference 1
-            llm_output_1 = self.premium_llm.invoke([SystemMessage(content=system_prompt_1), HumanMessage(content=user_prompt)])
-
-            # Task 2: System prompt for refining based on structured feedback
-            system_prompt_2 = """
-Refine the provided answer for the given **TARGET TASK** based on the following structured feedback. Use the feedback to make necessary changes to the answer, following the instructions closely. 
-
-### TARGET TASK: {{{"""+self.llm_input_messages[0].content+"\n\nUSER MESSAGE:\n"+self.llm_input_messages[0].content+"""}}}
-
-### Structured Feedback:
-{structured_feedback}
-
-### Your Task:
-1. **Revise** the text according to the feedback (fix, delete, variants).
-2. **Ensure** that the final text is clear, accurate, and aligned with the initial task.
-
-### INITIAL ANSWER:
-{content_annotated}
-"""
-            # Call the LLM for inference 2
-            llm_output = self.premium_llm.invoke([SystemMessage(content=system_prompt_2), HumanMessage(content=llm_output_1.content)])
+            llm_output = self.premium_llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+            # remove the reasoning part of the answer between [[[[ and ]]]] from llm_output.content
+            if ">>]]" in llm_output.content:
+                llm_output.content = llm_output.content.split(">>]]")[1]
         else:
             if content_annotated is None:
                 content_annotated = smart_input("Provide critic/feedback/request: ", self.agent_name, column_max=self.num_parallel_inferences)
@@ -1975,12 +1954,15 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
             except:
                 print("Error in displaying the refined answer - coomm.")
 
+        self.temp_inference_result_msg = llm_output # to be captured in the menu if function called outside of the menu and get inference checks
+
         return llm_output.content
 
     def modifyAnswer(self, inference_result_msg):
         inference_result_msg.content = _visual_input(inference_result_msg.content)
-        smart_print(f"***** NEW USER MESSAGE:\n{inference_result_msg.content}\n*************", self.agent_name,
-                    "NEW USER MESSAGE")
+        self.temp_inference_result_msg = inference_result_msg
+        smart_print(f"***** NEW USER MESSAGE:\n{inference_result_msg.content}\n*************", self.agent_name, "NEW USER MESSAGE", optional=True)
+        return inference_result_msg.content
 
     # staticmethod get my host ID
     @staticmethod

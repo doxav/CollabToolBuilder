@@ -494,18 +494,13 @@ color: white;
 
 <div class="annotation-menu">
     <button class="close-btn">&times;</button>
-    <select id="annotation-scope">
-        <option value="span">Selected Text</option>
-        <option value="lines">Selected Lines</option>
-        <option value="full">Full Last Answer</option>
-    </select>
     <select id="annotation-action">
-        <option value="approve">Approve : Highlight good things</option>
-        <option value="fix">Fix : Indicate what to correct or improve</option>
-        <option value="delete">Delete : Explain why</option>
-        <option value="variants">Variants : Ask to generate some good equivalents</option>
+        <option value="keep">KEEP</option>
+        <option value="fix">FIX</option>
+        <option value="improve">IMPROVE</option>
+        <option value="explore">EXPLORE</option>
     </select>
-    <input type="text" id="annotation-input" placeholder="Enter your annotation">
+    <input width="300" type="text" id="annotation-input" placeholder="Enter your annotation">
     <button id="apply-annotation">Apply</button>
 </div>
 <script>
@@ -1907,7 +1902,8 @@ $(document).on('click', '.collapsible-header', function() {
     }
 
     function applyAnnotation(annotationAction, annotationText, selectedText) {
-        let annotatedText = `\\${annotationAction}{${selectedText}}{${annotationText}}`;
+        let annotatedText = `\\${annotationAction}[${annotationText}]{${selectedText}}`;
+        //let annotatedText = `\\${annotationAction}{${selectedText}}[${annotationText}]`;
         let boldAnnotatedText = `<strong>${annotatedText}</strong>`;
 
         restoreSelection();

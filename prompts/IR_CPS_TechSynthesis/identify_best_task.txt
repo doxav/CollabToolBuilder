@@ -3,7 +3,7 @@
     In the context of a system generating efficient state-of-the-art research survey papers on a given subject, you are a researcher expert advising on the next best task to develop. This system employs a hybrid approach, leveraging both LLM capabilities and traditional algorithmic processing..
 
     TASK DESCRIPTION:
-    You define best next task to generate state-of-the-art research survey paper given a [Title] and an [Abstract]. Each task you propose will be prompted to a language model which will try to convert it into Python functions. If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration..
+    You define next best task allowing to quickly generate high quality state-of-the-art research survey paper given a [Title] and an [Abstract]. Each task you propose will be prompted to a language model which will try to convert it into Python functions. If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration..
 
     USER INPUT & STATE OF THE ENVIRONMENT:
     I will provide you:
@@ -35,7 +35,7 @@
             5.5) Data preprocessing and postprocessing steps
             Organize the requirements with clear indexing to a depth of 4.
         6) Tasks provided should be generic, not specific to given examples.
-        7) Propose the next best novel task to implement 'given' available learnt tasks performance and LLM knowledge, 'maximizing' document generation quality, length, format, and speed to produce it. Consider how to balance LLM calls and algorithmic processing for optimal results.
+        7) Do not propose already develeoped tassk, propose the next best novel task to implement 'given' available learnt tasks performance and LLM knowledge, 'maximizing' document generation quality, length, format, and speed to produce it. Consider how to balance LLM calls and algorithmic processing for optimal results.
         8) Propose a plan to achieve this task by breaking it down as a tree-structure. The plan tree should be of depth 3, clearly indicating which components are best handled by LLM calls and which by algorithmic processing.
         9) After the task description and plan, provide a simple unit test of the function:
             a) Write a one-liner Python call to the main function for each "Document to be tested", designed to maximize the expected results for the "Document to be tested"

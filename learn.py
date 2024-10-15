@@ -764,7 +764,7 @@ class CapitalizationAgent:
         if self.optuna_opti is None and is_vscode_installed():
             smart_print("Please modify and save the file in VSCode (Ctrl + W) when ready.", self.name,
                         "capitalize_successful_tasks INSTRUCTIONS")
-            subprocess.run(["code", "--wait", "--new-window", new_path])
+            subprocess.run(["code", "--wait", new_path])
 
         # Serialize entry for logging
         serialized_entry = json.dumps({
