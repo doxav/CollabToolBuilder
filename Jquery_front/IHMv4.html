@@ -904,7 +904,7 @@ $(function() {
                 let errorContent = targetColumn.querySelector(`#error-content-${columnId}`);
                 errorContent.innerHTML += formatMessage(data.message);
                 // Adds a newlines to separate the messages
-                errorContent.innerHTML; // += "<br>";
+                errorContent.innerHTML += "<br>";
             }
             return;
 
@@ -1356,7 +1356,7 @@ $(function() {
                 `;
 
             targetColumn.innerHTML += `
-                <br>
+                <<br>
                 <div style="text-align: center;" id="error-content-${agent_columnId}"/>
             `;
             }
@@ -1573,7 +1573,7 @@ $(function() {
                     } else {
                         button.style.backgroundColor = "red";
                     }
-                    //const fullTextRegex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
+                    const fullTextRegex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
                     //const fullTextRegex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/\\s+TIME:([^s]+)s`, 'm');
                     const fullTextMatch = data.message.match(fullTextRegex);
 

@@ -1364,7 +1364,7 @@ if __name__ == "__main__":
                               include_code=False,
                               selected_successful_functions=[],
                               selected_failed_functions=[],
-                              max_execution_time=1800,
+                              max_execution_time=3600,
                               agtask_premium_llm_by_default=False,
                               agtask_skip_rounds=0,  # Auto-test: 1
                               agcoding_skip_rounds=0,  # Auto-test: 4

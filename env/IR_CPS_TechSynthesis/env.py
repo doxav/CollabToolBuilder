@@ -1116,34 +1116,37 @@ class SynthesisManager:
         # if self does not have target_file_path
         if not hasattr(self, 'target_file_path'):
             raise ValueError("Please set target_file_path using set_targetJSON_comparison method")
+        
         if not hasattr(self, 'target_data'):
             section_embedding_key, content_embedding_key, plan_embedding_key = "content_embedding_2", "section_embedding_2", "plan_embedding_2"
-            self.set_targetJSON_comparison(self.target_file_path, target_section_title_embedding_label = section_embedding_key, target_section_content_embedding_label = content_embedding_key, target_plan_embedding_label = plan_embedding_key)
+            self.set_targetJSON_comparison(self.target_file_path, target_section_title_embedding_label=section_embedding_key, target_section_content_embedding_label=content_embedding_key, target_plan_embedding_label=plan_embedding_key)
             self.document.update_plan_embedding()
         elif not hasattr(self.document.document_content, 'sections_list_title_embedding'):
             self.document.update_plan_embedding()
-        # Similar to what you did in the test
+
+        # Compute current document metrics
         current_sections_count = len(self.document.document_content.sections_list)
-        # Count non empty section's content (not None and len > 1)
         current_plan_non_empty_sections_content_count = sum(1 for section in self.document.document_content.sections_list if section.content and len(section.content) > 1)
         current_plan_non_empty_sections_title_count = sum(1 for section in self.document.document_content.sections_list if section.title and len(section.title) > 1)
         current_content_length = sum(len(getattr(section, 'content', 0)) for section in self.document.document_content.sections_list)
 
+        # Get embeddings
         plan_embedding = self.document.document_content.sections_list_embedding
         plan_titles_embedding = self.document.document_content.sections_list_title_embedding
         plan_contents_embedding = self.document.document_content.sections_list_content_embedding
-        # compute embedding mean of all "title" in self.target_data["plan"]
 
-        # Compute the similarity and content length percentage
+        # Compute embedding similarity
         plan_embedding_similarity = self.normalized_cosine_similarity(plan_embedding, self.target_plan_embedding, self.min_plan_cosine_similarity)
         plan_titles_embedding_similarity = self.normalized_cosine_similarity(plan_titles_embedding, self.target_plan_titles_embedding, self.min_plan_titles_cosine_similarity)
         plan_contents_embedding_similarity = self.normalized_cosine_similarity(plan_contents_embedding, self.target_plan_contents_embedding, self.min_plan_contents_cosine_similarity)
 
-        content_length_ratio_to_target = round(current_content_length / self.target_total_content_length, 2)
-        sections_count_ratio_to_target = round(current_sections_count / self.target_total_sections_count, 2)
-        sections_content_non_empty_count_ratio_to_target = round(current_plan_non_empty_sections_content_count / self.target_total_sections_count, 2)
-        sections_title_non_empty_count_ratio_to_target = round(current_plan_non_empty_sections_title_count / self.target_total_sections_count, 2)
+        # Refined ratio calculations
+        content_length_ratio_to_target = round(min(current_content_length / (self.target_total_content_length + 1e-5), 1.5), 4)
+        sections_count_ratio_to_target = round(min(current_sections_count / (self.target_total_sections_count + 1e-5), 1.5), 4)
+        sections_content_non_empty_count_ratio_to_target = round(min(current_plan_non_empty_sections_content_count / (self.target_total_sections_count + 1e-5), 1.5), 4)
+        sections_title_non_empty_count_ratio_to_target = round(min(current_plan_non_empty_sections_title_count / (self.target_total_sections_count + 1e-5), 1.5), 4)
 
+        # Build the result dictionary
         distance_to_targetJSON = {
             "plan_embedding_similarity": round(plan_embedding_similarity, 6),
             "plan_titles_embedding_similarity": round(plan_titles_embedding_similarity, 6),
@@ -1160,10 +1163,11 @@ class SynthesisManager:
             "content_non_empty_count_ratio_to_target": sections_content_non_empty_count_ratio_to_target,
         }
 
+        # Progress comparison (optional)
         if get_progress:
-            # get ratio between same previous values and current values
             def get_ratio(previous_value, current_value):
-                return round((previous_value - current_value) / (previous_value + 0.0000001)*100, 2) if previous_value else 0
+                return round((previous_value - current_value) / (previous_value + 0.0000001) * 100, 2) if previous_value else 0
+
             if hasattr(self, 'distance_to_targetJSON'):
                 distance_to_targetJSON['plan_embedding_similarity_progress'] = get_ratio(plan_embedding_similarity, self.distance_to_targetJSON['plan_embedding_similarity'])
                 distance_to_targetJSON['plan_titles_embedding_similarity_progress'] = get_ratio(plan_titles_embedding_similarity, self.distance_to_targetJSON['plan_titles_embedding_similarity'])
@@ -1173,6 +1177,7 @@ class SynthesisManager:
                 distance_to_targetJSON['content_length_ratio_to_target_progress'] = get_ratio(content_length_ratio_to_target, self.distance_to_targetJSON['content_length_ratio_to_target'])
                 distance_to_targetJSON['content_non_empty_count_ratio_to_target_progress'] = get_ratio(sections_content_non_empty_count_ratio_to_target, self.distance_to_targetJSON['content_non_empty_count_ratio_to_target'])
 
+        # Save the results
         self.distance_to_targetJSON = distance_to_targetJSON
 
         return self.distance_to_targetJSON
@@ -1285,12 +1290,12 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
 
     def get_score(self):
         distance = self.synthesis_manager.get_distance_to_targetJSON()
-        return {    'sections titles (top:1, worst:0)': distance['plan_titles_embedding_similarity'],
-                    'sections content (top:1, worst:0)': distance['plan_contents_embedding_similarity'],
-                    'sections count ratio (top:1, <1:too short, >1:too long)': distance['sections_count_ratio_to_target'],
-                    'title non-empty count ratio (top:1, <1:too short, >1:too long)': distance['title_non_empty_count_ratio_to_target'],
-                    'content length ratio (top:1, <1:too short, >1:too long)': distance['content_length_ratio_to_target'],
-                    'content non-empty count ratio (top:1, <1:too short, >1:too long)': distance['content_non_empty_count_ratio_to_target']}
+        return {    'plan/titles similarity (top:1, worst:0)': distance['plan_titles_embedding_similarity'],
+                    'sections contents similarity (top:1, worst:0)': distance['plan_contents_embedding_similarity'],
+                    'sections count (top:1, <1:too short, >1:too long)': distance['sections_count_ratio_to_target'],
+                    'titles count (top:1, <1:too short, >1:too long)': distance['title_non_empty_count_ratio_to_target'],
+                    'sections contents length (top:1, <1:too short, >1:too long)': distance['content_length_ratio_to_target'],
+                    'sections contents non-empty (top:1, <1:too short, >1:too long)': distance['content_non_empty_count_ratio_to_target']}
 
     def reset(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         self.has_reset_once = True
