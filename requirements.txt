@@ -19,6 +19,7 @@ pydantic~=2.8.2
 watchdog
 PyYAML~=6.0.1
 python-dotenv~=1.0.1
+scipy==1.13.1
 
 # Transformers and ML-related libraries
 transformers
@@ -53,24 +54,21 @@ elasticsearch~=8.10.1
 # Neo4j for graph database
 neo4j~=5.24.0
 
-# Gradio for UI
-gradio
-
 # Jupyter and IPython tools
-ipywidgets~=8.1.5
-IPython~=8.25.0
+ipywidgets 
+IPython
 ipykernel
-jupyter_client~=8.6.2
-nbformat~=5.10.4
+jupyter_client
+nbformat 
 
 # LLaMA index and embeddings
-llama-index
-llama-index-llms-ollama
-llama-index-embeddings-ollama
+llama-index==0.11.12
+llama-index-llms-ollama==0.3.2
+llama-index-embeddings-ollama==0.3.1
 
-config~=0.5.1
-Jinja2~=3.1.4
-fastapi~=0.111.0
-aiohttp~=3.9.5
-starlette~=0.37.2
-nest-asyncio~=1.6.0
+#config
+Jinja2 
+fastapi 
+aiohttp 
+starlette 
+nest-asyncio 
