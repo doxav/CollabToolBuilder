@@ -84,6 +84,7 @@ class DocumentStructure:
                  abstract: str = None,
                  ): 
         if abstract is not None: context = abstract if context is None else context + "\n" + abstract
+        self.abstract = abstract
         self.embedding_model_query_prefix = embedding_model_query_prefix
         self.embedding_model_name = embedding_model_name
         if embedding_model_name == "text-embedding-ada-002":
@@ -104,7 +105,6 @@ class DocumentStructure:
         self.context = context
         if context and context != "":
             self.set_plan_field_with_embedding('context', context)
-
         self.dumb_embedding = self.embedding_model.embed_query(".")  # Used to compute min_cosine_similarity
         self.embedding_size = len(self.dumb_embedding)
 
@@ -281,6 +281,8 @@ class DocumentStructure:
 class SynthesisManager:
     def __init__(self, document: DocumentStructure, target_file_path: str = None):
         self.document = document
+        self.title = self.document.title
+        self.abstract = self.document.context
         self.min_cosine_similarity = cosine_similarity([self.document.embedding_model.embed_query(".")], [self.document.embedding_model.embed_query("If you can keep your head when all about you are losing theirs and blaming it on you, If you can trust yourself when all men doubt you, But make allowance for their doubting too ; If you can wait and not be tired by waiting, Or being lied about, don’t deal in lies, Or being hated, don’t give way to hating, And yet don’t look too good, nor talk too wise")])[0][0]
         if target_file_path:
             self.target_file_path = target_file_path

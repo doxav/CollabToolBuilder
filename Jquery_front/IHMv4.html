@@ -1568,18 +1568,16 @@ $(function() {
                     } else {
                         button.style.backgroundColor = "red";
                     }
-                    const fullTextRegex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
-                    //const fullTextRegex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/\\s+TIME:([^s]+)s`, 'm');
+                    //const fullTextRegex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
+                    const fullTextRegex = new RegExp(`^\\{?${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:\\s*(\\[.*?\\])\\s+/\\s+TIME:\\s*([\\d\\.]+)s`, 'm'); // Correct regex for extracting the score and time // MODIFIED
                     const fullTextMatch = data.message.match(fullTextRegex);
-
                     if (fullTextMatch) {
                         const fullText = fullTextMatch[1].trim();
-                        // add to button content the first 50 first characters of the full text
-                        button.textContent += "\n" + fullText.substring(0, 70) + "...[see details]";
-                        //const timeT = fullTextMatch[2].trim().toFixed(1);
+                        const timeT = parseFloat(fullTextMatch[2]).toFixed(1); // Convert time string to a float and fix precision. // MODIFIED
+                        button.textContent += "\n" + fullText.substring(0, 70) + "...[see DETAILS]";
+                        
                         button.addEventListener('click', function () {
-                            //alert(`Test score of solution ${index}:\n${formatPythonDict2Table(fullText)}`);
-                            alert(`Test score of solution ${index} in ${timeT}s:\n${formatPythonDict2Table(fullText)}`);
+                            alert(`Test score of solution ${index} in ${timeT}s:\n${formatPythonDict2Table(fullText)}`); // Ensure timeT is used properly and fullText is passed for formatting. // MODIFIED
                         });
                     }
                 } else {
