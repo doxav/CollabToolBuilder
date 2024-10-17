@@ -475,7 +475,7 @@ class CodingAgent():
                         elif self.optuna_opti:
                             decision = "n"
                         else:
-                            smart_print(parsed_code["program_code"], self.agent_name, f"Inference streaming output {output_id}", append=True, column_id=output_id, column_max=self.num_parallel_inferences)
+                            smart_print(parsed_code["program_code"], self.name, f"Inference streaming output {output_id}", append=True, column_id=output_id, column_max=self.human_llm_code_task.num_parallel_inferences)
                             decision = smart_input(
                                 f"ANSWER {output_id} Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ",
                                 self.name, "fix_error", column_id=output_id).strip()

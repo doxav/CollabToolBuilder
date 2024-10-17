@@ -136,6 +136,17 @@
         }
     }
 
+    // Function to trigger layout update for all editors
+    function updateEditorLayouts() {
+        editors.forEach(editorObj => {
+            editorObj.editor.layout(); // Trigger layout recalculation
+        });
+        console.log('Editors layout updated');
+    }
+
+    // Add a resize event listener to handle window resizing
+    window.addEventListener('resize', updateEditorLayouts);
+
     $(document).on("click", ".delete", function() {
         const column = $(this).closest(".solution-column");
         const columnId = column.attr('id'); // e.g., column-agentname-id
@@ -1377,7 +1388,7 @@ $(function() {
             let editorId = `editor-${Date.now()}`;
 
             // Create the container with the editor ID
-            let $messageContainer = $(`<h4>${title}</h4><div class="column-container"><div id="${editorId}" style="height: 600px;"></div></div>`);
+            let $messageContainer = $(`<h4>${title}</h4><div class="column-container"><div id="${editorId}"></div></div>`);
 
             $agentAccordion.children("div").append($messageContainer);
 
@@ -1763,7 +1774,7 @@ $(function() {
             }
             // Ajouter le bouton "Continue"
             if(data.agent_name === "CodingAgent") {
-                let $continueButton = $(`<button id="continue-button-${data.agent_name}"Keep 0, 1 or more propositions, then continue</button>`);
+                let $continueButton = $(`<button id="continue-button-${data.agent_name}">Keep 0, 1 or more propositions, then HIT continue here</button>`);
                 $(solutionColumnsContainer).after($continueButton);
                 $continueButton.click(function () {
                     console.log("Continue button clicked");
