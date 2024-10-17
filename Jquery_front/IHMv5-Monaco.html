@@ -14,14 +14,23 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.33.0/min/vs/loader.min.js"></script>
 <script>
-
+    currentAgent = '';
+    let savedSelection = null;
+    let number_created_functions = 0;
+    let number_validated_functions = 0;
+    let inputAwaited = false; // Flag to track if input is awaited
     let socket;
     let pendingCallbacks = {};
 
     // Initialize the WebSocket connection with reconnection logic
     function initWebSocket() {
-        socket = new WebSocket('ws://localhost:6789');
+        // socket = new WebSocket('ws://localhost:6789');
+        let userInput = prompt("Enter WebSocket URL and authentication token if necessary (e.g., ws://localhost:6789):", "ws://localhost:6789?hello=Y3zRJARVt5H08+Bv96U");
+        // Default to 'ws://localhost:6789' if nothing is entered
+        let wsUrl = userInput ? userInput : 'ws://localhost:6789?hello=Y3zRJARVt5H08+Bv96U';
 
+        socket = new WebSocket(wsUrl);
+        
         socket.onopen = function() {
             console.log('WebSocket connection established');
             // Hide the connection status layer if it's visible
@@ -30,6 +39,46 @@
                 statusDiv.style.display = 'none';
             }
         };
+
+        
+        // socket.onmessage = function(event) {
+        //     console.log('Received message');
+        //     let data;
+        //     try {
+        //         if (event && event.data) {
+        //             console.log('Event data:', event.data);
+        //             console.log('Event:', event);
+        //             data = JSON.parse(event.data);
+        //             console.log('data:', data);
+        //         } else {
+        //             console.log('No data in event:', event);
+        //             return;
+        //         }
+        //         if (data.function && pendingCallbacks[data.function]) {
+        //             pendingCallbacks[data.function](data.result);
+        //             delete pendingCallbacks[data.function];
+        //         } else {
+        //             console.log('displayMessage:', data);
+        //             displayMessage(data);
+        //             if (data.input && data.message && !data.message.includes("Choose an action") && !data.message.includes("Do you want to edit the code") && !data.message.includes("CODE SELECTION Please select the code to keep")) {
+        //                 inputAwaited = true; // Set input flag
+        //                 displayInputField(); // Show input area
+        //                 $(".buffering-circle").hide();
+        //             } else {
+        //                 inputAwaited = false;
+        //                 hideInputField(); // Hide input area if not awaited
+        //             }
+        //             if (data.input || (data.message && data.message.includes("Choose an action"))) {
+        //                 $(".buffering-circle").hide();
+        //             }
+        //         }
+        //     } catch (e) {
+        //         console.log('Error:', e);
+        //         console.log('Event:', event);
+        //         console.log('Error parsing JSON:', e, "event:", event);
+        //         if (data && data.event) console.log('event.data:', event.data);
+        //     }
+        // };
 
         socket.onmessage = function(event) {
             console.log('Received message');
@@ -75,7 +124,7 @@
             }
             setTimeout(function() {
                 initWebSocket();
-            }, 1000); // Wait 1 second before trying to reconnect
+            }, 2000); // Wait 1 second before trying to reconnect
         };
 
         socket.onerror = function(error) {
@@ -318,8 +367,10 @@
             }
 
         } else if(data.message.includes("Time spent in each option and occurrences" || data.message.includes("Choose an action (or hit Enter for inference)"))){
+//        } else if(data.message && (data.message.includes("Time spent in each option and occurrences" || data.message.includes("Choose an action (or hit Enter for inference)")))){
 
         } else if (data.message.includes("Do you want to reset the environment for searching a new task")){
+//        } else if (data.message && data.message.includes("Do you want to reset the environment for searching a new task")){
             // Hide the input area
             $(".input-area").hide();
             // Delete all agent accordions
@@ -485,6 +536,7 @@
             // END COPY
 
         } else if(data.message_type.includes("Inference streaming output") && data.agent_name === "TaskIdentificationAgent") {
+//        } else if(data.message_type && data.message_type.includes("Inference streaming output") && data.agent_name === "TaskIdentificationAgent") {
             // console.log("Inference streaming output");
             // Extract the inferenceNumber
             let inferenceNumber = parseInt(data.message_type.slice(-1));
@@ -539,6 +591,7 @@
             } else  console.log(`No message div found for column-${data.agent_name}-${columnId}`);
 
         } else if (data.message_type === "BEFORE inference action MENU" || data.message_type === "AFTER inference action MENU" && data.message.includes("Change default") || data.message.includes("Change premium") || data.message.includes("Exit") || data.message.includes("Log comments")) {
+//        } else if (data.message_type === "BEFORE inference action MENU" || data.message_type === "AFTER inference action MENU" /*) && (data.message.includes("Change default") || data.message.includes("Change premium") || data.message.includes("Exit") || data.message.includes("Log comments"))*/) {
             displayMenuOptions(data);
         } else if(data.agent_name === "CONFIG" && data.message.includes("Enter a capital letter for subdirectory")){
             // Existing code for handling this case
@@ -1447,14 +1500,6 @@ function getColumnsToKeep(agent) {
     console.log(6);
     return columnsToKeep;
 }
-
-currentAgent = '';
-
-    let savedSelection = null;
-    let number_created_functions = 0;
-    let number_validated_functions = 0;
-    let inputAwaited = false; // Flag to track if input is awaited
-
 
     // Mapping of agent names to their evaluation types
     const agentEvaluations = {

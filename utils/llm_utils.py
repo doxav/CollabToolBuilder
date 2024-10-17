@@ -50,9 +50,6 @@ AGENT = ''
 import asyncio
 import websockets
 
-ws_url = "ws://localhost:6789"
-
-
 def smart_print(message: str, agent_name=None, message_type=None, append=False, column_id=None, column_max=None, optional=False):
     global AgentDisplayManager, AGENT
     if 'IN_NOTEBOOK' not in globals():
@@ -107,28 +104,42 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
         else:
             print(message)
 
-
 def smart_input(message: str, agent_name=None, message_type=None, column_id=None, column_max=None, optional=False):
+    # Determine if running in a notebook environment
     if 'IN_NOTEBOOK' not in globals():
         try:  # test if IN_NOTEBOOK
             from IPython import get_ipython
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = get_ipython().__class__.__name__ == 'ZMQInteractiveShell'
+            print("Smart_print: Notebook mode =", IN_NOTEBOOK)
         except:
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = False
     else:
         IN_NOTEBOOK = globals()['IN_NOTEBOOK']
 
+    # Determine if using WebSocket
     if 'IN_WEBSOCKET' not in globals():
-        # Check if a Streamlit server is running
         if HumanLLMMonitor.use_websocket:
             globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = True
-
         else:
             globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = False
     else:
         IN_WEBSOCKET = globals()['IN_WEBSOCKET']
 
     if IN_WEBSOCKET:
+        # # Ensure WebSocket server is ready and has clients
+        # if not HumanLLMMonitor.websocket_server.connected_clients:
+        #     print("No WebSocket clients connected. Waiting for clients...")
+        #     while not HumanLLMMonitor.websocket_server.connected_clients:
+        #         time.sleep(1)
+
+        # # Retrieve port and secret from WebsocketServer
+        port = HumanLLMMonitor.websocket_server.port
+        # secret = HumanLLMMonitor.websocket_server.secret
+        ws_url = f"ws://localhost:{port}"
+        # if secret:
+        #     ws_url += f"?secret={secret}"
+
+        # Construct the structured message
         structured_message = {
             'message': message,
             'agent_name': agent_name,
@@ -139,6 +150,8 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
             'optional': optional
         }
         message_json = json.dumps(structured_message)
+        
+        # Send the message via WebsocketServer
         HumanLLMMonitor.websocket_server.send_message(message_json)
 
         async def receive_message(timeout=86400):
@@ -147,6 +160,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
                     print("SMART INPUT Waiting for response from WebSocket")
                     while True:
                         max_retry = 10
+                        response = None
                         for i in range(max_retry):
                             try:
                                 response = await asyncio.wait_for(websocket.recv(), timeout=timeout)
@@ -159,10 +173,12 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
                                 await asyncio.sleep(1)
                         print("SMART INPUT Received response from WebSocket")
                         json_data = json.loads(response)
+                        # Ignore messages from self
                         if 'sender_id' in json_data and json_data['sender_id'] == HumanLLMMonitor.websocket_server.server_id:
                             print("Received message from self, ignoring")
                             continue
 
+                        # Handle function results
                         if 'result' in json_data:
                             print("Received my function result, ignoring")
                             json_data['sender_id'] = HumanLLMMonitor.websocket_server.server_id
@@ -184,12 +200,13 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
                     return None
 
         try:
+            # Attempt to get the current running event loop
             loop = asyncio.get_running_loop()
-            # If we have a running loop, schedule the coroutine
+            # If a loop is running, schedule the receive_message coroutine
             future = asyncio.run_coroutine_threadsafe(receive_message(), loop)
             return future.result()
         except RuntimeError:
-            # No running loop in this thread, so we can run the coroutine directly
+            # No running loop, create a new event loop and run the coroutine
             return asyncio.run(receive_message())
 
     elif IN_NOTEBOOK and agent_name:  # Currently DE-ACTIVATED
@@ -204,7 +221,6 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
         return AgentDisplayManager.get_input(agent_name, message)
     else:
         return input(message)
-
 
 def is_vscode_installed():
     try:
@@ -791,9 +807,9 @@ class HumanLLMMonitor:
         cls.db_failed_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
 
     @classmethod
-    def initialize_websocket_server(cls):
+    def initialize_websocket_server(cls, port=6789, secret=None, proxy_enabled=False):
         if cls.use_websocket and cls.websocket_server is None:
-            cls.websocket_server = WebsocketServer()
+            cls.websocket_server = WebsocketServer(port=port, secret=secret, proxy_enabled=proxy_enabled)
             cls.stop_event.clear()
             cls.ws_thread = threading.Thread(target=cls.run_websocket_server)
             cls.ws_thread.daemon = True  # Run the WebSocket server in a daemon thread
@@ -802,6 +818,7 @@ class HumanLLMMonitor:
     @classmethod
     def run_websocket_server(cls):
         asyncio.run(cls.websocket_server.main(cls.stop_event))
+        # cls.websocket_server.run_server(cls.stop_event)
 
     @classmethod
     def stop_websocket_server(cls):

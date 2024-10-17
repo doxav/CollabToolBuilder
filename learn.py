@@ -1341,6 +1341,21 @@ def create_Nmajority_chain(num_models=3, map_model_name="gpt-4o-mini", reduce_mo
 
 
 if __name__ == "__main__":
+    import argparse
+
+    # Handle command line arguments
+    parser = argparse.ArgumentParser(description="Run the learning loop with optional WebSocket settings")
+    parser.add_argument("--port", type=int, default=6789, help="Optional port for WebSocket server")
+    parser.add_argument("--secret", action='store_true', help="Optional secret for WebSocket URL")
+    parser.add_argument("--proxy", action='store_true', help="Start a proxy via localtunnel if available")
+    args = parser.parse_args()
+
+    # Initialize the WebSocket server with port autodetection and proxy
+    HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy)
+
+    # Allow some time for the WebSocket server to start
+    time.sleep(1)  # Adjust if necessary
+
     # Initialize the default and premium LLMs
     #from langchain_groq import ChatGroq
     llmORchains_list = {
