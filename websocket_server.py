@@ -67,9 +67,9 @@ class WebsocketServer:
     async def main(self, stop_event):
         # Get the absolute path of IHMv4.html
         current_directory = os.getcwd()
-        ihm_file_path = os.path.join(current_directory, "Jquery_front", "IHMv4.html")
-        absolute_ihm_file_path = f"file://{ihm_file_path}"
-        print(f"Access to IHM via : {absolute_ihm_file_path}")
+        hmi_file_path = os.path.join(current_directory, "Jquery_front", "IHMv5-Monaco..html")
+        absolute_hmi_file_path = f"file://{hmi_file_path}"
+        print(f"Access to HMI via : {absolute_hmi_file_path}")
 
         server = await websockets.serve(self.handler, "localhost", 6789)
         while not stop_event.is_set():

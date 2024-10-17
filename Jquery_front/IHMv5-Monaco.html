@@ -23,7 +23,10 @@
             function: functionName,
             params: params
         };
-        socket.send(JSON.stringify(message));
+        msgString = JSON.stringify(message);
+        socket.send(msgString);
+
+        addLogLine('SENT: ' + msgString);
 
         if (callback) {
             console.log('Setting up callback for', functionName);
@@ -539,9 +542,13 @@ color: white;
 </head>
 <body>
 <div id="main-container">
+    <div id="log-container" style="display: none; position: fixed; top: 50px; right: 10px; width: 1000px; height: 1000px; background-color: white; z-index: 1000; border: 1px solid #90CAF9;">
+        <div id="log-editor" style="height: 100%;"></div>
+    </div>
     <div id="history-sidebar">
         <div id="history-accordion" class="accordion">
             <h3>History</h3>
+            <button id="toggle-log-button" style="position: fixed; top: 10px; right: 10px; z-index: 1000;">Show Log</button>
             <div id="history-content">
             </div>
         </div>
@@ -682,6 +689,51 @@ color: white;
 </div>
 <script>
 let messageCounter = 0;
+let logEditorInstance;
+let logData = ''; // Variable pour stocker les logs
+
+monacoLoaderPromise.then(function() {
+    logEditorInstance = monaco.editor.create(document.getElementById('log-editor'), {
+        value: '',
+        language: 'json',
+        readOnly: true,
+        automaticLayout: true,
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        wordWrap: "on"
+    });
+}).catch(function(error) {
+    console.error('Erreur lors de l\'initialisation de l\'éditeur de log Monaco:', error);
+});
+
+// Référence aux éléments du DOM
+const logContainer = document.getElementById('log-container');
+const toggleLogButton = document.getElementById('toggle-log-button');
+
+toggleLogButton.addEventListener('click', function() {
+    if (logContainer.style.display === 'none') {
+        logContainer.style.display = 'block';
+        toggleLogButton.textContent = 'Cacher le Log';
+    } else {
+        logContainer.style.display = 'none';
+        toggleLogButton.textContent = 'Afficher le Log';
+    }
+});
+
+function addLogLine(message) {
+    logData += message.replace(/\\n/g, '\n') + '\n';
+    logEditorInstance.setValue(logData);
+    logEditorInstance.revealLine(logEditorInstance.getModel().getLineCount());
+}
+
+// Ajouter un écouteur pour les messages WebSocket sans écraser les existants
+socket.addEventListener('message', function(event) {
+    if (logEditorInstance) {
+        addLogLine(event.data);
+    } else {
+        console.warn('Log not initialized.');
+    }
+});
 
 function hideAgentButtons(agentName) {
     $(`div[data-agent="${agentName}"]`).find('button#autofix-button, button[id^="select-"], button[id^="delete-"], button[id^="evaluate-"], button[id^="regenwithmymodifbutton-"], button[id^="regenallbutton-"], input[id^="comment-"], button#custom-autofix-button').hide();

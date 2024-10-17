@@ -32,6 +32,7 @@ from langchain_core.messages.system import SystemMessage
 from langchain_openai import ChatOpenAI
 
 import json
+import difflib
 
 #set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
 
@@ -284,6 +285,7 @@ class CodingAgent():
             for key, value in special_criteria.items():
                 setattr(self, key, value)
         self.last_user_message = None
+        self.error_patches = []
 
         kwargs = {
             "default_llmORchain": default_llm_choice,
@@ -512,12 +514,23 @@ class CodingAgent():
                             edited_code_returned = self.human_llm_code_task.premium_llm.invoke([SystemMessage(content=fix_system_prompt),HumanMessage(content=fix_description_prompt)])
                             edited_code = str(getattr(edited_code_returned,'content',edited_code_returned))
 
+                        # Before updating parsed_code, save the previous code
+                        prev_code = parsed_code["program_code"]
+                        # Run the edited code
                         code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
                         smart_print("TESTING UPDATED CODE.....", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
                         no_runtime_error, exec_result = env.step(code_to_run)
                         # Update parsed_code if re-run is successful
                         parsed_code["program_code"] = edited_code
                         smart_print(f"# UPDATED **{'SUCCESFUL' if no_runtime_error else 'FAILED'}** CODE:\n{edited_code}", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                        # If no runtime error, store the error and diff
+                        if no_runtime_error:
+                            diff = difflib.unified_diff(prev_code.splitlines(), edited_code.splitlines(), lineterm='')
+                            diff_text = '\n'.join(diff)
+                            # Avoid duplicates: check if the error and diff combination already exists
+                            if (exec_result, diff_text) not in self.error_patches:
+                                self.error_patches.append((exec_result, diff_text))
+
             # Append the results for each environment
             no_runtime_errors.append(no_runtime_error)
             exec_results.append(exec_result)
@@ -576,6 +589,13 @@ class CodingAgent():
                     f"{dnl}SCORE: {previous_score}" if previous_score else "") + f"{dnl}CODE: {previous_code}{nl}>>"
             user_message += f"{nl}]]]"
 
+        # Add the error patches to the user_message
+        if self.error_patches and len(self.error_patches) > 0:
+            user_message += f"{dnl}PREVIOUS ERRORS AND FIXES: [[[{nl}"
+            for error_msg, diff_text in self.error_patches:
+                user_message += f"{nl}<<ERROR MESSAGE: {error_msg}{dnl}FIX APPLIED (diff):{dnl}{diff_text}{nl}>>"
+            user_message += f"{nl}]]]"
+            
         self.last_user_message = user_message
 
         current_skip_rounds = self.human_llm_code_task.skip_rounds  # save the initial value to align it for code validation
