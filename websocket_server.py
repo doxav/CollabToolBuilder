@@ -93,6 +93,35 @@ class WebsocketServer:
             asyncio.run(client.send(message))
             print(message)
 
+    def send_message(self, message):
+        no_client = True
+        while no_client:
+            if len(self.connected_clients) > 0:
+                no_client = False
+            else:
+                print("Waiting for WebSocket client to connect")
+                time.sleep(1)
+        self.message_count += 1
+        if isinstance(message, dict) and "sender_id" not in message:
+            message['sender_id'] = self.server_id
+        clients = set(self.connected_clients)
+
+        async def send_to_clients():
+            for client in clients:
+                try:
+                    await client.send(message)
+                except Exception as e:
+                    print(f"Error sending message to client: {e}")
+
+        try:
+            loop = asyncio.get_running_loop()
+            # If an event loop is running, schedule the coroutine
+            asyncio.run_coroutine_threadsafe(send_to_clients(), loop)
+        except RuntimeError:
+            # No running event loop in this thread, so we can run the coroutine directly
+            asyncio.run(send_to_clients())
+        print(message)
+        
     def send_notasync_message(self, message):
         self.message_count += 1
         if isinstance(message, dict) and "sender_id" not in message:

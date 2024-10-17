@@ -14,6 +14,24 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.33.0/min/vs/loader.min.js"></script>
 <script>
+    let socket = new WebSocket('ws://localhost:6789');
+    let pendingCallbacks = {};
+
+    function sendFunctionCall(agentName, functionName, params, callback = null) {
+        let message = {
+            agent_name: agentName,
+            function: functionName,
+            params: params
+        };
+        socket.send(JSON.stringify(message));
+
+        if (callback) {
+            console.log('Setting up callback for', functionName);
+            pendingCallbacks[functionName] = callback;
+        }
+    }
+
+
     require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.33.0/min/vs' }});
 
     var monacoLoaderPromise = new Promise(function(resolve, reject) {
@@ -29,19 +47,45 @@
     // Use WeakMap to associate editors with disposables
     const editorDisposables = new WeakMap();
 
-    function createMonacoEditor(elementId, content, language, readOnly = false) {
+    // Function to create and set up a Monaco editor with auto-save and annotation handling
+    function createMonacoEditor(elementId, content, language, agentName, columnId, readOnly = false) {
         return monacoLoaderPromise.then(function() {
             const editor = monaco.editor.create(document.getElementById(elementId), {
                 value: content,
                 language: language,
                 readOnly: readOnly, // Set to false to allow editing
-                wordWrap: 'on',  // Enable word wrapping
-                wordWrapBreakBeforeCharacters: [' ', '.', ',', ';', '(', ')', '[', ']', '{', '}', '-', '+', '*', '/', '='],  // Optional: set break characters
-                automaticLayout: true
+                automaticLayout: true,
+                wordWrap: "on"
             });
 
-            // Attach selection change listener
-            const disposable = editor.onDidChangeCursorSelection(function(event) {
+            // Debounce timer variable for auto-save
+            let debounceTimer;
+
+            // Auto-Save: Listen for content changes
+            const contentDisposable = editor.onDidChangeModelContent(function(event) {
+                // Clear the previous timer
+                clearTimeout(debounceTimer);
+
+                // Set a new timer for 3 seconds
+                debounceTimer = setTimeout(function() {
+                    // Get the current content of the editor
+                    let currentContent = editor.getValue();
+
+                    // Prepare the data to send
+                    let requestData = {
+                        answer: currentContent,
+                        column_id: columnId
+                    };
+
+                    // Call the save function
+                    sendFunctionCall(agentName, "updateAnswer", requestData, function(responseMessage) {
+                        console.log("Auto-save response:", responseMessage);
+                    });
+                }, 3000); // 3-second debounce
+            });
+
+            // Annotation Handling: Listen for cursor selection changes
+            const selectionDisposable = editor.onDidChangeCursorSelection(function(event) {
                 const selection = editor.getSelection();
                 const selectedText = editor.getModel().getValueInRange(selection);
 
@@ -67,14 +111,16 @@
                 }
             });
 
-            // Store the editor and its disposable
-            editors.push({ editor, disposable });
+            // Store the editor and its disposables in the global array
+            editors.push({ 
+                editor, 
+                disposables: [contentDisposable, selectionDisposable], 
+                elementId 
+            });
 
             return editor;
         });
     }
-
-
     // Dispose of an editor and its listener
     function disposeEditor(editor) {
         const disposable = editorDisposables.get(editor);
@@ -767,7 +813,6 @@ function getColumnsToKeep(agent) {
 currentAgent = '';
 
 $(function() {
-    let socket = new WebSocket('ws://localhost:6789');
     let savedSelection = null;
     let number_created_functions = 0;
     let number_validated_functions = 0;
@@ -832,22 +877,6 @@ $(function() {
             socket = new WebSocket('ws://localhost:6789');
         }, 4000);
     };
-
-        let pendingCallbacks = {};
-
-    function sendFunctionCall(agentName, functionName, params, callback = null) {
-        let message = {
-            agent_name: agentName,
-            function: functionName,
-            params: params
-        };
-        socket.send(JSON.stringify(message));
-
-        if (callback) {
-            console.log('Setting up callback for', functionName);
-            pendingCallbacks[functionName] = callback;
-        }
-    }
 
     socket.onmessage = function(event) {
         console.log('Received message');
@@ -1348,12 +1377,12 @@ $(function() {
             let editorId = `editor-${Date.now()}`;
 
             // Create the container with the editor ID
-            let $messageContainer = $(`<h4>${title}</h4><div class="column-container"><div id="${editorId}" style="height: 500px;"></div></div>`);
+            let $messageContainer = $(`<h4>${title}</h4><div class="column-container"><div id="${editorId}" style="height: 600px;"></div></div>`);
 
             $agentAccordion.children("div").append($messageContainer);
 
             // Initialize Monaco Editor
-            createMonacoEditor(editorId, data.message, 'markdown').then(function(editor) {messageContainer[0].editorInstance = editor;});
+            createMonacoEditor(editorId, data.message, 'markdown', data.agent_name, 0).then(function(editor) {messageContainer[0].editorInstance = editor;});
 
             if (data.input) {
                 displayInputField();
@@ -1445,7 +1474,7 @@ $(function() {
             let editorId = `editor-${agent_columnId}`;
             targetColumn.innerHTML += `<div id="${editorId}" style="height: 600px;"></div>`;
             // Initialize the Monaco Editor
-            createMonacoEditor(editorId, content, 'markdown').then(function(editor) {targetColumn.editorInstance = editor;});
+            createMonacoEditor(editorId, content, 'markdown', data.agent_name, data.column_id).then(function(editor) {targetColumn.editorInstance = editor;});
 
             const evaluationType = agentEvaluations[data.agent_name] || 'default';
 
@@ -1493,58 +1522,210 @@ $(function() {
             // Add the menu options for column
             targetColumn.innerHTML += `<div id="menu-options-column-${agent_columnId}"></div>`;
 
+            // Refresh value on value change
+            $(`#slider-${agent_columnId}`).on('input', function () {
+                // If value is -1 display "Unscored" instead
+                if(this.value === '-1') {
+                    $(`#value-${agent_columnId}`).text('Unscored');
+                } else {
+                    $(`#value-${agent_columnId}`).text(this.value);
+                }
+            });
 
+            let toggleTimeouts = {}; // To store timeout references by `agent_columnId`
 
-                // Refresh value on value change
-                $(`#slider-${agent_columnId}`).on('input', function () {
-                    // If value is -1 display "Unscored" instead
-                    if(this.value === '-1') {
-                        $(`#value-${agent_columnId}`).text('Unscored');
-                    } else {
-                        $(`#value-${agent_columnId}`).text(this.value);
-                    }
-                });
+            function enableGenButtons(isEnabled, agent_columnId = null, selectedButton = null, timeoutReEnable = 30000) {
+                // Determine the button selectors, handling the case when agent_columnId is null
+                let buttonSelectors = agent_columnId === null
+                    ? ['[id^=evaluate-]', '[id^=regenallbutton-]', '[id^=regenwithmymodifbutton-]']
+                    : [`#evaluate-${agent_columnId}`, `#regenallbutton-${agent_columnId}`, `#regenwithmymodifbutton-${agent_columnId}`];
 
-                $(document).on("click", `#evaluate-${agent_columnId}`, function () {
-                    /*if ($(`#slider-${columnId}`).val() === '-1') {
-                        alert('-1 is not a valid score, so please select a valid score.');
-                        return;
-                    }
-                    if($(`#comment-${columnId}`).val() === '') {
-                        alert('Please add a comment before evaluating the solution');
-                        return;
-                    }
-                    console.log('Evaluate button clicked');
-                    alert('Evaluation submitted ! Thanks you !');*/
-                    // Check if the input field is empty
-                    if($(`#comment-${agent_columnId}`).val() === '') {
-                        // Show an alert if the input field is empty
-                        alert("Write your instructions first");
-                        return; // Prevent further execution
-                    }
-                    // Make button disabled
-                    $(`#evaluate-${agent_columnId}`).prop('disabled', true);
-                    // If a slider exists, get the score of it, else get the value of the compliance select
-                    let score;
-                    if($(`#slider-${agent_columnId}`).length) {
-                        score = $(`#slider-${agent_columnId}`).val() / 10;
+                let buttons = buttonSelectors.map(selector => $(selector));
+                let targetButton = $(selectedButton);
 
-                    } else {
-                        score = $(`#compliance-${agent_columnId}`).val();
+                if (isEnabled) {
+                    // Enable buttons
+                    buttons.forEach(btn => btn.prop('disabled', false));
+
+                    // If there's an active timeout, clear it
+                    if (agent_columnId && toggleTimeouts[agent_columnId]) {
+                        clearTimeout(toggleTimeouts[agent_columnId]);
+                        delete toggleTimeouts[agent_columnId]; // Remove reference after clearing
                     }
-                    let comment = $(`#comment-${agent_columnId}`).val();
-                    sendFunctionCall(data.agent_name, "criticAnswer", {content_annotated: comment, inference_result_msg: "", annotated_critics: false}, function(responseMessage) {
-                    console.log("responseMessage:"+responseMessage);
-                    // Replace the content of the column with the new response
-                    targetColumn.querySelector('.message').innerHTML = formatMessage(responseMessage);
-                    // Set the button enable and change the text with the icon and text
-                    $(`#evaluate-${agent_columnId}`).prop('disabled', false);
-                    $(`#evaluate-${agent_columnId}`).html('<i class="fa-solid fa-rotate"></i> Regenerate');
-                });                    
-                    //sendFunctionCall(data.agent_name, "evaluateCommentAnswerForLater", {comment: comment, score: score, output_id: columnIndex});
-                    let actionDescription = `User evaluated solution ${columnIndex} with score ${score} and comment "${comment}"`;
+                } else {
+                    // Disable buttons
+                    buttons.forEach(btn => btn.prop('disabled', true));
+
+                    // If a timeout is provided, set it for enabling buttons after the specified time
+                    if (timeoutReEnable > 0 && agent_columnId !== null) {
+                        toggleTimeouts[agent_columnId] = setTimeout(() => {
+                            buttons.forEach(btn => btn.prop('disabled', false));
+                            delete toggleTimeouts[agent_columnId]; // Clean up after timeout completes
+                        }, timeoutReEnable);
+                    }
+                }
+            }
+
+            $(document).on("click", `#evaluate-${agent_columnId}`, function () {
+                // Check if the input field is empty
+                let comment = $(`#comment-${agent_columnId}`).val().trim();
+                if(comment === '') {
+                    alert("Write your instructions first");
+                    return;
+                }
+
+                // Disable the button and update its text
+                enableGenButtons(false);
+
+                // Retrieve the score
+                let score;
+                if($(`#slider-${agent_columnId}`).length) {
+                    score = parseFloat($(`#slider-${agent_columnId}`).val()) / 10;
+                } else {
+                    score = $(`#compliance-${agent_columnId}`).val();
+                }
+
+                // Retrieve the target column and editor instance
+                let targetColumn = document.getElementById(`column-${agent_columnId}`);
+                if(!targetColumn || !targetColumn.editorInstance) {
+                    console.error(`Editor instance not found for column-${agent_columnId}.`);
+                    alert("Associated editor not found.");
+                    enableGenButtons(true);
+                    return;
+                }
+
+                let editor = targetColumn.editorInstance;
+
+                // Prepare data for sendFunctionCall
+                let requestData = {
+                    content_annotated: comment,
+                    inference_result_msg: "",
+                    annotated_critics: false
+                };
+
+                // Send the function call
+                sendFunctionCall(data.agent_name, "criticAnswer", requestData, function(responseMessage) {
+                    console.log("responseMessage:", responseMessage);
+
+                    // Update the Monaco Editor content with the formatted response
+                    let formattedResponse = formatMessage(responseMessage);
+                    editor.setValue(formattedResponse);
+
+                    // Re-enable the button and reset its text
+                    enableGenButtons(true);
+
+                    // Log the action
+                    let actionDescription = `User evaluated solution ${agent_columnId} with score ${score} and comment "${comment}"`;
                     addHistoryEntry(actionDescription);
                 });
+            });
+
+            $(document).on("click", `#regenallbutton-${agent_columnId}`, function () {
+                // Disable all generation buttons
+                enableGenButtons(false);
+
+                // Extract agent name from agent_columnId (assuming format 'agentName-columnId')
+                let [agentName, columnId] = agent_columnId.split('-');
+
+                // Select all editors associated with this agent
+                let allColumns = document.querySelectorAll(`.solution-column[id^='column-${agentName}-']`);
+                let annotatedTexts = [];
+
+                allColumns.forEach(function(column) {
+                    let editor = column.editorInstance;
+                    if (editor) {
+                        let decorations = editor.getModel().getAllDecorations();
+                        let hasAnnotations = decorations.some(decoration => decoration.options.inlineClassName === 'applied-annotation');
+                        if (hasAnnotations) {
+                            let text = editor.getValue().replace(/<[^>]*>/g, '');
+                            annotatedTexts.push(text);
+                        }
+                    }
+                });
+
+                if (annotatedTexts.length === 0) {
+                    alert("Annotate some of the answers first to be applied");
+                    enableGenButtons(true);
+                    return;
+                }
+
+                // Prepare data for sendFunctionCall
+                let requestData = {
+                    content_annotated: annotatedTexts,
+                    inference_result_msg: ""
+                };
+
+                // Send the function call
+                sendFunctionCall(agentName, "criticAnswer", requestData, function(responseMessage) {
+                    console.log("responseMessage:", responseMessage);
+
+                    // Format the response appropriately
+                    let formattedResponse = formatMessage(responseMessage);
+
+                    // Update only the target Monaco Editor (assuming you want to update the first one or a specific one)
+                    // Modify this part based on your specific logic for selecting which editor to update
+                    let targetEditor = allColumns[columnId].editorInstance; // Example: updating the first editor
+                    if(targetEditor){targetEditor.setValue(formattedResponse);}
+
+                    // Re-enable all generation buttons
+                    enableGenButtons(true);
+
+                    // Log the action
+                    let actionDescription = `User requested regeneration of solutions for ${agentName}`;
+                    addHistoryEntry(actionDescription);
+                });
+            });
+
+            $(document).on("click", `#regenwithmymodifbutton-${agent_columnId}`, function () {
+                let targetColumn = document.getElementById(`column-${agent_columnId}`);
+                
+                if(!targetColumn || !targetColumn.editorInstance) {
+                    console.error(`Editor instance not found for column-${agent_columnId}.`);
+                    alert("Associated editor not found.");
+                    return;
+                }
+
+                let editor = targetColumn.editorInstance;
+
+                // Check if at least one annotation exists
+                let model = editor.getModel();
+                let allDecorations = model.getAllDecorations();
+                let hasAnnotations = allDecorations.some(decoration => decoration.options.inlineClassName === 'applied-annotation');
+
+                if (!hasAnnotations) {
+                    alert("Annotate some of the answers first to be applied");
+                    return; // Block the action if no annotations are present
+                }
+
+                // Retrieve and process the editor content
+                let text = editor.getValue();
+                let textWithoutHtml = text.replace(/<[^>]*>/g, '');
+
+                // Disable the button and update its text
+                enableGenButtons(false);
+
+                // Prepare data for sendFunctionCall
+                let requestData = {
+                    content_annotated: textWithoutHtml,
+                    inference_result_msg: ""
+                };
+
+                // Send the function call
+                sendFunctionCall(data.agent_name, "criticAnswer", requestData, function(responseMessage) {
+                    console.log("responseMessage:", responseMessage);
+
+                    // Update the Monaco Editor content with the formatted response
+                    let formattedResponse = formatMessage(responseMessage);
+                    editor.setValue(formattedResponse);
+
+                    // Re-enable the button and reset its text
+                    enableGenButtons(true);
+
+                    // Log the action
+                    let actionDescription = `User requested regeneration of solution ${agent_columnId} with modifications`;
+                    addHistoryEntry(actionDescription);
+                });
+            });
 
             $(`#delete-${agent_columnId}`).click(function () {
                 let targetColumn = document.getElementById(`column-${agent_columnId}`);
@@ -1566,81 +1747,6 @@ $(function() {
                 // Send the updated list to the backend
                 console.log(data.agent_name + ' - Columns to keep:', columnsToKeep);
                 sendFunctionCall(data.agent_name, "set_selected_outputs", { selected_outputs: columnsToKeep });
-            });
-
-
-            $(`#regenwithmymodifbutton-${agent_columnId}`).click(function () {
-                let targetColumn = document.getElementById(`column-${agent_columnId}`);
-                
-                if (!targetColumn || !targetColumn.editorInstance) {
-                    console.error(`Editor instance not found for column-${agent_columnId}.`);
-                    alert("Associated editor not found.");
-                    return;
-                }
-
-                let editor = targetColumn.editorInstance;
-
-                // Check if at least one annotation exists
-                // Monaco doesn't provide a direct way to query decorations by class, so we need to track them or use a workaround
-                // For simplicity, we'll check if any decorations have the 'applied-annotation' inline class
-
-                let model = editor.getModel();
-                let allDecorations = editor.getModel().getAllDecorations();
-                let hasAnnotations = allDecorations.some(decoration => decoration.options.inlineClassName === 'applied-annotation');
-
-                if (!hasAnnotations) {
-                    alert("Annotate some of the answer first to be applied");
-                    return; // Block the action if no annotation is applied yet
-                }
-
-                // Retrieve the editor content
-                let text = editor.getValue();
-                let textWithoutHtml = text.replace(/<[^>]*>/g, '');
-
-                // Proceed with your regeneration logic using textWithoutHtml
-                // Example: sendFunctionCall or any other processing
-                console.log("Regenerating with modifications:", textWithoutHtml);
-
-                // Example action description
-                let actionDescription = `User requested regeneration with modifications for column-${agent_columnId}`;
-                addHistoryEntry(actionDescription);
-            });
-
-
-            $(`#regenallbutton-${agent_columnId}`).click(function () {
-                let agentName = agent_columnId.split('-')[0]; // Extract agent_name from agent_columnId
-                let editorsToProcess = [];
-
-                // Select all columns that start with `column-${agentName}-`
-                let allColumns = document.querySelectorAll(`[id^='column-${agentName}-']`);
-
-                allColumns.forEach(function(column) {
-                    if (column.editorInstance) {
-                        let editor = column.editorInstance;
-                        let model = editor.getModel();
-                        let allDecorations = model.getAllDecorations();
-                        let hasAnnotations = allDecorations.some(decoration => decoration.options.inlineClassName === 'applied-annotation');
-
-                        if (hasAnnotations) {
-                            let text = editor.getValue();
-                            let textWithoutHtml = text.replace(/<[^>]*>/g, '');
-                            editorsToProcess.push({ editor, textWithoutHtml, columnId: column.id });
-                        }
-                    }
-                });
-
-                if (editorsToProcess.length === 0) {
-                    alert("Annotate some of the answers first to be applied");
-                    return;
-                }
-
-                // Proceed with your regeneration logic for each editor
-                editorsToProcess.forEach(function(item) {
-                    console.log(`Regenerating with modifications for ${item.columnId}:`, item.textWithoutHtml);
-                    // Example: sendFunctionCall or any other processing
-                    let actionDescription = `User requested regeneration with modifications for ${item.columnId}`;
-                    addHistoryEntry(actionDescription);
-                });
             });
 
         }
@@ -1792,7 +1898,8 @@ $(function() {
         $("#auto-open-accordion").prop("checked", $(this).is(":checked"));
     });
 
-   function formatMessage(message) {
+   function formatMessage(message, raw = true) {
+    if (raw) return message;
     // Remove ANSI color codes
     let cleanString = message.replace(/\u001b\[\d+m/g, '');
     // Remove all ANSI escape sequences

@@ -127,21 +127,39 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
             globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = False
     else:
         IN_WEBSOCKET = globals()['IN_WEBSOCKET']
+
     if IN_WEBSOCKET:
-        structured_message = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'column_id': column_id, 'column_max': column_max, 'input': True, 'optional': optional}
-        # convert structured_message to json
-        message = json.dumps(structured_message)
-        HumanLLMMonitor.websocket_server.send_message(message)
+        structured_message = {
+            'message': message,
+            'agent_name': agent_name,
+            'message_type': message_type,
+            'column_id': column_id,
+            'column_max': column_max,
+            'input': True,
+            'optional': optional
+        }
+        message_json = json.dumps(structured_message)
+        HumanLLMMonitor.websocket_server.send_message(message_json)
+
         async def receive_message(timeout=86400):
             async with websockets.connect(ws_url) as websocket:
                 try:
                     print("SMART INPUT Waiting for response from WebSocket")
                     while True:
-                        response = await asyncio.wait_for(websocket.recv(), timeout=timeout)
+                        max_retry = 10
+                        for i in range(max_retry):
+                            try:
+                                response = await asyncio.wait_for(websocket.recv(), timeout=timeout)
+                                break
+                            except asyncio.TimeoutError:
+                                print(f"Timeout waiting for response from WebSocket, retry {i+1}/{max_retry}")
+                                await asyncio.sleep(1)
+                            except Exception as e:
+                                print(f"An error occurred: {e}, retry {i+1}/{max_retry}")
+                                await asyncio.sleep(1)
                         print("SMART INPUT Received response from WebSocket")
                         json_data = json.loads(response)
-                        if 'sender_id' in json_data and json_data[
-                            'sender_id'] == HumanLLMMonitor.websocket_server.server_id:
+                        if 'sender_id' in json_data and json_data['sender_id'] == HumanLLMMonitor.websocket_server.server_id:
                             print("Received message from self, ignoring")
                             continue
 
@@ -151,7 +169,6 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
                             response = json.dumps(json_data)
                             HumanLLMMonitor.websocket_server.send_notasync_message(response)
                             continue
-
                         else:
                             break
                     if 'message' in json_data:
@@ -166,7 +183,14 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
                     print("Timeout waiting for response from WebSocket")
                     return None
 
-        return asyncio.run(receive_message())
+        try:
+            loop = asyncio.get_running_loop()
+            # If we have a running loop, schedule the coroutine
+            future = asyncio.run_coroutine_threadsafe(receive_message(), loop)
+            return future.result()
+        except RuntimeError:
+            # No running loop in this thread, so we can run the coroutine directly
+            return asyncio.run(receive_message())
 
     elif IN_NOTEBOOK and agent_name:  # Currently DE-ACTIVATED
         # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
@@ -1704,7 +1728,7 @@ class HumanLLMMonitor:
             inference_result_msg = type('InferenceResult', (object,), {'content': None})
 
         while self.skip_rounds <= 0:
-            self.temp_inference_result_msg = None # to capture the inference message done from functions outside of the menu
+            self.temp_inference_result_content = None # to capture the inference message done from functions outside of the menu
             # MENU
             multiple_ref = (f"OUTPUT \033[31m{output_id} OUT OF {outputs_count}\033[0m OUTPUTS" if (
                         output_id and outputs_count and (outputs_count > 1)) else "")
@@ -1736,14 +1760,14 @@ class HumanLLMMonitor:
                 f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
                 self.agent_name, optional=True, column_id=output_id-1, column_max=outputs_count).upper()
 
-            if self.temp_inference_result_msg: # if modified async, it is important in case of edition ("A") to keep the modified content
-                inference_result_msg = self.temp_inference_result_msg
+            if self.temp_inference_result_content: # if modified async, it is important in case of edition ("A") to keep the modified content
+                inference_result_msg.content = self.temp_inference_result_content
 
             # ACTIONS processing
             self.start_time = time.time()  # Init action selected and timer to measure time spent and occurences in action processing
 
             if action == "A":  # Manually set/modify the answer/output
-                self.modifyAnswer(inference_result_msg)
+                self.modifyAnswer(inference_result_msg, output_id)
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
                 inference_result_msg = self.criticAnswer(comments, inference_result_msg, annotated_critics=False)
@@ -1767,8 +1791,8 @@ class HumanLLMMonitor:
             self.track_time_spent(action, mode='after')
 
             if action in [None, "", "E", "Z"]:
-                if self.temp_inference_result_msg:
-                    inference_result_msg = self.temp_inference_result_msg
+                if self.temp_inference_result_content:
+                    inference_result_msg.content = self.temp_inference_result_content
                     smart_print(menu, self.agent_name, "RUNNING CHECKS ON MODIFIED LLM OUTPUT...", column_id=output_id-1, column_max=outputs_count)
                     check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
                 break  # E: Go back BEFORE inference to improve system prompt or add information to user message
@@ -1898,12 +1922,18 @@ class HumanLLMMonitor:
                 content_structure, is_structure = is_valid_python_structure(inference_result_msg.content)
                 content_pretty = json.dumps(content_structure, indent=4) if is_structure else inference_result_msg.content
                 content_annotated = _visual_input(content_pretty, filetype="py" if is_structure else "md")
+            # if annotated_critics is a list, then make a different prompt
+            if (isinstance(content_annotated, list) and len(content_annotated)>1):
+                prompt_start = "Your task is to merge the best of different **ANNOTATED ANSWERS** into 1  **ANNOTATED ANSWERS**"
+            else:
+                prompt_start = "Your task is to refine the **ANNOTATED ANSWER**" 
             system_prompt = f"""
-Your task is to refine the **ANNOTATED ANSWER** given inline annotation of ths answer and the **INITIAL PROMPT**.
-Inline text annotations instructions use tags (see **ANNOTATION TAGS** for interpretation).
-Before answering, put between [[<< and >>]] your reasoning process of the list of text annotated and instructions, the solutions to apply each tagged instructions to the annotated text.
-Iterate for each annotation tag until you are sure to process them properly and to not forget to apply them in the improved answer.
-Then generate the improved answer applying instructions from tags, do not add introduction or comments except your [[<< your full reasoning >>]] .
+{prompt_start} given inline annotation of ths answer and the **INITIAL PROMPT**.
+Each inline text annotations instructions use tags (see **ANNOTATION TAGS** for interpretation - e.g. \TAG[optional instruction]{{original text...}} ).
+You should generate an improved answer replacing each tags/instructions by strictly following the instructions provided in the inline annotations.
+Before replacing each inline annotation, put between [[<< and >>]] your detailed reasoning process to solve the inline detected annotation and associated solution.
+It allows you to express enough your reasoning at each annotation, and me to easily remove afterward any text between [[<< and >>]] to get the final answer. 
+Generate the improved answer without additional introduction or comments except your different [[<< detailed reasoning steps >>]] .
 
 ### INITIAL PROMPT: << {self.llm_input_messages[0].content} >>
 
@@ -1936,12 +1966,20 @@ The following annotations are provided to guide the refinement process. Each ann
 3. **Revise** the text by making necessary corrections, improvements, or explorations as instructed.
 4. Ensure that the **final text** is clear, accurate, relevant, and stylistically appropriate for the INITIAL TASK and expected format.
 >>"""
-            user_prompt = f"ANNOTATED ANSWER: << {content_annotated} >>"
+            if (isinstance(content_annotated, list) and len(content_annotated)>1):
+                user_prompt = ""
+                for i, content in enumerate(content_annotated):
+                    user_prompt += f"\n\n### ANNOTATED ANSWER {i+1}: << {content} >>"
+            else:
+                user_prompt = f"ANNOTATED ANSWER: << {content_annotated} >>"
 
-            llm_output = self.premium_llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+            llm_output = self.premium_llm.with_config(configurable={"llm_temperature": 0.1}).invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
             # remove the reasoning part of the answer between [[[[ and ]]]] from llm_output.content
             if ">>]]" in llm_output.content:
-                llm_output.content = llm_output.content.split(">>]]")[1]
+                print("Annotated answer: ", content_annotated)
+                print("Removing reasoning part of the answer - before: ", llm_output.content)
+                llm_output.content = re.sub(r'\[\[<<.*?>>\]\]', '', llm_output.content)
+                print("Removing reasoning part of the answer - after: ", llm_output.content)
         else:
             if content_annotated is None:
                 content_annotated = smart_input("Provide critic/feedback/request: ", self.agent_name, column_max=self.num_parallel_inferences)
@@ -1951,18 +1989,23 @@ The following annotations are provided to guide the refinement process. Each ann
         if not annotated_critics:
             try:
                 smart_print(f"***** REFINED ANSWER:\n\033[33m{llm_output}\033[0m\n".replace("\\n", "\n"), self.agent_name, "REFINED ANSWER", column_max=self.num_parallel_inferences)
-            except:
-                print("Error in displaying the refined answer - coomm.")
+            except Exception as e:
+                print(f"Error {e} in displaying the refined answer (in criticAnswer)")
 
-        self.temp_inference_result_msg = llm_output # to be captured in the menu if function called outside of the menu and get inference checks
+        self.temp_inference_result_content = llm_output.content # to be captured in the menu if function called outside of the menu and get inference checks
 
         return llm_output.content
 
-    def modifyAnswer(self, inference_result_msg):
+    def modifyAnswer(self, inference_result_msg, column_id=None):
         inference_result_msg.content = _visual_input(inference_result_msg.content)
-        self.temp_inference_result_msg = inference_result_msg
-        smart_print(f"***** NEW USER MESSAGE:\n{inference_result_msg.content}\n*************", self.agent_name, "NEW USER MESSAGE", optional=True)
+        self.temp_inference_result_content = inference_result_msg.content
+        smart_print(f"***** ANSWER:\n{inference_result_msg.content}\n*************", self.agent_name, "NEW ANSWER", optional=True, column_id=column_id, column_max=self.num_parallel_inferences)
         return inference_result_msg.content
+
+    def updateAnswer(self, answer, column_id=None):
+        self.temp_inference_result_content = answer
+        print("IMPORTANT: column_id not yet implemented - Updating current HumanLLMMonitor for agent")
+        return answer
 
     # staticmethod get my host ID
     @staticmethod

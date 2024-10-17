@@ -475,6 +475,7 @@ class CodingAgent():
                         elif self.optuna_opti:
                             decision = "n"
                         else:
+                            smart_print(parsed_code["program_code"], self.agent_name, f"Inference streaming output {output_id}", append=True, column_id=output_id, column_max=self.num_parallel_inferences)
                             decision = smart_input(
                                 f"ANSWER {output_id} Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ",
                                 self.name, "fix_error", column_id=output_id).strip()
@@ -482,7 +483,12 @@ class CodingAgent():
                         if decision_lower in ("no", "n", ""):
                             break
                         elif decision_lower in ["y", "yes"]:
-                            edited_code = _visual_input(parsed_code["program_code"], filetype="py", message_type="fix_error", agent_name=self.name, column_id=output_id)
+                            # if in websocket, then get from self.human_llm_code_task.premium_llm
+                            if HumanLLMMonitor.use_websocket:
+                                edited_code = self.human_llm_code_task.temp_inference_result_content
+                                print(f"EDITED CODE: {edited_code}")
+                            else:
+                                edited_code = _visual_input(parsed_code["program_code"], filetype="py", message_type="fix_error", agent_name=self.name, column_id=output_id)
                         else:
                             if decision_lower == "a":
                                 # Do not use HumanLLMMonitor because no template is available for this specific case
