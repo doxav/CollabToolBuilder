@@ -787,6 +787,10 @@ $(function() {
         }
         // else console.log('Displaying message:', data);
 
+        if(data.agent_name === "CodingAgent" && data.message_type.includes("Inference streaming output")){
+            return;
+        }
+
         // Check if message_type includes "Inference streaming output"
         if ('message' in data && data.message_type && data.message_type.includes("Inference streaming output")) {
             // Do not wrap the message in collapsible container
@@ -1351,7 +1355,7 @@ $(function() {
                 `;
 
             targetColumn.innerHTML += `
-                <<br>
+                <br>
                 <div style="text-align: center;" id="error-content-${agent_columnId}"/>
             `;
             }
@@ -1503,7 +1507,7 @@ $(function() {
             }
             // Ajouter le bouton "Continue"
             if(data.agent_name === "CodingAgent") {
-                let $continueButton = $(`<button id="continue-button-${data.agent_name}"Keep 0, 1 or more propositions, then continue</button>`);
+                let $continueButton = $(`<button id="continue-button-${data.agent_name}">Keep 0, 1 or more propositions, then continue</button>`);
                 $(solutionColumnsContainer).after($continueButton);
                 $continueButton.click(function () {
                     console.log("Continue button clicked");
