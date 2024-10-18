@@ -1204,12 +1204,12 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
                 previous_codes.append(parsed_code["program_code"])
 
         if not optuna and not successful_codes:
-            stop = smart_input("No successful code yet, do you want to stop coding attempts for this task (too hard) and try a new one ? (yes/no): ","ValidationAgent").lower() in ["yes", "y", True]
+            stop = smart_input("No successful code yet, do you want to stop coding attempts for this task (too hard) and try a new one ? (yes/no): ","ValidationAgent", "VALIDATION_INFO",optional=False).lower() in ["yes", "y", True]
             if stop:
                 break
 
         if not optuna and successful_codes:
-            stop = smart_input("A successful code has been found, do you want to stop coding attempts for this task (performance is sufficient) and try a new one ? (yes/no): ","ValidationAgent").lower() in ["yes", "y", True]
+            stop = smart_input("A successful code has been found, do you want to stop coding attempts for this task (performance is sufficient) and try a new one ? (yes/no): ","ValidationAgent","VALIDATION_INFO",optional=False).lower() in ["yes", "y", True]
             if stop:
                 break
 
@@ -1221,9 +1221,9 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
 
         if attempt == max_attempts - 1:
             if not successful_codes:
-                smart_print("No successful code yet. Stop this task.", None, "coding_and_validation_loop WARNING")
+                smart_print("No successful code yet. Stop this task.", None, "VALIDATION_INFO")
             else:
-                smart_print("Max attempts reached. Trying a new task.", None, "coding_and_validation_loop WARNING")
+                smart_print("Max attempts reached. Trying a new task.", None, "VALIDATION_INFO")
 
     # Calculate metrics over all attempts
     percentage_no_runtime_error = (sum(1 for _, no_runtime_error, _, _, _, _ in all_results if no_runtime_error) / len(
