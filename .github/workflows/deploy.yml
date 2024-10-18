@@ -1,0 +1,24 @@
+name: Deploy GitHub Pages
+
+# Trigger the workflow on push to main
+on:
+  push:
+    branches:
+      - IHM_EXP2_InColumnsErrors
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository content
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      # Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: Jquery_front  # The folder containing your HTML file
+
