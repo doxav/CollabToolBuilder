@@ -821,7 +821,7 @@ class CapitalizationAgent:
                 task_name = f"{task_description[:500]}"
             else:
                 task_name = smart_input(
-                    f"CONFIG Please provide a name for the {'pipeline' if is_anomaly else 'function'}: {task_description}").strip()
+                    f"CONFIG Please provide a name for the {'pipeline' if is_anomaly else 'function'}: {task_description}", "CapitalizationAgent",message_type="Capitalization_info").strip()
         if not self.optuna_opti or is_anomaly:
             task_name = _visual_input(task_name)
             task_description_refined = _visual_input(task_description)
