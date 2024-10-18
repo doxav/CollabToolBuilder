@@ -1760,25 +1760,19 @@ function getColumnsToKeep(agent) {
 
         // Send the function call
         sendFunctionCall(data.agent_name, "criticAnswer", requestData, function(responseMessage) {
-            console.log("responseMessage:", responseMessage);
+                    console.log("responseMessage:", responseMessage);
 
-            // Replace the editor with the diff editor
-            let diffEditorId = `editor-${agent_columnId}`;
+                    // Update the Monaco Editor content with the formatted response
+                    let formattedResponse = formatMessage(responseMessage);
+                    editor.setValue(formattedResponse);
 
-            // Replace current editor with the diff editor
-            createMonacoDiffEditor(diffEditorId, originalContent, responseMessage).then(function(diffEditor) {
-                // Clean up the old editor
-                editor.dispose();
-                targetColumn.editorInstance = diffEditor;
-            });
+                    // Re-enable the button and reset its text
+                    enableGenButtons(true);
 
-            // Re-enable the button and reset its text
-            enableGenButtons(true);
-
-            // Log the action
-            let actionDescription = `User evaluated solution ${agent_columnId} with score ${score} and comment "${comment}"`;
-            addHistoryEntry(actionDescription);
-        });
+                    // Log the action
+                    let actionDescription = `User evaluated solution ${agent_columnId} with score ${score} and comment "${comment}"`;
+                    addHistoryEntry(actionDescription);
+                });
     });
 
             $(document).on("click", `#regenallbutton-${agent_columnId}`, function () {
