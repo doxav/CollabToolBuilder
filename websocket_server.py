@@ -202,7 +202,7 @@ class WebsocketServer:
             remote_url = self.proxy_url
             if self.secret:
                 remote_url += f"?secret={self.secret}"
-            print(f"WebSocket Remote URL via proxy: {remote_url}")
+            print(f"WebSocket Remote URL via proxy: https://doxav.github.io/CollabFunctionsGPTCreator/IHMv5-Monaco.html?wsUrl={remote_url}")
 
     async def main(self, stop_event):
         # Find available port before starting the server

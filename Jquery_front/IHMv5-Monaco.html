@@ -95,7 +95,7 @@
             }
             setTimeout(function() {
                 initWebSocket();
-            }, 2000); // Wait 1 second before trying to reconnect
+            }, 5000); // Wait 1 second before trying to reconnect
         };
 
         socket.onerror = function(error) {
