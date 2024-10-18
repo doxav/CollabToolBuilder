@@ -21,13 +21,14 @@
     let inputAwaited = false; // Flag to track if input is awaited
     let socket;
     let pendingCallbacks = {};
+    let wsUrl = 'ws://localhost:6789?hello=Y3zRJARVt5H08+Bv96U';
 
     // Initialize the WebSocket connection with reconnection logic
     function initWebSocket() {
         // socket = new WebSocket('ws://localhost:6789');
-        let userInput = prompt("Enter WebSocket URL and authentication token if necessary (e.g., ws://localhost:6789):", "ws://localhost:6789?hello=Y3zRJARVt5H08+Bv96U");
+        let userInput = prompt("Enter WebSocket URL and authentication token if necessary (e.g., ws://localhost:6789):", wsUrl);
         // Default to 'ws://localhost:6789' if nothing is entered
-        let wsUrl = userInput ? userInput : 'ws://localhost:6789?hello=Y3zRJARVt5H08+Bv96U';
+        wsUrl = userInput ? userInput : wsUrl;
 
         socket = new WebSocket(wsUrl);
         
@@ -1923,7 +1924,7 @@ function getColumnsToKeep(agent) {
             }
             // Ajouter le bouton "Continue"
             if(data.agent_name === "CodingAgent") {
-                let $continueButton = $(`<button id="continue-button-${data.agent_name}">Keep 0, 1 or more propositions, then HIT continue here</button>`);
+                let $continueButton = $(`<button id="continue-button-${data.agent_name}" disabled>Keep 0, 1 or more propositions, then HIT continue here</button>`);
                 $(solutionColumnsContainer).after($continueButton);
                 $continueButton.click(function () {
                     console.log("Continue button clicked");
@@ -1975,6 +1976,8 @@ function getColumnsToKeep(agent) {
             // Update score buttons or display score information
             // You can adapt this part based on how you receive and display scores
             // COPIED CODE
+            // Enable "continue" button
+            $(`#continue-button-${data.agent_name}`).prop('disabled', false);
             let $scoreButtons = $agentAccordion.find("button[id^='score-']");
             $scoreButtons.each(function (index, button) {
                 const regex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m(SUCCESS|FAILED)\\u001b\\[0m`, 'm');
