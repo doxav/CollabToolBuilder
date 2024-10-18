@@ -23,11 +23,21 @@
     let pendingCallbacks = {};
     let wsUrl = 'ws://localhost:6789?hello=Y3zRJARVt5H08+Bv96U';
 
+    
+    // Function to get URL parameter by name
+    function getUrlParameter(name) {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(name);
+    }
+
     // Initialize the WebSocket connection with reconnection logic
     function initWebSocket() {
-        // socket = new WebSocket('ws://localhost:6789');
+        // Check if wsUrl is provided as a URL parameter
+        const urlWsParam = getUrlParameter('wsUrl');
+        if (urlWsParam) {wsUrl = urlWsParam;}
+
         let userInput = prompt("Enter WebSocket URL and authentication token if necessary (e.g., ws://localhost:6789):", wsUrl);
-        // Default to 'ws://localhost:6789' if nothing is entered
+        // Default to the parameter or fallback wsUrl if nothing is entered
         wsUrl = userInput ? userInput : wsUrl;
 
         socket = new WebSocket(wsUrl);
@@ -40,46 +50,6 @@
                 statusDiv.style.display = 'none';
             }
         };
-
-        
-        // socket.onmessage = function(event) {
-        //     console.log('Received message');
-        //     let data;
-        //     try {
-        //         if (event && event.data) {
-        //             console.log('Event data:', event.data);
-        //             console.log('Event:', event);
-        //             data = JSON.parse(event.data);
-        //             console.log('data:', data);
-        //         } else {
-        //             console.log('No data in event:', event);
-        //             return;
-        //         }
-        //         if (data.function && pendingCallbacks[data.function]) {
-        //             pendingCallbacks[data.function](data.result);
-        //             delete pendingCallbacks[data.function];
-        //         } else {
-        //             console.log('displayMessage:', data);
-        //             displayMessage(data);
-        //             if (data.input && data.message && !data.message.includes("Choose an action") && !data.message.includes("Do you want to edit the code") && !data.message.includes("CODE SELECTION Please select the code to keep")) {
-        //                 inputAwaited = true; // Set input flag
-        //                 displayInputField(); // Show input area
-        //                 $(".buffering-circle").hide();
-        //             } else {
-        //                 inputAwaited = false;
-        //                 hideInputField(); // Hide input area if not awaited
-        //             }
-        //             if (data.input || (data.message && data.message.includes("Choose an action"))) {
-        //                 $(".buffering-circle").hide();
-        //             }
-        //         }
-        //     } catch (e) {
-        //         console.log('Error:', e);
-        //         console.log('Event:', event);
-        //         console.log('Error parsing JSON:', e, "event:", event);
-        //         if (data && data.event) console.log('event.data:', event.data);
-        //     }
-        // };
 
         socket.onmessage = function(event) {
             console.log('Received message');
