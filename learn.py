@@ -769,7 +769,7 @@ class CapitalizationAgent:
                     i = random.randint(0, 1000)
                     function_file_path = os.path.join("functions", self.name + f"_{i}.py")
                 else:
-                    function_file_path = os.path.join("functions", smart_input("New function name: ") + ".py")
+                    function_file_path = os.path.join("functions", smart_input("New function name: ", message_type="VALIDATION_INFO") + ".py")
 
         if self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/":
             new_path = pipeline_file_path
