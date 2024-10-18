@@ -1073,7 +1073,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
         else:
             if optuna_opti or smart_input(
-                    "Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ").strip().upper() in [
+                    "Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ", message_type="VALIDATION_INFO").strip().upper() in [
                 "Y", "YES"]:
                 agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
         if optuna_opti:
@@ -1405,7 +1405,7 @@ if __name__ == "__main__":
                               include_code=False,
                               selected_successful_functions=[],
                               selected_failed_functions=[],
-                              max_execution_time=3600,
+                              max_execution_time=1800,
                               agtask_premium_llm_by_default=False,
                               agtask_skip_rounds=0,  # Auto-test: 1
                               agcoding_skip_rounds=0,  # Auto-test: 4
