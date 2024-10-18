@@ -1469,7 +1469,7 @@ function updateButtonVisibility() {
         $('.menu-option').hide();
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('go back');}).show();
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('give instruction or');}).show();
-        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('edit answer');}).show();
+        //$('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('edit answer');}).show();
     }
     else if (selection === 'ALL' || selection === 'ALL_SEND') {
         $('.menu-option').show();
