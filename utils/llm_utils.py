@@ -2000,14 +2000,11 @@ The following annotations are provided to guide the refinement process. Each ann
         else:
             if content_annotated is None:
                 content_annotated = smart_input("Provide critic/feedback/request: ", self.agent_name, column_max=self.num_parallel_inferences)
-            refine_prompt = f"Refine the answer: {self.llm_input_messages[0].content}.\n*******************\nHuman provided feedback: {content_annotated}"
-            llm_output = self.premium_llm.invoke([SystemMessage(content="You are a helpful assistant"), HumanMessage(content=refine_prompt)])
-
-        if not annotated_critics:
-            try:
-                smart_print(f"***** REFINED ANSWER:\n\033[33m{llm_output}\033[0m\n".replace("\\n", "\n"), self.agent_name, "REFINED ANSWER", column_max=self.num_parallel_inferences)
-            except Exception as e:
-                print(f"Error {e} in displaying the refined answer (in criticAnswer)")
+            system_prompt = f"""Given the INSTRUCTION provided by the user (and the **INITIAL PROMPT**), your task is to generate a very different new answer from the INITIAL ANSWER or to refine the initial answer.
+            ### INITIAL PROMPT: << {self.llm_input_messages[0].content} >>
+            ### INITIAL ANSWER: << {inference_result_msg} >> """
+            user_prompt = f"INSTRUCTION: << {content_annotated} >>"
+            llm_output = self.premium_llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
 
         self.temp_inference_result_content = llm_output.content # to be captured in the menu if function called outside of the menu and get inference checks
 

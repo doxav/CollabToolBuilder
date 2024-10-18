@@ -1754,7 +1754,7 @@ function getColumnsToKeep(agent) {
         // Prepare data for sendFunctionCall
         let requestData = {
             content_annotated: comment,
-            inference_result_msg: "",
+            inference_result_msg: originalContent,
             annotated_critics: false
         };
 
