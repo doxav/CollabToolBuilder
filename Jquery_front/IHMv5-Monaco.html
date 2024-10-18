@@ -1618,7 +1618,6 @@ function getColumnsToKeep(agent) {
             targetColumn.innerHTML += `
             <div style="text-align: center;">
                 <div style="display: flex; justify-content: center; align-items: flex-start;">
-                    <!-- Slider and value container -->
                     <div style="display: none; flex-direction: column; align-items: center; margin-right: 10px;">
                         <input type="range" min="-1" max="10" value="-1" step="1" class="slider" id="slider-${agent_columnId}">
                         <span id="value-${agent_columnId}" style="font-size: smaller;">Unscored</span>
@@ -1626,7 +1625,8 @@ function getColumnsToKeep(agent) {
                     <input type="text" id="comment-${agent_columnId}" placeholder="Write instructions to regenerate..." style="margin-right: 10px; width: 350px;">
                     <button id="evaluate-${agent_columnId}"><i class="fa-regular fa-paper-plane"></i> Regenerate</button>
                 </div>
-            </div>`;
+            </div>
+            `;
 
             // Add Select and Remove buttons if more than 1 solution
             let selectionButtonsHtml = (data.column_max > 1) ?
