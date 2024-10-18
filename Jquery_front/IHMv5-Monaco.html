@@ -1636,7 +1636,7 @@ function getColumnsToKeep(agent) {
 
             // Add the regenerate buttons (regardless of the number of solutions)
             targetColumn.innerHTML += `
-            '<div style="display: flex; justify-content: center; gap: 10px;">';
+            <div style="display: flex; justify-content: center; gap: 10px;">
                 ${selectionButtonsHtml}
                 <div style="text-align: center;"><button id="regenwithmymodifbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i> Apply answer's annotations</button></div>
                 <div style="text-align: center;"><button id="regenallbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i> Merge all answers & annotations</button></div>
