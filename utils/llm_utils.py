@@ -134,10 +134,10 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
 
         # # Retrieve port and secret from WebsocketServer
         port = HumanLLMMonitor.websocket_server.port
-        # secret = HumanLLMMonitor.websocket_server.secret
+        secret = HumanLLMMonitor.websocket_server.secret
         ws_url = f"ws://localhost:{port}"
-        # if secret:
-        #     ws_url += f"?secret={secret}"
+        if secret:
+            ws_url += f"?secret={secret}"
 
         # Construct the structured message
         structured_message = {
