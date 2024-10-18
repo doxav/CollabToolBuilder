@@ -610,7 +610,7 @@
         } else if(data.agent_name === "Pipeline/Function Mode" && data.message_type === "Files loaded" ){
             // Do nothing
 
-        }  else if(data.message_type === "TASK SELECTION" || data.message_type === "VALIDATION_INFO"){
+        }  else if(data.message_type === "TASK SELECTION" || data.message_type === "VALIDATION_INFO" || data.message_type === "Capitalization_info"){
             if ($agentAccordion.length === 0) {
                 $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
                 $("#message-accordion").append($agentAccordion);
@@ -1703,59 +1703,82 @@ function getColumnsToKeep(agent) {
                 }
             }
 
-            $(document).on("click", `#evaluate-${agent_columnId}`, function () {
-                // Check if the input field is empty
-                let comment = $(`#comment-${agent_columnId}`).val().trim();
-                if(comment === '') {
-                    alert("Write your instructions first");
-                    return;
-                }
-
-                // Disable the button and update its text
-                enableGenButtons(false);
-
-                // Retrieve the score
-                let score;
-                if($(`#slider-${agent_columnId}`).length) {
-                    score = parseFloat($(`#slider-${agent_columnId}`).val()) / 10;
-                } else {
-                    score = $(`#compliance-${agent_columnId}`).val();
-                }
-
-                // Retrieve the target column and editor instance
-                let targetColumn = document.getElementById(`column-${agent_columnId}`);
-                if(!targetColumn || !targetColumn.editorInstance) {
-                    console.error(`Editor instance not found for column-${agent_columnId}.`);
-                    alert("Associated editor not found.");
-                    enableGenButtons(true);
-                    return;
-                }
-
-                let editor = targetColumn.editorInstance;
-
-                // Prepare data for sendFunctionCall
-                let requestData = {
-                    content_annotated: comment,
-                    inference_result_msg: "",
-                    annotated_critics: false
-                };
-
-                // Send the function call
-                sendFunctionCall(data.agent_name, "criticAnswer", requestData, function(responseMessage) {
-                    console.log("responseMessage:", responseMessage);
-
-                    // Update the Monaco Editor content with the formatted response
-                    let formattedResponse = formatMessage(responseMessage);
-                    editor.setValue(formattedResponse);
-
-                    // Re-enable the button and reset its text
-                    enableGenButtons(true);
-
-                    // Log the action
-                    let actionDescription = `User evaluated solution ${agent_columnId} with score ${score} and comment "${comment}"`;
-                    addHistoryEntry(actionDescription);
-                });
+   function createMonacoDiffEditor(elementId, originalContent, modifiedContent) {
+        return monacoLoaderPromise.then(function() {
+            const diffEditor = monaco.editor.createDiffEditor(document.getElementById(elementId), {
+                automaticLayout: true,
+                originalEditable: false,
+                readOnly: true,
+                wordWrap: 'on'
             });
+            const originalModel = monaco.editor.createModel(originalContent, 'markdown');
+            const modifiedModel = monaco.editor.createModel(modifiedContent, 'markdown');
+            monaco.editor.setModelLanguage(modifiedModel, 'markdown'); // Format modified content as markdown
+            diffEditor.setModel({ original: originalModel, modified: modifiedModel });
+            return diffEditor;
+        });
+    }
+
+    $(document).on("click", `#evaluate-${agent_columnId}`, function () {
+        // Check if the input field is empty
+        let comment = $(`#comment-${agent_columnId}`).val().trim();
+        if (comment === '') {
+            alert("Write your instructions first");
+            return;
+        }
+
+        // Disable the button and update its text
+        enableGenButtons(false);
+
+        // Retrieve the score
+        let score;
+        if ($(`#slider-${agent_columnId}`).length) {
+            score = parseFloat($(`#slider-${agent_columnId}`).val()) / 10;
+        } else {
+            score = $(`#compliance-${agent_columnId}`).val();
+        }
+
+        // Retrieve the target column and editor instance
+        let targetColumn = document.getElementById(`column-${agent_columnId}`);
+        if (!targetColumn || !targetColumn.editorInstance) {
+            console.error(`Editor instance not found for column-${agent_columnId}.`);
+            alert("Associated editor not found.");
+            enableGenButtons(true);
+            return;
+        }
+
+        let editor = targetColumn.editorInstance;
+        let originalContent = editor.getValue();
+
+        // Prepare data for sendFunctionCall
+        let requestData = {
+            content_annotated: comment,
+            inference_result_msg: "",
+            annotated_critics: false
+        };
+
+        // Send the function call
+        sendFunctionCall(data.agent_name, "criticAnswer", requestData, function(responseMessage) {
+            console.log("responseMessage:", responseMessage);
+
+            // Replace the editor with the diff editor
+            let diffEditorId = `editor-${agent_columnId}`;
+
+            // Replace current editor with the diff editor
+            createMonacoDiffEditor(diffEditorId, originalContent, responseMessage).then(function(diffEditor) {
+                // Clean up the old editor
+                editor.dispose();
+                targetColumn.editorInstance = diffEditor;
+            });
+
+            // Re-enable the button and reset its text
+            enableGenButtons(true);
+
+            // Log the action
+            let actionDescription = `User evaluated solution ${agent_columnId} with score ${score} and comment "${comment}"`;
+            addHistoryEntry(actionDescription);
+        });
+    });
 
             $(document).on("click", `#regenallbutton-${agent_columnId}`, function () {
                 // Disable all generation buttons
