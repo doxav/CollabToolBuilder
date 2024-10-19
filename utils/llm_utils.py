@@ -1516,12 +1516,8 @@ class HumanLLMMonitor:
         return forced_llm_output
 
     def add_instruction(self, initial_user_message, messages):
-        new_message = initial_user_message + "\n" + _visual_input(" ")
-        confirm = smart_input(
-            f"***** NEW USER MESSAGE:\n{new_message}\n*************\nAre you sure you want to modify it? (y/n): ",
-            self.agent_name).upper()
-        if confirm == "Y":
-            messages[1].content = new_message
+        instructions = smart_input(f"ENTER ADDITIONAL INSTRUCTIONS FOR THE AGENT: ", self.agent_name, optional=False)
+        messages[1].content = initial_user_message + f"\n\nADDITIONAL INSTRUCTIONS: << {instructions} >>"
 
     def modify_prompt(self, callable_system_message, comments, default_llm_function, forced_llm_output, messages,
                       premium_llm_function, use_premium_llm):

@@ -817,12 +817,12 @@ class CapitalizationAgent:
             task_name = parsed_code.get(name_key,
                                         "replace this text with a descriptive name of the class" if is_anomaly else "replace this text with a descriptive name of the function")
         else:
-            if self.optuna_opti:
-                task_name = f"{task_description[:500]}"
-            else:
+            if False or not self.optuna_opti: # TODO: temporary disabled, find the logic to fix this or if not required
                 task_name = smart_input(
                     f"CONFIG Please provide a name for the {'pipeline' if is_anomaly else 'function'}: {task_description}", "CapitalizationAgent",message_type="Capitalization_info").strip()
-        if not self.optuna_opti or is_anomaly:
+            else:
+                task_name = f"{task_description[:500]}"
+        if False and not self.optuna_opti or is_anomaly: # TODO: temporary disabled, find the logic to fix this or if not required
             task_name = _visual_input(task_name)
             task_description_refined = _visual_input(task_description)
         else:
@@ -948,7 +948,6 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                               optuna_opti=None, allow_custom_score_state_functions=False,
                               criteria=None, max_execution_time=900, special_criteria=None, unique_id=None, agcoding_num_parallel_inferences=2):
-    time_end = time.time() + max_execution_time
     scores = None
 
     if unique_id is None:
@@ -972,6 +971,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             HumanLLMMonitor.initialize_websocket_server()
 
     smart_print(str(max_execution_time), "CONFIG", "time_end")
+
+    time_end = time.time() + max_execution_time
 
     if problem_prompts_subdir is None:
         # menu to choose the problem prompts subdirectory
@@ -1086,6 +1087,9 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             continue_identifying_tasks = False if answer in ["E", "EXIT"] else True
             if answer.upper() in ["Y", "YES"]:
                 [env.reset() for env in test_environments]
+
+    # print status of: continue_identifying_tasks and time.time() < time_end
+    print(f"continue_identifying_tasks: {continue_identifying_tasks}, time.time() < time_end: {time.time() < time_end}, time.time(): {time.time()}, time_end: {time_end}")
 
     # Calculate the average score of the task, and return it with other statistics
     if scores:
