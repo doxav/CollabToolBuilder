@@ -161,7 +161,7 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
         Any: The performance result of the run.
     """
     if model_choice is None:
-        model_choice = {"coach": "default", "coder": "premium_llm", "critic": "default_llm",
+        model_choice = {"coach": "default_llm", "coder": "premium_llm", "critic": "default_llm",
                         "capitalizer": "default_llm"}
     if special_criteria is None:
         llmORchains_list, envs = definition_global_parameters()
