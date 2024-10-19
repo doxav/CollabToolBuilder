@@ -971,7 +971,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         if HumanLLMMonitor.websocket_server is None:
             HumanLLMMonitor.initialize_websocket_server()
 
-    smart_print(str(max_execution_time), "CONFIG", "time_end")
+    smart_print(str(max_execution_time), "orchestrate_agents", "time_end")
 
     time_end = time.time() + max_execution_time
 
@@ -983,7 +983,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         # get first element of problem_prompts_subdirs if not empty, else set it to empty string
         default_subdir = problem_prompts_subdirs[0] if problem_prompts_subdirs else ""
         choice = smart_input("Enter a capital letter for subdirectory (leave empty for default): " + "; ".join(
-            f"\n[{i}] {subdir}" for i, subdir in zip(string.ascii_uppercase, problem_prompts_subdirs)) + " ?", "CONFIG")
+            f"\n[{i}] {subdir}" for i, subdir in zip(string.ascii_uppercase, problem_prompts_subdirs)) + " ?", "orchestrate_agents")
         # if choise is empty or not a capital letter or not in the range of the list of subdirectories, set it to A
         problem_prompts_subdir = problem_prompts_subdirs[ord(choice) - 65] if choice and choice.isupper() and ord(
             choice) - 65 in range(len(problem_prompts_subdirs)) else default_subdir
@@ -1037,11 +1037,11 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                 task_list = "Multiple task output, only one allowed - PLEASE SELECT:\n"
                 for i, t in enumerate(task):
                     task_list += f"\n\nTask id :  {i}\n Content :\n{t.content[:200]}\n"
-                smart_print(task_list, "TaskIdentificationAgent", "TASK SELECTION")
+                smart_print(task_list, "orchestrate_agents", "TASK SELECTION")
                 # get input from user with the index of the task to select, manage exceptions
                 while True:
                     try:
-                        id = int(smart_input("Enter the index of the task to select: ", "TaskIdentificationAgent",
+                        id = int(smart_input("Enter the index of the task to select: ", "orchestrate_agents",
                                             "TASK SELECTION").strip())
                         if id in range(len(task)):
                             task = task[id]
@@ -1049,7 +1049,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                         else:
                             raise Exception("Index out of range")
                     except Exception as e:
-                        smart_print(f"Error: {e}\n\nEnter a valid index")
+                        smart_print(f"Error: {e}\n\nEnter a valid index", "orchestrate_agents")
         else:
             task = task[0]
         smart_print("Identified Task: " + task.content.replace("\\n", "\n"), "orchestrate_agents",
@@ -1077,7 +1077,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
         else:
             if optuna_opti or smart_input(
-                    "Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ", message_type="VALIDATION_INFO").strip().upper() in [
+                    "Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ", "orchestrate_agents", message_type="VALIDATION_INFO").strip().upper() in [
                 "Y", "YES"]:
                 agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
         if optuna_opti:
@@ -1241,9 +1241,9 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
 
         if attempt == max_attempts - 1:
             if not successful_codes:
-                smart_print("No successful code yet. Stop this task.", None, "VALIDATION_INFO")
+                smart_print("No successful code yet. Stop this task.", "ValidationAgent", "VALIDATION_INFO")
             else:
-                smart_print("Max attempts reached. Trying a new task.", None, "VALIDATION_INFO")
+                smart_print("Max attempts reached. Trying a new task.", "ValidationAgent", "VALIDATION_INFO")
 
     # Calculate metrics over all attempts
     percentage_no_runtime_error = (sum(1 for _, no_runtime_error, _, _, _, _ in all_results if no_runtime_error) / len(

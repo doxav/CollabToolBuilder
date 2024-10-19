@@ -133,7 +133,16 @@
 
     function displayMessage(data) {
         if (data.agent_name !== undefined)
-            currentAgent = data.agent_name;
+           if (currentAgent !== data.agent_name) {
+                // Clear the agent content for this agent
+                let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
+                if ($agentAccordion.length) {
+                    $agentAccordion.children("div").empty();
+                }
+            }
+        currentAgent = data.agent_name;
+        if(data.optional) if(!document.getElementById("show-optionals").checked) {return;}
+
         let title = `${data.agent_name} | ${data.message_type} | ${new Date().toLocaleTimeString()}`;
         if (data.message_type === null) {
             title = `${data.agent_name} | ${new Date().toLocaleTimeString()}`;
@@ -196,12 +205,6 @@
                 }
             }, 1000);
             return;
-        }
-
-        if(data.optional){
-            if(!document.getElementById("show-optionals").checked) {
-                return;
-            }
         }
 
         let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
@@ -1303,6 +1306,7 @@ color: white;
 let messageCounter = 0;
 let logEditorInstance;
 let logData = ''; // Variable pour stocker les logs
+let logLines = [];
 
 monacoLoaderPromise.then(function() {
     logEditorInstance = monaco.editor.create(document.getElementById('log-editor'), {
@@ -1333,7 +1337,11 @@ toggleLogButton.addEventListener('click', function() {
 });
 
 function addLogLine(message) {
-    logData += message.replace(/\\n/g, '\n') + '\n';
+    logLines.push(message.replace(/\\n/g, '\n'));
+    if (logLines.length > 10000) // Keep only the last 10 000 lines
+        logLines.shift();
+    // Update the logData
+    logData = logLines.join('\n');
     logEditorInstance.setValue(logData);
     logEditorInstance.revealLine(logEditorInstance.getModel().getLineCount());
 }

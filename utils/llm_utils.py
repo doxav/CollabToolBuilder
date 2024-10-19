@@ -76,7 +76,7 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
             # Remove unexpected characters
             message = re.sub(r'[^\x20-\x7E\t\n\r]', "", message)
         message_dict = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'append': append,
-                        'column_id': column_id, 'column_max': column_max, 'optional': optional}
+                        'column_id': column_id, 'column_max': column_max, 'optional': optional, 'step_id': HumanLLMMonitor.step_id}
         # convert message_dict to json
         message = json.dumps(message_dict)
         time.sleep(0.05)
@@ -147,7 +147,8 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
             'column_id': column_id,
             'column_max': column_max,
             'input': True,
-            'optional': optional
+            'optional': optional,
+            'step_id': HumanLLMMonitor.step_id
         }
         message_json = json.dumps(structured_message)
         
@@ -1353,7 +1354,7 @@ class HumanLLMMonitor:
                 case _:  # Default case
                     action = smart_input(
                         f"\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
-                        self.agent_name, optional=True).upper()
+                        self.agent_name, optional=False).upper()
 
             # ACTIONS processing
             self.start_time = time.time()  # Init action selected and timer to measure time spent and occurences in action processing
@@ -1771,7 +1772,7 @@ class HumanLLMMonitor:
             self.menu_start_time = time.time()
             action = "" if optuna else smart_input(
                 f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
-                self.agent_name, optional=True, column_id=output_id-1, column_max=outputs_count).upper()
+                self.agent_name, optional=False, column_id=output_id-1, column_max=outputs_count).upper()
 
             if self.temp_inference_result_content: # if modified async, it is important in case of edition ("A") to keep the modified content
                 inference_result_msg.content = self.temp_inference_result_content
