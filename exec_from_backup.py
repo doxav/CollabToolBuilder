@@ -1,3 +1,4 @@
+import os
 import subprocess
 from datetime import datetime, timedelta
 from elasticsearch import Elasticsearch
@@ -118,6 +119,18 @@ def main():
 
     # Étape 4 : Effectuer les calculs sur les documents filtrés
     print(f"Nombre de documents après filtrage : {len(filtered_documents)}")
+
+    # **Étape 5 : Mettre les documents filtrés dans le dossier 'backup'**
+    backup_folder = 'backup'
+    if not os.path.exists(backup_folder):
+        os.makedirs(backup_folder)
+        print(f"Dossier '{backup_folder}' créé.")
+
+    # Sauvegarder les documents dans un seul fichier JSON
+    backup_file = os.path.join(backup_folder, 'filtered_documents.json')
+    with open(backup_file, 'w', encoding='utf-8') as f:
+        json.dump(filtered_documents, f, ensure_ascii=False, indent=4)
+    print(f"Les documents filtrés ont été sauvegardés dans {backup_file}")
 
     # Exécuter le processus automatique pendant X secondes
     run_duration = 1200  # Durée en secondes du processus automatique
