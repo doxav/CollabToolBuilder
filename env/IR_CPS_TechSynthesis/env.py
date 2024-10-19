@@ -1294,9 +1294,9 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         distance = self.synthesis_manager.get_distance_to_targetJSON()
         return {    'plan/titles similarity (top:1, worst:0)': distance['plan_titles_embedding_similarity'],
                     'sections contents similarity (top:1, worst:0)': distance['plan_contents_embedding_similarity'],
-                    'sections count (top:1, <1:too short, >1:too long)': distance['sections_count_ratio_to_target'],
-                    'titles count (top:1, <1:too short, >1:too long)': distance['title_non_empty_count_ratio_to_target'],
-                    'sections contents length (top:1, <1:too short, >1:too long)': distance['content_length_ratio_to_target'],
+                    'sections count ratio to target (top:1, <1:too short, >1:too long)': distance['sections_count_ratio_to_target'],
+                    'titles count ratio to target (top:1, <1:too short, >1:too long)': distance['title_non_empty_count_ratio_to_target'],
+                    'sections contents length ratio to target (top:1, <1:too short, >1:too long)': distance['content_length_ratio_to_target'],
                     'sections contents non-empty (top:1, <1:too short, >1:too long)': distance['content_non_empty_count_ratio_to_target']}
 
     def reset(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
