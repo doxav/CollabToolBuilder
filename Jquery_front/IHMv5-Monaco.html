@@ -21,8 +21,9 @@
     let inputAwaited = false; // Flag to track if input is awaited
     let socket;
     let pendingCallbacks = {};
-    let wsUrl = 'ws://localhost:6789?hello=Y3zRJARVt5H08+Bv96U';
-
+    let wsUrl = 'ws://localhost:6789';
+    let reconnectAttempts = -1; // Track the number of reconnection attempts
+    const maxAutoReconnectAttempts = 5; // Set the number of reconnection attempts
     
     // Function to get URL parameter by name
     function getUrlParameter(name) {
@@ -34,12 +35,13 @@
     function initWebSocket() {
         // Check if wsUrl is provided as a URL parameter
         const urlWsParam = getUrlParameter('wsUrl');
-        if (urlWsParam) {wsUrl = urlWsParam;}
+        if (urlWsParam) wsUrl = urlWsParam;
 
-        let userInput = prompt("Enter WebSocket URL and authentication token if necessary (e.g., ws://localhost:6789):", wsUrl);
         // Default to the parameter or fallback wsUrl if nothing is entered
-        wsUrl = userInput ? userInput : wsUrl;
-
+        if (reconnectAttempts === 0) {
+            let userInput = prompt("Enter WebSocket URL and authentication token if necessary (e.g., ws://localhost:6789):", wsUrl);
+            wsUrl = userInput ? userInput : wsUrl; // Default to the parameter or fallback wsUrl if nothing is entered
+        }
         socket = new WebSocket(wsUrl);
         
         socket.onopen = function() {
@@ -85,17 +87,24 @@
         };
 
         socket.onclose = function(event) {
-            console.log('WebSocket connection closed:', event);
-            console.log('Attempting to reconnect in 1 second...');
-            // Show the connection status layer
-            let statusDiv = document.getElementById('connection-status');
-            if (statusDiv) {
-                statusDiv.style.display = 'block';
-                statusDiv.innerText = 'Waiting connection...';
+            if (reconnectAttempts < maxAutoReconnectAttempts) {
+                reconnectAttempts++;
+                console.log('WebSocket connection closed:', event);
+                console.log(`Reconnection attempt ${reconnectAttempts} in 3 seconds...`);
+                if (statusDiv) {
+                    statusDiv.style.display = 'block';
+                    statusDiv.innerText = 'Waiting connection...';
+                }
+                setTimeout(initWebSocket, 3000); // Wait 3 seconds before trying to reconnect
+            } else {
+                console.log('Max reconnection attempts reached. Prompting user for input.');
+                let statusDiv = document.getElementById('connection-status');
+                if (statusDiv) {
+                    statusDiv.style.display = 'block';
+                    statusDiv.innerText = 'Unable to reconnect. Please check the WebSocket server and reload the page.';
+                }
+                reconnectAttempts = 0; // Reset after max attempts to avoid infinite retries
             }
-            setTimeout(function() {
-                initWebSocket();
-            }, 5000); // Wait 1 second before trying to reconnect
         };
 
         socket.onerror = function(error) {
@@ -273,9 +282,9 @@
                         </div>
                     `;
                 } else {
-                    content = formatMessage(data.message);
+                    content = "<pre style='text-align: left; margin: 0; padding: 0;'>" + formatMessage(data.message) + "</pre>";
                 }
-                errorContent.innerHTML += "<pre style='text-align: left; margin: 0; padding: 0;'>" + content + "</pre>";
+                errorContent.innerHTML += content;
                 // Adds a newlines to separate the messages
             }
             return;

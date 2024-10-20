@@ -1185,7 +1185,7 @@ class SynthesisManager:
         return self.distance_to_targetJSON
 
     # return the list of current sections with title, length of content, validation status, and feedback
-    def get_plan_status(self, compact_string_format: bool = False, keys = ["section_id", "title", "content_length"]):
+    def get_plan_status(self, compact_string_format: bool = False, keys = ["section_id", "title", "content_length", "content_preview[:100]"]):
         #keys = ["section_id", "title", "content_length", "validation_status", "feedback_to_process", "feedback_processed"]
         plan_status = []
         for section in self.document.document_content.sections_list:
@@ -1193,9 +1193,10 @@ class SynthesisManager:
                 section.section_id,
                 section.title,
                 len(section.content),
-                round(section.content_progress_validation_status, 1),
-                section.local_feedback_to_process,
-                section.local_feedback_processed,
+                section.content[:100],
+                #round(section.content_progress_validation_status, 1),
+                #section.local_feedback_to_process,
+                #section.local_feedback_processed,
             ]
             status_data = [data for key, data in zip(keys, status_data_full)]
 
@@ -1204,11 +1205,12 @@ class SynthesisManager:
             else:
                 plan_status.append(dict(zip(keys, status_data)))
 
-        if compact_string_format and plan_status:
-            if len(plan_status) == 0:
-                return []
+        if len(plan_status) == 0: return []
+        if compact_string_format:
             header = "|".join(keys)
-            plan_status.insert(0, header)
+        else:
+            header = ["section_id", "title", "content_length", "content_preview[:100]"] #, "validation_status", "feedback_to_process", "feedback_processed"]
+        plan_status.insert(0, header)
         
         return plan_status
 
@@ -1329,12 +1331,14 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
 
     def get_state(self, extended: bool = False):
         #TODO: move to self.document.get_state() ?
-        table_of_content = self.synthesis_manager.get_plan_status(compact_string_format=True)
+        table_of_content_list = self.synthesis_manager.get_plan_status(compact_string_format=False if extended else True)
+        # Convert the list of sections to a string with \n separator
+        table_of_content = "\n".join([str(section) for section in table_of_content_list])
         resources_observation = self.synthesis_manager.get_resources_status(compact_string_format=True)
         document_state = f"<<< Document #{self.id} properties:\n"
         document_state += f"> Title: {self.title}\n"
         document_state += f"> Abstract (first 100 characters): {self.context[:100]}\n"
-        document_state += f"> Current table of content: {table_of_content if len(table_of_content) > 0 else 'Empty'}\n"
+        document_state += f"> Current table of content:\n{table_of_content if len(table_of_content) > 0 else 'Empty'}\n"
         document_state += f"> Current resources: {resources_observation if len(resources_observation) > 0 else 'Empty'}\n"
         if extended:
             distance_to_targetJSON = self.synthesis_manager.get_distance_to_targetJSON()

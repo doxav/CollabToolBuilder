@@ -126,6 +126,7 @@ class WebsocketServer:
 
                     if agent_name in self.monitors:
                         monitor = self.monitors[agent_name]
+                        print(f"Executing function '{function_name}' for monitor '{agent_name}' with params: {params}")
                         result = monitor.execute_function(function_name, params)
                         message = json.dumps({
                             "status": "success",
@@ -215,7 +216,7 @@ class WebsocketServer:
         print(f"Access to HMI via : {absolute_hmi_file_path}")
 
         # Start the WebSocket server
-        server = await websockets.serve(self.handler, "localhost", self.port)
+        server = await websockets.serve(self.handler, "localhost", self.port, ping_timeout=120)
         print(f"WebSocket server started on port {self.port}")
 
         # Start localtunnel if proxy is enabled

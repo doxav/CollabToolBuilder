@@ -77,7 +77,7 @@ class Environment:
         os.chdir(self.current_temp_dir)
         # Regular expression to check if the last line assigns to 'result'
         if not re.search(r'\bresult\s*=', action_code.strip().splitlines()[-1]):
-            helper = "\nresult = locals().get('_', None)"
+            helper = "\nresult = locals().get('_', True)"
         else:
             helper = ""
 
@@ -85,7 +85,7 @@ class Environment:
         try:
             # capture stdout and stderr while executing code
             exec(action_code + helper, context)
-            exec_result = context.get('result', [])
+            exec_result = context.get('result', True)
             no_runtime_error = True
         except Exception as e:
             exec_result = f"Failed to execute provided code. Error: {e} Traceback: {traceback.format_exc()}"
@@ -504,7 +504,6 @@ class CodingAgent():
                             You are provided with ERROR MESSAGE and the CODE TO FIX.
                             {instructions}
                             Reply with the full Python code fixed and ready to be executed without the triple quotes and python tags. You add comments in the code to explain your fix.
-                            
                             """
                             smart_print("ANALYZING ERROR.....", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
                             help_for_fixing_system_prompt = f"""You help an LLM to fix code errors which has no access to documentation or internet by extracting key code information from the INFORMATION/DOCUMENTATION provided given CODE TO FIX and ERROR MESSAGE."""

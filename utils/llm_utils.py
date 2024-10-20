@@ -181,7 +181,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
 
                         # Handle function results
                         if 'result' in json_data:
-                            print("Received my function result, ignoring")
+                            print("Received function result, ignoring")
                             json_data['sender_id'] = HumanLLMMonitor.websocket_server.server_id
                             response = json.dumps(json_data)
                             HumanLLMMonitor.websocket_server.send_notasync_message(response)
@@ -1804,11 +1804,11 @@ class HumanLLMMonitor:
             # Count time spent and occurrences waiting and in each option
             self.track_time_spent(action, mode='after')
 
-            if action in [None, "", "E", "Z"]:
-                if self.temp_inference_result_content:
-                    inference_result_msg.content = self.temp_inference_result_content
-                    smart_print(menu, self.agent_name, "RUNNING CHECKS ON MODIFIED LLM OUTPUT...", column_id=output_id-1, column_max=outputs_count)
-                    check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
+            if self.temp_inference_result_content: # it means an async function has modified the content and we should not exit but continue the loop
+                inference_result_msg.content = self.temp_inference_result_content
+                smart_print(menu, self.agent_name, "ANSWER MODIFIED, RUNNING CHECKS BEFORE CONTINUING", column_id=output_id-1, column_max=outputs_count)
+                #check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
+            elif action in [None, "", "E", "Z"]:
                 break  # E: Go back BEFORE inference to improve system prompt or add information to user message
 
             # proceed = smart_input("Continue 'y' (or 'n' to go back to menu) ? ", self.agent_name, column_id=output_id, column_max=outputs_count).lower()
