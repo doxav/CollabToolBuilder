@@ -212,7 +212,7 @@
 
         // Places infos for each answers in columns in their columns
 
-        if(data.agent_name === "CodingAgent" && (data.message_type === "code_task_and_run_test SystemMessage" || data.message_type === "fix_error")) {
+        if(data.agent_name === "CodingAgent" && (data.message_type === "code_task_and_run_test SystemMessage" || data.message_type === "fix_error" || data.message_type === "CODE_RESULT")) {
             // Retrieve the columns of the CodingAgent
             let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
             let $columns = $agentAccordion.find('.solution-column');
@@ -262,7 +262,20 @@
             } else {
                 // Adds the message to the "error-content-${columnId}" div
                 let errorContent = targetColumn.querySelector(`#error-content-${columnId}`);
-                errorContent.innerHTML += formatMessage(data.message);
+                if (data.message_type === "CODE_RESULT") {
+                    // Create a collapsible message section for the CODE_RESULT
+                    content = `
+                        <div class="code-result">
+                            <a href="#" class="toggle-code-result">[SEE NEW UPDATED RESULT CONTENT]</a>
+                            <div class="code-content" style="display: none;">
+                                ${formatMessage(data.message)}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    content = formatMessage(data.message);
+                }
+                errorContent.innerHTML += content;
                 // Adds a newlines to separate the messages
                 errorContent.innerHTML += "<br>";
             }
@@ -645,7 +658,17 @@
         }
     }
 
-
+    $(document).on('click', '.toggle-code-result', function(e) {
+        e.preventDefault(); // Prevent the default link behavior
+        // Check if the sibling exists
+        const codeContent = $(this).siblings('.code-content');
+        if (codeContent.length) {
+            codeContent.toggle(); // Toggle the visibility of the content
+            console.log('Toggled code content result visibility.');
+        } else {
+            console.error('Code content not found.');
+        }
+    });
 
     require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.33.0/min/vs' }});
 
@@ -1356,6 +1379,16 @@ socket.addEventListener('message', function(event) {
     }
 });
 
+document.addEventListener('keydown', function (event) {
+    // Check if Ctrl + Shift + L is pressed to display the log editor
+    if (event.ctrlKey && event.shiftKey && event.code === 'KeyL') {
+        event.preventDefault(); // Prevent default action (if any)
+        // Toggle the display of the log editor
+        const logContainer = document.getElementById('log-container');
+        if (logContainer.style.display === 'none' || logContainer.style.display === '') logContainer.style.display = 'block'; // Show the log editor
+        else logContainer.style.display = 'none'; // Hide the log editor
+    }
+});
 function hideAgentButtons(agentName) {
     $(`div[data-agent="${agentName}"]`).find('button#autofix-button, button[id^="select-"], button[id^="delete-"], button[id^="evaluate-"], button[id^="regenwithmymodifbutton-"], button[id^="regenallbutton-"], input[id^="comment-"], button#custom-autofix-button').hide();
 }
@@ -1887,7 +1920,7 @@ function getColumnsToKeep(agent) {
 
         // Gérer la pagination et le bouton "Continue"
         if (columnIndex === columnMax - 1 && columnMax > 4) {
-            // Votre code de pagination ici
+            // Code de pagination
         }
 
         if (columnIndex === columnMax - 1) {
@@ -2171,7 +2204,14 @@ $(document).on('click', '.collapsible-header', function() {
                             let $option = $(`<div class="menu-option" data-option="${letter}" style="background-color: green;">${match[2]}</div>`);
                             $menuOptionsColumn.append($option);
                         } else {
-                            let $option = $(`<div class="menu-option" data-option="${letter}">${match[2]}</div>`);
+                            // add a specific on click event for the go back button which will clear by doing $(`#message-accordion > div[data-agent="${data.agent_name}"]`).children("div").empty();
+                            let actionOnclik = "";
+                            if (match[2].includes("Go back")) {
+                                actionOnclik = `onclick="console.log(666); let $agentAccordion = $('#message-accordion > div[data-agent=\\'${data.agent_name}\\']'); $agentAccordion.children('div').empty();"`;
+                                console.log("actionOnclik:"+actionOnclik);
+                            }
+                            let $option = $(`<div class="menu-option" data-option="${letter}" ${actionOnclik}>${match[2]}</div>`);
+                            console.log("$option:"+$option);
                             $menuOptionsColumn.append($option);
                         }
                         }
