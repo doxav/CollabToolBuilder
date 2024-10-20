@@ -1768,7 +1768,7 @@ class HumanLLMMonitor:
             menu += ("[H] Exit\n")
 
             smart_print(menu, self.agent_name, "AFTER inference action MENU" + (
-                f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""), column_id=output_id-1, column_max=outputs_count)
+                f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""), self.agent_name, column_id=output_id-1, column_max=outputs_count)
             self.menu_start_time = time.time()
             action = "" if optuna else smart_input(
                 f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",

@@ -132,7 +132,7 @@
     }
 
     function displayMessage(data) {
-        if (data.agent_name !== undefined)
+        if (data.agent_name !== undefined) {}
            if (currentAgent !== data.agent_name) {
                 // Clear the agent content for this agent
                 let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
@@ -140,7 +140,8 @@
                     $agentAccordion.children("div").empty();
                 }
             }
-        currentAgent = data.agent_name;
+            currentAgent = data.agent_name;
+        }
         if(data.optional) if(!document.getElementById("show-optionals").checked) {return;}
 
         let title = `${data.agent_name} | ${data.message_type} | ${new Date().toLocaleTimeString()}`;
