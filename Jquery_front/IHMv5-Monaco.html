@@ -266,18 +266,17 @@
                     // Create a collapsible message section for the CODE_RESULT
                     content = `
                         <div class="code-result">
-                            <a href="#" class="toggle-code-result">[SEE NEW UPDATED RESULT CONTENT]</a>
-                            <div class="code-content" style="display: none;">
+                            <a href="#" class="toggle-code-result" style="text-align: center; margin: 0; padding: 0;">[SEE UPDATED TEST DOC CONTENT]</a>
+                            <pre class="code-content" style="display: none; text-align: left; margin: 0; padding: 0;">
                                 ${formatMessage(data.message)}
-                            </div>
+                            </pre>
                         </div>
                     `;
                 } else {
                     content = formatMessage(data.message);
                 }
-                errorContent.innerHTML += content;
+                errorContent.innerHTML += "<pre style='text-align: left; margin: 0; padding: 0;'>" + content + "</pre>";
                 // Adds a newlines to separate the messages
-                errorContent.innerHTML += "<br>";
             }
             return;
 
