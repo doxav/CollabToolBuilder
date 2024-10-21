@@ -81,7 +81,10 @@ class DocumentStructure:
                  embedding_model_query_prefix: str = '', # e.g. "query: " for intfloat/e5-base-v2 should improve for QA but we are in estimating straight semantic similarity
                  title: str = None,
                  context: str = None,
-                 ): 
+                 abstract: str = None,
+                 ):
+        if abstract is not None: context = abstract if context is None else context + "\n" + abstract
+        self.abstract = abstract
         self.embedding_model_query_prefix = embedding_model_query_prefix
         self.embedding_model_name = embedding_model_name
         if embedding_model_name == "text-embedding-ada-002":
@@ -102,7 +105,6 @@ class DocumentStructure:
         self.context = context
         if context and context != "":
             self.set_plan_field_with_embedding('context', context)
-
         self.dumb_embedding = self.embedding_model.embed_query(".")  # Used to compute min_cosine_similarity
         self.embedding_size = len(self.dumb_embedding)
 
@@ -279,6 +281,8 @@ class DocumentStructure:
 class SynthesisManager:
     def __init__(self, document: DocumentStructure, target_file_path: str = None):
         self.document = document
+        self.title = self.document.title
+        self.abstract = self.document.context
         self.min_cosine_similarity = cosine_similarity([self.document.embedding_model.embed_query(".")], [self.document.embedding_model.embed_query("If you can keep your head when all about you are losing theirs and blaming it on you, If you can trust yourself when all men doubt you, But make allowance for their doubting too ; If you can wait and not be tired by waiting, Or being lied about, don’t deal in lies, Or being hated, don’t give way to hating, And yet don’t look too good, nor talk too wise")])[0][0]
         if target_file_path:
             self.target_file_path = target_file_path
@@ -873,7 +877,7 @@ class SynthesisManager:
 
     # add event using the document object add_event method add_event
     @method_call_counter
-    def add_event(self, event: str, data: Dict[str, Any]):
+    def add_event(self, event: str, data: Dict[str, Any]=None):
         self.document.add_event(event, data)
 
     def normalized_cosine_similarity(self, a: List[float], b: List[float], min_cs: float = None) -> float:
@@ -1114,6 +1118,7 @@ class SynthesisManager:
         # if self does not have target_file_path
         if not hasattr(self, 'target_file_path'):
             raise ValueError("Please set target_file_path using set_targetJSON_comparison method")
+
         if not hasattr(self, 'target_data'):
             section_embedding_key, content_embedding_key, plan_embedding_key = "content_embedding_2", "section_embedding_2", "plan_embedding_2"
             self.set_targetJSON_comparison(self.target_file_path,
@@ -1123,19 +1128,19 @@ class SynthesisManager:
             self.document.update_plan_embedding()
         elif not hasattr(self.document.document_content, 'sections_list_title_embedding'):
             self.document.update_plan_embedding()
-        # Similar to what you did in the test
+
+        # Compute current document metrics
         current_sections_count = len(self.document.document_content.sections_list)
-        # Count non empty section's content (not None and len > 1)
         current_plan_non_empty_sections_content_count = sum(1 for section in self.document.document_content.sections_list if section.content and len(section.content) > 1)
         current_plan_non_empty_sections_title_count = sum(1 for section in self.document.document_content.sections_list if section.title and len(section.title) > 1)
         current_content_length = sum(len(getattr(section, 'content', 0)) for section in self.document.document_content.sections_list)
 
+        # Get embeddings
         plan_embedding = self.document.document_content.sections_list_embedding
         plan_titles_embedding = self.document.document_content.sections_list_title_embedding
         plan_contents_embedding = self.document.document_content.sections_list_content_embedding
-        # compute embedding mean of all "title" in self.target_data["plan"]
 
-        # Compute the similarity and content length percentage
+        # Compute embedding similarity
         plan_embedding_similarity = self.normalized_cosine_similarity(plan_embedding, self.target_plan_embedding, self.min_plan_cosine_similarity)
         plan_titles_embedding_similarity = self.normalized_cosine_similarity(plan_titles_embedding, self.target_plan_titles_embedding, self.min_plan_titles_cosine_similarity)
         plan_contents_embedding_similarity = self.normalized_cosine_similarity(plan_contents_embedding, self.target_plan_contents_embedding, self.min_plan_contents_cosine_similarity)
@@ -1150,6 +1155,7 @@ class SynthesisManager:
         sections_title_non_empty_count_ratio_to_target = round(
             min(current_plan_non_empty_sections_title_count / (self.target_total_sections_count + 1e-5), 1.5), 4)
 
+        # Build the result dictionary
         distance_to_targetJSON = {
             "plan_embedding_similarity": round(plan_embedding_similarity, 6),
             "plan_titles_embedding_similarity": round(plan_titles_embedding_similarity, 6),
@@ -1166,8 +1172,8 @@ class SynthesisManager:
             "content_non_empty_count_ratio_to_target": sections_content_non_empty_count_ratio_to_target,
         }
 
+        # Progress comparison (optional)
         if get_progress:
-            # get ratio between same previous values and current values
             def get_ratio(previous_value, current_value):
                 return round((previous_value - current_value) / (previous_value + 0.0000001) * 100, 2) if previous_value else 0
             if hasattr(self, 'distance_to_targetJSON'):
@@ -1179,12 +1185,13 @@ class SynthesisManager:
                 distance_to_targetJSON['content_length_ratio_to_target_progress'] = get_ratio(content_length_ratio_to_target, self.distance_to_targetJSON['content_length_ratio_to_target'])
                 distance_to_targetJSON['content_non_empty_count_ratio_to_target_progress'] = get_ratio(sections_content_non_empty_count_ratio_to_target, self.distance_to_targetJSON['content_non_empty_count_ratio_to_target'])
 
+        # Save the results
         self.distance_to_targetJSON = distance_to_targetJSON
 
         return self.distance_to_targetJSON
 
     # return the list of current sections with title, length of content, validation status, and feedback
-    def get_plan_status(self, compact_string_format: bool = False, keys = ["section_id", "title", "content_length"]):
+    def get_plan_status(self, compact_string_format: bool = False, keys = ["section_id", "title", "content_length", "content_preview[:100]"]):
         #keys = ["section_id", "title", "content_length", "validation_status", "feedback_to_process", "feedback_processed"]
         plan_status = []
         for section in self.document.document_content.sections_list:
@@ -1192,9 +1199,10 @@ class SynthesisManager:
                 section.section_id,
                 section.title,
                 len(section.content),
-                round(section.content_progress_validation_status, 1),
-                section.local_feedback_to_process,
-                section.local_feedback_processed,
+                section.content[:100],
+                #round(section.content_progress_validation_status, 1),
+                #section.local_feedback_to_process,
+                #section.local_feedback_processed,
             ]
             status_data = [data for key, data in zip(keys, status_data_full)]
 
@@ -1203,11 +1211,12 @@ class SynthesisManager:
             else:
                 plan_status.append(dict(zip(keys, status_data)))
 
-        if compact_string_format and plan_status:
-            if len(plan_status) == 0:
-                return []
+        if len(plan_status) == 0: return []
+        if compact_string_format:
             header = "|".join(keys)
-            plan_status.insert(0, header)
+        else:
+            header = ["section_id", "title", "content_length", "content_preview[:100]"] #, "validation_status", "feedback_to_process", "feedback_processed"]
+        plan_status.insert(0, header)
         
         return plan_status
 
@@ -1330,21 +1339,25 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
 
     def get_state(self, extended: bool = False):
         #TODO: move to self.document.get_state() ?
-        table_of_content = self.synthesis_manager.get_plan_status(compact_string_format=True)
+        table_of_content_list = self.synthesis_manager.get_plan_status(compact_string_format=False if extended else True)
+        # Convert the list of sections to a string with \n separator
+        table_of_content = "\n".join([str(section) for section in table_of_content_list])
         resources_observation = self.synthesis_manager.get_resources_status(compact_string_format=True)
         document_state = f"<<< Document #{self.id} properties:\n"
-        document_state += f"> Current table of content: {table_of_content if len(table_of_content) > 0 else 'Empty'}\n"
+        document_state += f"> Title: {self.title}\n"
+        document_state += f"> Abstract (first 100 characters): {self.context[:100]}\n"
+        document_state += f"> Current table of content:\n{table_of_content if len(table_of_content) > 0 else 'Empty'}\n"
         document_state += f"> Current resources: {resources_observation if len(resources_observation) > 0 else 'Empty'}\n"
         if extended:
             distance_to_targetJSON = self.synthesis_manager.get_distance_to_targetJSON()
             events_action_counts = self.synthesis_manager.get_count_method_calls()
-            document_state += f"5. sections titles progress: {distance_to_targetJSON['plan_titles_embedding_similarity']}\n"
-            document_state += f"6. sections content progress: {distance_to_targetJSON['plan_contents_embedding_similarity']}\n"
-            document_state += f"7. sections count ratio progress: {distance_to_targetJSON['sections_count_ratio_to_target']}\n"
-            document_state += f"8. title non-empty count ratio progress: {distance_to_targetJSON['title_non_empty_count_ratio_to_target']}\n"
-            document_state += f"9. content length ratio progress: {distance_to_targetJSON['content_length_ratio_to_target']}\n"
-            document_state += f"10. content non-empty count ratio progress: {distance_to_targetJSON['content_non_empty_count_ratio_to_target']}\n"
-            document_state += f"11. events counted: {events_action_counts if len(events_action_counts) > 0 else 'Empty'}\n"
+            document_state += f"1. sections titles progress: {distance_to_targetJSON['plan_titles_embedding_similarity']}\n"
+            document_state += f"2. sections content progress: {distance_to_targetJSON['plan_contents_embedding_similarity']}\n"
+            document_state += f"3. sections count ratio progress: {distance_to_targetJSON['sections_count_ratio_to_target']}\n"
+            document_state += f"4. title non-empty count ratio progress: {distance_to_targetJSON['title_non_empty_count_ratio_to_target']}\n"
+            document_state += f"5. content length ratio progress: {distance_to_targetJSON['content_length_ratio_to_target']}\n"
+            document_state += f"6. content non-empty count ratio progress: {distance_to_targetJSON['content_non_empty_count_ratio_to_target']}\n"
+            document_state += f"7. events counted: {events_action_counts if len(events_action_counts) > 0 else 'Empty'}\n"
 
         document_state += ">>>"
         return document_state
