@@ -151,7 +151,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
             'step_id': HumanLLMMonitor.step_id
         }
         message_json = json.dumps(structured_message)
-        
+
         # Send the message via WebsocketServer
         HumanLLMMonitor.websocket_server.send_message(message_json)
 
@@ -497,7 +497,6 @@ class UnifiedVectorDB:
             return self.db.similarity_search_with_score(query, k=k)
         elif UnifiedVectorDB.db_type == 'elasticsearch':
             return self.db.similarity_search_with_score(query, k=(k if k <= 50 else 50))  # k seems to crash when > 50
-
     # query( query_embeddings, query_texts, n_results, where, where_document, include)
     def query(self, query_text="", k=1, metadata_filter=None, metadata_filter_OR=False, custom_filter_chrome=None,
               custom_filter_es=None, sort_order=None):
@@ -570,7 +569,6 @@ class UnifiedVectorDB:
             print(f"Deleted {response['deleted']} documents from index {self.collection_name}")
             # sleep 2 seconds to let the index be updated
             time.sleep(2)
-
     # TODO: start by replacing UnifiedVectorDB by neo4j improving the ChatGPT generated code below, then validate the learn.py process works properly
 
 
@@ -867,23 +865,36 @@ class HumanLLMMonitor:
         Returns:
             str: The modified prompt content with few shots inserted.
         """
-        # Find all 'few_shots' tags with their arguments
-        pattern = r"few_shots:\s*(\{[^}]*\})"
+        # Match 'few_shots' and capture the curly braces, manually handling nested braces
+        pattern = r"few_shots:\s*\{"
         matches = list(re.finditer(pattern, prompt, re.DOTALL))
 
         for match in reversed(matches):  # Reverse to not mess up indices when replacing
             try:
-                data_str = match.group(1)
+                start = match.start()
+                # Manually find the corresponding closing brace
+                brace_count = 1
+                end = start + match.end() - match.start()
+                while brace_count > 0 and end < len(prompt):
+                    if prompt[end] == '{':
+                        brace_count += 1
+                    elif prompt[end] == '}':
+                        brace_count -= 1
+                    end += 1
+
+                # Extract the JSON string
+                data_str = prompt[match.start() + len("few_shots:"):end]
+                print(f"Attempting to decode few_shots tag: {data_str}")  # Debug
                 data = json.loads(data_str)
                 # Combine criteria
                 combined_criteria = self.combine_criteria([data])
                 # Get the few shots string
                 few_shots_str = self.get_multiple_few_shots(combined_criteria)
                 # Replace the tag with the few shots string
-                start, end = match.span()
                 prompt = prompt[:start] + few_shots_str + prompt[end:]
             except json.JSONDecodeError as e:
                 print(f"Error decoding 'few_shots' tag: {e}")
+                print(f"Faulty JSON: {data_str}")  # Debug
                 continue
 
         return prompt
@@ -1035,7 +1046,8 @@ class HumanLLMMonitor:
                  default_llmORchain=None,
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1,
                  llmORchains_list=None,
-                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, optuna=False, envs=None):
+                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, optuna=False, envs=None,
+                 fixed_coach=False):
         # Instance properties to track time
         self.selected_outputs = []
         self.menu_start_time = None
@@ -1077,6 +1089,7 @@ class HumanLLMMonitor:
         self.last_inference_check_results = None
         self.user_message = ""
         self.envs = envs
+        self.fixed_coach = fixed_coach
 
     # Clears the selected answers before processing new outputs.
     # This should be called at the beginning of a new inference process.
@@ -1092,7 +1105,7 @@ class HumanLLMMonitor:
     # External agents can use this method to access the selected outputs.
     def get_selected_outputs(self):
         return self.selected_outputs
-    
+
     # New: Handling function calls via WebSocket
     def execute_function(self, function_name, params):
         if hasattr(self, function_name):
@@ -1330,31 +1343,37 @@ class HumanLLMMonitor:
 
             smart_print(before_menu + menu, self.agent_name, "BEFORE inference action MENU", optional =False)
             self.menu_start_time = time.time()
-            match (optuna.lower() if optuna else ""):
-                case "coach":
-                    llm_keys = list(self.llmORchains_list.keys())
-                    if type(model_choice) == int:
-                        # Model change from choice of optuna
-                        new_llm_name = llm_keys[model_choice]
-                    elif type(model_choice) == str:
-                        if model_choice not in llm_keys:
-                            raise ValueError(f"Model choice '{model_choice}' not found in llmORchains_list {llm_keys}")
-                        new_llm_name = model_choice
-                    else:
-                        raise ValueError("Model choice must be an integer or a string")
-                    self.set_default_llmORchain(new_llm_name)
-                    self.set_premium_llmORchain(new_llm_name)
-                    default_llm_function = self.default_llm
-                    premium_llm_function = self.premium_llm
-                    self.synthesize_mode = False
-                    # Default actions for all agents while running with optuna
-                    action = ""
-                case "coder":
-                    action = ""
-                case _:  # Default case
-                    action = smart_input(
-                        f"\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
-                        self.agent_name, optional=False).upper()
+            if optuna:
+                llm_keys = list(self.llmORchains_list.keys())
+                if type(model_choice) == int:
+                    # Model change from choice of optuna
+                    new_llm_name = llm_keys[model_choice]
+                elif type(model_choice) == str:
+                    if model_choice not in llm_keys:
+                        raise ValueError(f"Model choice '{model_choice}' not found in llmORchains_list {llm_keys}")
+                    new_llm_name = model_choice
+                else:
+                    raise ValueError("Model choice must be an integer or a string")
+
+                if self.agent_name == "TaskIdentificationAgent":
+                    if self.num_parallel_inferences > 1 :
+                        self.synthesize_mode = True
+                    if self.fixed_coach:
+                        # We force the output of the llm.
+                        forced_llm_output = self.fixed_coach
+
+                self.set_default_llmORchain(new_llm_name)
+                self.set_premium_llmORchain(new_llm_name)
+                default_llm_function = self.default_llm
+                premium_llm_function = self.premium_llm
+                self.synthesize_mode = False
+                # Default actions for all agents while running with optuna
+                action = ""
+
+            else:  # Default case
+                action = smart_input(
+                    f"\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
+                    self.agent_name, optional=False).upper()
 
             # ACTIONS processing
             self.start_time = time.time()  # Init action selected and timer to measure time spent and occurences in action processing
@@ -1485,7 +1504,10 @@ class HumanLLMMonitor:
         return comments
 
     def reuse_past(self, forced_llm_output, function_name):
-        if HumanLLMMonitor.common_vectordb.count() > 0:
+        if self.fixed_coach:
+            selected_index = 1
+            log_entries, list_output = self._get_log_entries(self.agent_name, function_name), ""
+        elif HumanLLMMonitor.common_vectordb.count() > 0:
             log_entries, list_output = self._get_log_entries(self.agent_name, function_name), ""
             for idx, entry in enumerate(log_entries, start=1):
                 content = json.loads(entry.page_content)
@@ -1940,7 +1962,7 @@ class HumanLLMMonitor:
             if (isinstance(content_annotated, list) and len(content_annotated)>1):
                 prompt_start = "Your task is to merge the best of different **ANNOTATED ANSWERS** into 1  **ANNOTATED ANSWERS**"
             else:
-                prompt_start = "Your task is to refine the **ANNOTATED ANSWER**" 
+                prompt_start = "Your task is to refine the **ANNOTATED ANSWER**"
             system_prompt = f"""
 {prompt_start} given inline annotation of ths answer and the **INITIAL PROMPT**.
 Each inline text annotations instructions use tags (see **ANNOTATION TAGS** for interpretation - e.g. \TAG[optional instruction]{{original text...}} ).
@@ -2138,7 +2160,7 @@ The following annotations are provided to guide the refinement process. Each ann
             metadatas=[tags]
         )
 
-    def process_llm_output(self, llm_output, counter, llm_outputs, init_skip_rounds):
+    def process_llm_output(self, llm_output, counter, llm_outputs, init_skip_rounds, optuna = None):
         """Traite un seul LLM output (séquentiellement ou en parallèle)."""
         if len(llm_outputs) > 1:
             self.skip_rounds = init_skip_rounds
@@ -2161,7 +2183,7 @@ The following annotations are provided to guide the refinement process. Each ann
         # Post-inference human intervention (traitement standard après une inférence)
         output_messages_instance, output_comments_instance, score_instance = self._after_inference(
             llm_output, premium_llm_function=None, output_id=counter,
-            outputs_count=len(llm_outputs), optuna=None)
+            outputs_count=len(llm_outputs), optuna=optuna)
         return output_messages_instance, output_comments_instance, score_instance
 
     #    def CallHumanLLM(self, original_input_messages=None, llm_function=None, premium_llm_function=None, callable_system_message=None, system_prompt_template=None, user_message=None, return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=90, stream_output=True):
@@ -2196,7 +2218,7 @@ The following annotations are provided to guide the refinement process. Each ann
                 smart_print("", self.agent_name, "Inference streaming output")
                 previous_chunk_str = ""
                 json_trail_re = re.compile(r'[\'\}\]]$')
-                
+
                 buffer = ""
                 buffer_start_time = time.time()
                 flush_interval = 5.0  # seconds
@@ -2237,7 +2259,7 @@ The following annotations are provided to guide the refinement process. Each ann
                         else:
                             delimiter_pos = pos_br
                             delimiter_length = 4  # Length of "<br>"
-                        
+
                         if delimiter_pos != -1:
                             should_flush = True
 
@@ -2261,7 +2283,7 @@ The following annotations are provided to guide the refinement process. Each ann
                         else:
                             smart_print(start_color + to_send + end_color, self.agent_name,
                                         f"Inference streaming output {color_id}", append=True)
-                        
+
                         # Reset the timer after flushing
                         buffer_start_time = current_time
 
@@ -2404,7 +2426,7 @@ The following annotations are provided to guide the refinement process. Each ann
                 else:
                     # Traitement séquentiel classique
                     for counter, llm_output in enumerate(llm_outputs, start=1):
-                        output_messages_instance, output_comments_instance, score_instance = self.process_llm_output(llm_output, counter, llm_outputs, init_skip_rounds)
+                        output_messages_instance, output_comments_instance, score_instance = self.process_llm_output(llm_output, counter, llm_outputs, init_skip_rounds, optuna)
                         output_messages.append(output_messages_instance)
                         if output_messages_instance == -1:
                             break

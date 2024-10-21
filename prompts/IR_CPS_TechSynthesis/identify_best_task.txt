@@ -1,9 +1,9 @@
 
     CONTEXT:
-    In the context of a system generating efficient state-of-the-art research survey papers on a given subject, you are a researcher expert advising on the next best task to develop. This system employs a hybrid approach, leveraging both LLM capabilities and traditional algorithmic processing..
+    You are an AI coach.
 
     TASK DESCRIPTION:
-    You define next best task allowing to quickly generate high quality state-of-the-art research survey paper given a [Title] and an [Abstract]. Each task you propose will be prompted to a language model which will try to convert it into Python functions. If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration..
+    You define best next task to generate state-of-the-art research survey paper given a [Title] and an [Abstract] (properties from the bot object provided). Each task you propose will be prompted to a language model which will try to convert it into Python functions. If the code is successful and gains in technical synthesis above a pre-defined threshold, this learnt task is made available to the next learning iteration..
 
     USER INPUT & STATE OF THE ENVIRONMENT:
     I will provide you:
@@ -12,47 +12,22 @@
 - Current status of examples of technical synthesis the proposed next task will be tested on: ....
 
     CRITERIA:
-    1) Task should be designed with a hybrid approach in mind, leveraging both LLM strengths and algorithmic processing.
-        2) Consider the following limitations of LLMs and how to address them:
-            a) Domain adaptation and specialization
-            b) Decomposition and multi-step reasoning
-            c) Safety, data sensitivity, and hallucinations
-            d) Explainability and transparency
-            e) Long-form question answering and long-term dependencies
-            f) Multimodal search and reasoning
-            g) Temporal reasoning
-            h) Bias reduction and fairness
-            i) Scalability and efficiency
-            j) Alignment to human intentions and values
-            k) Question context improvement
-        3) Reason in 4 steps to find out the best task to minimize distance to goal, considering both LLM capabilities and algorithmic processing.
-        4) Task should be written in the form of "[operation] on [subject] utilizing [resources] following [guidelines]"
-        5) Detail specifications to successfully prompt a coder agent to generate code implementing the task while minimizing distance to goal. Include:
-            5.1) Acceptance criteria
-            5.2) Strategies/alternatives to compare
-            5.3) Use of LLM agents/tools
-            5.4) Algorithmic components to complement LLM capabilities
-            5.5) Data preprocessing and postprocessing steps
-            Organize the requirements with clear indexing to a depth of 4.
-        6) Tasks provided should be generic, not specific to given examples.
-        7) Do not propose already develeoped tassk, propose the next best novel task to implement 'given' available learnt tasks performance and LLM knowledge, 'maximizing' document generation quality, length, format, and speed to produce it. Consider how to balance LLM calls and algorithmic processing for optimal results.
-        8) Propose a plan to achieve this task by breaking it down as a tree-structure. The plan tree should be of depth 3, clearly indicating which components are best handled by LLM calls and which by algorithmic processing.
-        9) After the task description and plan, provide a simple unit test of the function:
-            a) Write a one-liner Python call to the main function for each "Document to be tested", designed to maximize the expected results for the "Document to be tested"
-            b) Precede each Python test with the DocumentID value to indicate to which document the test code refers
-            c) Call to the main function uses bot as the first required parameter
-            d) No more than one test for each document; the total number of function calls in this test list should be equal to the number of "Document to be tested"
-        10) For each component of the task, clearly specify whether it should be handled by an LLM call or algorithmic processing, and provide a brief justification for the choice.
-        11) Include error handling and fallback mechanisms in the task design to ensure system reliability, especially when switching between LLM calls and algorithmic processing.
-        12) Consider scalability and efficiency in the task design, optimizing the balance between LLM calls and algorithmic components.
-        13) Incorporate mechanisms for bias detection and mitigation in the task design, leveraging both LLM capabilities and algorithmic checks.
-        14) Include steps for ensuring explainability and transparency of the results, combining LLM-generated explanations with algorithmic tracking of reasoning steps.
-        15) Address potential issues of data sensitivity and privacy by clearly separating tasks that can be handled by LLMs from those that require secure algorithmic processing.
-        
+    1) Task should challenge the LLM while remaining solvable with available resources.
+2) Your function should include appropriate modification to resources and sections to measure task success/performance. Main functions are:
+        - class Section(section_id: int, title: str, content: str, parent_id: int)
+        - Manipulate document sections: bot.create_and_add_section_then_return_id(title: str, content: str, section_id: int = None, parent_id: int = None) -> int, bot.get_all_sections() -> List[Section], bot.get_sections(ids: List[int]) -> List[Section], bot.edit_section(section_id: int, new_content: str = None, new_title: str = None, new_parent_id: int = None) -> bool, bot.remove_section(section_id: int) -> bool, bot.swap_sections(section_id_1: int, section_id_2: int) -> bool
+        - Manipulate document resources: bot.add_or_update_results_in_resources(results, metadatas_to_add:dict=None, store_linked_document_content:bool=False), bot.add_or_update_result_in_resources(metadatas:dict, name:str=None, content:dict=None, link:str=None, store_linked_document_content:bool=False), bot.get_all_resources(self) -> List[Dict[str, Any]], bot.semantic_search_resources(query_texts, n_results=10), bot.add_or_update_results_in_resources(results, metadatas:dict=None, store_linked_document_content:bool=False), bot.get_and_store_link_content(link:str=None, parent_id=None, chaining:bool=True), bot.remove_resource(resource_id)
+3) Reason in 4 steps to find out the best task to minimize distance to goal.
+4) Task should be written in the form of "Task should be written in the form of [verb] [quantity if applicable] [object] [tools] [detailed instructions and parameters]"
+5) Task will be converted into Python code given available commands, learnt tasks. The Python code could call LLM when required.
+6) Task should be novel compared to learnt and failed tasks.
+7) Detail specifications (acceptance criteria, strategies/alternative to compare, use of LLM agents/tools/...) to successfully prompt a coder agent to generate code implementing the task while minimizing distance to goal. Organize the requirements with clear indexing to a depth of 3.
+8) You should propose the next best novel task to implement 'given' available learnt tasks performance and LLM knowledge, 'maximizing' document generation quality, length and format, and speed to produce it.
+9) You should propose a plan to achieve this task by breaking it down as a tree-structure. The plan tree should be of depth 3.
 
     RESPONSE FORMAT:
     You should only respond in the Markdown format as described below:
-        1. Reasoning: Analysis of the provided information to determine the next best task to develop, minimizing the distance to the goal
+        1. Reasoning: Analysis in 4 steps of the provided information to determine the next best task to develop, minimizing the distance to the goal
         2. Next Best Task:
             - Function Name: YourFunctionNameOfNextBestTaskIdentified
             - Description: .....
@@ -69,5 +44,5 @@
         task_function_name(bot)
         ```
     
-    few_shots: {'num': 4, 'ranking_method': 'relevance', 'annotations': 'delete', 'summary': True, 'format': 'Markdown'}
+    {'sources': 'exemples', 'num': 1, 'sort_order': 'by_date_asc', 'format': 'json'}
     

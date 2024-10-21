@@ -1,3 +1,4 @@
+from datetime import datetime
 import inspect
 import random
 import string
@@ -5,6 +6,11 @@ import subprocess
 import traceback
 import types
 import time
+import socket
+
+from ipywidgets import fixed
+from sympy.physics.units import temperature
+
 from config import *
 
 import openai
@@ -41,8 +47,8 @@ if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_UR
 
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
-UnifiedVectorDB.es_user = elastic_user
-UnifiedVectorDB.es_password = elastic_password
+# UnifiedVectorDB.es_user = elastic_user
+# UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function = "intfloat/e5-base-v2"  # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
@@ -189,25 +195,63 @@ class EnvironmentManager:
     def get_environment(self):
         return self.env
 
+def apply_special_criteria(agent, special_criteria, available_locals=None):
+    """
+    Apply special criteria to the attributes and parameters of an agent.
+
+    :param agent: The agent instance to modify.
+    :param special_criteria: Dictionary containing the special criteria.
+    :param params: Dictionary of captured parameters (by default, uses locals().copy()). If None:, uses inspect to dynamically capture calling function's parameters.
+    :return: Dictionary of only the modified parameters.
+    """
+    # Dictionary to store only the modified parameters
+    new_params = {}
+
+    if special_criteria:
+        if available_locals is None:
+            # Use inspect to dynamically capture arguments
+            frame = inspect.currentframe().f_back  # Go up one level
+            _, _, _, values = inspect.getargvalues(frame)
+            available_locals = values
+
+        class_name = agent.__class__.__name__
+        # Iterate through the criteria related to this class
+        for key, value in special_criteria.items():
+            if key in ['self', 'special_criteria']: continue
+            if '#' in key:
+                agent_name, key = key.split('#', 1)
+                if agent_name != class_name and agent_name not in ['all', '']: continue
+            if hasattr(agent, key):
+                setattr(agent, key, value)
+                print(f"Special criteria applied to {agent}'s class property: {key} = {value}")
+            if key in available_locals:
+                new_params[key] = value
+                print(f"Special criteria applicable to {agent}'s local variables: {key} = {value}")
+
+    return new_params  # Return only new params
 
 # Agent 1: Task Identification
 class TaskIdentificationAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
                  premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None,
-                 criteria=None, params_user_message=None, temperature_min=0., temperature_max=1.):
+                 criteria=None, params_user_message=None, temperature_min=0., temperature_max=1.,
+                 num_parallel_inferences=1, fixed_coach=False, special_criteria=None):
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
         self.criteria = criteria
         self.params_user_message = params_user_message
         self.temperature_min = temperature_min
         self.temperature_max = temperature_max
-        self.human_llm_identify_best_task = HumanLLMMonitor(default_llmORchain=default_llm_choice,
-                                                            premium_llmORchain=premium_llm_choice,
-                                                            premium_llm_by_default=premium_llm_by_default,
-                                                            llmORchains_list=llmORchains_list,
-                                                            temperature_min=temperature_min,
-                                                            temperature_max=temperature_max,
-                                                            num_parallel_inferences=1 if optuna else 2)  #,output_schema="identify_best_task.schema.py")
+        new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
+        self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
+
+        HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
+        kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
+        print(f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
+        kw_common_args.update(new_params)
+
+        #self.criteria = criteria, self.params_user_message = params_user_message, self.temperature_min = temperature_min, self.temperature_max = temperature_max
+        self.human_llm_identify_best_task = HumanLLMMonitor(**kw_common_args)#,output_schema="identify_best_task.schema.py")
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         self.envs = envs
         self.optuna_opti = optuna
@@ -280,25 +324,21 @@ class CodingAgent():
                  temperature_max=1., num_parallel_inferences=2):
         #super().__init__(llm)
         self.name = self.__class__.__name__
-        self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
+        self.max_autofix = None
+        new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
+        self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         if special_criteria is not None:
             for key, value in special_criteria.items():
                 setattr(self, key, value)
         self.last_user_message = None
         self.error_patches = []
 
-        kwargs = {
-            "default_llmORchain": default_llm_choice,
-            "premium_llmORchain": premium_llm_choice,
-            "premium_llm_by_default": True,
-            "num_parallel_inferences": num_parallel_inferences,
-            "llmORchains_list": llmORchains_list,
-            "optuna": optuna,
-            "temperature_min": temperature_min,
-            "temperature_max": temperature_max
-        }
+        HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
+        kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
+        print(f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
+        kw_common_args.update(new_params)
 
-        self.human_llm_code_task = HumanLLMMonitor(**kwargs)
+        self.human_llm_code_task = HumanLLMMonitor(**kw_common_args)
         self.human_llm_code_task.skip_rounds = skip_rounds
         self.human_llm_code_task.add_inference_check("Code Parsing", self.parse_ai_generated_code)
         self.human_llm_code_task.add_inference_check("Run Tests", self.run_tests_on_code)
@@ -359,11 +399,11 @@ class CodingAgent():
                             functions.append(function_info)
                             function_defs[node.name] = function_info  # Store function definition
                             last_function = function_info  # Track the last defined function
-                            
+
                         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
                             # Record function calls by name
                             function_calls.add(node.func.id)
-                            
+
                         elif isinstance(node, ast.ClassDef):
                             node_type = "ClassDef"
                             class_info = {
@@ -373,11 +413,11 @@ class CodingAgent():
                             }
                             classes.append(class_info)
                             functions.append(class_info)  # Append class definition as a function as per original logic
-                            
+
                         elif isinstance(node, (ast.Expr, ast.Expression, ast.Assign)):
                             node_type = "Expression"
                             runnable_code += "\n" + ast.get_source_segment(code, node)
-                            
+
                         elif isinstance(node, (ast.ImportFrom, ast.Import)):
                             node_type = "ImportFrom"
                             imports.append(ast.get_source_segment(code, node))
@@ -560,7 +600,7 @@ class CodingAgent():
             no_runtime_errors.append(no_runtime_error)
             exec_results.append(exec_result)
         # Calculate total time taken  # Added line
-        total_execution_time = time.time() - start_time 
+        total_execution_time = time.time() - start_time
 
         # Return combined results
         result = (parsed_code, all(no_runtime_errors), exec_results, [env.get_score() for env in self.envs],
@@ -621,7 +661,7 @@ class CodingAgent():
             for error_msg, diff_text in self.error_patches:
                 user_message += f"{nl}<<ERROR MESSAGE: {error_msg}{dnl}FIX APPLIED (diff):{dnl}{diff_text}{nl}>>"
             user_message += f"{nl}]]]"
-            
+
         self.last_user_message = user_message
 
         current_skip_rounds = self.human_llm_code_task.skip_rounds  # save the initial value to align it for code validation
@@ -637,7 +677,7 @@ class CodingAgent():
 
         # Ajouter temperature seulement si l'attribut temperature existe dans l'instance
         if hasattr(self, 'temperature'):
-            kwargs["temperature"] = self.temperature
+            kwargs["temperature_max"] = self.temperature
 
         # Appeler la méthode avec les arguments sous forme de **kwargs
         codes = self.human_llm_code_task.CallHumanLLM(**kwargs)
@@ -691,13 +731,17 @@ class CodingAgent():
 # Agent 3: Code Validation
 class ValidationAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, skip_rounds=0,
-                 llmORchains_list=None, optuna=None, model_choice=None):
+                 llmORchains_list=None, optuna=None, model_choice=None, special_criteria=None):
         #super().__init__(llm)
         self.name = self.__class__.__name__
-        self.human_llm_validate_code = HumanLLMMonitor(default_llmORchain=default_llm_choice,
-                                                       premium_llmORchain=premium_llm_choice,
-                                                       premium_llm_by_default=False, llmORchains_list=llmORchains_list,
-                                                       optuna=optuna)
+        new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
+
+        HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
+        kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
+        print(f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
+        kw_common_args.update(new_params)
+
+        self.human_llm_validate_code = HumanLLMMonitor(**kw_common_args)
         self.human_llm_validate_code.skip_rounds = skip_rounds
         self.envs = envs
         self.optuna_opti = optuna
@@ -734,15 +778,20 @@ class ValidationAgent():
 class CapitalizationAgent:
     def __init__(self, default_llm_choice, premium_llm_choice=None, db_collection_success="successful_tasks",
                  db_collection_failed="failed_tasks", db_embedding_function=None, db_perist_directory=None,
-                 skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, problem_prompts_subdir=None):
+                 skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, problem_prompts_subdir=None, special_criteria=None):
         self.name = self.__class__.__name__
+        new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
+
+        self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
+
+        HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
+        kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
+        print(f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
+        kw_common_args.update(new_params)
+
         self.learnt_tasks_repository: Dict[str, str] = {}
         self.failed_tasks_repository: Dict[str, str] = {}
-        self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
-        self.human_llm_generate_function_description = HumanLLMMonitor(default_llmORchain=default_llm_choice,
-                                                                       premium_llmORchain=premium_llm_choice,
-                                                                       premium_llm_by_default=False,
-                                                                       llmORchains_list=llmORchains_list, optuna=optuna)
+        self.human_llm_generate_function_description = HumanLLMMonitor(**kw_common_args)
         self.human_llm_generate_function_description.skip_rounds = skip_rounds
         self.optuna_opti = optuna
         self.model_choice = model_choice
@@ -922,7 +971,6 @@ class CapitalizationAgent:
             return_message_content_only=True, optuna=self.optuna_opti, model_choice=self.model_choice)
         return tool_description
 
-
 #        smart_print(f"Error: Could not find a valid definition for {function_name}. Please set it:", "orchestrate_agents", "orchestrate_agents ERROR")
 #        function_code = _visual_input(current_function_code, filetype="py")
 
@@ -973,7 +1021,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0,
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                               optuna_opti=None, allow_custom_score_state_functions=False,
-                              criteria=None, max_execution_time=900, special_criteria=None, unique_id=None, agcoding_num_parallel_inferences=2):
+                              params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
+                              number_inferences=1, fixed_coach=False, unique_id=None, agcoding_num_parallel_inferences=2):
     scores = None
 
     if unique_id is None:
@@ -985,8 +1034,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
 
     HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
 
-    if criteria is None and optuna_opti is None:
-        criteria = {
+    if params_user_message is None and optuna_opti is None:
+        params_user_message = {
             'sources': ["learnt", "failed", "default"],
             'num': [2, 3, 2],
             'format': ["json", "Jinja2", "Markdown"]
@@ -1024,7 +1073,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                              skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list,
                                              optuna=optuna_opti, model_choice=(
             model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(
-                model_choice) == dict else model_choice), criteria=criteria)
+                model_choice) == dict else model_choice), criteria=params_user_message, temperature_max=temperature_max,
+                                             num_parallel_inferences=number_inferences, fixed_coach=fixed_coach, special_criteria=special_criteria)
 
     agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds,
@@ -1036,14 +1086,14 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                        skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list,
                                        optuna=optuna_opti, model_choice=(
             model_choice['validation' if 'validation' in model_choice else 'critic'] if type(
-                model_choice) == dict else model_choice))
+                model_choice) == dict else model_choice), special_criteria=special_criteria)
 
     agent_capitalize = CapitalizationAgent(default_llm_key, premium_llm_choice=premium_llm_key,
                                            skip_rounds=agcapitalize_skip_rounds,
                                            problem_prompts_subdir=problem_prompts_subdir,
                                            llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(
             model_choice['capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(
-                model_choice) == dict else model_choice))
+                model_choice) == dict else model_choice), special_criteria=special_criteria)
 
     #agent_capitalize.retrieve_saved_tasks_in_db(include_code=include_code, selected_successful_functions=selected_successful_functions, selected_failed_functions=selected_failed_functions)
     continue_identifying_tasks = True
@@ -1066,7 +1116,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                 # get input from user with the index of the task to select, manage exceptions
                 while True:
                     try:
-                        id = int(smart_input("Enter the index of the task to select: ", "orchestrate_agents",
+                        id = 1 if optuna_opti else int(smart_input("Enter the index of the task to select: ", "orchestrate_agents",
                                             "TASK SELECTION").strip())
                         if id in range(len(task)):
                             task = task[id]
@@ -1355,11 +1405,13 @@ def format_prompt(messages):
         else:
             prompt_str += f"Type {type(message)}: " + str(message.content) + "\n"
     return prompt_str
-
-
-def create_Nmajority_chain(num_models=3, map_model_name="gpt-4o-mini", reduce_model_name="gpt-4o-mini", map_temperature=0.7,
-                           reduce_temperature=0.7):
+    
+def create_Nmajority_chain(num_models=3, map_model_name=None, reduce_model_name=None, map_temperature=0.7, reduce_temperature=0.):
     # Initialize the OpenAI models
+    if map_model_name is None:
+        map_model_name = MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"]
+    if reduce_model_name is None:
+        reduce_model_name = MODELS_CONFIG_LIST["smart_gpt" if "smart_gpt" in MODELS_CONFIG_LIST else "gpt"]
     models = [ChatOpenAI(model_name=map_model_name, temperature=map_temperature, cache=False) for _ in
               range(num_models)]
     final_model = ChatOpenAI(model_name=reduce_model_name, temperature=reduce_temperature, cache=False)
@@ -1409,10 +1461,10 @@ if __name__ == "__main__":
     llmORchains_list = {
         "default_llm": ChatOpenAI(
             model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False,
-            temperature=1.7),
-        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"], cache=False, temperature=1.7),
-        #"default_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.7),
-        #"premium_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["code_gpt"], cache=False),#, temperature=0.7),
+            temperature=0.),
+        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"], cache=False, temperature=0.),
+        #"default_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.),
+        #"premium_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["code_gpt"], cache=False),#, temperature=0.),
         "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
                                                    reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=3),
         "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
