@@ -23,7 +23,7 @@
     let pendingCallbacks = {};
     let wsUrl = 'ws://localhost:6789';
     let reconnectAttempts = 0; // Track the number of reconnection attempts
-    const maxAutoReconnectAttempts = 5; // Set the number of reconnection attempts
+    const maxAutoReconnectAttempts = 10; // Set the number of reconnection attempts
     
     // Function to get URL parameter by name
     function getUrlParameter(name) {
@@ -95,7 +95,7 @@
                     statusDiv.style.display = 'block';
                     statusDiv.innerText = 'Waiting connection...';
                 }
-                setTimeout(initWebSocket, 3000); // Wait 3 seconds before trying to reconnect
+                setTimeout(initWebSocket, 1500); // Wait 3 seconds before trying to reconnect
             } else {
                 console.log('Max reconnection attempts reached. Prompting user for input.');
                 let statusDiv = document.getElementById('connection-status');
@@ -1508,7 +1508,15 @@ function updateButtonVisibility() {
                button#regenwithmymodifbutton-${otherFullColumnId},
                input#comment-${otherFullColumnId}`).hide();
         });
-    } else if ($greenContinueButton.length > 0) console.log("multiple columns with button:"+$greenContinueButton.length);
+    } else if ($greenContinueButton.length > 1){ console.log("multiple columns with button:"+$greenContinueButton.length);}
+    else {
+        // If no green "Continue" button is visible, hide all relevant buttons across all columns
+        $(`button[id^="save-"], 
+           button[id^="evaluate-"], 
+           button[id^="regenallbutton-"], 
+           button[id^="regenwithmymodifbutton-"], 
+           input[id^="comment-"]`).hide();
+    }
 }
 
 // Call updateButtonVisibility when the selector changes
