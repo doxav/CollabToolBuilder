@@ -337,55 +337,79 @@ class CodingAgent():
                     functions = []
                     imports = []
                     classes = []
+                    runnable_code = ""
+                    
+                    function_calls = set()  # To track all functions that are being called
+                    function_defs = {}  # To track all function definitions
+                    last_function = None  # To store the last defined function
 
                     if len(code) == 0 or len(list(parsed.body)) == 0:
                         return False, f"Error parsing action response (No Code found): {parsed.body}"
 
-                    main_function = None
-                    runnable_code = ""
-                    for node in parsed.body:
+                    # Use ast.walk to go through all nodes in the AST
+                    for node in ast.walk(parsed):
                         if isinstance(node, ast.FunctionDef):
                             node_type = "FunctionDef"
-                            main_function = {
+                            function_info = {
                                 "name": node.name,
                                 "type": node_type,
                                 "body": ast.get_source_segment(code, node),
                                 "params": [arg.arg for arg in node.args.args],
                             }
-                            functions.append(main_function)
+                            functions.append(function_info)
+                            function_defs[node.name] = function_info  # Store function definition
+                            last_function = function_info  # Track the last defined function
+                            
+                        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                            # Record function calls by name
+                            function_calls.add(node.func.id)
+                            
                         elif isinstance(node, ast.ClassDef):
                             node_type = "ClassDef"
-                            main_function = {
+                            class_info = {
                                 "name": node.name + ".run_pipeline",
                                 "type": node_type,
                                 "body": ast.get_source_segment(code, node),
                             }
-                            functions.append(main_function)
-                        elif isinstance(node, ast.Expr) or isinstance(node, ast.Expression) or isinstance(node,
-                                                                                                          ast.Assign):
+                            classes.append(class_info)
+                            functions.append(class_info)  # Append class definition as a function as per original logic
+                            
+                        elif isinstance(node, (ast.Expr, ast.Expression, ast.Assign)):
                             node_type = "Expression"
                             runnable_code += "\n" + ast.get_source_segment(code, node)
-                        elif isinstance(node, ast.ImportFrom) or isinstance(node, ast.Import):
+                            
+                        elif isinstance(node, (ast.ImportFrom, ast.Import)):
                             node_type = "ImportFrom"
                             imports.append(ast.get_source_segment(code, node))
-                            #smart_print("ImportFrom node: IMPORT SHOULD BE DONE INSIDE FUNCTIONS !!!", self.name, "process_ai_generated_code SystemMessage")
-                        else:
-                            smart_print(
-                                f"Unsupported node type: {type(node)} - content:  {ast.get_source_segment(code, node)}",
-                                self.name, "process_ai_generated_code SystemMessage", optional=True)
-                            #raise ValueError(f"Unsupported node type: {type(node)} - content:  {ast.get_source_segment(code, node)}")  # TODO: check if await is needed
 
+                    # Now we need to find the main function as per the new logic:
+                    # 1. Identify the root function (not called by any other function).
+                    # 2. If no root exists, fallback to the last defined function.
+
+                    # Identify root function (not called by any other function)
+                    root_function = None
+                    for function_name, function_info in function_defs.items():
+                        if function_name not in function_calls:
+                            root_function = function_info
+                            break
+
+                    # If no root function is found, use the last defined function
+                    main_function = root_function if root_function else last_function
+
+                    # Ensure we have a main function
                     assert main_function is not None, "No main function found."
-                    if required_bot_arg:
-                        assert required_bot_arg in main_function[
-                            "params"], f"Main function {main_function['name']} must take an argument named '{required_bot_arg}'"
 
+                    # Check if required_bot_arg is present in the main function's parameters
+                    if required_bot_arg:
+                        assert required_bot_arg in main_function["params"], f"Main function {main_function['name']} must take an argument named '{required_bot_arg}'"
+
+                    # Assemble the final program code
                     program_code = "\n".join(imports) + "\n"
                     program_code += "\n\n".join(function["body"] for function in functions)
 
                     if automatic_tests:
-                        #[test for doc_id, test in parsed_code["tests"] if doc_id == env.id]
                         tests = [(env.id, main_function["name"] + "(bot)") for env in self.envs]
+                        #[test for doc_id, test in parsed_code["tests"] if doc_id == env.id]
                     else:
                         tests = []
                         tests_pattern = re.compile(
@@ -1206,8 +1230,8 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
             smart_print("#" * 20 + f"\nAgent validation feedback: {afb}", "coding_and_validation_loop", "coding_and_validation_loop RESULT")
 
             if extra_manual_validation_to_capitalize:
-                validated = (input(
-                    "#" * 20 + f"\nADD THIS FUNCTION TO LIBRARY ? Please enter 'yes' if this a success and you want to add this function to library, 'no' if this failed: ").lower() in [
+                validated = (smart_input(
+                    "#" * 20 + f"\nADD THIS FUNCTION TO LIBRARY ? Please enter 'yes' if this a success and you want to add this function to library, 'no' if this failed: ", "coding_and_validation_loop").lower() in [
                                  "yes", "y", True])
             else:
                 validated = get_success_value_in_text(afb) in ["yes", "y", True]
@@ -1225,12 +1249,12 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
                 previous_codes.append(parsed_code["program_code"])
 
         if not optuna and not successful_codes:
-            stop = smart_input("No successful code yet, do you want to stop coding attempts for this task (too hard) and try a new one ? (yes/no): ","ValidationAgent", "VALIDATION_INFO",optional=False).lower() in ["yes", "y", True]
+            stop = smart_input("No successful code yet, do you want to stop coding attempts for this task (too hard) and try a new one ? (yes/no): ","coding_and_validation_loop", "VALIDATION_INFO",optional=False).lower() in ["yes", "y", True]
             if stop:
                 break
 
         if not optuna and successful_codes:
-            stop = smart_input("A successful code has been found, do you want to stop coding attempts for this task (performance is sufficient) and try a new one ? (yes/no): ","ValidationAgent","VALIDATION_INFO",optional=False).lower() in ["yes", "y", True]
+            stop = smart_input("A successful code has been found, do you want to stop coding attempts for this task (performance is sufficient) and try a new one ? (yes/no): ","coding_and_validation_loop","VALIDATION_INFO",optional=False).lower() in ["yes", "y", True]
             if stop:
                 break
 
@@ -1242,9 +1266,9 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
 
         if attempt == max_attempts - 1:
             if not successful_codes:
-                smart_print("No successful code yet. Stop this task.", "ValidationAgent", "VALIDATION_INFO")
+                smart_print("No successful code yet. Stop this task.", "coding_and_validation_loop", "VALIDATION_INFO")
             else:
-                smart_print("Max attempts reached. Trying a new task.", "ValidationAgent", "VALIDATION_INFO")
+                smart_print("Max attempts reached. Trying a new task.", "coding_and_validation_loop", "VALIDATION_INFO")
 
     # Calculate metrics over all attempts
     percentage_no_runtime_error = (sum(1 for _, no_runtime_error, _, _, _, _ in all_results if no_runtime_error) / len(

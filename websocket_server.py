@@ -256,7 +256,7 @@ class WebsocketServer:
             else:
                 self.display_urls()
                 print("Waiting for WebSocket client to connect")
-                time.sleep(1)
+                time.sleep(2)
         self.message_count += 1
         if isinstance(message, dict) and "sender_id" not in message:
             message['sender_id'] = self.server_id

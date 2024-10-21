@@ -22,7 +22,7 @@
     let socket;
     let pendingCallbacks = {};
     let wsUrl = 'ws://localhost:6789';
-    let reconnectAttempts = -1; // Track the number of reconnection attempts
+    let reconnectAttempts = 0; // Track the number of reconnection attempts
     const maxAutoReconnectAttempts = 5; // Set the number of reconnection attempts
     
     // Function to get URL parameter by name
@@ -626,15 +626,15 @@
             }
 
             // Generate a unique ID for the editor
-            let editorId = `editor-${Date.now()}`;
+            //let editorId = `editor-${Date.now()}`;
 
             // Create the container with the editor ID
             let $messageContainer = $(`<h4>${title}</h4><div class="column-container"><div id="${editorId}"></div></div>`);
 
             $agentAccordion.children("div").append($messageContainer);
-
+            alert(data.message);
             // Initialize Monaco Editor
-            createMonacoEditor(editorId, data.message, 'markdown', data.agent_name, 0).then(function(editor) {messageContainer[0].editorInstance = editor;});
+            //createMonacoEditor(editorId, data.message, 'markdown', data.agent_name, 0).then(function(editor) {messageContainer[0].editorInstance = editor;});
 
             if (data.input) {
                 displayInputField();
@@ -1576,6 +1576,119 @@ function getColumnsToKeep(agent) {
         $(`#value-temp`).text(this.value);
     });
 
+    function createMonacoDiffEditor(elementId, originalContent, modifiedContent) {
+                return monacoLoaderPromise.then(function() {
+                    const diffEditor = monaco.editor.createDiffEditor(document.getElementById(elementId), {
+                        automaticLayout: true,
+                        originalEditable: false, // Keep original content read-only
+                        readOnly: false,          // Allow editing the modified content
+                        wordWrap: 'on'
+                    });
+                    const originalModel = monaco.editor.createModel(originalContent, 'markdown');
+                    const modifiedModel = monaco.editor.createModel(modifiedContent, 'markdown');
+                    monaco.editor.setModelLanguage(modifiedModel, 'markdown'); // Format modified content as markdown
+                    diffEditor.setModel({ original: originalModel, modified: modifiedModel });
+                    return diffEditor;
+                });
+            }
+
+    function activateCodeComparison(agent_columnId, newContent) {
+        // Compute the editor container's ID based on agent_columnId
+        const editorContainerId = `editor-${agent_columnId}`;
+        const editorContainer = document.getElementById(editorContainerId);
+
+        if (!editorContainer) {
+            console.error(`Editor container with ID ${editorContainerId} not found.`);
+            enableGenButtons(true); // Re-enable buttons if editor not found
+            return;
+        }
+
+        // Retrieve the existing editor instance
+        const existingEditor = editorContainer.editorInstance;
+
+        if (!existingEditor) {
+            console.error(`No editor instance found in container ${editorContainerId}.`);
+            enableGenButtons(true); // Re-enable buttons if editor instance not found
+            return;
+        }
+
+        // Get the original content from the existing editor
+        const originalContent = existingEditor.getValue();
+
+        // Dispose of the existing editor instance to prevent stacking
+        existingEditor.dispose();
+
+        // Create the Diff Editor with original and new content
+        createMonacoDiffEditor(editorContainerId, originalContent, newContent).then(function(diffEditorInstance) {
+            // Store the Diff Editor instance
+            editorContainer.editorInstance = diffEditorInstance;
+
+            // Check if the toggle button already exists to prevent duplicates
+            if (!editorContainer.querySelector('.toggle-diff-button')) {
+                // Create the toggle button
+                const toggleButton = document.createElement('button');
+                toggleButton.textContent = 'Toggle Diff';
+                toggleButton.className = 'toggle-diff-button';
+                toggleButton.style.position = 'absolute';
+                toggleButton.style.top = '10px';
+                toggleButton.style.right = '10px';
+                toggleButton.style.padding = '5px 10px';
+                toggleButton.style.backgroundColor = '#1976D2'; // Primary Blue
+                toggleButton.style.color = 'white';
+                toggleButton.style.border = 'none';
+                toggleButton.style.borderRadius = '3px';
+                toggleButton.style.cursor = 'pointer';
+                toggleButton.style.zIndex = '1000'; // Ensure it appears above the editor
+
+                // Ensure the editor container has relative positioning for absolute button
+                editorContainer.style.position = 'relative';
+
+                // Append the toggle button to the editor container
+                editorContainer.appendChild(toggleButton);
+
+                let isDiffMode = true;
+
+                // Toggle function to switch between Diff Mode and Normal Mode
+                toggleButton.addEventListener('click', function() {
+                    if (isDiffMode) {
+                        // Switch to Normal Mode
+                        diffEditorInstance.dispose();
+
+                        // Create a new Monaco Editor with the modified content
+                        const normalEditor = monaco.editor.create(document.getElementById(editorContainerId), {
+                            value: newContent,
+                            language: 'markdown',
+                            readOnly: false,
+                            automaticLayout: true,
+                            wordWrap: "on"
+                        });
+
+                        // Store the normal editor instance
+                        editorContainer.editorInstance = normalEditor;
+
+                        // Update toggle state and button text
+                        isDiffMode = false;
+                        toggleButton.textContent = 'Show Diff';
+                    } else {
+                        // Switch back to Diff Mode
+                        editorContainer.editorInstance.dispose();
+
+                        // Recreate the Diff Editor with original and new content
+                        createMonacoDiffEditor(editorContainerId, originalContent, newContent).then(function(newDiffEditor) {
+                            editorContainer.editorInstance = newDiffEditor;
+                            isDiffMode = true;
+                            toggleButton.textContent = 'Show Normal';
+                        }).catch(function(error) {
+                            console.error('Error recreating Diff Editor:', error);
+                        });
+                    }
+                });
+            }
+        }).catch(function(error) {
+            console.error('Error creating Diff Editor:', error);
+        });
+    }
+
     function handleMultipleSolutions(data) {
     try {
         const columnMax = data.column_max;
@@ -1724,22 +1837,6 @@ function getColumnsToKeep(agent) {
                 }
             }
 
-   function createMonacoDiffEditor(elementId, originalContent, modifiedContent) {
-        return monacoLoaderPromise.then(function() {
-            const diffEditor = monaco.editor.createDiffEditor(document.getElementById(elementId), {
-                automaticLayout: true,
-                originalEditable: false,
-                readOnly: true,
-                wordWrap: 'on'
-            });
-            const originalModel = monaco.editor.createModel(originalContent, 'markdown');
-            const modifiedModel = monaco.editor.createModel(modifiedContent, 'markdown');
-            monaco.editor.setModelLanguage(modifiedModel, 'markdown'); // Format modified content as markdown
-            diffEditor.setModel({ original: originalModel, modified: modifiedModel });
-            return diffEditor;
-        });
-    }
-
     $(document).on("click", `#evaluate-${agent_columnId}`, function () {
         // Check if the input field is empty
         let comment = $(`#comment-${agent_columnId}`).val().trim();
@@ -1785,6 +1882,7 @@ function getColumnsToKeep(agent) {
                     // Update the Monaco Editor content with the formatted response
                     let formattedResponse = formatMessage(responseMessage);
                     editor.setValue(formattedResponse);
+                    //activateCodeComparison(agent_columnId, requestData.originalContent, formattedResponse);
 
                     // Re-enable the button and reset its text
                     enableGenButtons(true);
