@@ -644,6 +644,20 @@ class HumanLLMMonitor:
         return {result.page_content for result in results}
 
     @classmethod
+    def get_validation_results(cls, query_text="*", k=10, sort_order=None, similarity_search=False):
+        cls.check_init_db()
+        metadata_filter = {'agent_name': 'ValidationAgent'}
+        if similarity_search:
+            results = cls.common_vectordb.similarity_search_with_score(
+                query=query_text, k=k, metadata_filter=metadata_filter
+            )
+        else:
+            results = cls.common_vectordb.query(
+                query_text=query_text, k=k, metadata_filter=metadata_filter, sort_order=sort_order
+            )
+        return {result.page_content for result in results}
+
+    @classmethod
     def get_multiple_few_shots(cls, few_shots_params) -> str:
         if not few_shots_params:
             return ""

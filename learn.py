@@ -644,10 +644,13 @@ class CodingAgent():
             user_message += f"{dnl}RE-USABLE CODE PRIMITIVES: [[[{nl}{nl.join(primitives)}{nl}]]]"
         successful_tasks = list(HumanLLMMonitor.get_learnt_tasks())
         failed_tasks = list(HumanLLMMonitor.get_failed_tasks())
+        validation_response_um = list(HumanLLMMonitor.get_validation_results())
         if successful_tasks and len(successful_tasks) > 0:
             user_message += f"{dnl}PREVIOUSLY SUCCESSFUL TASKS: [[[{nl}{nl.join(successful_tasks[:5])}{nl}]]]"
         if failed_tasks and len(failed_tasks) > 0:
             user_message += f"{dnl}PREVIOUSLY FAILED TASKS: [[[{nl}{nl.join(failed_tasks[:3])}{nl}]]]"
+        if validation_response_um and len(validation_response_um) > 0:
+            user_message += f"{dnl}PREVIOUS VALIDATION RESULTS: [[[{nl}{nl.join(validation_response_um[:max_db_results])}{nl}]]]"
 
         if previous_errors and len(previous_errors) > 0:
             user_message += f"{dnl}PREVIOUS ATTEMPTS TO CODE THE TASK: [[[{nl}"
