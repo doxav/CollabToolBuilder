@@ -330,7 +330,7 @@ def load_wikipedia_url(url: str) -> Dict[str, str]:
 async def _extract_title(string: str) -> str:
     """Extract a title from `string` that is max 7 words long."""
     doctran = Doctran(
-        openai_api_key=os.getenv("OPENAI_API_KEY"), openai_model="gpt-3.5-turbo"
+        openai_api_key=os.getenv("OPENAI_API_KEY"), openai_model="gpt-4o-mini"
     )
     document = doctran.parse(content=string)
     properties = ExtractProperty(

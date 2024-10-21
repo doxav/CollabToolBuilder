@@ -50,10 +50,7 @@ AGENT = ''
 import asyncio
 import websockets
 
-ws_url = "ws://localhost:6789"
-
-
-def smart_print(message: str, agent_name=None, message_type=None, append=False, column_id=None, column_max=None):
+def smart_print(message: str, agent_name=None, message_type=None, append=False, column_id=None, column_max=None, optional=False):
     global AgentDisplayManager, AGENT
     if 'IN_NOTEBOOK' not in globals():
         try:  # test if IN_NOTEBOOK
@@ -79,13 +76,13 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
             # Remove unexpected characters
             message = re.sub(r'[^\x20-\x7E\t\n\r]', "", message)
         message_dict = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'append': append,
-                        'column_id': column_id, 'column_max': column_max}
+                        'column_id': column_id, 'column_max': column_max, 'optional': optional, 'step_id': HumanLLMMonitor.step_id}
         # convert message_dict to json
         message = json.dumps(message_dict)
-        time.sleep(0.1)
+        time.sleep(0.05)
         # Wait a second every 500 messages to avoid flooding the WebSocket server
         if HumanLLMMonitor.websocket_server.message_count % 500 == 0:
-            time.sleep(1)
+            time.sleep(0.5)
         HumanLLMMonitor.websocket_server.send_message(message)
 
     elif IN_NOTEBOOK and agent_name:
@@ -107,51 +104,88 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
         else:
             print(message)
 
-
-def smart_input(message: str, agent_name=None, message_type=None):
+def smart_input(message: str, agent_name=None, message_type=None, column_id=None, column_max=None, optional=False):
+    # Determine if running in a notebook environment
     if 'IN_NOTEBOOK' not in globals():
         try:  # test if IN_NOTEBOOK
             from IPython import get_ipython
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = get_ipython().__class__.__name__ == 'ZMQInteractiveShell'
+            print("Smart_print: Notebook mode =", IN_NOTEBOOK)
         except:
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = False
     else:
         IN_NOTEBOOK = globals()['IN_NOTEBOOK']
 
+    # Determine if using WebSocket
     if 'IN_WEBSOCKET' not in globals():
-        # Check if a Streamlit server is running
         if HumanLLMMonitor.use_websocket:
             globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = True
-
         else:
             globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = False
     else:
         IN_WEBSOCKET = globals()['IN_WEBSOCKET']
+
     if IN_WEBSOCKET:
-        structured_message = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'input': True}
-        # convert structured_message to json
-        message = json.dumps(structured_message)
-        HumanLLMMonitor.websocket_server.send_message(message)
-        async def receive_message(timeout=900):
+        # # Ensure WebSocket server is ready and has clients
+        # if not HumanLLMMonitor.websocket_server.connected_clients:
+        #     print("No WebSocket clients connected. Waiting for clients...")
+        #     while not HumanLLMMonitor.websocket_server.connected_clients:
+        #         time.sleep(1)
+
+        # # Retrieve port and secret from WebsocketServer
+        port = HumanLLMMonitor.websocket_server.port
+        secret = HumanLLMMonitor.websocket_server.secret
+        ws_url = f"ws://localhost:{port}"
+        if secret:
+            ws_url += f"?secret={secret}"
+
+        # Construct the structured message
+        structured_message = {
+            'message': message,
+            'agent_name': agent_name,
+            'message_type': message_type,
+            'column_id': column_id,
+            'column_max': column_max,
+            'input': True,
+            'optional': optional,
+            'step_id': HumanLLMMonitor.step_id
+        }
+        message_json = json.dumps(structured_message)
+
+        # Send the message via WebsocketServer
+        HumanLLMMonitor.websocket_server.send_message(message_json)
+
+        async def receive_message(timeout=86400):
             async with websockets.connect(ws_url) as websocket:
                 try:
                     print("SMART INPUT Waiting for response from WebSocket")
                     while True:
-                        response = await asyncio.wait_for(websocket.recv(), timeout=timeout)
+                        max_retry = 10
+                        response = None
+                        for i in range(max_retry):
+                            try:
+                                response = await asyncio.wait_for(websocket.recv(), timeout=timeout)
+                                break
+                            except asyncio.TimeoutError:
+                                print(f"Timeout waiting for response from WebSocket, retry {i+1}/{max_retry}")
+                                await asyncio.sleep(1)
+                            except Exception as e:
+                                print(f"An error occurred: {e}, retry {i+1}/{max_retry}")
+                                await asyncio.sleep(1)
                         print("SMART INPUT Received response from WebSocket")
                         json_data = json.loads(response)
-                        if 'sender_id' in json_data and json_data[
-                            'sender_id'] == HumanLLMMonitor.websocket_server.server_id:
+                        # Ignore messages from self
+                        if 'sender_id' in json_data and json_data['sender_id'] == HumanLLMMonitor.websocket_server.server_id:
                             print("Received message from self, ignoring")
                             continue
 
+                        # Handle function results
                         if 'result' in json_data:
-                            print("Received my function result, ignoring")
+                            print("Received function result, ignoring")
                             json_data['sender_id'] = HumanLLMMonitor.websocket_server.server_id
                             response = json.dumps(json_data)
                             HumanLLMMonitor.websocket_server.send_notasync_message(response)
                             continue
-
                         else:
                             break
                     if 'message' in json_data:
@@ -166,7 +200,15 @@ def smart_input(message: str, agent_name=None, message_type=None):
                     print("Timeout waiting for response from WebSocket")
                     return None
 
-        return asyncio.run(receive_message())
+        try:
+            # Attempt to get the current running event loop
+            loop = asyncio.get_running_loop()
+            # If a loop is running, schedule the receive_message coroutine
+            future = asyncio.run_coroutine_threadsafe(receive_message(), loop)
+            return future.result()
+        except RuntimeError:
+            # No running loop, create a new event loop and run the coroutine
+            return asyncio.run(receive_message())
 
     elif IN_NOTEBOOK and agent_name:  # Currently DE-ACTIVATED
         # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
@@ -181,7 +223,6 @@ def smart_input(message: str, agent_name=None, message_type=None):
     else:
         return input(message)
 
-
 def is_vscode_installed():
     try:
         # Try to get the version of VSCode, which will confirm if it's installed
@@ -195,7 +236,7 @@ def is_vscode_installed():
         return False
 
 
-def _visual_input(initial_string="", filetype="md"):
+def _visual_input(initial_string="", filetype="md", agent_name=None, column_id=None, column_max=None, message_type=None):
     """
     Open a visual editor (VSCode or Tkinter) to interactively edit a given string or list.
 
@@ -224,6 +265,7 @@ def _visual_input(initial_string="", filetype="md"):
         with open(file_path, 'w') as file:
             file.write(initial_string_serialized)
 
+        smart_print(f"Please edit and save the file opened in VSCode (Ctrl + W) when ready ({file_path})", optional=False, agent_name=agent_name, column_id=column_id, column_max=column_id, message_type=message_type)
         # Step 3: Open the file in VSCode
         subprocess.run(["code", "--wait", file_path])
 
@@ -318,10 +360,10 @@ def save_prompt(prompt_name, text, package_path="."):
     # if prompt_file_path_name exists, move existing file to prompt_file_path_name.timestamp (timestamp = datetime.now().isoformat())
     if f_exists(prompt_file_path_name):
         moved_file_path_name = prompt_file_path_name + datetime.now().strftime(".%H-%M-%S_%m-%d-%y")
-        smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}", "save_prompt")
+        smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}", "save_prompt", optional=True)
         f_move(prompt_file_path_name, moved_file_path_name)
 
-    smart_print(f"Saving new prompt file {prompt_file_path_name}", "save_prompt")
+    smart_print(f"Saving new prompt file {prompt_file_path_name}", "save_prompt", optional=True)
 
     return dump_text(text, prompt_file_path_name)
 
@@ -344,10 +386,10 @@ def save_prompt_with_tag(prompt_name, text, new_tag, package_path="."):
     if f_exists(prompt_file_path_name):
         moved_file_path_name = prompt_file_path_name + datetime.now().strftime(".%Y-%m-%d_%H-%M-%S")
         smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}",
-                    "save_prompt_with_tag")
+                    "save_prompt_with_tag", optional=True)
         f_move(prompt_file_path_name, moved_file_path_name)
 
-    smart_print(f"Saving new prompt file {prompt_file_path_name}", "save_prompt_with_tag")
+    smart_print(f"Saving new prompt file {prompt_file_path_name}", "save_prompt_with_tag", optional=True)
 
     # Save the file
     return dump_text(text, prompt_file_path_name)
@@ -456,7 +498,6 @@ class UnifiedVectorDB:
         elif UnifiedVectorDB.db_type == 'elasticsearch':
             return self.db.similarity_search_with_score(query, k=(k if k <= 50 else 50))  # k seems to crash when > 50
     # query( query_embeddings, query_texts, n_results, where, where_document, include)
-
     def query(self, query_text="", k=1, metadata_filter=None, metadata_filter_OR=False, custom_filter_chrome=None,
               custom_filter_es=None, sort_order=None):
         if UnifiedVectorDB.db_type == 'chroma':
@@ -540,8 +581,8 @@ class InferenceCheck:
         self.check_name = check_name
         self.check_function = check_function
 
-    def run_check(self, *args, **kwargs):
-        return self.check_function(*args, **kwargs)
+    def run_check(self, output_id, *args, **kwargs):
+        return self.check_function(*args, **kwargs, output_id=output_id)
 
 class HumanLLMMonitor:
     default_skip_rounds = 0
@@ -765,9 +806,9 @@ class HumanLLMMonitor:
         cls.db_failed_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
 
     @classmethod
-    def initialize_websocket_server(cls):
+    def initialize_websocket_server(cls, port=6789, secret=None, proxy_enabled=False):
         if cls.use_websocket and cls.websocket_server is None:
-            cls.websocket_server = WebsocketServer()
+            cls.websocket_server = WebsocketServer(port=port, secret=secret, proxy_enabled=proxy_enabled)
             cls.stop_event.clear()
             cls.ws_thread = threading.Thread(target=cls.run_websocket_server)
             cls.ws_thread.daemon = True  # Run the WebSocket server in a daemon thread
@@ -776,6 +817,7 @@ class HumanLLMMonitor:
     @classmethod
     def run_websocket_server(cls):
         asyncio.run(cls.websocket_server.main(cls.stop_event))
+        # cls.websocket_server.run_server(cls.stop_event)
 
     @classmethod
     def stop_websocket_server(cls):
@@ -887,7 +929,7 @@ class HumanLLMMonitor:
                                 except ValueError as e:
                                     smart_print(
                                         f"Sub-step {key} in step {step} does not support temperature configuration: {e}",
-                                        self.agent_name)
+                                        self.agent_name,"set_llmORchain",optional=True)
                             modified_dict[key] = sub_step
                         step.steps__ = modified_dict
                         modified_steps.append(step)
@@ -926,7 +968,7 @@ class HumanLLMMonitor:
                         configurable={"llm_temperature": temperature})  # Replace with desired default temperature
                 except ValueError as e:
                     smart_print(f"LLM/Chain '{llm_name}' does not support temperature configuration: {e}",
-                                self.agent_name)
+                                self.agent_name, optional=True)
 
             # Apply structured output if needed
             if self.output_schema:
@@ -950,7 +992,7 @@ class HumanLLMMonitor:
                     selected_llm_or_chain = selected_llm_or_chain.with_structured_output(self.output_schema)
                 else:
                     # If neither condition matches, `selected_llm_or_chain` is not modified
-                    smart_print(f"LLM/Chain '{llm_name}' does not support structured output", self.agent_name)
+                    smart_print(f"LLM/Chain '{llm_name}' does not support structured output", self.agent_name, optional=True)
 
             # Set the LLM/Chain to the possibly modified or original one
             if is_premium:
@@ -962,7 +1004,7 @@ class HumanLLMMonitor:
         else:
             smart_print(
                 f"LLM/Chain '{llm_name}' not found in llmORchains_list {[key for key in self.llmORchains_list]}",
-                self.agent_name)
+                self.agent_name, optional=True)
             return False
 
     def set_default_llmORchain(self, llm_name, temperature=0.7):
@@ -1007,6 +1049,7 @@ class HumanLLMMonitor:
                  synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, optuna=False, envs=None,
                  fixed_coach=False):
         # Instance properties to track time
+        self.selected_outputs = []
         self.menu_start_time = None
         self.start_time = None
         self.current_inference_context = None
@@ -1047,6 +1090,21 @@ class HumanLLMMonitor:
         self.user_message = ""
         self.envs = envs
         self.fixed_coach = fixed_coach
+
+    # Clears the selected answers before processing new outputs.
+    # This should be called at the beginning of a new inference process.
+    def clear_selected_outputs(self):
+        self.selected_outputs = []
+
+    # Store the list of selected answers/outputs provided by the frontend.
+    # This should be called during the after_inference process.
+    def set_selected_outputs(self, selected_outputs):
+        self.selected_outputs = selected_outputs
+
+    # Retrieve the list of selected answers/outputs.
+    # External agents can use this method to access the selected outputs.
+    def get_selected_outputs(self):
+        return self.selected_outputs
 
     # New: Handling function calls via WebSocket
     def execute_function(self, function_name, params):
@@ -1207,7 +1265,7 @@ class HumanLLMMonitor:
     def run_inference_checks(self, output_id, *args, **kwargs):
         results = {}
         for check_name, check in self.inference_checks.items():
-            result = check.run_check(*args, **kwargs)
+            result = check.run_check(output_id, *args, **kwargs)
             results[check_name] = result
         # Ensure output_id is within bounds before updating the list
         if 0 <= output_id < len(self.last_inference_check_results):
@@ -1220,13 +1278,13 @@ class HumanLLMMonitor:
 
     def _max_tokens_ok(self, content):
         import tiktoken
-        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")  # TODO: replace by appropriate call to self.xxxxxx
+        encoding = tiktoken.encoding_for_model("gpt-4o-mini")  # TODO: replace by appropriate call to self.xxxxxx
         token_length = len(encoding.encode(content))
 
         if token_length > self.llm_max_context_size:
             smart_print(
                 f"\033[31mCANNOT SEND MESSAGE TO LLM:\n{content}\n\nToo many tokens in human message for LLM ({token_length}). Fallback to manual feedback.\033[0m",
-                self.agent_name)
+                self.agent_name, optional=True)
             return False
         else:
             return True
@@ -1267,24 +1325,23 @@ class HumanLLMMonitor:
             before_menu = f"\033[{self.print_color}m***** {self.agent_name}->{function_name}  BEFORE *****\nSYSTEM PROMPT:\n{messages[0].content}\n\nUSER MESSAGE:\n{messages[1].content}\n***** {self.agent_name}->{function_name} BEFORE *****\033[0m\n"
             if not self._max_tokens_ok(messages[0].content + "\n" + messages[1].content):
                 before_menu += ("WARNING!!!! Max tokens exceeded, you should refactor user message or system prompt!\n")
-            menu += (
-                "[A] Modify agent's 'system prompt' (role, global context, constraints, examples) OR the answer SCHEMA output.\n")
-            menu += ("[B] Add instruction or information to agent.\n")
-            menu += ("[C] Skip and set LLM output from recent outputs or manually define it.\n")
-            menu += ("[D] Log comments (not used by the model, just for information).\n")
-            menu += ("[E] See all previous results for this agent.\n")
-            menu += ("[F] See previous MODIFIED/SCORED/COMMENTED results for this agent.\n")
-            menu += ("[G] Skip human actions for N rounds.\n")
-            menu += ("[H] Change default LLM.\n")
-            menu += ("[I] Change premium LLM.\n")
+            menu += ("[A] Modify agent's system prompt\n") #Modify agent's 'system prompt' (role, global context, constraints, examples) OR the answer SCHEMA output.\n")
+            menu += ("[B] Give instruction or information to agent\n")
+            menu += ("[C] Skip & set agent output (from recent or manually)\n")
+            menu += ("[D] Log comments (not used by the model, just for information)\n")
+            menu += ("[E] See previous results\n")
+            menu += ("[F] See MODIFIED/SCORED/COMMENTED results\n")
+            menu += ("[G] Skip for N rounds (auto mode)\n")
+            menu += ("[H] Change default agent\n")
+            menu += ("[I] Change premium agent\n")
             #menu += (f"[I] Activate/de-activate function calling to allow model request external knowledge - current status: {function_calling}\n")
             menu += (
-                f"[J] Change num of parallel inferences - Current value={self.num_parallel_inferences}, Synthesize mode=\033[32m{'ON' if self.synthesize_mode else 'OFF'}\033[0m\n")  # UPDATED
-            menu += ("[K] Exit program.\n")
-            menu += (f"[P] Proceed to inference using a PREMIUM LLM - Current value={use_premium_llm}\n")
+                f"[J] Set num of parallel inferences ({self.num_parallel_inferences}, Synthesis={'ON' if self.synthesize_mode else 'OFF'})\n")  # UPDATED
+            menu += ("[K] Exit\n")
+            menu += (f"[P] Generate with a PREMIUM agent (default:{use_premium_llm})\n")
             menu += (f"[Z] Continue\n")
 
-            smart_print(before_menu + menu, self.agent_name, "BEFORE inference action MENU")
+            smart_print(before_menu + menu, self.agent_name, "BEFORE inference action MENU", optional =False)
             self.menu_start_time = time.time()
             if optuna:
                 llm_keys = list(self.llmORchains_list.keys())
@@ -1316,7 +1373,7 @@ class HumanLLMMonitor:
             else:  # Default case
                 action = smart_input(
                     f"\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
-                    self.agent_name).upper()
+                    self.agent_name, optional=False).upper()
 
             # ACTIONS processing
             self.start_time = time.time()  # Init action selected and timer to measure time spent and occurences in action processing
@@ -1363,7 +1420,7 @@ class HumanLLMMonitor:
                         HumanMessage(content=result)
                     ]
                     for message in messages:
-                        smart_print(message.content, self.agent_name, "BEFORE inference action MENU")
+                        smart_print(message.content, self.agent_name, "BEFORE inference action MENU", optional=True)
 
 
             elif action == "G":  # Skip human actions for N rounds
@@ -1377,7 +1434,7 @@ class HumanLLMMonitor:
 
                 # elif action == "I":
                 #     function_calling = not function_calling
-                #     smart_print(f"function_calling is now {function_calling}", self.agent_name, "function_calling")
+                #     smart_print(f"function_calling is now {function_calling}", self.agent_name, "function_calling", optional=True)
 
             elif action == "K":  # Exit program
                 self.exitProgram()
@@ -1396,16 +1453,14 @@ class HumanLLMMonitor:
                 if action == "P": use_premium_llm = True
                 break
             else:
-                proceed = "y" if optuna else smart_input(
-                    "Proceed to inference (y/n) ? You can also hit 'p' to proceed using a premium llm.",
-                    self.agent_name, "INFERENCE CHOICE").lower()
+                proceed = "y" if optuna else "n" # smart_input("Proceed to inference (y/n) ? You can also hit 'p' to proceed using a premium llm.", self.agent_name, "INFERENCE CHOICE").lower()
                 if proceed in ["y", "p", ""]:
                     if proceed == "p": use_premium_llm = True
                     break
 
         smart_print(
             f"Time spent in each option and occurrences: {self.before_inference_option_times} - {self.before_inference_option_counts}",
-            self.agent_name)
+            self.agent_name, optional=True)
 
         self.mode = None
         return messages, comments, forced_llm_output, use_premium_llm, default_llm_function, premium_llm_function, function_calling
@@ -1423,7 +1478,7 @@ class HumanLLMMonitor:
             self.synthesize_mode = synthesize_mode_input == "1"  # NEW
         else:  # NEW
             smart_print("Invalid input. Synthesize mode remains unchanged.", self.agent_name,
-                        "NUM_PARALLEL_INFERENCES SYNTHESIS MODE CHOICE")  # NEW
+                        "NUM_PARALLEL_INFERENCES SYNTHESIS MODE CHOICE", optional=True)  # NEW
 
     def changeNumParallelInferences(self):
         try:
@@ -1462,7 +1517,7 @@ class HumanLLMMonitor:
                 date = entry.metadata['time'].split('.')[0]
                 list_output += (
                     f"\033[94m{idx}.\033[0m {text[:100]}....{text[-100:]} #{entry.metadata['function_name']} @{date}\n")  # Display a snippet of each entry
-            smart_print(list_output, self.agent_name, "LOG ENTRIES LIST")
+            smart_print(list_output, self.agent_name, "LOG ENTRIES LIST", optional=True)
 
             try:
                 selected_index = int(
@@ -1484,12 +1539,8 @@ class HumanLLMMonitor:
         return forced_llm_output
 
     def add_instruction(self, initial_user_message, messages):
-        new_message = initial_user_message + "\n" + _visual_input(" ")
-        confirm = smart_input(
-            f"***** NEW USER MESSAGE:\n{new_message}\n*************\nAre you sure you want to modify it? (y/n): ",
-            self.agent_name).upper()
-        if confirm == "Y":
-            messages[1].content = new_message
+        instructions = smart_input(f"ENTER ADDITIONAL INSTRUCTIONS FOR THE AGENT: ", self.agent_name, optional=False)
+        messages[1].content = initial_user_message + f"\n\nADDITIONAL INSTRUCTIONS: << {instructions} >>"
 
     def modify_prompt(self, callable_system_message, comments, default_llm_function, forced_llm_output, messages,
                       premium_llm_function, use_premium_llm):
@@ -1501,7 +1552,7 @@ class HumanLLMMonitor:
             output += (f"{i + 1}. {variant}\n")
         output += (
             f"{len(prompt_variants) + 1}. Ask LLM to generate a new variant of the current system prompt given my instructions\n")
-        smart_print(output, self.agent_name, "PROMPT OPTIONS")
+        smart_print(output, self.agent_name, "PROMPT OPTIONS", optional=True)
         variant_choice = smart_input(
             "Select a number to modify a prompt or create a new variant (or press Enter to continue with the current selection): ",
             self.agent_name)
@@ -1568,7 +1619,7 @@ class HumanLLMMonitor:
                 new_llm_name = llm_keys[new_llm_index]
                 if self.set_premium_llmORchain(new_llm_name): break
         premium_llm_function = self.premium_llm
-        smart_print(f"Premium LLM changed to {new_llm_name}", self.agent_name, "Change Premium LLM")
+        smart_print(f"Premium LLM changed to {new_llm_name}", self.agent_name, "Change Premium LLM", optional=True)
         return premium_llm_function
 
     def changeDefaultLLM(self, default_llm_function):
@@ -1581,7 +1632,7 @@ class HumanLLMMonitor:
                 new_llm_name = llm_keys[new_llm_index]
                 if self.set_default_llmORchain(new_llm_name): break
         default_llm_function = self.default_llm
-        smart_print(f"Default LLM changed to {new_llm_name}", self.agent_name, "Change Default LLM")
+        smart_print(f"Default LLM changed to {new_llm_name}", self.agent_name, "Change Default LLM", optional=True)
         return default_llm_function
 
     def getScoredResults(self, function_name):
@@ -1713,6 +1764,7 @@ class HumanLLMMonitor:
             inference_result_msg = type('InferenceResult', (object,), {'content': None})
 
         while self.skip_rounds <= 0:
+            self.temp_inference_result_content = None # to capture the inference message done from functions outside of the menu
             # MENU
             multiple_ref = (f"OUTPUT \033[31m{output_id} OUT OF {outputs_count}\033[0m OUTPUTS" if (
                         output_id and outputs_count and (outputs_count > 1)) else "")
@@ -1728,31 +1780,33 @@ class HumanLLMMonitor:
                 f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n{check_display}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")
 
             menu += (
-                "[A] Manually set/modify the answer/output (I don't want to try to improve agent's system prompt).\n")  # je voudrais le corriger uniquement pour demander une suggestion d'amélioration du prompt (d'un autre côté, je peux aussi le faire dans le menu précédent)
-            menu += ("[B] Critic this answer/output to get an improved answer/output.\n")
-            menu += ("[C] Find a better Prompt by providing critic and ideal answer.\n")
-            menu += (
-                "[D] Evaluate & comment answer (Score between 0(worst)-1(top), and explain) to improve future results by using scored/commented examples.\n")
-            menu += ("[E] Go back BEFORE inference to improve system prompt or add information to user message.\n")
-            menu += ("[G] Skip human actions for N rounds.\n")
+                "[A] Edit answer in VSCode\n")  # je voudrais le corriger uniquement pour demander une suggestion d'amélioration du prompt (d'un autre côté, je peux aussi le faire dans le menu précédent)
+            menu += ("[B] Critic answer to regenerate it\n")
+            menu += ("[C] Critic to improve agent's behavior\n")
+            menu += ("[D] Evaluate answer\n")
+            menu += ("[E] Go back (to BEFORE menu)\n")
+            menu += ("[G] Skip for N rounds (auto mode)\n")
             menu += ("[Z] Continue\n")
-            menu += ("[H] Exit program.\n")
+            menu += ("[H] Exit\n")
 
             smart_print(menu, self.agent_name, "AFTER inference action MENU" + (
-                f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""))
+                f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""), self.agent_name, column_id=output_id-1, column_max=outputs_count)
             self.menu_start_time = time.time()
             action = "" if optuna else smart_input(
                 f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
-                self.agent_name).upper()
+                self.agent_name, optional=False, column_id=output_id-1, column_max=outputs_count).upper()
+
+            if self.temp_inference_result_content: # if modified async, it is important in case of edition ("A") to keep the modified content
+                inference_result_msg.content = self.temp_inference_result_content
 
             # ACTIONS processing
             self.start_time = time.time()  # Init action selected and timer to measure time spent and occurences in action processing
 
             if action == "A":  # Manually set/modify the answer/output
-                self.modifyAnswer(inference_result_msg)
+                self.modifyAnswer(inference_result_msg, output_id)
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
-                comments = self.criticAnswer(comments, inference_result_msg)
+                inference_result_msg = self.criticAnswer(comments, inference_result_msg, annotated_critics=False)
 
             elif action == "C":  # Find a better Prompt by providing critic and ideal answer
                 comments = self.findBetterPrompt(comments, inference_result_msg, premium_llm_function)
@@ -1772,13 +1826,16 @@ class HumanLLMMonitor:
             # Count time spent and occurrences waiting and in each option
             self.track_time_spent(action, mode='after')
 
-            if action in [None, "",
-                          "E",
-                          "Z"]: break  # E: Go back BEFORE inference to improve system prompt or add information to user message
+            if self.temp_inference_result_content: # it means an async function has modified the content and we should not exit but continue the loop
+                inference_result_msg.content = self.temp_inference_result_content
+                smart_print(menu, self.agent_name, "ANSWER MODIFIED, RUNNING CHECKS BEFORE CONTINUING", column_id=output_id-1, column_max=outputs_count)
+                #check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
+            elif action in [None, "", "E", "Z"]:
+                break  # E: Go back BEFORE inference to improve system prompt or add information to user message
 
-            proceed = smart_input("Continue 'y' (or 'n' to go back to menu) ? ", self.agent_name).lower()
-            if proceed in ["y", ""]:
-                break
+            # proceed = smart_input("Continue 'y' (or 'n' to go back to menu) ? ", self.agent_name, column_id=output_id, column_max=outputs_count).lower()
+            # if proceed in ["y", ""]:
+            #     break
 
         if self.skip_rounds > 0:
             check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
@@ -1789,12 +1846,12 @@ class HumanLLMMonitor:
 
             smart_print(
                 f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[2].function} LLM ANSWER content****\n{inference_result_msg.content}\n{check_display}\n*****************\033[0m",
-                self.agent_name, "LLM ANSWER content")
+                self.agent_name, "LLM ANSWER content", column_id=output_id)
             self.skip_rounds -= 1
         else:
             smart_print(
                 f"Time spent in each option and occurrences: {self.after_inference_option_times} - {self.after_inference_option_counts}",
-                self.agent_name)
+                self.agent_name, optional=True, column_max=outputs_count)
 
         self.mode = None
         return inference_result_msg, comments, score
@@ -1886,7 +1943,7 @@ class HumanLLMMonitor:
 
         return comments
 
-    def criticAnswer(self, content_annotated, inference_result_msg):
+    def criticAnswer(self, content_annotated, inference_result_msg, annotated_critics=True):
         def is_valid_python_structure(s):
             import ast
             output = None
@@ -1896,109 +1953,92 @@ class HumanLLMMonitor:
             except (ValueError, SyntaxError):
                 return output, False
 
-        while True:
-            if not HumanLLMMonitor.use_websocket:
+        if(annotated_critics):
+            if content_annotated is None:
                 content_structure, is_structure = is_valid_python_structure(inference_result_msg.content)
-                content_pretty = json.dumps(content_structure,
-                                            indent=4) if is_structure else inference_result_msg.content
+                content_pretty = json.dumps(content_structure, indent=4) if is_structure else inference_result_msg.content
                 content_annotated = _visual_input(content_pretty, filetype="py" if is_structure else "md")
+            # if annotated_critics is a list, then make a different prompt
+            if (isinstance(content_annotated, list) and len(content_annotated)>1):
+                prompt_start = "Your task is to merge the best of different **ANNOTATED ANSWERS** into 1  **ANNOTATED ANSWERS**"
+            else:
+                prompt_start = "Your task is to refine the **ANNOTATED ANSWER**"
+            system_prompt = f"""
+{prompt_start} given inline annotation of ths answer and the **INITIAL PROMPT**.
+Each inline text annotations instructions use tags (see **ANNOTATION TAGS** for interpretation - e.g. \TAG[optional instruction]{{original text...}} ).
+You should generate an improved answer replacing each tags/instructions by strictly following the instructions provided in the inline annotations.
+Before replacing each inline annotation, put between [[<< and >>]] your detailed reasoning process to solve the inline detected annotation and associated solution.
+It allows you to express enough your reasoning at each annotation, and me to easily remove afterward any text between [[<< and >>]] to get the final answer. 
+Generate the improved answer without additional introduction or comments except your different [[<< detailed reasoning steps >>]] .
 
-            system_prompt = """
-Refine the **ANNOTATED ANSWER** for the **TARGET TASK**, given inline text annotations instructions  using tags (see **ANNOTATION TAGS** for interpretation). Directly answer with the updated answer (tags are removed and replaced inline with instruction) with the same format, do not add introduction or comments.
+### INITIAL PROMPT: << {self.llm_input_messages[0].content} >>
 
-### TARGET TASK: {{{"""+self.llm_input_messages[0].content+"\n\nUSER MESSAGE:\n"+self.llm_input_messages[0].content+"""}}}
+### ANNOTATION TAGS: <<
+The following annotations are provided to guide the refinement process. Each annotation is in the format `\TAG[optional instruction]{{original text...}}`. The tags indicate specific actions you should take to improve or finalize the text. Please follow the instructions for each tag carefully:
 
-### ANNOTATION TAGS:
-The following annotations are provided to guide the refinement process. Each annotation is in the format `\TAG{Annotated text...}{optional explanation}`. The tags indicate specific actions you should take to improve or finalize the text. Please follow the instructions for each tag carefully:
-
-1. **\APPROVE:**
-- This tag indicates that the content is correct, clear, and relevant to the subject.
-- **Action:** **No changes are necessary.** Retain this content exactly as it is.
-- **Example:** \APPROVE{The system's reliability is essential for maintaining continuous operation.}
+1. **\KEEP:**
+   - This tag indicates that the content is correct, clear, and relevant to the subject.
+   - **Action:** **No changes are necessary.** Retain this content exactly as it is.
+   - **Example:** \KEEP{{The system's reliability is essential for maintaining continuous operation.}}
 
 2. **\FIX:**
-- Content marked with this tag requires **correction or improvement**. There may be issues related to accuracy, clarity, or relevance.
-- **Action:** Make necessary revisions to ensure the text is accurate, clear, and aligned with the overall subject matter.
-- **Example:** \FIX{tomato_sauce_recipe = rubish_llm_factory('tell me how to make tomato sauce for my italian noodles')}{it should first search on the web for a reliable recipe, then use llm}
+   - Content marked with this tag requires **correction or improvement**. There may be issues related to accuracy, clarity, or relevance.
+   - **Action:** Make necessary revisions to ensure the text is accurate, clear, and aligned with the overall subject matter.
+   - **Example:** \FIX[it should first search on the web for a reliable recipe, then use llm.]{{tomato_sauce_recipe = rubish_llm_factory('tell me how to make tomato sauce for my italian noodles')}}
 
-3. **\DELETE:**
-- This tag is used for content that is **unnecessary, irrelevant, or detrimental** to the quality of the text.
-- **Action:** Remove this content entirely from the final version.
-- **Example:** \DELETE{The report includes a lengthy discussion on unrelated financial data.}
+3. **\IMPROVE:**
+   - This tag suggests enhancing the content by making it more complete, efficient, or stylistically refined.
+   - **Action:** Improve the marked text by expanding, rewording, or refining it to better suit the purpose.
+   - **Example:** \IMPROVE[Explain why a more efficient algorithm might be necessary for large datasets.]{{The algorithm finishes in O(n^2) time.}}
+
+4. **\EXPLORE:**
+   - This tag encourages exploring alternative ideas, methods, or perspectives to provide a richer or broader answer.
+   - **Action:** Propose new angles, approaches, or solutions for the marked text, considering alternative possibilities.
+   - **Example:** \EXPLORE[Explore whether parallelization could speed up the process.]{{The standard approach is sufficient.}}
 
 ### Your Task:
 1. **Understand** the initial task and subject matter to ensure that the text aligns with the overall objectives and audience requirements.
 2. **Interpret** the annotations in the provided text according to the guidelines above.
-3. **Revise** the text by making necessary corrections, deletions, or additions as instructed.
-4. Ensure that the **final text** is clear, accurate, relevant, and stylistically appropriate for the INITIAL TASK.
-"""
-
-            #system_prompt = """Refine the **ANNOTATED ANSWER** given inline text annotated instructions (format: \intruction_type{text selection}[optional comment]). Directly answer with the updated answer aligned with annotated instructions tags, no introduction."""
-            user_prompt = f"### ANNOTATED ANSWER:\n{content_annotated}"
-            #llm_output = self.premium_llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
-
-            # Task 1: System prompt for extracting and structuring feedback
-            system_prompt_1 = """
-Your task is to extract and organize feedback tags from the **ANNOTATED ANSWER** provided for the given **TARGET TASK**. Identify the instructions given by the annotation tags (\APPROVE, \FIX, \DELETE) and structure them into a list. Do not modify the content of **ANNOTATED ANSWER** at this stage.
-
-### TARGET TASK: {{{"""+self.llm_input_messages[0].content+"\n\nUSER MESSAGE:\n"+self.llm_input_messages[0].content+"""}}}
-
-### Annotation Tags:
-- **\APPROVE:** Content is correct, no changes needed.
-- **\FIX:** The content requires improvement or correction.
-- **\DELETE:** Remove this content.
-
-### Your Task:
-1. **Identify** the feedback instructions based on annotation tags.
-2. **Organize** the instructions into a list format with specific details on what needs to be done (fix, delete, etc.).
-3. **Reply** with the improved answer without any additional introduction or comments.
-
-### ANNOTATED ANSWER:
-{content_annotated}
-"""
-            # Call the LLM for inference 1
-            llm_output_1 = self.premium_llm.invoke([SystemMessage(content=system_prompt_1), HumanMessage(content=user_prompt)])
-
-            # Task 2: System prompt for refining based on structured feedback
-            system_prompt_2 = """
-Refine the provided answer for the given **TARGET TASK** based on the following structured feedback. Use the feedback to make necessary changes to the answer, following the instructions closely. 
-
-### TARGET TASK: {{{"""+self.llm_input_messages[0].content+"\n\nUSER MESSAGE:\n"+self.llm_input_messages[0].content+"""}}}
-
-### Structured Feedback:
-{structured_feedback}
-
-### Your Task:
-1. **Revise** the text according to the feedback (fix, delete, variants).
-2. **Ensure** that the final text is clear, accurate, and aligned with the initial task.
-
-### INITIAL ANSWER:
-{content_annotated}
-"""
-
-            # Call the LLM for inference 2
-            llm_output = self.premium_llm.invoke([SystemMessage(content=system_prompt_2), HumanMessage(content=llm_output_1.content)])
-
-
-            # TODO: sauvegarde log_entry
-            if not HumanLLMMonitor.use_websocket:
-                smart_print(f"***** PROMPT:\n{system_prompt}\n `\n{user_prompt}".replace("\\n", "\n"), self.agent_name,
-                            "PROMPT")
-                smart_print(f"***** REFINED ANSWER:\n\033[33m{llm_output.content}\033[0m\n".replace("\\n", "\n"),
-                            self.agent_name, "REFINED ANSWER")
-                if smart_input("Is the task refinement adequate? (yes/no): ", self.agent_name).strip().lower() in [
-                    "yes", "y"]:
-                    inference_result_msg.content = llm_output.content
-                    break
+3. **Revise** the text by making necessary corrections, improvements, or explorations as instructed.
+4. Ensure that the **final text** is clear, accurate, relevant, and stylistically appropriate for the INITIAL TASK and expected format.
+>>"""
+            if (isinstance(content_annotated, list) and len(content_annotated)>1):
+                user_prompt = ""
+                for i, content in enumerate(content_annotated):
+                    user_prompt += f"\n\n### ANNOTATED ANSWER {i+1}: << {content} >>"
             else:
-                return llm_output.content
+                user_prompt = f"ANNOTATED ANSWER: << {content_annotated} >>"
 
-        return llm_output
+            llm_output = self.premium_llm.with_config(configurable={"llm_temperature": 0.1}).invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+            # remove the reasoning part of the answer between [[[[ and ]]]] from llm_output.content
+            if ">>]]" in llm_output.content:
+                print("Annotated answer: ", content_annotated)
+                print("Removing reasoning part of the answer - before: ", llm_output.content)
+                llm_output.content = re.sub(r'\[\[<<.*?>>\]\]', '', llm_output.content)
+                print("Removing reasoning part of the answer - after: ", llm_output.content)
+        else:
+            if content_annotated is None:
+                content_annotated = smart_input("Provide critic/feedback/request: ", self.agent_name, column_max=self.num_parallel_inferences)
+            system_prompt = f"""Given the INSTRUCTION provided by the user (and the **INITIAL PROMPT**), your task is to generate a very different new answer from the INITIAL ANSWER or to refine the initial answer.
+            ### INITIAL PROMPT: << {self.llm_input_messages[0].content} >>
+            ### INITIAL ANSWER: << {inference_result_msg} >> """
+            user_prompt = f"INSTRUCTION: << {content_annotated} >>"
+            llm_output = self.premium_llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
 
-    def modifyAnswer(self, inference_result_msg):
+        self.temp_inference_result_content = llm_output.content # to be captured in the menu if function called outside of the menu and get inference checks
+
+        return llm_output.content
+
+    def modifyAnswer(self, inference_result_msg, column_id=None):
         inference_result_msg.content = _visual_input(inference_result_msg.content)
-        smart_print(f"***** NEW USER MESSAGE:\n{inference_result_msg.content}\n*************", self.agent_name,
-                    "NEW USER MESSAGE")
+        self.temp_inference_result_content = inference_result_msg.content
+        smart_print(f"***** ANSWER:\n{inference_result_msg.content}\n*************", self.agent_name, "NEW ANSWER", optional=True, column_id=column_id, column_max=self.num_parallel_inferences)
+        return inference_result_msg.content
+
+    def updateAnswer(self, answer, column_id=None):
+        self.temp_inference_result_content = answer
+        print("IMPORTANT: column_id not yet implemented - Updating current HumanLLMMonitor for agent")
+        return answer
 
     # staticmethod get my host ID
     @staticmethod
@@ -2120,6 +2160,32 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
             metadatas=[tags]
         )
 
+    def process_llm_output(self, llm_output, counter, llm_outputs, init_skip_rounds, optuna = None):
+        """Traite un seul LLM output (séquentiellement ou en parallèle)."""
+        if len(llm_outputs) > 1:
+            self.skip_rounds = init_skip_rounds
+            smart_print(f"ANSWER NUMBER #{counter-1} ", self.agent_name, "POST INFERENCE", append=True, optional=True)
+
+        self.current_inference_context = {
+            'function_name': inspect.stack()[1].function,
+            'input_contents': self.llm_input_messages,
+            'output_contents': None,  # Remplir après traitement
+            'start_time': datetime.now(),
+            'input_modified': False,
+            'skipped_inference': None,
+            'input_comments': None,
+            'output_comments': None,
+            'raw_llm_outputs': None,
+            'output_modified': None,
+            'message_tokens': None,
+            'use_premium_llm': False
+        }
+        # Post-inference human intervention (traitement standard après une inférence)
+        output_messages_instance, output_comments_instance, score_instance = self._after_inference(
+            llm_output, premium_llm_function=None, output_id=counter,
+            outputs_count=len(llm_outputs), optuna=optuna)
+        return output_messages_instance, output_comments_instance, score_instance
+
     #    def CallHumanLLM(self, original_input_messages=None, llm_function=None, premium_llm_function=None, callable_system_message=None, system_prompt_template=None, user_message=None, return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=90, stream_output=True):
     def CallHumanLLM(self, original_input_messages=None, default_llm_function=None, premium_llm_function=None,
                      callable_system_message=None, system_prompt_template=None, user_message=None,
@@ -2151,40 +2217,94 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
                 final_output = ""  # Initialize an empty string to hold the full response
                 smart_print("", self.agent_name, "Inference streaming output")
                 previous_chunk_str = ""
-                # Regex to match the end of a typical JSON structure
                 json_trail_re = re.compile(r'[\'\}\]]$')
-                for chunk in func.stream(
-                        input_msg):  #, temperature=temperature):  # Ensure 'llm' is correctly initialized with temperature
+
+                buffer = ""
+                buffer_start_time = time.time()
+                flush_interval = 5.0  # seconds
+
+                for chunk in func.stream(input_msg):
                     if hasattr(chunk, 'content'):
                         chunk_content = chunk.content
                         final_output += chunk_content
                     else:
-                        # Convert the current chunk to string
                         current_chunk_str = str(chunk)
-                        # Check and remove trailing characters for accurate comparison
                         while json_trail_re.search(current_chunk_str):
                             current_chunk_str = current_chunk_str[:-1]
-
-                        # Find the new part by removing the common prefix with the previous state
                         new_part_index = len(previous_chunk_str)
                         chunk_content = current_chunk_str[new_part_index:]
-                        # Store the current chunk as the previous one for the next iteration
                         previous_chunk_str = current_chunk_str
-                        final_output = str(chunk)
+                        final_output += chunk_content
+
+                    buffer += chunk_content
+
+                    current_time = time.time()
+                    time_elapsed = current_time - buffer_start_time
+
+                    # Check if buffer should be flushed
+                    should_flush = False
+                    delimiter_pos = -1
+                    delimiter_length = 0
+
+                    if time_elapsed >= flush_interval:
+                        should_flush = True
+                        delimiter_pos = len(buffer)  # Flush the entire buffer
+                    elif ('\n\n' in buffer or '<br>' in buffer) and len(buffer) >= 100:
+                        # Find the last occurrence of "\n\n" or "<br>"
+                        pos_newline = buffer.rfind('\n\n')
+                        pos_br = buffer.rfind('<br>')
+                        if pos_newline > pos_br:
+                            delimiter_pos = pos_newline
+                            delimiter_length = 2  # Length of "\n\n"
+                        else:
+                            delimiter_pos = pos_br
+                            delimiter_length = 4  # Length of "<br>"
+
+                        if delimiter_pos != -1:
+                            should_flush = True
+
+                    if should_flush:
+                        if delimiter_pos == len(buffer):
+                            # Time-based flush: send the entire buffer
+                            to_send = buffer
+                            buffer = ""
+                        elif delimiter_pos != -1:
+                            # Delimiter-based flush: send up to the last delimiter
+                            to_send = buffer[:delimiter_pos + delimiter_length]
+                            buffer = buffer[delimiter_pos + delimiter_length:]
+                        else:
+                            # No delimiter found, flush entire buffer
+                            to_send = buffer
+                            buffer = ""
+
+                        if HumanLLMMonitor.use_websocket:
+                            smart_print(to_send, self.agent_name, f"Inference streaming output {color_id}",
+                                        append=True, column_id=color_id, column_max=self.num_parallel_inferences)
+                        else:
+                            smart_print(start_color + to_send + end_color, self.agent_name,
+                                        f"Inference streaming output {color_id}", append=True)
+
+                        # Reset the timer after flushing
+                        buffer_start_time = current_time
+
+                # Final flush after streaming ends
+                if buffer:
                     if HumanLLMMonitor.use_websocket:
-                        smart_print(chunk_content, self.agent_name, "Inference streaming output " + str(color_id),
-                                    append=True)
+                        smart_print(buffer, self.agent_name, f"Inference streaming output {color_id}",
+                                    append=True, column_id=color_id, column_max=self.num_parallel_inferences)
                     else:
-                        smart_print(start_color + chunk_content + end_color, self.agent_name,
-                                    "Inference streaming output " + str(color_id), append=True)
-                return AIMessage(content=final_output)  # Return the concatenated full respons
+                        smart_print(start_color + buffer + end_color, self.agent_name,
+                                    f"Inference streaming output {color_id}", append=True)
+
+                return AIMessage(content=final_output)
+
             else:
                 value = func.invoke(input_msg)
                 return AIMessage(content=value.content if hasattr(value, 'content') else str(value))
 
         smart_print(
             f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[1].function} calling HumanLLMMonitor****\033[0m",
-            self.agent_name, "HumanLLMMonitor")
+            self.agent_name, "HumanLLMMonitor", optional=True)
         if system_prompt_template: self.system_prompt = system_prompt_template
         if default_llm_function is None: default_llm_function = self.default_llm if use_default_llm else self.premium_llm
         if premium_llm_function is None: premium_llm_function = self.premium_llm if self.premium_llm else None
@@ -2207,13 +2327,14 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
             if self.skip_rounds > 0:
                 smart_print(
                     f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[2].function} skipping HumanLLMMonitor for {self.skip_rounds} rounds****\033[0m",
-                    self.agent_name, "Skipping round")
+                    self.agent_name, "Skipping round", optional=True)
 
             # Pre-inference human intervention
             llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(
                 original_input_messages, default_llm_function, premium_llm_function, function_calling,
                 callable_system_message, optuna=optuna, model_choice=model_choice)
             self.llm_input_messages = llm_input_messages
+            self.clear_selected_outputs()
             start_time = datetime.now()
             self.last_inference_check_results = [None] * self.num_parallel_inferences  # Pre-allocate the list with None
             if llm_input_messages and not skip_inference:
@@ -2232,7 +2353,13 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
                         try:
                             llm_response = future.result(timeout=timeout_seconds)
                             outputs.append(llm_response)
-                            smart_print(
+                            if HumanLLMMonitor.use_websocket:
+                                smart_print(
+                                    llm_response.content,
+                                    self.agent_name, "NEW inference result recieved", column_id=idx,
+                                    column_max=self.num_parallel_inferences)
+                            else:
+                                smart_print(
                                 f'\033[0m**** New inference result recieved and added to outputs as #{len(outputs)}\033[0m:\n{llm_response.content}\n\033[9mEND OF #{len(outputs)}****\033[0m',
                                 self.agent_name, "NEW inference result recieved", column_id=idx,
                                 column_max=self.num_parallel_inferences)
@@ -2275,48 +2402,45 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
 
             output_messages, output_comments, score = [], [], []
             if llm_outputs:
+                init_skip_rounds = self.skip_rounds  # save the current skip_rounds value because multiple outputs decrease skip rounds for each parallel output
                 if len(llm_outputs) > 1:
                     smart_print("**** Multiple LLM ANSWERS > we will process POST INFERENCE for each ****",
-                                self.agent_name, "Multiple LLM ANSWERS", append=True)
-                    init_skip_rounds = self.skip_rounds  # save the current skip_rounds value because multiple outputs decrease skip rounds for each parallel output
-                for counter, llm_output in enumerate(llm_outputs, start=1):
-                    if len(llm_outputs) > 1:
-                        self.skip_rounds = init_skip_rounds
-                        smart_print(f"\033[31mMULTI-INFERENCE OUTPUT #{counter} > \033[0m", self.agent_name,
-                                    "POST INFERENCE", append=True)
-                    self.current_inference_context = {
-                        'function_name': inspect.stack()[1].function,
-                        'input_contents': llm_input_messages,
-                        'output_contents': output_messages,
-                        'start_time': start_time,  # Store start_time instead of computing inference_time
-                        'input_modified': ((llm_input_messages[0].content + "\n" + llm_input_messages[1].content) != (
-                                input_contents_str0 + "\n" + input_contents_str1)),
-                        'skipped_inference': skip_inference,
-                        'input_comments': input_comments,
-                        'output_comments': output_comments,
-                        'raw_llm_outputs': raw_llm_outputs,
-                        'output_modified': [output_message.content != raw for output_message, raw in
-                                            zip(output_messages, raw_llm_outputs)],
-                        'message_tokens': None,  # You may want to calculate this
-                        'use_premium_llm': use_premium_llm
-                    }
-                    # Post-inference human intervention
-                    output_messages_instance, output_comments_instance, score_instance = self._after_inference(
-                        llm_output, premium_llm_function=premium_llm_function, output_id=counter,
-                        outputs_count=len(llm_outputs), optuna=optuna)
-                    output_messages.append(output_messages_instance)
-                    if output_messages_instance == -1:
-                        break
-                    output_comments.append(output_comments_instance)
-                    score.append(score_instance)
-                # test if any of output_messages instance != -1, break if True
-                if any([output_messages_instance == -1 for output_messages_instance in output_messages]):
-                    original_input_messages[0].content, original_input_messages[
-                        1].content = input_contents_str0, input_contents_str1
+                                self.agent_name, "Multiple LLM ANSWERS", append=True, optional=True)
+                if False and HumanLLMMonitor.use_websocket:
+                    # Utilisez un ThreadPoolExecutor pour exécuter les réponses en parallèle en mode WebSocket.
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        futures = []
+                        for counter, llm_output in enumerate(llm_outputs, start=1):
+                            futures.append(executor.submit(self.process_llm_output, llm_output, counter, llm_outputs, init_skip_rounds))
+
+                        # Attendre que toutes les tâches soient terminées.
+                        results = [future.result() for future in futures]
+
+                        # Traiter les résultats de chaque future (en parallèle ou séquentiellement)
+                        for counter, (output_messages_instance, output_comments_instance, score_instance) in enumerate(results, start=1):
+                            output_messages.append(output_messages_instance)
+                            if output_messages_instance == -1:
+                                break
+                            output_comments.append(output_comments_instance)
+                            score.append(score_instance)
                 else:
+                    # Traitement séquentiel classique
+                    for counter, llm_output in enumerate(llm_outputs, start=1):
+                        output_messages_instance, output_comments_instance, score_instance = self.process_llm_output(llm_output, counter, llm_outputs, init_skip_rounds, optuna)
+                        output_messages.append(output_messages_instance)
+                        if output_messages_instance == -1:
+                            break
+                        output_comments.append(output_comments_instance)
+                        score.append(score_instance)
+
+                # Test si l'une des instances de output_messages == -1
+                if any([output_messages_instance == -1 for output_messages_instance in output_messages]):
+                    original_input_messages[0].content, original_input_messages[1].content = input_contents_str0, input_contents_str1
+                else:
+                    # Sortir de la boucle
                     break
 
-                    # Get the calling function's name using inspect
+        # Get the calling function's name using inspect
         caller_function_name = inspect.stack()[1].function
 
         call_duration = time.time() - call_start_time
@@ -2345,5 +2469,3 @@ Refine the provided answer for the given **TARGET TASK** based on the following 
         )
 
         return [message.content for message in output_messages] if return_message_content_only else output_messages
-    
-## END OF HumanLLMMonitor class
