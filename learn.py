@@ -885,7 +885,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                               optuna_opti=None, allow_custom_score_state_functions=False,
                               params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
-                              number_inferences=1, fixed_coach=False, unique_id=None):
+                              number_inferences=1, fixed_coach=False, unique_id=None, return_array=False):
     time_end = time.time() + max_execution_time
     scores = None
 
@@ -933,7 +933,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
 
     #agent_capitalize.retrieve_saved_tasks_in_db(include_code=include_code, selected_successful_functions=selected_successful_functions, selected_failed_functions=selected_failed_functions)
     continue_identifying_tasks = True
-
+    total_scores = []
 
     # Global learn loop
     while continue_identifying_tasks and time.time() < time_end:
@@ -990,24 +990,30 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             if answer.upper() in ["Y", "YES"]:
                 [env.reset() for env in test_environments]
 
-    # Calculate the average score of the task, and return it with other statistics
-    if scores:
-        if scores['validated_scores'] is not None:
-            validated_score_avg = 0
-            for dic in scores['validated_scores']:
-                for i in dic:
-                    validated_score_avg += dic[i]
-            validated_score_avg /= len(scores['validated_scores'])
+        # Calculate the average score of the task, and return it with other statistics
+        if scores:
+            if scores['validated_scores'] is not None:
+                validated_score_avg = 0
+                for dic in scores['validated_scores']:
+                    for i in dic:
+                        validated_score_avg += dic[i]
+                validated_score_avg /= len(scores['validated_scores'])
+            else:
+                validated_score_avg = 0
+            total_score_weighted_with_stats = (
+                scores['percentage_no_runtime_error'] +
+                10 * scores['best_score_without_validation'] +
+                (20 * (1 + validated_score_avg) if scores['validated_scores'] else 0)
+            )
+            # add total_score_weighted_with_stats to total_scores
+            total_scores.append(total_score_weighted_with_stats)
         else:
-            validated_score_avg = 0
-        total_score_weighted_with_stats = (
-            scores['percentage_no_runtime_error'] +
-            10 * scores['best_score_without_validation'] +
-            (20 * (1 + validated_score_avg) if scores['validated_scores'] else 0)
-        )
-        return total_score_weighted_with_stats
+            total_scores.append(0)
+
+    if return_array:
+        return total_scores
     else:
-        return 0
+        return max(total_scores)
 
 def get_success_value_in_text(text):
     match = re.search(r"Success['\"]?\s*[:=][:=]?\s*(['\"]?)(True|False|Yes|No|y|n|0|1)\1", text, re.IGNORECASE)
@@ -1226,20 +1232,15 @@ if __name__ == "__main__":
     }
 
     # Set the documents to test/validate as a list of environments
-    documents=[
-        {
-        "id": "68802377-e8e5-4940-a337-e66930ba5015",
-        "title": "Erreur de connexion au serveur interne",
-        "context": "Lors de la tentative de connexion au serveur interne de l'entreprise, les utilisateurs rencontrent un message d'erreur indiquant une impossibilité de se connecter. Ce problème semble intermittent et affecte principalement les utilisateurs du département des ventes.",
-        "target_file_path": "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/fiche_ano/Erreur de connexion au serveur interne.json"
-        },
-
-        {
-        "id": "c0533337-1c5e-4091-ba7d-061ae409cda4",
-        "title": "Problème de performance sur le module de gestion des utilisateurs",
-        "context": "Lors de l'utilisation du module de gestion des utilisateurs, nous avons constaté des ralentissements significatifs. Les utilisateurs rapportent que la page met plusieurs minutes à se charger et que les opérations de modification et de suppression d'utilisateur prennent un temps anormalement long. Ce problème a été observé sur plusieurs navigateurs et sur différentes configurations matérielles, ce qui suggère qu'il ne s'agit pas d'un problème isolé à un utilisateur spécifique ou à un type de machine. Nous avons identifié que ce problème semble se produire principalement lorsque le nombre d'utilisateurs dépasse les 1000. Les logs du serveur montrent des temps de réponse élevés sur les requêtes liées à la base de données pour ce module spécifique. Une analyse initiale indique que certaines requêtes ne sont pas optimisées et causent des verrous au niveau de la base de données.",
-        "target_file_path": "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/fiche_ano/Problème de performance sur le module de gestion des utilisateurs.json"
-        }
+    documents = [
+        {'id': "cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
+            'title': "Complex QA and language models hybrid architectures, Survey",
+            'context': "This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
+            'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"},
+        {'id': "42252c6c-12f3-4edf-9045-8acd69bc3356",
+            'title': "Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
+            'context': "This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
+            'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}
     ]
     
     envs = []

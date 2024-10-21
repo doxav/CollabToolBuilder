@@ -3,9 +3,31 @@ import subprocess
 from datetime import datetime, timedelta
 from elasticsearch import Elasticsearch
 from new_environment import stop_containers
-from optimisation.optuna_main import launch_run
+from optimisation.optuna_main import global_main
 import json
 import ast
+from optimisation.optuna_backup_exec import objective
+import time
+from elasticsearch.helpers import bulk
+from elasticsearch import ConnectionError
+
+def wait_for_elasticsearch(host, port, timeout=60):
+    es = Elasticsearch([{'host': host, 'port': port, 'scheme': 'http'}])
+    start_time = time.time()
+    while True:
+        try:
+            if es.ping():
+                print("Elasticsearch est démarré et accessible.")
+                return es
+            else:
+                print("Elasticsearch n'est pas encore accessible.")
+        except ConnectionError:
+            print("Elasticsearch n'est pas encore accessible.")
+        elapsed_time = time.time() - start_time
+        if elapsed_time > timeout:
+            print(f"Impossible de joindre Elasticsearch après {timeout} secondes.")
+            return None
+        time.sleep(5)
 
 def extract_timestamp_from_text(text_field):
     """
@@ -94,7 +116,23 @@ def main():
     es_port = 9200
     es_index = 'failed_tasks_thomas-precision-3591_18-10-2024-20-45-09'  # Remplacez par le nom de votre index
 
-    es_client = Elasticsearch([{'host': es_host, 'port': es_port, 'scheme': 'http'}])
+    es_client = wait_for_elasticsearch(es_host, es_port)
+    if es_client is None:
+        print("Arrêt du script en raison de l'indisponibilité de Elasticsearch.")
+        return
+
+    # Vérifier que l'index existe
+    if not es_client.indices.exists(index=es_index):
+        print(f"L'index '{es_index}' n'existe pas dans l'instance Elasticsearch.")
+        # Lister les indices disponibles
+        indices = es_client.indices.get_alias("*")
+        print("Indices disponibles :")
+        for index_name in indices:
+            print(index_name)
+        return
+
+    # Obtenir le mapping de l'ancien index
+    old_mapping = es_client.indices.get_mapping(index=es_index)
 
     # Étape 1 : Récupérer tous les documents de l'index
     all_hits = get_all_documents(es_client, es_index)
@@ -132,17 +170,43 @@ def main():
         json.dump(filtered_documents, f, ensure_ascii=False, indent=4)
     print(f"Les documents filtrés ont été sauvegardés dans {backup_file}")
 
-    # Exécuter le processus automatique pendant X secondes
-    run_duration = 1200  # Durée en secondes du processus automatique
-
     # Stop existing containers and start new ones from backup
     subprocess.check_call(
         ['python3', 'new_environment.py', '--folder', 'backup', '--docker_compose_file', 'docker-compose-backup.yml'])
 
-    launch_run(max_execution_time=run_duration,
-               problem_prompts_subdir='IR_CPS_TechSynthesis',
-               default_llm_key='basic_gpt',
-               premium_llm_key='smart_gpt')
+    # Attendre que la nouvelle instance Elasticsearch soit disponible
+    new_es_client = wait_for_elasticsearch(es_host, es_port, timeout=120)
+    if new_es_client is None:
+        print("Arrêt du script en raison de l'indisponibilité de la nouvelle instance Elasticsearch.")
+        return
+
+    # Créer l'index dans la nouvelle instance Elasticsearch
+    if not new_es_client.indices.exists(index=es_index):
+        new_es_client.indices.create(index=es_index, body={
+            "mappings": old_mapping[es_index]['mappings']
+        })
+        print(f"Index '{es_index}' créé dans la nouvelle instance Elasticsearch.")
+
+        # Charger les documents depuis le fichier JSON
+    with open(backup_file, 'r', encoding='utf-8') as f:
+        filtered_documents = json.load(f)
+
+        # Préparer les actions pour l'API bulk
+    actions = []
+    for doc in filtered_documents:
+        action = {
+            "_index": es_index,
+            "_id": doc['_id'],
+            "_source": doc['_source']
+        }
+        actions.append(action)
+
+    # Insérer les documents dans la nouvelle instance Elasticsearch
+    success, _ = bulk(new_es_client, actions)
+    print(f"{success} documents ont été insérés dans la nouvelle instance Elasticsearch.")
+
+    # Lancer le processus automatique
+    global_main(objective, "backup", "backup_continuation")
 
     print("Processus automatique terminé.")
     stop_containers('docker-compose-backup.yml')

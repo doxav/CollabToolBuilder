@@ -38,9 +38,6 @@ def start_containers(docker_compose_file):
 
     print("Démarrage des conteneurs Docker...")
     subprocess.check_call(['docker', 'compose', '-f', docker_compose_file, 'up', '-d'])
-    # Attendre que Elasticsearch soit prêt
-    print("Attente du démarrage de Elasticsearch...")
-    time.sleep(30)  # Ajustez le temps d'attente si nécessaire
     print("Conteneurs démarrés.")
 
 def stop_containers(docker_compose_file):
