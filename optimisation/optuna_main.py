@@ -141,7 +141,7 @@ def definition_global_parameters(temperature : float = None, presence_penalty : 
 
 def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "premium_llm", problem_prompts_subdir : str = None, max_coding_attempts : int = 2, max_execution_time : int = 900,
                model_choice=None, optuna_opti : str = "coach", params_user_message : str = None, special_criteria : dict = None, name_exp : str = "", temperature_max : float = None, number_inferences : int = 1,
-               fixed_coach : bool = False):
+               fixed_coach : bool = False, arrayn_ret : bool = False, continue_each_loop : bool = False):
     """
     Launch the run with the specified parameters.
 
@@ -191,9 +191,11 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
                                             optuna_opti=optuna_opti,
                                             params_user_message=params_user_message,
                                             special_criteria=special_criteria,
-                                            number_inferences=number_inferences,
+                                            agcoach_num_parallel_inferences=number_inferences,
                                             temperature_max=temperature_max,
-                                            fixed_coach=fixed_coach)
+                                            fixed_coach=fixed_coach,
+                                            return_array=arrayn_ret,
+                                            continue_each_loop=continue_each_loop)
     print("Analysis...")
     analysis(name_exp)
     print("Analysis done.")
@@ -222,7 +224,7 @@ def launch_study(objective, name_exp : str, n_trials=200):
     study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}", study_name=name_exp)
     study.optimize(objective, n_trials=n_trials)
 
-def global_main(objective, agent_name : str, params_tested : str = "") :
+def global_main(objective, agent_name : str = "", params_tested : str = "", name_exp : str = None):
     """
     Main function to launch the Optuna study.
 
@@ -230,16 +232,18 @@ def global_main(objective, agent_name : str, params_tested : str = "") :
         objective (callable): The objective function for the Optuna study.
         agent_name (str): The name of the agent.
         params_tested (str): The parameters tested in the study.
+        name_exp (str, optional): The name of the experiment.
     """
     # Change directory to the location of this script if not already in the correct directory
     if os.path.basename(os.getcwd()) == "optimisation":
         os.chdir("../")
-    # Recuperate name_exp from terminal argument:
-    if len(sys.argv) > 1:
-        name_exp = sys.argv[1]
-    else :
-        timestamp_xp = int(time.time())
-        name_exp = f"xp_{agent_name}{params_tested}{timestamp_xp}"
+    if not name_exp:
+        # Recuperate name_exp from terminal argument:
+        if len(sys.argv) > 1:
+            name_exp = sys.argv[1]
+        else :
+            timestamp_xp = int(time.time())
+            name_exp = f"xp_{agent_name}{params_tested}{timestamp_xp}"
     launch_study(lambda trial: objective(trial, name_exp), name_exp)
 
 documentation = """

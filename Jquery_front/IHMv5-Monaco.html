@@ -234,8 +234,7 @@
                 if (data.message.startsWith("Please edit and save")) {alert(data.message); return;}
                 // Create a question with a Yes, No and Try autofix with LLM buttons and append it to the "error-conten-${columnId}" div
                 let $question = $(`<p>Do you want to fix the error ?</p>`);
-                let $editButton = $(`<button id="edit-button">Edit in VSCode</button>`);
-                let $noButton = $(`<button id="no-button">No</button>`);
+                let $noButton = $(`<button id="no-button">No (edit > save > continue to test it)</button>`);
                 let $autofixButton = $(`<button id="autofix-button">Try autofix with LLM</button>`);
                 let $customAutofixButton = $(`<button id="custom-autofix-button">Add instruction to autofix with LLM</button>`);
                 let $container = $(`<div></div>`);
@@ -243,14 +242,9 @@
                 $container.append($noButton);
                 $container.append($autofixButton);
                 $container.append($customAutofixButton);
-                //$container.append($editButton);
                 // Append container to the "error-content-${columnId}" div
                 let errorContent = targetColumn.querySelector(`#error-content-${columnId}`);
                 errorContent.appendChild($container[0]);
-                $editButton.click(function () {
-                    socket.send(JSON.stringify({message: "yes"}));
-                    $container.remove();
-                });
                 $noButton.click(function () {
                     socket.send(JSON.stringify({message: "no"}));
                     $container.remove();
@@ -709,25 +703,8 @@
 
             // Auto-Save: Listen for content changes
             const contentDisposable = editor.onDidChangeModelContent(function(event) {
-                // Clear the previous timer
-                clearTimeout(debounceTimer);
-
-                // Set a new timer for 3 seconds
-                debounceTimer = setTimeout(function() {
-                    // Get the current content of the editor
-                    let currentContent = editor.getValue();
-
-                    // Prepare the data to send
-                    let requestData = {
-                        answer: currentContent,
-                        column_id: columnId
-                    };
-
-                    // Call the save function
-                    sendFunctionCall(agentName, "updateAnswer", requestData, function(responseMessage) {
-                        console.log("Auto-save response:", responseMessage);
-                    });
-                }, 3000); // 3-second debounce
+                console.log('Content changed:', event);
+                document.querySelector(`#save-${agentName}-${columnId}`).style.display = 'inline-block'; // Correctly reference the full agent_columnId
             });
 
             // Annotation Handling: Listen for cursor selection changes
@@ -1287,8 +1264,9 @@ color: white;
         </div>
         <div id="your-goal-header" style="font-weight: bold;">[ HIDE/SHOW ]</div>
         <div id="your-goal-content" style="display: block; margin-top: 5px;">
-            Your GOAL is to guide AI agents at each step to create the most efficient functions (aka tools or tasks) to build good research papers.
-            Steps in this loop are: 1. Task Identification > 2: Coding > 3: Validation > 4: Capitalization
+            Your GOAL: guide AI agents to make the most efficient function to create good research papers.
+
+            <br><br>Steps in this loop are: 1. Task Identification > 2: Coding > 3: Validation > 4: Capitalization
             <br><br>In this experiment, each function created must take 1 parameter "bot". It is a virtual document called "bot" which is empty at the beginning,
             just initialized with title and abstract for each research paper your code will be tested on to check its efficiency.
             <br><br>Each generated function/tool is tested with different empty document ("bot") containing only their name and abstract.
@@ -1458,7 +1436,7 @@ function updateButtonVisibility() {
         session1ShowSelectors.concat(session1HideSelectors, session2ShowSelectors, session2HideSelectors).forEach(selector => {$(selector).show();});
     else
         session1ShowSelectors.concat(session1HideSelectors, session2ShowSelectors, session2HideSelectors).forEach(selector => {$(selector).hide();});
-    
+
     if (selection === 'SESSION_1') {
         session1HideSelectors.forEach(selector => {$(selector).hide();});
         if (continueButton_isVisible)
@@ -1498,8 +1476,39 @@ function updateButtonVisibility() {
         if (selection === 'ALL_SEND') // Display input & send buttons
             $(".input-area, #user-input, #send-button").show();
     }
+
     // Show Continue menu-option for all sessions
     $('.menu-option[style*="background-color: green"]').show();
+    const $greenContinueButton = $('.menu-option[style*="background-color: green"]');
+    if ($greenContinueButton.length == 1) {
+        // Step 2: Find the closest solution column containing this button
+        const $column = $greenContinueButton.closest('.solution-column');
+
+        if ($column.length === 0) {
+            console.error("Could not find the closest solution column for the green Continue button.");
+            return;
+        }
+
+        // Step 3: Extract the columnId from the column's id attribute
+        const fullColumnId = $column.attr('id'); // e.g., "column-CodingAgent-0"
+        const columnIdParts = fullColumnId.split('-');
+        if (columnIdParts.length < 3) {
+            console.error(`Invalid column id format: ${fullColumnId}`);
+            return;
+        }
+        const agentName = columnIdParts[1];
+        const columnId = columnIdParts.slice(2).join('-'); // Handles cases with multiple dashes in columnId
+        const fullAgentColumnId = `${agentName}-${columnId}`; // e.g., "CodingAgent-0"
+
+        $('.solution-column').not($column).each(function () {
+            const otherFullColumnId = $(this).attr('id').replace(/^column-/, ''); // Remove 'column-' prefix
+            $(`button#save-${otherFullColumnId},
+               button#evaluate-${otherFullColumnId},
+               button#regenallbutton-${otherFullColumnId},
+               button#regenwithmymodifbutton-${otherFullColumnId},
+               input#comment-${otherFullColumnId}`).hide();
+        });
+    } else if ($greenContinueButton.length > 0) console.log("multiple columns with button:"+$greenContinueButton.length);
 }
 
 // Call updateButtonVisibility when the selector changes
@@ -1756,6 +1765,7 @@ function getColumnsToKeep(agent) {
                         <input type="range" min="-1" max="10" value="-1" step="1" class="slider" id="slider-${agent_columnId}">
                         <span id="value-${agent_columnId}" style="font-size: smaller;">Unscored</span>
                     </div>
+                    <button id="save-${agent_columnId}" style="display: none;"><i class="fa-solid fa-rotate"></i>Save your Edit</button>
                     <input type="text" id="comment-${agent_columnId}" placeholder="Write instructions to regenerate..." style="margin-right: 10px; width: 350px;">
                     <button id="evaluate-${agent_columnId}"><i class="fa-regular fa-paper-plane"></i> Regenerate</button>
                 </div>
@@ -1765,7 +1775,7 @@ function getColumnsToKeep(agent) {
             // Add Select and Remove buttons if more than 1 solution
             let selectionButtonsHtml = (data.column_max > 1) ?
                     `<div style="text-align: center;"><button id="delete-${agent_columnId}"><i class="fa-regular fa-trash-can"></i> Remove</button></div>` : "";
-                    //`<div style="text-align: center;"><button id="select-${agent_columnId}"><i class="fa-regular fa-check-circle"></i> Select</button></div> 
+                    //`<div style="text-align: center;"><button id="select-${agent_columnId}"><i class="fa-regular fa-check-circle"></i> Select</button></div>
                     //<div style="text-align: center;"><button id="delete-${agent_columnId}"><i class="fa-regular fa-trash-can"></i> Remove</button></div>` : "";
 
             // Add the regenerate buttons (regardless of the number of solutions)
@@ -1836,6 +1846,28 @@ function getColumnsToKeep(agent) {
                     }
                 }
             }
+
+        $(document).on("click", `#save-${agent_columnId}`, function () {
+            // Retrieve the target column and editor instance
+            let targetColumn = document.getElementById(`column-${agent_columnId}`);
+            if (!targetColumn || !targetColumn.editorInstance) {
+                console.error(`Editor instance not found for column-${agent_columnId}.`);
+                return;
+            }
+
+            let editor = targetColumn.editorInstance;
+            let currentContent = editor.getValue();
+
+            // Prepare the data for saving
+            let requestData = {answer: currentContent};
+
+            // Send the save function call manually
+            sendFunctionCall(data.agent_name, "updateAnswer", requestData, function(responseMessage) {
+                console.log("Save response:", responseMessage);
+                alert(responseMessage);
+                document.querySelector(`#save-${agent_columnId}`).style.display = 'none';
+            });
+        });
 
     $(document).on("click", `#evaluate-${agent_columnId}`, function () {
         // Check if the input field is empty
@@ -1951,7 +1983,7 @@ function getColumnsToKeep(agent) {
 
             $(document).on("click", `#regenwithmymodifbutton-${agent_columnId}`, function () {
                 let targetColumn = document.getElementById(`column-${agent_columnId}`);
-                
+
                 if(!targetColumn || !targetColumn.editorInstance) {
                     console.error(`Editor instance not found for column-${agent_columnId}.`);
                     alert("Associated editor not found.");
@@ -2110,7 +2142,7 @@ function getColumnsToKeep(agent) {
                         const fullText = fullTextMatch[1].trim();
                         const timeT = parseFloat(fullTextMatch[2]).toFixed(1); // Convert time string to a float and fix precision. // MODIFIED
                         button.textContent += "\n" + fullText.substring(0, 70) + "...[see DETAILS]";
-                        
+
                         button.addEventListener('click', function () {
                             alert(`Test score of solution ${index} in ${timeT}s:\n${formatPythonDict2Table(fullText)}`); // Ensure timeT is used properly and fullText is passed for formatting. // MODIFIED
                         });
@@ -2640,11 +2672,6 @@ $(document).on('click', '.collapsible-header', function() {
 
     $(document).on("click", ".delete", function() {
         $(this).closest(".column").remove();
-    });
-
-    $(document).on("click", ".open-vscode", function() {
-        let columnId = $(this).closest(".column").data("column-id");
-        socket.send(JSON.stringify({ type: "open-vscode", columnId: columnId }));
     });
 
     $(".filter-bar select, .filter-bar-bottom select, #search-filter, #search-filter-bottom").on("change keyup", function() {

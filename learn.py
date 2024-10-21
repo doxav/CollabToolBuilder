@@ -39,8 +39,8 @@ if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_UR
 
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
-UnifiedVectorDB.es_user = elastic_user
-UnifiedVectorDB.es_password = elastic_password
+# UnifiedVectorDB.es_user = elastic_user
+# UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function = "intfloat/e5-base-v2"  # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
@@ -644,10 +644,13 @@ class CodingAgent():
             user_message += f"{dnl}RE-USABLE CODE PRIMITIVES: [[[{nl}{nl.join(primitives)}{nl}]]]"
         successful_tasks = list(HumanLLMMonitor.get_learnt_tasks())
         failed_tasks = list(HumanLLMMonitor.get_failed_tasks())
+        validation_response_um = list(HumanLLMMonitor.get_validation_results())
         if successful_tasks and len(successful_tasks) > 0:
             user_message += f"{dnl}PREVIOUSLY SUCCESSFUL TASKS: [[[{nl}{nl.join(successful_tasks[:5])}{nl}]]]"
         if failed_tasks and len(failed_tasks) > 0:
             user_message += f"{dnl}PREVIOUSLY FAILED TASKS: [[[{nl}{nl.join(failed_tasks[:3])}{nl}]]]"
+        if validation_response_um and len(validation_response_um) > 0:
+            user_message += f"{dnl}PREVIOUS VALIDATION RESULTS: [[[{nl}{nl.join(validation_response_um[:max_db_results])}{nl}]]]"
 
         if previous_errors and len(previous_errors) > 0:
             user_message += f"{dnl}PREVIOUS ATTEMPTS TO CODE THE TASK: [[[{nl}"
@@ -1031,7 +1034,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                               optuna_opti=None, allow_custom_score_state_functions=False,
                               params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
-                              number_inferences=1, fixed_coach=False, unique_id=None, return_array=False, agcoding_num_parallel_inferences=2):
+                              agcoach_num_parallel_inferences=1, fixed_coach=False, unique_id=None, return_array=False, agcoding_num_parallel_inferences=2,
+                              continue_each_loop=False):
     scores = None
 
     if unique_id is None:
@@ -1084,7 +1088,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                              optuna=optuna_opti, model_choice=(
             model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(
                 model_choice) == dict else model_choice), criteria=params_user_message, temperature_max=temperature_max,
-                                             num_parallel_inferences=number_inferences, fixed_coach=fixed_coach, special_criteria=special_criteria)
+                                             num_parallel_inferences=agcoach_num_parallel_inferences, fixed_coach=fixed_coach, special_criteria=special_criteria)
 
     agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds,
@@ -1167,10 +1171,10 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                 "Y", "YES"]:
                 agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
         if optuna_opti:
-            continue_identifying_tasks = False
+            continue_identifying_tasks = continue_each_loop
         else:
             answer = smart_input(
-                "Do you want to:\n- search for a new task after reseting to empty documents (Y/YES) ?\n- search for a new task based based on the status of documents after applying the task you just validated (N/NO/Enter) ?\n- or just exit the program (E/EXIT) ?", "orchestrate_agents").strip().upper()
+                "Do you want to:\n- search for a new task after reseting to empty documents (Y/YES) ?\n- search for a new task based based on the status of documents after applying the task you just validated (N/NO/Enter) ?\n- or just exit the program (E/EXIT) ?", "orchestrate_agents",  message_type="VALIDATION_INFO").strip().upper()
             continue_identifying_tasks = False if answer in ["E", "EXIT"] else True
             if answer.upper() in ["Y", "YES"]:
                 [env.reset() for env in test_environments]
