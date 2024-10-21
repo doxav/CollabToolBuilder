@@ -2057,7 +2057,7 @@ The following annotations are provided to guide the refinement process. Each ann
 
     def updateAnswer(self, answer, column_id=None):
         self.temp_inference_result_content = answer
-        print("IMPORTANT: column_id not yet implemented - Updating current HumanLLMMonitor for agent")
+        if column_id: print("IMPORTANT: column_id not yet implemented - Updating current HumanLLMMonitor for agent")
         return answer
 
     # staticmethod get my host ID

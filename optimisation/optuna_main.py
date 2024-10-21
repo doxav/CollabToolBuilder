@@ -191,7 +191,7 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
                                             optuna_opti=optuna_opti,
                                             params_user_message=params_user_message,
                                             special_criteria=special_criteria,
-                                            number_inferences=number_inferences,
+                                            agcoach_num_parallel_inferences=number_inferences,
                                             temperature_max=temperature_max,
                                             fixed_coach=fixed_coach,
                                             return_array=arrayn_ret,

@@ -1034,7 +1034,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                               optuna_opti=None, allow_custom_score_state_functions=False,
                               params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
-                              number_inferences=1, fixed_coach=False, unique_id=None, return_array=False, agcoding_num_parallel_inferences=2,
+                              agcoach_num_parallel_inferences=1, fixed_coach=False, unique_id=None, return_array=False, agcoding_num_parallel_inferences=2,
                               continue_each_loop=False):
     scores = None
 
@@ -1088,7 +1088,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                              optuna=optuna_opti, model_choice=(
             model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(
                 model_choice) == dict else model_choice), criteria=params_user_message, temperature_max=temperature_max,
-                                             num_parallel_inferences=number_inferences, fixed_coach=fixed_coach, special_criteria=special_criteria)
+                                             num_parallel_inferences=agcoach_num_parallel_inferences, fixed_coach=fixed_coach, special_criteria=special_criteria)
 
     agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds,
@@ -1174,7 +1174,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             continue_identifying_tasks = continue_each_loop
         else:
             answer = smart_input(
-                "Do you want to:\n- search for a new task after reseting to empty documents (Y/YES) ?\n- search for a new task based based on the status of documents after applying the task you just validated (N/NO/Enter) ?\n- or just exit the program (E/EXIT) ?", "orchestrate_agents").strip().upper()
+                "Do you want to:\n- search for a new task after reseting to empty documents (Y/YES) ?\n- search for a new task based based on the status of documents after applying the task you just validated (N/NO/Enter) ?\n- or just exit the program (E/EXIT) ?", "orchestrate_agents",  message_type="VALIDATION_INFO").strip().upper()
             continue_identifying_tasks = False if answer in ["E", "EXIT"] else True
             if answer.upper() in ["Y", "YES"]:
                 [env.reset() for env in test_environments]
