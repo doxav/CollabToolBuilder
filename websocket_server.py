@@ -36,7 +36,7 @@ class WebsocketServer:
         # Create the log file name based on the host and current date
         date_str = datetime.now().strftime("%Y-%m-%d")
         log_filename = f"received_websocketdata_{self.host}_{date_str}.txt"
-        
+
         # Append the timestamp and message to the log file
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_entry = f"{timestamp} - {message}\n"
@@ -57,12 +57,12 @@ class WebsocketServer:
         try:
             async for message in websocket:
                 self.log_message(message)  # Log every received message
-                
+
                 message_data = json.loads(message)
                 if "sender_id" in message_data and message_data["sender_id"] == self.server_id:
                     return len(self.connected_clients)
 #                    continue  # Ignore messages sent by the server itself
-                
+
                 # Check if it is a function
                 if "function" in message_data:
                     agent_name = message_data.get("agent_name")
@@ -75,7 +75,7 @@ class WebsocketServer:
                         message = json.dumps({"status": "success", "message": None, "result": result, "function": function_name})
                     else:
                         message = json.dumps({"status": "error", "message": f"Monitor '{agent_name}' not found"})
-                
+
                 for client in self.connected_clients:
                     if client != websocket and message is not None:
                         await client.send(message)
@@ -277,7 +277,7 @@ class WebsocketServer:
             # No running event loop in this thread, so we can run the coroutine directly
             asyncio.run(send_to_clients())
         print(message)
-        
+
     def send_notasync_message(self, message):
         """Send a message without awaiting (fire and forget)."""
         self.message_count += 1

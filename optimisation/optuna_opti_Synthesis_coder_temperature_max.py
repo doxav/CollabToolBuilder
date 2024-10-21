@@ -1,5 +1,7 @@
-from optimisation.optuna_main import launch_run, definition_few_shots, global_main
+from learn import CodingAgent
+from optimisation.optuna_main import launch_run, definition_few_shots, global_main, init_prompts_directory
 from optimisation.optuna_main import documentation
+import os
 
 def objective(trial, name_xp : str):
     # Define parameters we want to tests
@@ -41,7 +43,7 @@ def objective(trial, name_xp : str):
     INSTRUCTIONS:
     1) Reason in {reasoning_depth} steps to identify the optimal way to achieve the task.
     2) Write a function taking 'bot' as the first parameter (IMPORTANT: it should comply with the test provided with no extra arguments), which is an instance of the class SynthesisManager, containing all document resources.
-    3) Your function should include appropriate modification to resources and sections to measure task success. Main functions are:
+    3) Your function should include appropriate modification to resources and sections to measure task success, it will be evaluated by score (higher scores mean better codes/progressions). Main functions are:
         - class Section(section_id: int, title: str, content: str, parent_id: int)
         - Manipulate document sections: bot.create_and_add_section_then_return_id(title: str, content: str, section_id: int = None, parent_id: int = None) -> int, bot.get_all_sections() -> List[Section], bot.get_sections(ids: List[int]) -> List[Section], bot.edit_section(section_id: int, new_content: str = None, new_title: str = None, new_parent_id: int = None) -> bool, bot.remove_section(section_id: int) -> bool, bot.swap_sections(section_id_1: int, section_id_2: int) -> bool
         - Manipulate document resources: bot.add_or_update_results_in_resources(results, metadatas_to_add:dict=None, store_linked_document_content:bool=False), bot.add_or_update_result_in_resources(metadatas:dict, name:str=None, content:dict=None, link:str=None, store_linked_document_content:bool=False), bot.get_all_resources(self) -> List[Dict[str, Any]], bot.semantic_search_resources(query_texts, n_results=10), bot.add_or_update_results_in_resources(results, metadatas:dict=None, store_linked_document_content:bool=False), bot.get_and_store_link_content(link:str=None, parent_id=None, chaining:bool=True), bot.remove_resource(resource_id)
@@ -69,8 +71,10 @@ def objective(trial, name_xp : str):
     # Combine everything to generate the final prompt for the Coder agent
     full_prompt = coder_task_description + coder_test_instructions + documentation
 
+    init_prompts_directory(name_xp, "coder")
+
     # Write the generated prompt to a file that will be used by the Coder agent
-    with open("./prompts/IR_CPS_TechSynthesis/code_task.txt", "w") as f:
+    with open(f"./prompts/IR_CPS_TechSynthesis/{name_xp}/code_task.txt", "w") as f:
         f.write(full_prompt)
 
     # Log the prompt and parameters for this trial
@@ -89,6 +93,7 @@ def objective(trial, name_xp : str):
             "CodingAgent#max_autofix": max_autofix,
             "CodingAgent#temperature_max": temperature,
             "CodingAgent#num_parallel_inferences": number_inferences,
+            "all#problem_prompts_subdir": f"IR_CPS_TechSynthesis/{name_xp}/",
             "presence_penalty": presence_penalty,
             "num_previous_attempts": num_previous_attempts,
             "parameters_previous_attempts": parameters_previous_attempts,

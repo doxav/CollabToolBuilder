@@ -434,7 +434,7 @@ class UnifiedVectorDB:
                 print("Elasticsearch response:", response.text)
                 UnifiedVectorDB.db_connection_check_done = True
             except requests.exceptions.RequestException as e:
-                print(f"Error: {e}\nURL: {UnifiedVectorDB.es_url}\nCheck Elasticsearch and credentials.")
+                print(f"Error: {e}\nURL: {UnifiedVectorDB.es_url}\nCheck Elasticsearch and credentials. UnifiedVectorDB.es_user:{UnifiedVectorDB.es_user}, UnifiedVectorDB.es_password:{UnifiedVectorDB.es_password}")
                 exit(1)
         elif UnifiedVectorDB.db_type == 'chroma':
             print("Chroma DB check is not yet implemented")
@@ -857,7 +857,8 @@ class HumanLLMMonitor:
                 reset_db_indices=reset_db_indices
             )
 
-    def get_few_shots_tag_args(self, prompt):
+    @staticmethod
+    def get_few_shots_tag_args(prompt):
         """
         Removes the 'few_shots' tag from the prompt and inserts the string received from
         get_multiple_few_shots at each location where the tag was removed.
@@ -887,9 +888,9 @@ class HumanLLMMonitor:
                 print(f"Attempting to decode few_shots tag: {data_str}")  # Debug
                 data = json.loads(data_str)
                 # Combine criteria
-                combined_criteria = self.combine_criteria([data])
+                combined_criteria = HumanLLMMonitor.combine_criteria([data])
                 # Get the few shots string
-                few_shots_str = self.get_multiple_few_shots(combined_criteria)
+                few_shots_str = HumanLLMMonitor.get_multiple_few_shots(combined_criteria)
                 # Replace the tag with the few shots string
                 prompt = prompt[:start] + few_shots_str + prompt[end:]
             except json.JSONDecodeError as e:
@@ -1041,13 +1042,12 @@ class HumanLLMMonitor:
 
         raise ValueError("No Pydantic BaseModel class found in the provided file.")
 
-
     def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_max_context_size=16000,
                  default_llmORchain=None,
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1,
                  llmORchains_list=None,
                  synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, optuna=False, envs=None,
-                 fixed_coach=False):
+                 fixed_coach=False, prompt_critic=None):
         # Instance properties to track time
         self.selected_outputs = []
         self.menu_start_time = None
@@ -1059,6 +1059,7 @@ class HumanLLMMonitor:
         self.temperature_min = temperature_min
         self.temperature_max = temperature_max if temperature_max else (temperature_min+0.2)
         self.optuna = optuna
+        self.prompt_critic = prompt_critic
         self.system_prompt = system_prompt
         self.set_output_schema(output_schema)
         self.set_default_llmORchain(
@@ -1170,15 +1171,17 @@ class HumanLLMMonitor:
         if reset_menu_time_after:
             self.start_time, self.menu_start_time = time.time(), time.time()
 
-    def load_prompt(self, function_name: str = None, agent_name: str = None, prompt: str = None) -> str:
+    @staticmethod
+    def load_prompt(function_name: str = None, agent_name: str = None, prompt: str = None) -> str:
         with open(f"prompts/{prompt}.txt", "r") as f:
             prompt_content = f.read()
 
-        prompt_content = self.get_few_shots_tag_args(prompt_content)
+        prompt_content = HumanLLMMonitor.get_few_shots_tag_args(prompt_content)
 
         return prompt_content
 
-    def combine_criteria(self, criteria_list):
+    @staticmethod
+    def combine_criteria(criteria_list):
         """
         Formats the criteria list into the required output format.
 
@@ -1772,8 +1775,11 @@ class HumanLLMMonitor:
             # Run inference checks if any
             check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
             check_display = ""
+            check_display = ""
             # Display inference check results
             for check_name, result in check_results.items():
+                if check_name == "Generate annotations" :
+                    inference_result_msg.content = result
                 check_display += f"{nl}CHECK {check_name} result: " + str(result).replace("\\n", "\n")
 
             menu = (

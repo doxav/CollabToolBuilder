@@ -1,4 +1,4 @@
-from optimisation.optuna_main import launch_run, definition_few_shots, global_main
+from optimisation.optuna_main import launch_run, definition_few_shots, global_main, init_prompts_directory
 
 
 def objective(trial, timestamp_exp: str):
@@ -159,9 +159,12 @@ def objective(trial, timestamp_exp: str):
     
     {few_shots}
     """
-    # Write the prompt in the file readed after by the coach
-    with open("./prompts/IR_CPS_TechSynthesis/identify_best_task.txt", "w") as f:
+    init_prompts_directory(timestamp_exp, "coach")
+
+    # Write the generated prompt to a file that will be used by the Coach agent
+    with open(f"./prompts/IR_CPS_TechSynthesis/{timestamp_exp}/identify_best_task.txt", "w") as f:
         f.write(prompt_coach)
+
 
     # Save the parameters chosen by the trial
     with open(f"Optuna_results/{timestamp_exp}.txt", "a") as f:

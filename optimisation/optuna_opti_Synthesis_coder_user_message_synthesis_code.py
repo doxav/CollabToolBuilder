@@ -1,4 +1,4 @@
-from optimisation.optuna_main import launch_run, definition_few_shots, global_main
+from optimisation.optuna_main import launch_run, definition_few_shots, global_main, init_prompts_directory
 
 
 def objective(trial, name_xp : str):
@@ -419,6 +419,11 @@ class SynthesisManager:
     5) The function should call existing helper functions as much as possible to focus on improving results, not redoing code.
     6) Ensure the code is executable with no placeholders and fully complete for immediate testing and deployment.
     7) Name your function meaningfully to reflect the task it is performing.
+    8) Your function should include appropriate modification to resources and sections to measure task success, it will be evaluated by score (higher scores mean better codes/progressions). Main functions are:
+        - class Section(section_id: int, title: str, content: str, parent_id: int)
+        - Manipulate document sections: bot.create_and_add_section_then_return_id(title: str, content: str, section_id: int = None, parent_id: int = None) -> int, bot.get_all_sections() -> List[Section], bot.get_sections(ids: List[int]) -> List[Section], bot.edit_section(section_id: int, new_content: str = None, new_title: str = None, new_parent_id: int = None) -> bool, bot.remove_section(section_id: int) -> bool, bot.swap_sections(section_id_1: int, section_id_2: int) -> bool
+        - Manipulate document resources: bot.add_or_update_results_in_resources(results, metadatas_to_add:dict=None, store_linked_document_content:bool=False), bot.add_or_update_result_in_resources(metadatas:dict, name:str=None, content:dict=None, link:str=None, store_linked_document_content:bool=False), bot.get_all_resources(self) -> List[Dict[str, Any]], bot.semantic_search_resources(query_texts, n_results=10), bot.add_or_update_results_in_resources(results, metadatas:dict=None, store_linked_document_content:bool=False), bot.get_and_store_link_content(link:str=None, parent_id=None, chaining:bool=True), bot.remove_resource(resource_id)
+
     
     {synthesis_code_string}
     
@@ -441,8 +446,10 @@ class SynthesisManager:
     # Combine everything to generate the final prompt for the Coder agent
     full_prompt = coder_task_description + coder_test_instructions
 
+    init_prompts_directory(name_xp, "coder")
+
     # Write the generated prompt to a file that will be used by the Coder agent
-    with open("./prompts/IR_CPS_TechSynthesis/code_task.txt", "w") as f:
+    with open(f"./prompts/IR_CPS_TechSynthesis/{name_xp}/code_task.txt", "w") as f:
         f.write(full_prompt)
 
     # Log the prompt and parameters for this trial
