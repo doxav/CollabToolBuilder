@@ -6,24 +6,13 @@
     - Plan: ...
     - Tests: tests that will be done on target document
 
-    CURRENT STATE OF THE ENVIRONMENT USED TO TEST TASK
-        Document #xxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx: 
-        id: ...title: ...abstract: ...comment: ...target_file_path: ...
-
     - General code for re-use or demonstration purpose: ...
     - Code from the last round with attempts to implement task with its performance (e.g. 'sections titles progress': x, 'sections content progress': y): ...
     - Execution error: ...
 
-    Here you can find a structure of an existing Fiche of Anomalie (FA):
-        False
-
-    Cypher request which was used to create the database: 
-        True
-               
     You should then respond to me with:
         - Reasoning: How to best implement the plan with no errors and maximum performance towards the goal ?
         - Code:
-        15) Ensure that the generated code adheres to principles of reusability and modularity as Modular classes for related functions.
 
     RESPONSE FORMAT (You should only respond in the format as described below, and follow the example provided):
         ```python    
