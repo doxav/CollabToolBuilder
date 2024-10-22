@@ -1354,8 +1354,8 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         table_of_content = "\n".join([str(section) for section in table_of_content_list])
         resources_observation = self.synthesis_manager.get_resources_status(compact_string_format=True)
         document_state = f"<<< Document #{self.id} properties:\n"
-        document_state += f"> Title: {self.title}\n"
-        document_state += f"> Abstract (first 100 characters): {self.context[:100]}\n"
+        if bool: document_state += f"> Title: {self.title}\n"
+        if bool: document_state += f"> Abstract (first 100 characters): {self.context[:100]}\n"
         document_state += f"> Current table of content:\n{table_of_content if len(table_of_content) > 0 else 'Empty'}\n"
         document_state += f"> Current resources: {resources_observation if len(resources_observation) > 0 else 'Empty'}\n"
         if extended:

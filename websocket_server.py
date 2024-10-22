@@ -245,7 +245,8 @@ class WebsocketServer:
         clients = set(self.connected_clients)
         for client in clients:
             asyncio.run(client.send(message))
-            print(message)
+            # add time to message print
+            print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {message}")
 
     def send_message(self, message):
         """Send a message to all connected clients."""
@@ -276,7 +277,7 @@ class WebsocketServer:
         except RuntimeError:
             # No running event loop in this thread, so we can run the coroutine directly
             asyncio.run(send_to_clients())
-        print(message)
+        print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {message}")
 
     def send_notasync_message(self, message):
         """Send a message without awaiting (fire and forget)."""

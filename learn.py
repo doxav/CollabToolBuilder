@@ -484,6 +484,7 @@ class CodingAgent():
                 time.sleep(0.1)
 
         self.parsed_code = f"Error parsing action response (before program execution): {error}"
+        smart_print("CODE PARSING ERROR!!!", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
         return False, self.parsed_code
 
     def run_tests_on_code(self, message, parsed_code=None, skip_already_processed=False, output_id=None, restore_state=True, custom_agent=None):
@@ -587,7 +588,7 @@ class CodingAgent():
                         no_runtime_error, exec_result = env.step(code_to_run)
                         # Update parsed_code if re-run is successful
                         parsed_code["program_code"] = edited_code
-                        smart_print(f"# UPDATED **{'SUCCESFUL' if no_runtime_error else 'FAILED'}** CODE:\n{edited_code}", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                        smart_print(f"# UPDATED **{'SUCCESFUL' if no_runtime_error else 'FAILED'}** CODE:\n{edited_code}", custom_agent if custom_agent else self.name, "UPDATED_CODE", optional=False, column_id=output_id)
                         # If no runtime error, store the error and diff
                         if no_runtime_error:
                             smart_print(env.get_state(extended=True), custom_agent if custom_agent else self.name, "CODE_RESULT", optional=False, column_id=output_id)
