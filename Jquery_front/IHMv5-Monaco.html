@@ -1306,10 +1306,10 @@ color: white;
 <div class="annotation-menu">
     <button class="close-btn">&times;</button>
     <select id="annotation-action">
-        <option value="keep">KEEP</option>
-        <option value="fix">FIX</option>
-        <option value="improve">IMPROVE</option>
-        <option value="explore">EXPLORE</option>
+        <option value="KEEP">KEEP</option>
+        <option value="FIX">FIX</option>
+        <option value="IMPROVE">IMPROVE</option>
+        <option value="EXPLORE">EXPLORE</option>
     </select>
     <input width="300" type="text" id="annotation-input" placeholder="Enter your annotation">
     <button id="apply-annotation">Apply</button>
@@ -1857,7 +1857,7 @@ function getColumnsToKeep(agent) {
                 }
             }
 
-        $(document).on("click", `#save-${agent_columnId}`, function () {
+        $(`#save-${agent_columnId}`).click(function () {
             // Retrieve the target column and editor instance
             let targetColumn = document.getElementById(`column-${agent_columnId}`);
             if (!targetColumn || !targetColumn.editorInstance) {
@@ -1879,7 +1879,7 @@ function getColumnsToKeep(agent) {
             });
         });
 
-    $(document).on("click", `#evaluate-${agent_columnId}`, function () {
+    $(`#evaluate-${agent_columnId}`).click(function () {
         // Check if the input field is empty
         let comment = $(`#comment-${agent_columnId}`).val().trim();
         if (comment === '') {
@@ -1935,7 +1935,7 @@ function getColumnsToKeep(agent) {
                 });
     });
 
-            $(document).on("click", `#regenallbutton-${agent_columnId}`, function () {
+            $(`#regenallbutton-${agent_columnId}`).click(function () {
                 // Disable all generation buttons
                 enableGenButtons(false);
 
@@ -1990,8 +1990,7 @@ function getColumnsToKeep(agent) {
                     addHistoryEntry(actionDescription);
                 });
             });
-
-            $(document).on("click", `#regenwithmymodifbutton-${agent_columnId}`, function () {
+          $(`#regenwithmymodifbutton-${agent_columnId}`).click(function () {
                 let targetColumn = document.getElementById(`column-${agent_columnId}`);
 
                 if(!targetColumn || !targetColumn.editorInstance) {

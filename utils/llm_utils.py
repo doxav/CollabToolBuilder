@@ -156,7 +156,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
         HumanLLMMonitor.websocket_server.send_message(message_json)
 
         async def receive_message(timeout=86400):
-            async with websockets.connect(ws_url) as websocket:
+            async with websockets.connect(ws_url, ping_interval=30, ping_timeout=60) as websocket:
                 try:
                     print("SMART INPUT Waiting for response from WebSocket")
                     while True:
@@ -173,7 +173,15 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
                                 print(f"An error occurred: {e}, retry {i+1}/{max_retry}")
                                 await asyncio.sleep(1)
                         print("SMART INPUT Received response from WebSocket")
-                        json_data = json.loads(response)
+                        try:
+                            # Check that the response is not a NoneType
+                            if response is None:
+                                print("Received None response from WebSocket")
+                                return None
+                            json_data = json.loads(response)
+                        except json.JSONDecodeError as e:
+                            print(f"Error decoding JSON: {e}")
+                            return None
                         # Ignore messages from self
                         if 'sender_id' in json_data and json_data['sender_id'] == HumanLLMMonitor.websocket_server.server_id:
                             print("Received message from self, ignoring")
@@ -204,7 +212,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
             # Attempt to get the current running event loop
             loop = asyncio.get_running_loop()
             # If a loop is running, schedule the receive_message coroutine
-            future = asyncio.run_coroutine_threadsafe(receive_message(), loop)
+            future = asyncio.run_coroutine_threadsafe(receive_message())
             return future.result()
         except RuntimeError:
             # No running loop, create a new event loop and run the coroutine
