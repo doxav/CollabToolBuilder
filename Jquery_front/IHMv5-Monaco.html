@@ -24,6 +24,7 @@
     let wsUrl = 'ws://localhost:6789';
     let reconnectAttempts = 0; // Track the number of reconnection attempts
     const maxAutoReconnectAttempts = 10; // Set the number of reconnection attempts
+    let isFunctionCallInProgress = false;
     
     // Function to get URL parameter by name
     function getUrlParameter(name) {
@@ -126,21 +127,50 @@
     initWebSocket();
 
     function sendFunctionCall(agentName, functionName, params, callback = null) {
+        if (isFunctionCallInProgress) {
+            // Function is already in progress, alert the user and give options
+            let userChoice = confirm("A function is currently running. Do you want to cancel the current call or retry after it finishes?\n\nPress 'OK' to retry after the current call finishes.\nPress 'Cancel' to cancel the new call.");
+
+            if (userChoice) {
+                // Retry after the current call finishes
+                const retryAfterCompletion = setInterval(() => {
+                    if (!isFunctionCallInProgress) {
+                        clearInterval(retryAfterCompletion);
+                        sendFunctionCall(agentName, functionName, params, callback);
+                    }
+                }, 500); // Check every 500ms if the function call has completed
+            } else {
+                // Cancel the new function call attempt
+                console.log('New function call canceled by the user.');
+            }
+            return;
+        }
+
+        // Set the flag indicating that a function call is in progress
+        isFunctionCallInProgress = true;
+
         let message = {
             agent_name: agentName,
             function: functionName,
             params: params
         };
-        msgString = JSON.stringify(message);
+        let msgString = JSON.stringify(message);
         socket.send(msgString);
 
         addLogLine('SENT: ' + msgString);
 
         if (callback) {
             console.log('Setting up callback for', functionName);
-            pendingCallbacks[functionName] = callback;
-        }
+            pendingCallbacks[functionName] = (result) => {
+                callback(result);
+                // Reset the flag once the call is completed
+                isFunctionCallInProgress = false;
+            };
+        } else {
+            // Reset the flag when the call finishes (without callback)
+            isFunctionCallInProgress = false;}
     }
+
 
     function displayMessage(data) {
         if (data.agent_name !== undefined) {
@@ -223,7 +253,7 @@
 
         // Places infos for each answers in columns in their columns
 
-        if(data.agent_name === "CodingAgent" && (data.message_type === "code_task_and_run_test SystemMessage" || data.message_type === "fix_error" || data.message_type === "CODE_RESULT")) {
+        if(data.agent_name === "CodingAgent" && (data.message_type === "code_task_and_run_test SystemMessage" || data.message_type === "fix_error" || data.message_type === "CODE_RESULT" || data.message_type === "UPDATED_CODE")) {
             // Retrieve the columns of the CodingAgent
             let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
             let $columns = $agentAccordion.find('.solution-column');
@@ -231,6 +261,15 @@
             // Retrieve the targeted column
             let targetColumn = document.getElementById(`column-${columnId}`);
 
+            // Check if the message_type is UPDATED_CODE and update the Monaco editor's content
+            if (data.message_type === "UPDATED_CODE" && data.agent_name && data.column_id !== undefined) {
+                const editorContainer = document.getElementById(`column-${columnId}`);
+                const editorInstance = editorContainer.editorInstance;
+                if (editorContainer && editorContainer.editorInstance) {
+                    editorInstance.setValue(data.message);
+                    console.log(`Monaco editor content updated for agent editor-${columnId}`);
+                } else console.error(`Monaco editor not found for agent editor-${columnId} editorContainer:${editorContainer} editorInstance:${editorInstance}/ `);
+            }
             if (data.message_type === "fix_error") {
                 // if Edition in VSCode, alert and do not display the buttons
                 if (data.message.startsWith("Please edit and save")) {alert(data.message); return;}
@@ -701,12 +740,21 @@
             });
 
             // Debounce timer variable for auto-save
-            let debounceTimer;
+            let debounceSaveTimer;
 
-            // Auto-Save: Listen for content changes
             const contentDisposable = editor.onDidChangeModelContent(function(event) {
                 console.log('Content changed:', event);
                 document.querySelector(`#save-${agentName}-${columnId}`).style.display = 'inline-block'; // Correctly reference the full agent_columnId
+                clearTimeout(debounceSaveTimer); // Clear the previous timer
+                debounceSaveTimer = setTimeout(function() { // Set a new timer for 3 seconds
+                    let currentContent = editor.getValue(); // Get the current content of the editor
+                    // Prepare the data to send
+                    let requestData = {answer: currentContent, column_id: columnId };
+                    sendFunctionCall(agentName, "updateAnswer", requestData, function(responseMessage) { // Call the save function
+                        console.log("Auto-save response:", responseMessage);
+                        document.querySelector(`#save-${agentName}-${columnId}`).style.display = 'none';
+                    });
+                }, 3000); // 3-second debounce
             });
 
             // Annotation Handling: Listen for cursor selection changes

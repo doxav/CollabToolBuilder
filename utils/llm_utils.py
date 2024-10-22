@@ -1847,8 +1847,8 @@ class HumanLLMMonitor:
             self.track_time_spent(action, mode='after')
 
             if self.temp_inference_result_content: # it means an async function has modified the content and we should not exit but continue the loop
-                inference_result_msg.content = self.temp_inference_result_content
-                smart_print(menu, self.agent_name, "ANSWER MODIFIED, RUNNING CHECKS BEFORE CONTINUING", column_id=output_id-1, column_max=outputs_count)
+                inference_result_msg.content = f"{self.temp_inference_result_content}"
+                smart_print("ANSWER MODIFIED, RUNNING CHECKS BEFORE CONTINUING", self.agent_name, "code_task_and_run_test SystemMessage", column_id=output_id-1, column_max=outputs_count)
                 #check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
             elif action in [None, "", "E", "Z"]:
                 break  # E: Go back BEFORE inference to improve system prompt or add information to user message
