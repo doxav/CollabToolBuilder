@@ -1,0 +1,15 @@
+name: Run Script Manually
+
+on:
+  workflow_dispatch: # This allows manual triggers from the GitHub Actions UI.
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3 # Check out your repository code
+
+    - name: Pull Docker Image
+      run: docker pull jitaross/ollamawithpython
