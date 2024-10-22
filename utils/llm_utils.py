@@ -216,7 +216,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
             return future.result()
         except RuntimeError:
             # No running loop, create a new event loop and run the coroutine
-            return asyncio.run(receive_message())
+            return asyncio.run(receive_message(), loop)
 
     elif IN_NOTEBOOK and agent_name:  # Currently DE-ACTIVATED
         # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
