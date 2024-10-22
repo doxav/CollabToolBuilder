@@ -12,7 +12,7 @@ import threading
 import shutil  # To check if localtunnel is available
 
 class WebsocketServer:
-    def __init__(self, port=6789, secret=None, proxy_enabled=False):
+    def __init__(self, port=6789, secret=None, proxy_enabled=False, unique_id=None):
         self.server_id = str(uuid.uuid4())
         self.monitors = {}  # Stores agent monitors
         self.current_instances = {}  # Track current active monitor instances
@@ -27,68 +27,22 @@ class WebsocketServer:
 #        self.loop = asyncio.new_event_loop()
         self.process_lt = None  # To store the localtunnel process
         self.max_connections = 10
+        if unique_id:
+            self.log_filename = f'websocketdata_{unique_id}_{self.port}.txt'
+        else:
+            date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            self.log_filename = f'websocketdata_{self.host}_{self.port}_{date_str}.txt'
 
     def add_monitor(self, monitor):
         self.monitors[monitor.agent_name] = monitor
         self.current_instances[monitor.agent_name] = None
 
-    def log_message(self, message):
-        # Create the log file name based on the host and current date
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        log_filename = f"received_websocketdata_{self.host}_{date_str}.txt"
-
+    def log_message(self, message, received=True):
         # Append the timestamp and message to the log file
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        log_entry = f"{timestamp} - {message}\n"
-        with open(log_filename, "a") as log_file:
+        log_entry = f"{'IN' if received else 'OUT'} {timestamp} - {message}\n"
+        with open(self.log_filename, "a") as log_file:
             log_file.write(log_entry)
-
-    async def handler(self, websocket, path):
-        # Parse query parameters
-        query_params = parse_qs(urlparse(path).query)
-        if self.secret:
-            received_secret = query_params.get("secret", [None])[0]
-            if received_secret != self.secret:
-                print("Invalid secret. Closing connection.")
-                await websocket.close(reason="Invalid secret")
-                return
-
-        self.connected_clients.add(websocket)
-        try:
-            async for message in websocket:
-                self.log_message(message)  # Log every received message
-
-                message_data = json.loads(message)
-                if "sender_id" in message_data and message_data["sender_id"] == self.server_id:
-                    return len(self.connected_clients)
-#                    continue  # Ignore messages sent by the server itself
-
-                # Check if it is a function
-                if "function" in message_data:
-                    agent_name = message_data.get("agent_name")
-                    function_name = message_data.get("function")
-                    params = message_data.get("params", {})
-
-                    if agent_name in self.monitors:
-                        monitor = self.monitors[agent_name]
-                        result = monitor.execute_function(function_name, params)
-                        message = json.dumps({"status": "success", "message": None, "result": result, "function": function_name})
-                    else:
-                        message = json.dumps({"status": "error", "message": f"Monitor '{agent_name}' not found"})
-
-                for client in self.connected_clients:
-                    if client != websocket and message is not None:
-                        await client.send(message)
-            return len(self.connected_clients)
-#                # Send response to all other clients
-#                for client in self.connected_clients:
-#                    if client != websocket and response:
-#                        await client.send(response)
-
-        except websockets.ConnectionClosed:
-            pass
-        finally:
-            self.connected_clients.remove(websocket)
 
     async def handler(self, websocket, path):
         # Parse query parameters
@@ -112,11 +66,11 @@ class WebsocketServer:
         self.connected_clients.add(websocket)
         try:
             async for message in websocket:
-                self.log_message(message)  # Log every received message
-
                 message_data = json.loads(message)
                 if "sender_id" in message_data and message_data["sender_id"] == self.server_id:
                     continue  # Ignore messages sent by the server itself
+
+                self.log_message(message, received=True)  # Log every received message
 
                 # Check if it is a function
                 if "function" in message_data:
@@ -232,23 +186,6 @@ class WebsocketServer:
         await server.wait_closed()
 
     def send_message(self, message):
-        no_client = True
-        while no_client:
-            if len(self.connected_clients) > 0:
-                no_client = False
-            else:
-                print("Waiting for WebSocket client to connect")
-                time.sleep(1)
-        self.message_count += 1
-        if isinstance(message, dict) and "sender_id" not in message:
-            message['sender_id'] = self.server_id
-        clients = set(self.connected_clients)
-        for client in clients:
-            asyncio.run(client.send(message))
-            # add time to message print
-            print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {message}")
-
-    def send_message(self, message):
         """Send a message to all connected clients."""
         no_client = True
         while no_client:
@@ -267,6 +204,7 @@ class WebsocketServer:
             for client in clients:
                 try:
                     await client.send(message)
+                    self.log_message(message, received=False)
                 except Exception as e:
                     print(f"Error sending message to client: {e}")
 

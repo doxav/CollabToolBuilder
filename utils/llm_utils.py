@@ -216,7 +216,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
             return future.result()
         except RuntimeError:
             # No running loop, create a new event loop and run the coroutine
-            return asyncio.run(receive_message(), loop)
+            return asyncio.run(receive_message())
 
     elif IN_NOTEBOOK and agent_name:  # Currently DE-ACTIVATED
         # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
@@ -828,9 +828,9 @@ class HumanLLMMonitor:
         cls.db_failed_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
 
     @classmethod
-    def initialize_websocket_server(cls, port=6789, secret=None, proxy_enabled=False):
+    def initialize_websocket_server(cls, port=6789, secret=None, proxy_enabled=False, unique_id=None):
         if cls.use_websocket and cls.websocket_server is None:
-            cls.websocket_server = WebsocketServer(port=port, secret=secret, proxy_enabled=proxy_enabled)
+            cls.websocket_server = WebsocketServer(port=port, secret=secret, proxy_enabled=proxy_enabled, unique_id=unique_id)
             cls.stop_event.clear()
             cls.ws_thread = threading.Thread(target=cls.run_websocket_server)
             cls.ws_thread.daemon = True  # Run the WebSocket server in a daemon thread

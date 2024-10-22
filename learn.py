@@ -1040,7 +1040,6 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     scores = None
 
     if unique_id is None:
-        # Set unique_id to the name of the machine + timestamp (dd-mm-yyyy-hh-mm-ss)
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
 
     if unique_id is not False :
@@ -1061,6 +1060,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             HumanLLMMonitor.initialize_websocket_server()
 
     smart_print(str(max_execution_time), "orchestrate_agents", "time_end")
+    smart_print(unique_id, "orchestrate_agents", "XP_unique_id", optional=True)
 
     time_end = time.time() + max_execution_time
 
@@ -1474,7 +1474,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Initialize the WebSocket server with port autodetection and proxy
-    HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy)
+    unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+    HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy, unique_id=unique_id)
 
     # Allow some time for the WebSocket server to start
     time.sleep(1)  # Adjust if necessary
@@ -1527,4 +1528,5 @@ if __name__ == "__main__":
                               agcoding_skip_rounds=0,  # Auto-test: 4
                               agvalidation_skip_rounds=0,  # Auto-test: 4
                               agcapitalize_skip_rounds=0,
-                              agcoding_num_parallel_inferences=2)  # Auto-test: 0"""
+                              agcoding_num_parallel_inferences=2,
+                              unique_id=unique_id)  # Auto-test: 0"""
