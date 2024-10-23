@@ -12,6 +12,8 @@ jobs:
     steps:
     - name: Checkout code from the branch
       uses: actions/checkout@v4
+      with:
+        ref: IHMv6
 
     - name: Create config.py file
       run: |
