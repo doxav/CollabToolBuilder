@@ -1287,6 +1287,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
                  embedding_model_name: str = "intfloat/e5-base-v2", # nomic-embed-text:latest, intfloat/e5-base-v2
                  openai_api_key: str = None,
                  target_file_path: str = None,
+                 llm = None,
                  id: str = None,
                  ):
         super().__init__()
@@ -1299,7 +1300,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         self.refined_goals = [goal] if refined_goals is None else refined_goals
         self.title = title
         self.context = context
-
+        self.llm = llm
         self.document = DocumentStructure(synthesis_type=synthesis_type, initial_goal=goal, refined_goals=self.refined_goals, embedding_model_name=embedding_model_name, title=title, context=context)  # Initialize your document structure
         self.synthesis_manager = SynthesisManager(document=self.document, target_file_path=target_file_path)  # Initialize your Synthesis Manager
         #self.server = f"{server_host}:{server_port}" # TODO: voir si on a besoin d'un serveur type TGI pour les inférences
@@ -1345,7 +1346,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         if not self.has_reset_once:
             print("Environment has not been reset yet - resetting now !")
             self.reset()
-        return super().step(action_code=code, context={'problem': self.synthesis_manager, 'bot': self.synthesis_manager, 'results': None, 'SynthesisManager': SynthesisManager, 'DocumentStructure': DocumentStructure, 'Section': Section, 'Document': Document})
+        return super().step(action_code=code, context={'problem': self.synthesis_manager, 'bot': self.synthesis_manager, 'results': None, 'SynthesisManager': SynthesisManager, 'DocumentStructure': DocumentStructure, 'Section': Section, 'Document': Document, 'llm':self.llm})
 
     def get_state(self, extended: bool = False):
         #TODO: move to self.document.get_state() ?

@@ -484,7 +484,7 @@ class CodingAgent():
                 time.sleep(0.1)
 
         self.parsed_code = f"Error parsing action response (before program execution): {error}"
-        smart_print("CODE PARSING ERROR!!!", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+        smart_print(f"CODE PARSING ERROR!!!\n{error}", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
         return False, self.parsed_code
 
     def run_tests_on_code(self, message, parsed_code=None, skip_already_processed=False, output_id=None, restore_state=True, custom_agent=None):
@@ -640,7 +640,7 @@ class CodingAgent():
         nl, dnl = "\n", "\n\n"
         max_db_results = 10
         if self.envs and len(self.envs) > 0:
-            user_message += f"{nl}CURRENT STATE OF DOCUMENTS TO PERFORM/TEST TASK: [[[{nl}{nl.join([env.get_state(extended=True) for env in self.envs])}{nl}]]]"
+            user_message += f"{nl}CURRENT STATE OF DOCUMENTS TO PERFORM/TEST TASK: [[[{nl}{nl.join([env.get_state(extended=False) for env in self.envs])}{nl}]]]"
         if len(primitives) > 0:
             user_message += f"{dnl}RE-USABLE CODE PRIMITIVES: [[[{nl}{nl.join(primitives)}{nl}]]]"
         successful_tasks = list(HumanLLMMonitor.get_learnt_tasks())
@@ -1184,14 +1184,13 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                     # Apply the code to the environments without restoring their state
                     test_results = agent_coding.run_tests_on_code(message="", parsed_code=parsed_code, skip_already_processed=False, restore_state=False, custom_agent="orchestrate_agents")
                     # Unpack the results if needed
-                    parsed_code, success, exec_results, scores, env_states, execution_time = test_results
+                    _parsed_code_, _success_, exec_results, _scores_, _env_states_, _execution_time_ = test_results
 
                     # Optionally display the execution results for each environment
                     for env, result in zip(test_environments, exec_results):
                         smart_print(f"Execution result in environment {env.id}: {result}", "orchestrate_agents", "Execution Result")
                 else:
                     smart_print("No code to run.", "orchestrate_agents", "Execution Error")
-
 
 
         # Calculate the average score of the task, and return it with other statistics
@@ -1508,7 +1507,7 @@ if __name__ == "__main__":
     envs = []
     for doc in documents:
         env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
-                                 target_file_path=doc['target_file_path'], id=doc['id']).get_environment()
+                                 target_file_path=doc['target_file_path'], id=doc['id'], llm=llmORchains_list["default_llm"]).get_environment()
         envs.append(env)
 
     # Run the learning loop

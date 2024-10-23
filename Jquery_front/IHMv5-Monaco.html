@@ -129,7 +129,7 @@
     function sendFunctionCall(agentName, functionName, params, callback = null) {
         if (isFunctionCallInProgress) {
             // Function is already in progress, alert the user and give options
-            let userChoice = confirm("A function is currently running. Do you want to cancel the current call or retry after it finishes?\n\nPress 'OK' to retry after the current call finishes.\nPress 'Cancel' to cancel the new call.");
+            let userChoice = confirm(`Another call is currently running (${isFunctionCallInProgress}). Do you want to cancel the current call or retry after it finishes?\n\nPress 'OK' to retry after the current call finishes.\nPress 'Cancel' to cancel the new call.`);
 
             if (userChoice) {
                 // Retry after the current call finishes
@@ -137,8 +137,11 @@
                     if (!isFunctionCallInProgress) {
                         clearInterval(retryAfterCompletion);
                         sendFunctionCall(agentName, functionName, params, callback);
+                        if(isFunctionCallInProgress)
+                            if(confirm(`Another call is still running (${isFunctionCallInProgress}) Do you want to ignore and force the call ?`))
+                                isFunctionCallInProgress = false;
                     }
-                }, 500); // Check every 500ms if the function call has completed
+                }, 1000); // Check every 500ms if the function call has completed
             } else {
                 // Cancel the new function call attempt
                 console.log('New function call canceled by the user.');
@@ -147,7 +150,7 @@
         }
 
         // Set the flag indicating that a function call is in progress
-        isFunctionCallInProgress = true;
+        isFunctionCallInProgress = functionName;
 
         let message = {
             agent_name: agentName,
