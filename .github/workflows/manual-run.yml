@@ -1,4 +1,4 @@
-name: Run Script Manually
+name: Script for XP
 
 on:
   workflow_dispatch: # This allows manual triggers from the GitHub Actions UI.
@@ -58,7 +58,7 @@ jobs:
         EOL
 
     - name: Pull Docker Image
-      run: docker pull jitaross/ollamawithpython
+      run: docker pull jitaross/pythonwithdependencies
 
     - name: Run Docker Container with mounted code
       run: docker run -v ${{ github.workspace }}:/workspace jitaross/ollamawithpython python /workspace/learn.py --secret --proxy
