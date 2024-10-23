@@ -108,7 +108,7 @@ jobs:
 
     - name: Test multiple connections to Elasticsearch in Docker
       run: |
-        docker run --network="host" --rm jitaross/pythonwithdependencies cat /workspace/utils/llm_utils.py
+        docker run --network="host" -v /home/runner/work/CollabFunctionsGPTCreator/CollabFunctionsGPTCreator:/workspace --rm jitaross/pythonwithdependencies cat /workspace/utils/llm_utils.py
         # Test connection without user and password
         echo "Testing Elasticsearch connection without authentication..."
         docker run --network="host" --rm jitaross/pythonwithdependencies curl -X GET http://localhost:9200
