@@ -35,7 +35,7 @@ jobs:
                         "code_gpt":"codestral:latest-20k",
                 }
         else:
-            OPENAI_API_KEY = ${{ secrets.OPENAI_API_KEY }}
+            OPENAI_API_KEY = "${{ secrets.OPENAI_API_KEY }}"
             MODELS_CONFIG_LIST = {
                 "code_gpt": "gpt-4o-mini-2024-07-18",
                 "smart_gpt": "gpt-4o-mini-2024-07-18",
