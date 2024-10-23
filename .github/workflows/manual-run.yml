@@ -75,8 +75,11 @@ jobs:
       run: |
         docker run --rm jitaross/pythonwithdependencies bash -c "
           apt-get update && apt-get install -y npm && \
-          npm install -g localtunnel
+          npm install -g localtunnel && \
+          echo 'localtunnel installed successfully'
         "
 
     - name: Run Docker Container with mounted code
-      run: docker run -v ${{ github.workspace }}:/workspace -e OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} jitaross/pythonwithdependencies python /workspace/learn.py --secret --proxy
+      run: docker run -v ${{ github.workspace }}:/workspace \
+        -e OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
+        jitaross/pythonwithdependencies bash -c "python /workspace/learn.py --secret --proxy"
