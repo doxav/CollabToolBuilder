@@ -7,7 +7,7 @@ jobs:
   run-script:
     runs-on: ubuntu-20.04
     env:
-      OPEN_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPEN_API_KEY: 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
 
     steps:
     - name: Checkout code from the branch
@@ -35,7 +35,7 @@ jobs:
                         "code_gpt":"codestral:latest-20k",
                 }
         else:
-            OPENAI_API_KEY = "${{ secrets.OPENAI_API_KEY }}"
+            OPENAI_API_KEY = "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"
             MODELS_CONFIG_LIST = {
                 "code_gpt": "gpt-4o-mini-2024-07-18",
                 "smart_gpt": "gpt-4o-mini-2024-07-18",
@@ -83,5 +83,5 @@ jobs:
       run: printenv
 
     - name: Run Docker Container with mounted code
-      run: docker run -v /home/runner/work/CollabFunctionsGPTCreator/CollabFunctionsGPTCreator:/workspace -e OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} jitaross/pythonwithdependencies bash -c "cat /workspace/config.py && python /workspace/learn.py --secret --proxy"
+      run: docker run -v /home/runner/work/CollabFunctionsGPTCreator/CollabFunctionsGPTCreator:/workspace -e OPENAI_API_KEY="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" jitaross/pythonwithdependencies bash -c "cat /workspace/config.py && python /workspace/learn.py --secret --proxy"
 
