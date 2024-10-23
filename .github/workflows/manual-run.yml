@@ -13,7 +13,7 @@ jobs:
 
     - name: Create config.py file
       run: |
-        cat <<EOL > ${{ github.workspace }}/config.py
+        cat <<EOF > ${{ github.workspace }}/config.py
         import os
         # Check the docker environment variables to see if LLM_MODE is set (to launch on a cluster/macstudio using ollama)
         IN_MACSTU = os.environ.get('LLM_MODE')
@@ -53,7 +53,7 @@ jobs:
         NEO4J_URI = 'URI_of_your_neo4j_database'
         NEO4J_USER = 'neo4j_user'
         NEO4J_PASSWORD = 'neo4j_password'
-        EOL
+        EOF
 
     - name: Cache Docker layers
       uses: actions/cache@v3
@@ -78,7 +78,7 @@ jobs:
         "
         
     - name: Print environment variables for debugging
-      run: printenv | grep 'OPENAI_API_KEY'
+      run: printenv
 
     - name: Run Docker Container with mounted code
       run: docker run -v /home/runner/work/CollabFunctionsGPTCreator/CollabFunctionsGPTCreator:/workspace -e OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} jitaross/pythonwithdependencies bash -c "export OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} && python /workspace/learn.py --secret --proxy"
