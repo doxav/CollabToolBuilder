@@ -76,7 +76,8 @@ jobs:
           npm install -g localtunnel && \
           echo 'localtunnel installed successfully'
         "
-        
+    - name: Export variables
+      run: export OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
     - name: Print environment variables for debugging
       run: printenv
 
