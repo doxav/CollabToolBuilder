@@ -78,5 +78,5 @@ jobs:
         "
 
     - name: Run Docker Container with mounted code
-      run: docker run -v /home/runner/work/CollabFunctionsGPTCreator/CollabFunctionsGPTCreator:/workspace -e OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} jitaross/pythonwithdependencies bash -c "python learn.py --secret --proxy"
+      run: docker run -v /home/runner/work/CollabFunctionsGPTCreator/CollabFunctionsGPTCreator:/workspace -e OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} jitaross/pythonwithdependencies bash -c "python /workspace/learn.py --secret --proxy"
 
