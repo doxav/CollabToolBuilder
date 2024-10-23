@@ -6,6 +6,8 @@ on:
 jobs:
   run-script:
     runs-on: ubuntu-20.04
+    env:
+      OPEN_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
     steps:
     - name: Checkout code from the branch
@@ -76,8 +78,7 @@ jobs:
           npm install -g localtunnel && \
           echo 'localtunnel installed successfully'
         "
-    - name: Export variables
-      run: export OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+    
     - name: Print environment variables for debugging
       run: printenv
 
