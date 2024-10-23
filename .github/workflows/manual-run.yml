@@ -104,6 +104,9 @@ jobs:
           fi
         done
 
+    - name: Test for Elasticsearch in DOcker
+      run: docker run -it --network="host" --rm jitaross/pythonwithdependencies curl -X GET http://localhost:9200
+
     - name: Run Docker Container with mounted code
       run: docker run -v /home/runner/work/CollabFunctionsGPTCreator/CollabFunctionsGPTCreator:/workspace -e OPENAI_API_KEY="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" jitaross/pythonwithdependencies bash -c "cat /workspace/config.py && python /workspace/learn.py --secret --proxy"
 
