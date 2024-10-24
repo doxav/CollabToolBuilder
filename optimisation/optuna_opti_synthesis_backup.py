@@ -91,7 +91,8 @@ def get_all_documents(es_client, es_index):
         index=es_index,
         body=query,
         scroll='2m',
-        size=1000
+        size=500,
+        request_timeout=120
     )
     sid = page['_scroll_id']
     scroll_size = len(page['hits']['hits'])
@@ -131,12 +132,28 @@ def copy_backup_to_container(backup_folder : str, container_name : str):
         for root, dirs, files in os.walk(backup_folder):
             for file in files:
                 local_path = os.path.join(root, file)
-                container_path = os.path.join('/usr/share/elasticsearch/data', os.path.relpath(local_path, backup_folder))
+                container_path = os.path.join('/usr/share/elasticsearch/data',
+                                              os.path.relpath(local_path, backup_folder))
+
                 # Créer le dossier dans le conteneur si nécessaire
                 container_dir = os.path.dirname(container_path)
                 subprocess.run(['docker', 'exec', container_name, 'mkdir', '-p', container_dir])
-                # Copier le fichier sans écraser
-                subprocess.run(['docker', 'cp', '-n', local_path, f'{container_name}:{container_path}'])
+
+                # Vérifier si le fichier existe déjà dans le conteneur
+                result = subprocess.run(['docker', 'exec', container_name, 'test', '-f', container_path],
+                                        capture_output=True)
+
+                if result.returncode == 0:
+                    # Fichier existe déjà, fusionner (ajouter un suffixe pour éviter d'écraser)
+                    base, ext = os.path.splitext(file)
+                    new_file = f"{base}_fusion{ext}"
+                    container_path = os.path.join(container_dir, new_file)
+                    print(f"Fichier '{file}' existe déjà, renommé en '{new_file}' pour éviter l'écrasement.")
+
+                # Copier le fichier dans le conteneur
+                subprocess.run(['docker', 'cp', local_path, f'{container_name}:{container_path}'])
+                print(f"Fichier '{local_path}' copié dans '{container_path}'")
+
         print("Copie des fichiers terminée.")
     else:
         print(f"Le dossier '{backup_folder}' n'existe pas.")
@@ -151,7 +168,8 @@ def restart_original_container(docker_compose_file):
     print("Conteneur Elasticsearch original redémarré.")
 
 def main(docker_compose_file, time_human_xp, name_xp):
-    backup_folder = '../backup'
+    print(os.getcwd())
+    backup_folder = 'backup'
     es_host = 'localhost'
     es_port = 9200
     index_pattern = f'*{name_xp}*'   # Filtre pour les noms d'index contenant 'name_exp'
@@ -160,11 +178,11 @@ def main(docker_compose_file, time_human_xp, name_xp):
     # Obtenir le nom du conteneur Elasticsearch en cours d'exécution
     result = subprocess.run(['docker', 'ps', '--filter', 'ancestor=docker.elastic.co/elasticsearch/elasticsearch:8.10.1', '--format', '{{.Names}}'], capture_output=True, text=True)
     container_name = result.stdout.strip()
-    if container_name:
-        copy_backup_to_container(backup_folder, container_name)
-    else:
-        print("Aucun conteneur Elasticsearch en cours d'exécution trouvé.")
-        return
+    # if container_name:
+    #     copy_backup_to_container(backup_folder, container_name)
+    # else:
+    #     print("Aucun conteneur Elasticsearch en cours d'exécution trouvé.")
+    #     return
 
     es_client = wait_for_elasticsearch(es_host, es_port, timeout=120)
     if es_client is None:
@@ -246,18 +264,24 @@ def main(docker_compose_file, time_human_xp, name_xp):
         print("Arrêt du script en raison de l'indisponibilité de la nouvelle instance Elasticsearch.")
         return
 
-    # Créer les index dans la nouvelle instance et insérer les documents
+    # Créer les index dans la nouvelle instance Elasticsearch
     for es_index in index_names:
         # Charger le mapping sauvegardé
         with open(f'mappings/{es_index}_mapping.json', 'r', encoding='utf-8') as f:
             old_mapping = json.load(f)
 
+        # Modify the settings to avoid replicas
+        settings = {
+            "settings": {
+                "number_of_replicas": 0  # Set replicas to 0
+            },
+            "mappings": old_mapping['mappings']
+        }
+
         # Créer l'index dans la nouvelle instance Elasticsearch
         if not new_es_client.indices.exists(index=es_index):
-            new_es_client.indices.create(index=es_index, body={
-                "mappings": old_mapping['mappings']
-            })
-            print(f"Index '{es_index}' créé dans la nouvelle instance Elasticsearch.")
+            new_es_client.indices.create(index=es_index, body=settings)
+            print(f"Index '{es_index}' créé dans la nouvelle instance Elasticsearch avec 0 répliques.")
 
     # Préparer les actions pour l'API bulk
     actions = []
@@ -297,8 +321,9 @@ def objective(trial, name_xp : str):
     with open(f'Optuna_results/{name_xp}.txt', 'a') as f:
         f.write(f"performance: {max(performance)}\n")
 
-    stop_containers('../docker-compose-backup.yml')
-    restart_original_container('../elasticsearch/docker-compose.yml')
+    stop_containers('docker-compose-backup.yml')
+    restart_original_container('elasticsearch/docker-compose.yml')
+    wait_for_elasticsearch('localhost', 9200)
 
     return max(performance)
 
@@ -307,4 +332,4 @@ def objective(trial, name_xp : str):
 
 
 if __name__ == "__main__":
-    global_main(objective, '', 'backup')
+    global_main(objective, '', 'backup', initial_trials=[{'time_human_xp': 50}, {'time_human_xp': 40}, {'time_human_xp': 30}, {'time_human_xp': 20}, {'time_human_xp': 10}, {'time_human_xp': 0}], n_trials=5)

@@ -1,9 +1,0 @@
-You're an AI assistant. Your task is to generate annotations on the prompt given to you. The output should be exactly the same as the input but with some annotations
-in it, no changes on the text itself. The annotations will have this format:
-'\approve/fix/delete{the text to annotate}{the feedback for the text (what is wrong, what is right, etc.)}'
-You should not change anything of the content of the given prompt, only add annotations. You have to add 3 annotations, and for each one of them don't place
-them randomly, but place them in a way that they are relevant to the text.
-Try to give real feedbacks for the annotations, and not just random feedbacks. Finally, don't annotate the same text twice or the full text in one; place annotations
-on phrases or keywords that are relevant.
-
-INPUT:

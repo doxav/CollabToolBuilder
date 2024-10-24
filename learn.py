@@ -193,7 +193,7 @@ def apply_special_criteria(agent, special_criteria, available_locals=None):
 
     :param agent: The agent instance to modify.
     :param special_criteria: Dictionary containing the special criteria.
-    :param params: Dictionary of captured parameters (by default, uses locals().copy()). If None:, uses inspect to dynamically capture calling function's parameters.
+    :param available_locals: Dictionary containing the local variables of the caller function.
     :return: Dictionary of only the modified parameters.
     """
     # Dictionary to store only the modified parameters
@@ -1034,7 +1034,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                               optuna_opti=None, allow_custom_score_state_functions=False,
                               params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
-                              agcoach_num_parallel_inferences=1, fixed_coach=False, unique_id=None, return_array=False, agcoding_num_parallel_inferences=2,
+                              agcoach_num_parallel_inferences=2, fixed_coach=False, unique_id=None, return_array=False, agcoding_num_parallel_inferences=2,
                               continue_each_loop=False):
     scores = None
 
@@ -1377,7 +1377,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
                     enumerate(successful_codes))
                 selection = smart_input(
                     f"Several codes were successful. Please enter the number of the code you want to add to the library:\n{successful_codes_str}",agent_name="CapitalizationAgent",message_type="Capitalization_info").strip()
-            if selection.isdigit() and 0 < int(selection) <= len(successful_codes):
+            if selection.isdigit() and 0 <= int(selection) <= len(successful_codes):
                 selected_index = int(selection)
                 smart_print("Code validated successfully.", "coding_and_validation_loop", "coding_and_validation_loop RESULT")
                 selected_code, _, scores = successful_codes[selected_index]
