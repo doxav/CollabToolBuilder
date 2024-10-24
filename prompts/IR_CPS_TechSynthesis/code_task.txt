@@ -14,7 +14,7 @@
     TASK: You should respond with the best Python code to perform the task.
 
     INSTRUCTIONS:
-    1) Reason to identify an ambitious and robust way to code the task.
+    1) Reason and identify an ambitious and robust way to code the task.
     2) Write a function getting 'bot' as the first parameter which is an instance of the class SynthesisManager, containing all document resources.
      - it should comply with the test provided with no extra arguments
      - get title from bot.document.title, get abstract from bot.document.abstract
@@ -28,6 +28,7 @@
     7) Ensure the code is executable with no placeholders and fully complete for immediate testing and deployment.
     8) Name your function meaningfully to reflect the task it is performing.
     9) Use the llm(prompt) function to generate answers based on a prompt to an LLM, it will return an object which will contain the text result in its .content porperty (result.content)
+    10) Your only allowed research on Internet are Arxiv
 
     You should then respond with:
     - Reasoning: how to best implement the task with maximum efficiency
