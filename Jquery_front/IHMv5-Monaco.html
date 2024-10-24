@@ -644,7 +644,7 @@
         } else if(data.agent_name === "Pipeline/Function Mode" && data.message_type === "Files loaded" ){
             // Do nothing
 
-        }  else if(data.message_type === "TASK SELECTION" || data.message_type === "VALIDATION_INFO" || data.message_type === "Capitalization_info"){
+        }  else if(data.message_type === "TASK SELECTION" || data.message_type === "VALIDATION_INFO" || data.message_type === "Capitalization_info" || data.message_type === "ADDITIONAL_INFO"){
             if ($agentAccordion.length === 0) {
                 $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
                 $("#message-accordion").append($agentAccordion);
