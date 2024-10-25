@@ -1834,7 +1834,7 @@ class HumanLLMMonitor:
                 self.modifyAnswer(inference_result_msg, output_id)
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
-                inference_result_msg = self.criticAnswer(comments, inference_result_msg, annotated_critics=False)
+                inference_result_msg.content = self.criticAnswer(comments, inference_result_msg, annotated_critics=False)
 
             elif action == "C":  # Find a better Prompt by providing critic and ideal answer
                 comments = self.findBetterPrompt(comments, inference_result_msg, premium_llm_function)

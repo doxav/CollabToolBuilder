@@ -1378,7 +1378,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
                 selection = smart_input(
                     f"Several codes were successful. Please enter the number of the code you want to add to the library:\n{successful_codes_str}",agent_name="CapitalizationAgent",message_type="Capitalization_info").strip()
             if selection.isdigit() and 0 <= int(selection) <= len(successful_codes):
-                selected_index = int(selection)
+                selected_index = max(0, min(int(selection), len(successful_codes) - 1))
                 smart_print("Code validated successfully.", "coding_and_validation_loop", "coding_and_validation_loop RESULT")
                 selected_code, _, scores = successful_codes[selected_index]
                 all_scores['validated_scores'] = scores
