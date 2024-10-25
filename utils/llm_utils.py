@@ -1854,7 +1854,8 @@ class HumanLLMMonitor:
             # Count time spent and occurrences waiting and in each option
             self.track_time_spent(action, mode='after')
 
-            if self.temp_inference_result_content: # it means an async function has modified the content and we should not exit but continue the loop
+            # check also that inference_result_msg is not of type str or int 
+            if self.temp_inference_result_content and not isinstance(inference_result_msg, str) and not isinstance(inference_result_msg, int):
                 inference_result_msg.content = f"{self.temp_inference_result_content}"
                 smart_print("ANSWER MODIFIED, RUNNING CHECKS BEFORE CONTINUING", self.agent_name, "code_task_and_run_test SystemMessage", column_id=output_id-1, column_max=outputs_count)
                 #check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
