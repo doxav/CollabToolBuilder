@@ -28,10 +28,11 @@
     7) Ensure the code is executable with no placeholders and fully complete for immediate testing and deployment.
     8) Name your function meaningfully to reflect the task it is performing.
     9) Use the llm(prompt) function to generate answers based on a prompt to an LLM, it will return an object which will contain the text result in its .content porperty (result.content)
-Parameter to llm is:
+# Usage of llm:
 from langchain_core.messages import SystemMessage, HumanMessage
 messages = [SystemMessage(content=prompt), HumanMessage(content="")]
-llm(prompt)
+response = llm(prompt)
+print(response.content)
     10) Your only allowed research on Internet are Arxiv
 
     You should then respond with:

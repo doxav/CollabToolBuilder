@@ -103,7 +103,7 @@
                 let statusDiv = document.getElementById('connection-status');
                 if (statusDiv) {
                     statusDiv.style.display = 'block';
-                    statusDiv.innerText = 'Unable to reconnect. Please check the WebSocket server and reload the page.';
+                    statusDiv.innerText = 'Unable to reconnect. Please check the WebSocket server.';
                 }
                 reconnectAttempts = 0; // Reset after max attempts to avoid infinite retries
                 initWebSocket();
