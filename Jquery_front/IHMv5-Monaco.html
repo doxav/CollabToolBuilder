@@ -762,6 +762,8 @@
 
             // Annotation Handling: Listen for cursor selection changes
             const selectionDisposable = editor.onDidChangeCursorSelection(function(event) {
+                if (!document.getElementById("show-annotation-menu").checked) return;
+
                 const selection = editor.getSelection();
                 const selectedText = editor.getModel().getValueInRange(selection);
 
@@ -774,6 +776,9 @@
                         const editorRect = editorDomNode.getBoundingClientRect();
                         const menuTop = editorRect.top + position.top + window.scrollY;
                         const menuLeft = editorRect.left + position.left + window.scrollX;
+
+                        // Make the annotation menu draggable
+                        $(".annotation-menu").draggable();
 
                         // Show the annotation menu at the calculated position
                         $(".annotation-menu")
@@ -1247,6 +1252,7 @@ color: white;
         <div class="auto-open-checkbox">
             <label style="color:black;" for="auto-open-accordion"><input type="checkbox" id="auto-open-accordion" checked>Auto-focus new messages</label>
             <label style="color:black;"><input type="checkbox" id="show-optionals">Show optional messages</label>
+            <label style="color:black;"><input type="checkbox" id="show-annotation-menu">Show annotation menu on selected text</label>
             <select id="filter-message-type">
                 <option value="all">All Message Types</option>
             </select>
@@ -2338,6 +2344,8 @@ $(document).on('click', '.collapsible-header', function() {
 });
 
 
+
+
     function displayInputField() {
         $(".input-area").show();
         $("#user-input").show();
@@ -2560,6 +2568,8 @@ $(document).on('click', '.collapsible-header', function() {
 
     // Add a listener for mouseup events on messages or hljs code blocks
     $(document).on("mouseup", function(e) {
+        // If "show-annotation-menu" is disabled, return
+        if (!document.getElementById("show-annotation-menu").checked) return;
         let selection = window.getSelection();
         let selectedText = selection.toString();
         if (selectedText) {
@@ -2576,6 +2586,9 @@ $(document).on('click', '.collapsible-header', function() {
                 let extractedContents = range.extractContents();
                 span.appendChild(extractedContents);
                 range.insertNode(span);
+
+                // Make the annotation menu draggable
+                $(".annotation-menu").draggable();
 
                 saveSelection();
                 $(".annotation-menu")
