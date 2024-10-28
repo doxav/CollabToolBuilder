@@ -281,7 +281,7 @@
                 let $noButton = $(`<button id="no-button">No (edit > save > continue to test it)</button>`);
                 let $autofixButton = $(`<button id="autofix-button">Try autofix with LLM</button>`);
                 let $customAutofixButton = $(`<button id="custom-autofix-button">Add instruction to autofix with LLM</button>`);
-                let $container = $(`<div></div>`);
+                let $container = $(`<div style="background-color: #ff7f7f;"></div>`);
                 $container.append($question);
                 $container.append($noButton);
                 $container.append($autofixButton);
@@ -1252,7 +1252,7 @@ color: white;
         <div class="auto-open-checkbox">
             <label style="color:black;" for="auto-open-accordion"><input type="checkbox" id="auto-open-accordion" checked>Auto-focus new messages</label>
             <label style="color:black;"><input type="checkbox" id="show-optionals">Show optional messages</label>
-            <label style="color:black;"><input type="checkbox" id="show-annotation-menu">Show annotation menu on selected text</label>
+            <label style="color:black;"><input type="checkbox" id="show-annotation-menu" checked>Show annotation menu on selected text</label>
             <select id="filter-message-type">
                 <option value="all">All Message Types</option>
             </select>
