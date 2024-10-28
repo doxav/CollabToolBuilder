@@ -644,7 +644,29 @@
         } else if(data.agent_name === "Pipeline/Function Mode" && data.message_type === "Files loaded" ){
             // Do nothing
 
-        }  else if(data.message_type === "TASK SELECTION" || data.message_type === "VALIDATION_INFO" || data.message_type === "Capitalization_info" || data.message_type === "ADDITIONAL_INFO"){
+        } else if(data.message.includes("Enter the number of the new default LLM (0-3):")){
+            // Hide the input area
+            $(".input-area").hide();
+            let $question = $(`<p>Choose the LLM to use by default :</p>`);
+            let $select = $(`<select id="default-llm-select"></select>`);
+            $select.append(`<option value="0">default_llm</option>`);
+            $select.append(`<option value="1">premium_llm</option>`);
+            $select.append(`<option value="2">3_majority_chain</option>`);
+            $select.append(`<option value="3">10_majority_chain</option>`);
+            let $button = $(`<button id="send-default-llm">Send</button>`);
+            let $container = $(`<div></div>`);
+            $container.append($question);
+            $container.append($select);
+            $container.append($button);
+            $("#message-accordion").append($container);
+            $button.click(function () {
+                // Set the default-llm-in-use to the selected text of the select
+                $("#default-llm-in-use").text($("#default-llm-select option:selected").text());
+                let defaultLlm = $("#default-llm-select").val();
+                socket.send(JSON.stringify({message: defaultLlm}));
+                $container.remove();
+            });
+        } else if(data.message_type === "TASK SELECTION" || data.message_type === "VALIDATION_INFO" || data.message_type === "Capitalization_info" || data.message_type === "ADDITIONAL_INFO"){
             if ($agentAccordion.length === 0) {
                 $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
                 $("#message-accordion").append($agentAccordion);
@@ -1260,6 +1282,7 @@ color: white;
                 <option value="all">All Agent Types</option>
             </select>
             <input type="text" id="search-filter" placeholder="Search...">
+            <label style="color:black;">Default LLM in use: <span id="default-llm-in-use" style="font-weight: bold;">default_llm</span></label>
         </div>
 
         <div id="message-accordion" class="accordion"></div>
@@ -1527,6 +1550,7 @@ function updateButtonVisibility() {
         $('.menu-option').hide();
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('go back');}).show();
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('give instruction or');}).show();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('change default agent');}).show();
         //$('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('edit answer');}).show();
     }
     else if (selection === 'ALL' || selection === 'ALL_SEND') {
@@ -2399,7 +2423,7 @@ $(document).on('click', '.collapsible-header', function() {
                 let match = option.match(/\[(.)\](.*)/);
                 if (match && match[1]) {
                     let letter = match[1].toUpperCase();
-                    if (!match[2].includes("Change default") && !match[2].includes("Change premium") && !match[2].includes("Exit") && !match[2].includes("Log comments")) {
+                    if (!match[2].includes("Change premium") && !match[2].includes("Exit") && !match[2].includes("Log comments")) {
                         if (match[2].includes("Change num of parallel inferences")) {
                             // Remove ANSI codes
                             let cleanString = match[2].replace(/\u001b\[\d+m/g, '');
@@ -2435,7 +2459,7 @@ $(document).on('click', '.collapsible-header', function() {
                 let match = option.match(/\[(.)\](.*)/);
                 if (match && match[1]) {
                     let letter = match[1].toUpperCase();
-                    if (!match[2].includes("Change default") && !match[2].includes("Change premium") && !match[2].includes("Exit") && !match[2].includes("Log comments")) {
+                    if (!match[2].includes("Change premium") && !match[2].includes("Exit") && !match[2].includes("Log comments")) {
                          if (match[2].includes("Change num of parallel inferences")) {
                         // Remove ANSI codes
                         let cleanString = match[2].replace(/\u001b\[\d+m/g, '');
