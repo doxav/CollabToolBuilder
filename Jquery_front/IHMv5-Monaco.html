@@ -134,14 +134,13 @@
             if (userChoice) {
                 // Retry after the current call finishes
                 const retryAfterCompletion = setInterval(() => {
-                    if (!isFunctionCallInProgress) {
-                        clearInterval(retryAfterCompletion);
-                        sendFunctionCall(agentName, functionName, params, callback);
-                        if(isFunctionCallInProgress)
+                        if(isFunctionCallInProgress) {
                             if(confirm(`Another call is still running (${isFunctionCallInProgress}) Do you want to ignore and force the call ?`))
                                 isFunctionCallInProgress = false;
-                    }
-                }, 1000); // Check every 500ms if the function call has completed
+                        }
+                        clearInterval(retryAfterCompletion);
+                        sendFunctionCall(agentName, functionName, params, callback);
+                }, 2000); // Check every 500ms if the function call has completed
             } else {
                 // Cancel the new function call attempt
                 console.log('New function call canceled by the user.');
