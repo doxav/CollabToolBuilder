@@ -2,6 +2,8 @@ import inspect
 import random
 import string
 import traceback
+import contextlib
+import ast
 import types
 import time
 
@@ -13,6 +15,7 @@ from typing import Dict
 from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, smart_print, smart_input
 
 import os
+import io
 import uuid
 import re
 import shutil
@@ -70,26 +73,35 @@ class Environment:
                    target_is_directory=True)
 
     def step(self, action_code, context={}):
-        # memorize current directory, to allow to change to temp directory, then change back to memorized directory
+        # Memorize current directory and switch to temporary directory
         current_dir = os.getcwd()
         os.chdir(self.current_temp_dir)
-        # Regular expression to check if the last line assigns to 'result'
+
+        # Ensure `result` is set in the code
         if not re.search(r'\bresult\s*=', action_code.strip().splitlines()[-1]):
             helper = "\nresult = locals().get('_', True)"
         else:
             helper = ""
 
-        # execute action
+        # Setup for capturing stdout and stderr
+        stdout, stderr = io.StringIO(), io.StringIO()
+
         try:
-            # capture stdout and stderr while executing code
-            exec(action_code + helper, context)
-            exec_result = context.get('result', True)
+            # Execute code with redirected stdout and stderr
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                exec(action_code + helper, context)
+            # Safely evaluate and retrieve result
+            exec_result = ast.literal_eval(repr(context.get('result', True)))
             no_runtime_error = True
         except Exception as e:
-            exec_result = f"Failed to execute provided code. Error: {e} Traceback: {traceback.format_exc()}"
+            # Format traceback and include captured output for clarity
+            error_traceback = ''.join(traceback.format_exception(None, e, e.__traceback__))
+            exec_result = f"Execution failed. Error: {e}\nTraceback:\n{error_traceback}\nStdout:\n{stdout.getvalue()}\nStderr:\n{stderr.getvalue()}"
             no_runtime_error = False
-        # set execution environment back to the memorized directory
-        os.chdir(current_dir)
+        finally:
+            # Restore original directory
+            os.chdir(current_dir)
+
         return no_runtime_error, exec_result
 
     def close(self, backup_previous_temp_dir=True):

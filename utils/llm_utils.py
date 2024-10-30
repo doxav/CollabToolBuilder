@@ -1856,8 +1856,8 @@ class HumanLLMMonitor:
 
             # check also that inference_result_msg is not of type str or int 
             if self.temp_inference_result_content and not isinstance(inference_result_msg, str) and not isinstance(inference_result_msg, int):
-                inference_result_msg.content = f"{self.temp_inference_result_content}"
-                smart_print("ANSWER MODIFIED, RUNNING CHECKS BEFORE CONTINUING", self.agent_name, "code_task_and_run_test SystemMessage", column_id=output_id-1, column_max=outputs_count)
+                #inference_result_msg.content = f"{self.temp_inference_result_content}"
+                smart_print("ANSWER MODIFIED, NEW CHECKS REQUIRED BEFORE CONTINUING", self.agent_name, "code_task_and_run_test SystemMessage", column_id=output_id-1, column_max=outputs_count)
                 #check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
             elif action in [None, "", "E", "Z"]:
                 break  # E: Go back BEFORE inference to improve system prompt or add information to user message

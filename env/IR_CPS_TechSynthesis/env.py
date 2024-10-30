@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 import re
 from typing import List, SupportsFloat, Any, Tuple, Dict
 from dataclasses import asdict
+from langchain_core.messages import SystemMessage, HumanMessage
 
 from config import *
 #from attr import dataclass, field
@@ -1124,7 +1125,7 @@ class SynthesisManager:
         else:
             self.min_plan_titles_cosine_similarity = self.min_plan_contents_cosine_similarity = self.min_plan_cosine_similarity = 0 
 
-    def get_distance_to_targetJSON(self, target_section_title_embedding_label: str = "section_embedding_2", target_section_content_embedding_label: str = "content_embedding_2", target_plan_embedding_label: str = "plan_embedding_2", get_progress: bool = True):
+    def get_distance_to_targetJSON(self, target_section_title_embedding_label: str = "section_embedding_2", target_section_content_embedding_label: str = "content_embedding_2", target_plan_embedding_label: str = "plan_embedding_2", get_progress: bool = False):
         # if self does not have target_file_path
         if not hasattr(self, 'target_file_path'):
             raise ValueError("Please set target_file_path using set_targetJSON_comparison method")
@@ -1208,8 +1209,8 @@ class SynthesisManager:
             status_data_full = [
                 section.section_id,
                 section.title,
-                len(section.content),
-                section.content[:100],
+                len(section.content) if section.content is not None else 0,
+                section.content[:100] if section.content is not None else 0,
                 #round(section.content_progress_validation_status, 1),
                 #section.local_feedback_to_process,
                 #section.local_feedback_processed,
@@ -1300,7 +1301,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         self.refined_goals = [goal] if refined_goals is None else refined_goals
         self.title = title
         self.context = context
-        self.llm = llm
+        VoyagerEnvIR_CPS_TechSynthesis.llm_model = llm
         self.document = DocumentStructure(synthesis_type=synthesis_type, initial_goal=goal, refined_goals=self.refined_goals, embedding_model_name=embedding_model_name, title=title, context=context)  # Initialize your document structure
         self.synthesis_manager = SynthesisManager(document=self.document, target_file_path=target_file_path)  # Initialize your Synthesis Manager
         #self.server = f"{server_host}:{server_port}" # TODO: voir si on a besoin d'un serveur type TGI pour les inférences
@@ -1308,6 +1309,11 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         self.log_path = log_path
         self.has_reset_once = False
         self.state = None  # Placeholder: initial state of the environment
+
+    # llm static method
+    @staticmethod
+    def llm(prompt: str):
+        return VoyagerEnvIR_CPS_TechSynthesis.llm_model.invoke([SystemMessage(content=""), HumanMessage(content=prompt)]).content
 
     def get_score(self):
         distance = self.synthesis_manager.get_distance_to_targetJSON()
@@ -1346,7 +1352,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         if not self.has_reset_once:
             print("Environment has not been reset yet - resetting now !")
             self.reset()
-        return super().step(action_code=code, context={'problem': self.synthesis_manager, 'bot': self.synthesis_manager, 'results': None, 'SynthesisManager': SynthesisManager, 'DocumentStructure': DocumentStructure, 'Section': Section, 'Document': Document, 'llm':self.llm})
+        return super().step(action_code=code, context={'problem': self.synthesis_manager, 'bot': self.synthesis_manager, 'results': None, 'SynthesisManager': SynthesisManager, 'DocumentStructure': DocumentStructure, 'Section': Section, 'Document': Document, 'llm':VoyagerEnvIR_CPS_TechSynthesis.llm})
 
     def get_state(self, extended: bool = False):
         #TODO: move to self.document.get_state() ?
@@ -1355,8 +1361,8 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         table_of_content = "\n".join([str(section) for section in table_of_content_list])
         resources_observation = self.synthesis_manager.get_resources_status(compact_string_format=True)
         document_state = f"<<< Document #{self.id} properties:\n"
-        if bool: document_state += f"> Title: {self.title}\n"
-        if bool: document_state += f"> Abstract (first 100 characters): {self.context[:100]}\n"
+        if extended: document_state += f"> Title: {self.title}\n"
+        if extended: document_state += f"> Abstract (first 100 characters): {self.context[:100]}\n"
         document_state += f"> Current table of content:\n{table_of_content if len(table_of_content) > 0 else 'Empty'}\n"
         document_state += f"> Current resources: {resources_observation if len(resources_observation) > 0 else 'Empty'}\n"
         if extended:
