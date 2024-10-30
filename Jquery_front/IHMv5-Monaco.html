@@ -764,22 +764,89 @@
                 wordWrap: "on"
             });
 
-            // Debounce timer variable for auto-save
+            // Initialize versions with the initial content
+            let versions = [content];
+            let isSettingContent = false; // Flag to prevent infinite loops
+
+            // Create a container for controls
+            const editorContainer = document.getElementById(elementId);
+            const controlsContainer = document.createElement('div');
+            controlsContainer.className = 'editor-controls';
+
+            // Create Undo button
+            const undoButton = document.createElement('button');
+            undoButton.innerText = 'Undo';
+            undoButton.addEventListener('click', function() {
+                editor.trigger('keyboard', 'undo', null);
+            });
+
+            // Create Redo button
+            const redoButton = document.createElement('button');
+            redoButton.innerText = 'Redo';
+            redoButton.addEventListener('click', function() {
+                editor.trigger('keyboard', 'redo', null);
+            });
+
+            // Create History selector
+            const historySelect = document.createElement('select');
+            const initialOption = document.createElement('option');
+            initialOption.value = 0;
+            initialOption.text = 'Version 1';
+            historySelect.appendChild(initialOption);
+
+            // Select the last version by default
+            historySelect.selectedIndex = versions.length - 1;
+
+            historySelect.addEventListener('change', function() {
+                const selectedIndex = this.selectedIndex;
+                if (selectedIndex >= 0) {
+                    const versionContent = versions[selectedIndex];
+                    isSettingContent = true;
+                    editor.setValue(versionContent);
+                    isSettingContent = false;
+                }
+            });
+
+            // Append controls
+            controlsContainer.appendChild(undoButton);
+            controlsContainer.appendChild(redoButton);
+            controlsContainer.appendChild(historySelect);
+            editorContainer.parentNode.insertBefore(controlsContainer, editorContainer);
+
+            // Debounce timer variables
             let debounceSaveTimer;
+            let debounceVersionTimer;
 
             const contentDisposable = editor.onDidChangeModelContent(function(event) {
-                console.log('Content changed:', event);
-                document.querySelector(`#save-${agentName}-${columnId}`).style.display = 'inline-block'; // Correctly reference the full agent_columnId
-                clearTimeout(debounceSaveTimer); // Clear the previous timer
-                debounceSaveTimer = setTimeout(function() { // Set a new timer for 3 seconds
-                    let currentContent = editor.getValue(); // Get the current content of the editor
-                    // Prepare the data to send
-                    let requestData = {answer: currentContent, column_id: columnId };
-                    sendFunctionCall(agentName, "updateAnswer", requestData, function(responseMessage) { // Call the save function
+                if (!isSettingContent) {
+                    // Debounce versioning: create a new version after 1000ms of inactivity
+                    clearTimeout(debounceVersionTimer);
+                    debounceVersionTimer = setTimeout(function() {
+                        let currentContent = editor.getValue();
+                        versions.push(currentContent);
+
+                        // Update historySelect options
+                        const option = document.createElement('option');
+                        option.value = versions.length - 1;
+                        option.text = 'Version ' + versions.length;
+                        historySelect.appendChild(option);
+
+                        // Select the last version by default
+                        historySelect.selectedIndex = versions.length - 1;
+                    }, 1000);
+                }
+
+                // Existing auto-save logic
+                document.querySelector(`#save-${agentName}-${columnId}`).style.display = 'inline-block';
+                clearTimeout(debounceSaveTimer);
+                debounceSaveTimer = setTimeout(function() {
+                    let currentContent = editor.getValue();
+                    let requestData = { answer: currentContent, column_id: columnId };
+                    sendFunctionCall(agentName, "updateAnswer", requestData, function(responseMessage) {
                         console.log("Auto-save response:", responseMessage);
                         document.querySelector(`#save-${agentName}-${columnId}`).style.display = 'none';
                     });
-                }, 3000); // 3-second debounce
+                }, 3000);
             });
 
             // Annotation Handling: Listen for cursor selection changes
@@ -811,19 +878,20 @@
                         activeEditor = editor;
                         activeSelection = selection;
                     }
+                } else {
+                    // Hide the annotation menu if no text is selected
+                    $(".annotation-menu").hide();
                 }
             });
 
             // Store the editor and its disposables in the global array
-            editors.push({ 
-                editor, 
-                disposables: [contentDisposable, selectionDisposable], 
-                elementId 
-            });
+            editors.push({  editor, disposables: [contentDisposable, selectionDisposable],  elementId, versions, historySelect, isSettingContent});
 
             return editor;
         });
     }
+
+    
     // Dispose of an editor and its listener
     function disposeEditor(editor) {
         const disposable = editorDisposables.get(editor);
@@ -1274,7 +1342,7 @@ color: white;
         <div class="auto-open-checkbox">
             <label style="color:black;" for="auto-open-accordion"><input type="checkbox" id="auto-open-accordion" checked>Auto-focus new messages</label>
             <label style="color:black;"><input type="checkbox" id="show-optionals">Show optional messages</label>
-            <label style="color:black;"><input type="checkbox" id="show-annotation-menu" checked>Show annotation menu on selected text</label>
+            <label style="color:black;"><input type="checkbox" id="show-annotation-menu" checked>Allow annotation menu on answers</label>
             <select id="filter-message-type">
                 <option value="all">All Message Types</option>
             </select>
@@ -1849,33 +1917,32 @@ function getColumnsToKeep(agent) {
 
             const evaluationType = agentEvaluations[data.agent_name] || 'default';
 
+            // Add Select and Remove buttons if more than 1 solution
+            let selectionButtonsHtml = (data.column_max > 1) ?
+                    `<div style="text-align: center;"><button id="delete-${agent_columnId}"><i class="fa-regular fa-trash-can"></i>Remove</button></div>` : "";
+                    //`<div style="text-align: center;"><button id="select-${agent_columnId}"><i class="fa-regular fa-check-circle"></i> Select</button></div>
+                    //<div style="text-align: center;"><button id="delete-${agent_columnId}"><i class="fa-regular fa-trash-can"></i> Remove</button></div>` : "";
             targetColumn.innerHTML += `
             <div style="text-align: center;">
                 <div style="display: flex; justify-content: center; align-items: flex-start;">
-                    <div style="display: none; flex-direction: column; align-items: center; margin-right: 10px;">
-                        <input type="range" min="-1" max="10" value="-1" step="1" class="slider" id="slider-${agent_columnId}">
-                        <span id="value-${agent_columnId}" style="font-size: smaller;">Unscored</span>
+                    <!-- Left: Remove and Save buttons -->
+                    <div style="display: flex; flex-direction: column; align-items: center; margin-right: 10px;">
+                        ${selectionButtonsHtml}
+                        <button id="save-${agent_columnId}" style="display: none; margin-top: 5px;"><i class="fa-solid fa-rotate"></i>Save your Edit</button>
                     </div>
-                    <button id="save-${agent_columnId}" style="display: none;"><i class="fa-solid fa-rotate"></i>Save your Edit</button>
-                    <input type="text" id="comment-${agent_columnId}" placeholder="Write instructions to regenerate..." style="margin-right: 10px; width: 350px;">
-                    <button id="evaluate-${agent_columnId}"><i class="fa-regular fa-paper-plane"></i> Regenerate</button>
+
+                    <!-- Center: Textarea -->
+                    <textarea type="text" id="comment-${agent_columnId}" placeholder="Write instructions to regenerate... (or annotate the answer)" style="margin-right: 10px; width: 350px; height: 100px;"></textarea>
+
+                    <!-- Right: Evaluate and Regenerate buttons -->
+                    <div style="display: flex; flex-direction: column; align-items: left; gap: 5px;">
+                        <button id="evaluate-${agent_columnId}"><i class="fa-regular fa-paper-plane"></i>Regenerate from instructions</button><br>
+                        <button id="regenwithmymodifbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i>Regenerate from this answer's annotations</button>
+                        <button id="regenallbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i>Regenerate from all answers & annotations</button>
+                    </div>
                 </div>
             </div>
             `;
-
-            // Add Select and Remove buttons if more than 1 solution
-            let selectionButtonsHtml = (data.column_max > 1) ?
-                    `<div style="text-align: center;"><button id="delete-${agent_columnId}"><i class="fa-regular fa-trash-can"></i> Remove</button></div>` : "";
-                    //`<div style="text-align: center;"><button id="select-${agent_columnId}"><i class="fa-regular fa-check-circle"></i> Select</button></div>
-                    //<div style="text-align: center;"><button id="delete-${agent_columnId}"><i class="fa-regular fa-trash-can"></i> Remove</button></div>` : "";
-
-            // Add the regenerate buttons (regardless of the number of solutions)
-            targetColumn.innerHTML += `
-            <div style="display: flex; justify-content: center; gap: 10px;">
-                ${selectionButtonsHtml}
-                <div style="text-align: center;"><button id="regenwithmymodifbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i> Apply answer's annotations</button></div>
-                <div style="text-align: center;"><button id="regenallbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i> Merge all answers & annotations</button></div>
-            </div>`;
 
             if(evaluationType === 'score') {
                 targetColumn.innerHTML += `
