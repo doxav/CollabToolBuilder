@@ -25,6 +25,7 @@
     let reconnectAttempts = 0; // Track the number of reconnection attempts
     const maxAutoReconnectAttempts = 10; // Set the number of reconnection attempts
     let isFunctionCallInProgress = false;
+    let selectedLLM = "";
     
     // Function to get URL parameter by name
     function getUrlParameter(name) {
@@ -644,27 +645,9 @@
             // Do nothing
 
         } else if(data.message.includes("Enter the number of the new default LLM (0-3):")){
-            // Hide the input area
-            $(".input-area").hide();
-            let $question = $(`<p>Choose the LLM to use by default :</p>`);
-            let $select = $(`<select id="default-llm-select"></select>`);
-            $select.append(`<option value="0">default_llm</option>`);
-            $select.append(`<option value="1">premium_llm</option>`);
-            $select.append(`<option value="2">3_majority_chain</option>`);
-            $select.append(`<option value="3">10_majority_chain</option>`);
-            let $button = $(`<button id="send-default-llm">Send</button>`);
-            let $container = $(`<div></div>`);
-            $container.append($question);
-            $container.append($select);
-            $container.append($button);
-            $("#message-accordion").append($container);
-            $button.click(function () {
-                // Set the default-llm-in-use to the selected text of the select
-                $("#default-llm-in-use").text($("#default-llm-select option:selected").text());
-                let defaultLlm = $("#default-llm-select").val();
-                socket.send(JSON.stringify({message: defaultLlm}));
-                $container.remove();
-            });
+           // Send the selectedLLM to the backend
+           socket.send(JSON.stringify({message: selectedLLM}));
+
         } else if(data.message_type === "TASK SELECTION" || data.message_type === "VALIDATION_INFO" || data.message_type === "Capitalization_info" || data.message_type === "ADDITIONAL_INFO"){
             if ($agentAccordion.length === 0) {
                 $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
@@ -2499,6 +2482,41 @@ $(document).on('click', '.collapsible-header', function() {
                             // Set button color to green
                             let $option = $(`<div class="menu-option" data-option="${letter}" style="background-color: green;">${match[2]}</div>`);
                             $menuOptionsColumn.append($option);
+                        } else if (match[2].includes("Change default agent")){
+                            // Create a select element with the LLM "default" and "premium"
+                            let $select = $(`<select id="agent-select" name="agent-select" class="menu-option" data-option="${letter}"></select>`);
+                            // Set the default option with the current LLM used and set the text of the default option to this value and get value depends on the text
+                            let currentLLM = $("#default-llm-in-use").text();
+                            if(currentLLM === "premium_llm"){
+                                $select.append(`<option value="0">default_llm</option>`);
+                                $select.append(`<option value="1" selected>premium_llm</option>`);
+                                $select.append(`<option value="2">3_majority_chain</option>`);
+                                $select.append(`<option value="3">10_majority_chain</option>`);
+                            }
+                            else if(currentLLM === "default_llm"){
+                                $select.append(`<option value="0" selected>default_llm</option>`);
+                                $select.append(`<option value="1">premium_llm</option>`);
+                                $select.append(`<option value="2">3_majority_chain</option>`);
+                                $select.append(`<option value="3">10_majority_chain</option>`);
+                            }
+                            else if(currentLLM === "3_majority_chain"){
+                                $select.append(`<option value="0">default_llm</option>`);
+                                $select.append(`<option value="1">premium_llm</option>`);
+                                $select.append(`<option value="2" selected>3_majority_chain</option>`);
+                                $select.append(`<option value="3">10_majority_chain</option>`);
+                            }
+                            else if(currentLLM === "10_majority_chain"){
+                                $select.append(`<option value="0">default_llm</option>`);
+                                $select.append(`<option value="1">premium_llm</option>`);
+                                $select.append(`<option value="2">3_majority_chain</option>`);
+                                $select.append(`<option value="3" selected>10_majority_chain</option>`);
+                            }
+
+                            // Adds the select element to the menu options column
+                            $menuOptionsColumn.append($select);
+
+
+
                         } else {
                             // add a specific on click event for the go back button which will clear by doing $(`#message-accordion > div[data-agent="${data.agent_name}"]`).children("div").empty();
                             let actionOnclik = "";
@@ -2535,7 +2553,40 @@ $(document).on('click', '.collapsible-header', function() {
                         // Set button color to green
                         let $option = $(`<div class="menu-option" data-option="${letter}" style="background-color: green;">${match[2]}</div>`);
                         $("#menu-options").append($option);
-                    } else {
+                    } else if (match[2].includes("Change default agent")){
+                            // Create a select element with the LLM "default" and "premium"
+                            let $select = $(`<select id="agent-select" name="agent-select" class="menu-option" data-option="${letter}"></select>`);
+                            // Set the default option with the current LLM used and set the text of the default option to this value and get value depends on the text
+                            let currentLLM = $("#default-llm-in-use").text();
+                            if(currentLLM === "premium_llm"){
+                                $select.append(`<option value="0">default_llm</option>`);
+                                $select.append(`<option value="1" selected>premium_llm</option>`);
+                                $select.append(`<option value="2">3_majority_chain</option>`);
+                                $select.append(`<option value="3">10_majority_chain</option>`);
+                            }
+                            else if(currentLLM === "default_llm"){
+                                $select.append(`<option value="0" selected>default_llm</option>`);
+                                $select.append(`<option value="1">premium_llm</option>`);
+                                $select.append(`<option value="2">3_majority_chain</option>`);
+                                $select.append(`<option value="3">10_majority_chain</option>`);
+                            }
+                            else if(currentLLM === "3_majority_chain"){
+                                $select.append(`<option value="0">default_llm</option>`);
+                                $select.append(`<option value="1">premium_llm</option>`);
+                                $select.append(`<option value="2" selected>3_majority_chain</option>`);
+                                $select.append(`<option value="3">10_majority_chain</option>`);
+                            }
+                            else if(currentLLM === "10_majority_chain"){
+                                $select.append(`<option value="0">default_llm</option>`);
+                                $select.append(`<option value="1">premium_llm</option>`);
+                                $select.append(`<option value="2">3_majority_chain</option>`);
+                                $select.append(`<option value="3" selected>10_majority_chain</option>`);
+                            }
+
+                            // Adds the select element to the menu options column
+                            $("#menu-options").append($select);
+
+                        } else {
                         let $option = $(`<div class="menu-option" data-option="${letter}">${match[2]}</div>`);
                         $("#menu-options").append($option);
                     }
@@ -2814,7 +2865,25 @@ $(document).on('click', '.collapsible-header', function() {
         }
     });
 
+
+
     $(document).on("click", ".menu-option", function() {
+        // If the click is on a select element, send the selected value
+        if ($(this).is("select")) {
+            let option = $(this).find("option:selected").val();
+            socket.send(JSON.stringify({ message: `H` }));
+            selectedLLM = option;
+            // Hide the menu options after selecting one
+            $("#menu-options").empty();
+            // Hide all the menu options starting with menu-options-column-
+            $("div[id^='menu-options-column-']").empty();
+            // Retrieve the text of the selected option
+            let text = $(this).find("option:selected").text();
+            let actionDescription = `User selected menu option "${text}"`;
+            addHistoryEntry(actionDescription);
+            // Set the default LLM in use
+            $("#default-llm-in-use").text($(this).find("option:selected").text());
+        }
         let option = $(this).data("option");
         let input = $("#user-input").val();
         socket.send(JSON.stringify({ message: `${option}` }));
