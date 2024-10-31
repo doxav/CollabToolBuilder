@@ -2484,7 +2484,7 @@ $(document).on('click', '.collapsible-header', function() {
                             $menuOptionsColumn.append($option);
                         } else if (match[2].includes("Change default agent")){
                             // Create a select element with the LLM "default" and "premium"
-                            let $select = $(`<select id="agent-select" name="agent-select" class="menu-option" data-option="${letter}"></select>`);
+                            let $select = $(`<select id="llm-select" name="llm-select" class="menu-option" data-option="${letter}"></select>`);
                             // Set the default option with the current LLM used and set the text of the default option to this value and get value depends on the text
                             let currentLLM = $("#default-llm-in-use").text();
                             if(currentLLM === "premium_llm"){
@@ -2555,7 +2555,7 @@ $(document).on('click', '.collapsible-header', function() {
                         $("#menu-options").append($option);
                     } else if (match[2].includes("Change default agent")){
                             // Create a select element with the LLM "default" and "premium"
-                            let $select = $(`<select id="agent-select" name="agent-select" class="menu-option" data-option="${letter}"></select>`);
+                            let $select = $(`<select id="llm-select" name="llm-select" class="menu-option" data-option="${letter}"></select>`);
                             // Set the default option with the current LLM used and set the text of the default option to this value and get value depends on the text
                             let currentLLM = $("#default-llm-in-use").text();
                             if(currentLLM === "premium_llm"){
@@ -2870,9 +2870,13 @@ $(document).on('click', '.collapsible-header', function() {
     $(document).on("click", ".menu-option", function() {
         // If the click is on a select element, send the selected value
         if ($(this).is("select")) {
-            let option = $(this).find("option:selected").val();
-            socket.send(JSON.stringify({ message: `H` }));
-            selectedLLM = option;
+            // If the id of the select element is llm-select, send a "H"
+            if ($(this).attr("id") === "llm-select") {
+                let option = $(this).find("option:selected").val();
+                socket.send(JSON.stringify({ message: `H` }));
+                selectedLLM = option;
+            }
+
             // Hide the menu options after selecting one
             $("#menu-options").empty();
             // Hide all the menu options starting with menu-options-column-
