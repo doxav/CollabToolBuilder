@@ -171,6 +171,7 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
         special_criteria.pop("presence_penalty", None)
     # Set unique collection ID based on name_exp
     UnifiedVectorDB.set_unique_collection_id(f"{name_exp}")
+
     performance = run_4agents_learning_loop(default_llm_key=default_llm_key,
                                             premium_llm_key=premium_llm_key,
                                             llmORchains_list=llmORchains_list,
@@ -201,7 +202,7 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
     print("Analysis done.")
     return performance
 
-def launch_study(objective, name_exp : str, n_trials=200):
+def launch_study(objective, name_exp : str, n_trials=200, sampler=None):
     """
     Launch the Optuna study with the specified objective and experiment name.
 
@@ -221,10 +222,13 @@ def launch_study(objective, name_exp : str, n_trials=200):
         os.makedirs(sqlite_dir)
 
     # Create a study and optimize the objective function
-    study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}", study_name=name_exp)
+    if sampler:
+        study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}", study_name=name_exp, sampler=sampler)
+    else:
+        study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}", study_name=name_exp)
     study.optimize(objective, n_trials=n_trials)
 
-def global_main(objective, agent_name : str = "", params_tested : str = "", name_exp : str = None):
+def global_main(objective, agent_name : str = "", params_tested : str = "", name_exp : str = None, n_trials=200, sampler=None):
     """
     Main function to launch the Optuna study.
 
@@ -244,7 +248,7 @@ def global_main(objective, agent_name : str = "", params_tested : str = "", name
         else :
             timestamp_xp = int(time.time())
             name_exp = f"xp_{agent_name}{params_tested}{timestamp_xp}"
-    launch_study(lambda trial: objective(trial, name_exp), name_exp)
+    launch_study(lambda trial: objective(trial, name_exp), name_exp, n_trials, sampler=sampler)
 
 documentation = """
 DOCUMENTATION OF AVAILABLE FUNCTIONS IN THE "bot" OBJECT (SynthesisManager class): {{{

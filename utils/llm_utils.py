@@ -613,25 +613,43 @@ class HumanLLMMonitor:
     db_learnt_tasks = None
     db_failed_tasks = None
 
+    @staticmethod
+    def _check_and_init_vector_db(embedding_function=None, reset_db_indices=False):
+        if embedding_function:
+            HumanLLMMonitor.set_common_vectordb_embedding_function(embedding_function)
+        if HumanLLMMonitor.common_vectordb is None:
+            HumanLLMMonitor.common_vectordb = UnifiedVectorDB(
+                collection_name=HumanLLMMonitor.common_vectordb_collection_name,
+                embedding_function=HumanLLMMonitor.common_vectordb_embedding_function,
+                persist_directory=HumanLLMMonitor.common_vectordb_persist_directory,
+                reset_db_indices=reset_db_indices
+            )
+
     @classmethod
-    def check_init_db(cls):
+    def check_init_class_db(cls, force=False):
         if cls.common_vectordb_embedding_function is None:
             raise ValueError("embeddingfunction must be set to allow HumanLLMMonitor to manage tasks and other memories")
-        if cls.db_learnt_tasks is None:
+        if cls.db_learnt_tasks is None or force:
             cls.db_learnt_tasks = UnifiedVectorDB(
                 collection_name=cls.db_collection_success,
                 embedding_function=cls.common_vectordb_embedding_function,
                 persist_directory=cls.common_vectordb_persist_directory+cls.db_collection_success,
                 reset_db_indices=cls.reset_db_indices)
-        if cls.db_failed_tasks is None:
+        if cls.db_failed_tasks is None or force:
             cls.db_failed_tasks = UnifiedVectorDB(collection_name=cls.db_collection_failed,
                 embedding_function=cls.common_vectordb_embedding_function,
                 persist_directory=cls.common_vectordb_persist_directory+cls.db_collection_failed,
                 reset_db_indices=cls.reset_db_indices)
+        # if cls.common_vectordb is None or force:
+        #     cls.common_vectordb = UnifiedVectorDB(
+        #         collection_name=cls.common_vectordb_collection_name,
+        #         embedding_function=cls.common_vectordb_embedding_function,
+        #         persist_directory=cls.common_vectordb_persist_directory,
+        #         reset_db_indices=cls.reset_db_indices)
 
     @classmethod
     def get_learnt_tasks(cls, query_text="*", k=10, metadata_filter=None, sort_order=None, similarity_search=False):
-        cls.check_init_db()
+        cls.check_init_class_db()
         if similarity_search:
             results = cls.db_learnt_tasks.similarity_search_with_score(query=query_text, k=k)
         else:
@@ -642,7 +660,7 @@ class HumanLLMMonitor:
 
     @classmethod
     def get_failed_tasks(cls, query_text="*", k=10, metadata_filter=None, sort_order=None, similarity_search=False):
-        cls.check_init_db()
+        cls.check_init_class_db()
         if similarity_search:
             results = cls.db_failed_tasks.similarity_search_with_score(query=query_text, k=k)
         else:
@@ -653,7 +671,7 @@ class HumanLLMMonitor:
 
     @classmethod
     def get_validation_results(cls, query_text="*", k=10, sort_order=None, similarity_search=False):
-        cls.check_init_db()
+        cls.check_init_class_db()
         metadata_filter = {'agent_name': 'ValidationAgent'}
         if similarity_search:
             results = cls.common_vectordb.similarity_search_with_score(
@@ -866,18 +884,6 @@ class HumanLLMMonitor:
                     model_kwargs={"trust_remote_code": True})
         else:
             HumanLLMMonitor.common_vectordb_embedding_function = embedding_function
-
-    @staticmethod
-    def _check_and_init_vector_db(embedding_function=None, reset_db_indices=False):
-        if embedding_function:
-            HumanLLMMonitor.set_common_vectordb_embedding_function(embedding_function)
-        if HumanLLMMonitor.common_vectordb is None:
-            HumanLLMMonitor.common_vectordb = UnifiedVectorDB(
-                collection_name=HumanLLMMonitor.common_vectordb_collection_name,
-                embedding_function=HumanLLMMonitor.common_vectordb_embedding_function,
-                persist_directory=HumanLLMMonitor.common_vectordb_persist_directory,
-                reset_db_indices=reset_db_indices
-            )
 
     @staticmethod
     def get_few_shots_tag_args(prompt):

@@ -866,8 +866,9 @@ class CapitalizationAgent:
                     f"Function file {function_file_path} already exists, please provide a new name for the function.",
                     self.name, "capitalize_successful_tasks WARNING")
                 if self.optuna_opti:
-                    i = random.randint(0, 1000)
-                    function_file_path = os.path.join("functions", self.name + f"_{i}.py")
+                    # generate an id based on the current time and a random number
+                    id = datetime.datetime.now().strftime("%Y%m%d%H%M%S") + "_" + str(random.randint(0, 1000))
+                    function_file_path = os.path.join("functions", self.name + f"_{id}.py")
                 else:
                     function_file_path = os.path.join("functions", smart_input("This function already exists, please provide a new function name: ", message_type="VALIDATION_INFO") + ".py")
 
@@ -1059,6 +1060,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             UnifiedVectorDB.set_unique_collection_id(unique_id)
 
     HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
+    HumanLLMMonitor.check_init_class_db(force=True)
 
     if params_user_message is None and optuna_opti is None:
         params_user_message = {

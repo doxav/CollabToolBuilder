@@ -1144,7 +1144,7 @@ class SynthesisManager:
         current_sections_count = len(self.document.document_content.sections_list)
         current_plan_non_empty_sections_content_count = sum(1 for section in self.document.document_content.sections_list if section.content and len(section.content) > 1)
         current_plan_non_empty_sections_title_count = sum(1 for section in self.document.document_content.sections_list if section.title and len(section.title) > 1)
-        current_content_length = sum(len(getattr(section, 'content', 0)) for section in self.document.document_content.sections_list)
+        current_content_length = sum(len(getattr(section, 'content', '')) for section in self.document.document_content.sections_list)
 
         # Get embeddings
         plan_embedding = self.document.document_content.sections_list_embedding
