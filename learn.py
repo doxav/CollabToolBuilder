@@ -49,7 +49,7 @@ UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "no
 embedding_function = "intfloat/e5-base-v2"  # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
 reset_db_indices = False  # Set to True after changing embeddings
 
-HumanLLMMonitor.use_websocket = False
+HumanLLMMonitor.use_websocket = True
 
 class Environment:
     def __init__(self, temp_root_dir: str = None, data_dir: str = "data"):
