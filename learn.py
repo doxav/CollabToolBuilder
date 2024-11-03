@@ -49,7 +49,7 @@ UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "no
 embedding_function = "intfloat/e5-base-v2"  # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
 reset_db_indices = False  # Set to True after changing embeddings
 
-HumanLLMMonitor.use_websocket = True
+HumanLLMMonitor.use_websocket = False
 
 class Environment:
     def __init__(self, temp_root_dir: str = None, data_dir: str = "data"):
@@ -618,7 +618,7 @@ class CodingAgent():
 
         # Return combined results
         result = (parsed_code, all(no_runtime_errors), exec_results, [env.get_score() for env in self.envs],
-                  [env.get_state(extended=True) for env in self.envs], total_execution_time)
+                  [env.get_state(extended=False) for env in self.envs], total_execution_time)
 
         if restore_state:
             for env in self.envs:
@@ -779,13 +779,13 @@ class ValidationAgent():
         runtime_errors = 'no runtime errors at execution' if no_runtime_error else 'runtime errors at execution'  # just to avoid to break colors inside HumanLLMMonitor
         envs_status = '\n'.join(env_states)
 
-        user_message = f"Task: {task}\n\n" + \
-                       f"Code: {code}\n\n" + \
-                       f"Code execution returned: {runtime_errors}\n\n" + \
-                       f"Execution result returned by exec command of code provided: {exec_result}\n\n" + \
-                       (f"Human evaluation of the result: {human_evaluation}\n\n" if human_evaluation != "" else "") + \
-                       f"Performance scores: {scores}\n" + \
-                       f"New environment status of examples on which the task has been tested on: {envs_status}\n"
+        user_message = f"Task: << {task} >>\n\n" + \
+                       f"Code: << {code} >>\n\n" + \
+                       f"Code execution returned: << {runtime_errors} >>\n\n" + \
+                       f"Execution result returned by exec command of code provided: << {exec_result} >>\n\n" + \
+                       (f"Human evaluation of the result: << {human_evaluation} >>\n\n" if human_evaluation != "" else "") + \
+                       f"Performance scores: << {scores} >>\n" + \
+                       f"New environment status of examples on which the task has been tested on: << {envs_status} >>\n"
 
         code_validation = self.human_llm_validate_code.CallHumanLLM(system_prompt_template="validate_code",
                                                                     user_message=user_message,
@@ -1222,6 +1222,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                     10 * scores['best_score_without_validation'] +
                     (20 * (1 + validated_score_avg) if scores['validated_scores'] else 0)
             )
+            if total_score_weighted_with_stats > 0:
+                print(f"total_score_weighted_with_stats: {total_score_weighted_with_stats}; scores['percentage_no_runtime_error']: {scores['percentage_no_runtime_error']}; scores['best_score_without_validation']: {scores['best_score_without_validation']}; validated_score_avg: {validated_score_avg}")
             # add total_score_weighted_with_stats to total_scores
             total_scores.append(total_score_weighted_with_stats)
         else:
@@ -1360,7 +1362,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
     percentage_no_runtime_error = (sum(1 for _, no_runtime_error, _, _, _, _ in all_results if no_runtime_error) / len(
         all_results)) if all_results else 0
     best_score_without_validation = (
-        max(max(sum(scores.values()) for scores in score_dict) for _, _, _, score_dict, _, _ in all_results)) if len(
+        max(max(sum(scores.values()) / len(scores) if len(scores) > 0 else 0 for scores in score_dict) for _, _, _, score_dict, _, _ in all_results)) if len(
         all_results) > 0 else 0
     all_scores = {
         'percentage_no_runtime_error': percentage_no_runtime_error,

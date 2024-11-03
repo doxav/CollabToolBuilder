@@ -323,10 +323,12 @@ def set_elastic_docker_with_backup_data(docker_compose_file, time_human_xp, name
 
     return success
 
-initial_HumanXp_duration_values = [30] # [0, 20, 30, 60] 
-name_experiments = ["msi_30-10-2024-14-58-34", "msi_30-10-2024-14-25-12", "msi_30-10-2024-15-01-19", "msi_29-10-2024-20-28-27", "msi_29-10-2024-20-27-18", "msi_30-10-2024-13-20-11"] # "msi_30-10-2024-14-25-12" "msi_20-10-2024-12-02-28" "msi_30-10-2024-14-58-34" ["auto"]
-name_experiments = ["msi_30-10-2024-14-58-34"]
-totalxp_duration_values = [2, 2, 2, 2]
+initial_HumanXp_duration_values = [50] # [0, 20, 30, 60] 
+name_experiments = ["auto", "msi_30-10-2024-14-58-34", "msi_30-10-2024-14-25-12", "msi_30-10-2024-15-01-19", "msi_29-10-2024-20-28-27", "msi_29-10-2024-20-27-18", "msi_30-10-2024-13-20-11"] # "msi_30-10-2024-14-25-12" "msi_20-10-2024-12-02-28" "msi_30-10-2024-14-58-34" ["auto"]
+name_experiments = ["msi_30-10-2024-14-58-34", "msi_30-10-2024-15-01-19", "msi_29-10-2024-20-28-27", "msi_30-10-2024-13-20-11"] # "auto", "msi_29-10-2024-20-27-18", "msi_30-10-2024-14-25-12"] # 
+name_experiments = ["msi_29-10-2024-20-27-18"] # "auto", "msi_29-10-2024-20-27-18", "msi_30-10-2024-14-25-12"] # 
+#totalxp_duration_values = [30, 30, 30]
+totalxp_duration_values = [10]
 #name_experiments = ["msi_30-10-2024-14-58-34"] # "msi_30-10-2024-14-25-12" "msi_20-10-2024-12-02-28" "msi_30-10-2024-14-58-34"
 from optuna.samplers import GridSampler
 my_grid = GridSampler({'time_human_xp': initial_HumanXp_duration_values, 'name_xp': name_experiments, 'totalxp_duration_value': totalxp_duration_values})
@@ -354,7 +356,7 @@ def objective(trial, name_xp : str):
                                 premium_llm_key="premium_llm",
                                 problem_prompts_subdir="IR_CPS_TechSynthesis",
                                 max_execution_time=time_xp_auto,
-                                # max_coding_attempts=20,
+                                max_coding_attempts=10,
                                 # special_criteria={"CodingAgent#max_autofix": 2},
                                 model_choice={"coach": "default_llm","coder": "premium_llm","critic": "default_llm","capitalizer": "default_llm"},
                                 optuna_opti="coach",
