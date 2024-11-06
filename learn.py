@@ -264,21 +264,27 @@ class TaskIdentificationAgent():
             for key, value in self.additional_check_list.items():
                 self.human_llm_identify_best_task.add_inference_check(key, value)
 
-    def identify_best_task(self) -> str:
-        user_message = ""
-        # If the user provided some parameters for the user message, call get_multiple_few_shots to retrieve the tasks asked
-        if self.params_user_message:
-            user_message = self.human_llm_identify_best_task.get_multiple_few_shots(
-                few_shots_params=self.params_user_message)
-            # Set the user_message_few_shots attribute to the parameters given in params_user_message
-            self.human_llm_identify_best_task.user_message_few_shots = self.params_user_message
+    def identify_best_task(self):
+        # Prepare data
+        envs_status = "\n".join([env.get_state() for env in self.envs])
+        few_shots = self.human_llm_identify_best_task.get_multiple_few_shots(
+            few_shots_params=self.params_user_message)
+        self.human_llm_identify_best_task.user_message_few_shots = self.params_user_message
 
-        envs_status = '\n'.join([env.get_state() for env in self.envs])
+        # User message template
+        user_message_template = """
+    {few_shots}
+    - Current status of examples on which the task will be tested on: {envs_status}
+    """
 
-        user_message += f"\n- Current status of examples on which the task will be tested on: {envs_status}\n"
+        # Create user_message
+        user_message = user_message_template.format(
+            few_shots=few_shots,
+            envs_status=envs_status
+        )
 
         task = self.human_llm_identify_best_task.CallHumanLLM(
-            system_prompt_template=self.problem_prompts_subdir + "identify_best_task",
+            system_prompt_template=self.problem_prompts_subdir + 'identify_best_task',
             user_message=user_message,
             return_message_content_only=False,
             optuna=self.optuna_opti,
@@ -344,7 +350,6 @@ class CodingAgent():
             for key, value in special_criteria.items():
                 setattr(self, key, value)
         self.last_user_message = None
-        self.error_patches = []
 
         HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
@@ -500,6 +505,11 @@ class CodingAgent():
         return False, self.parsed_code
 
     def run_tests_on_code(self, message, parsed_code=None, skip_already_processed=False, output_id=None, restore_state=True, custom_agent=None):
+        # Retrieve error_patches from HumanLLMMonitor
+        metadata = {'step_id': HumanLLMMonitor.step_id}
+        error_patches = HumanLLMMonitor.get_agent_data(self.name, 'error_patches', metadata_filter=metadata)
+        error_patches = error_patches if error_patches else []
+
         primitives = self.get_primitives()
         parsed_code = getattr(self, 'parsed_code', None) if parsed_code is None else parsed_code
         current_skip_rounds = self.human_llm_code_task.skip_rounds  # save the initial value to align it for code validation
@@ -607,8 +617,11 @@ class CodingAgent():
                             diff = difflib.unified_diff(prev_code.splitlines(), edited_code.splitlines(), lineterm='')
                             diff_text = '\n'.join(diff)
                             # Avoid duplicates: check if the error and diff combination already exists
-                            if (exec_result, diff_text) not in self.error_patches:
-                                self.error_patches.append((exec_result, diff_text))
+                            if (exec_result, diff_text) not in error_patches:
+                                error_patches.append((exec_result, diff_text))
+                                # Store updated error_patches
+                                HumanLLMMonitor.add_agent_data(self.name, 'error_patches', error_patches,
+                                                               metadata=metadata)
 
             # Append the results for each environment
             no_runtime_errors.append(no_runtime_error)
@@ -644,41 +657,57 @@ class CodingAgent():
                     primitives.append(f.read())
         return primitives
 
-    def code_task_and_run_test(self, refined_task: str, previous_errors=None, previous_scores=None,
-                               previous_codes=None) -> str:
-        primitives = self.get_primitives()
+    def code_task_and_run_test(self, refined_task):
+        import itertools
 
-        user_message = f"TASK DEFINITION: [[[{refined_task}]]]"
-        nl, dnl = "\n", "\n\n"
-        max_db_results = 10
-        if self.envs and len(self.envs) > 0:
-            user_message += f"{nl}CURRENT STATE OF DOCUMENTS TO PERFORM/TEST TASK: [[[{nl}{nl.join([env.get_state(extended=False) for env in self.envs])}{nl}]]]"
-        if len(primitives) > 0:
-            user_message += f"{dnl}RE-USABLE CODE PRIMITIVES: [[[{nl}{nl.join(primitives)}{nl}]]]"
-        successful_tasks = list(HumanLLMMonitor.get_learnt_tasks())
-        failed_tasks = list(HumanLLMMonitor.get_failed_tasks())
-        validation_response_um = list(HumanLLMMonitor.get_validation_results())
-        if successful_tasks and len(successful_tasks) > 0:
-            user_message += f"{dnl}PREVIOUSLY SUCCESSFUL TASKS: [[[{nl}{nl.join(successful_tasks[:5])}{nl}]]]"
-        if failed_tasks and len(failed_tasks) > 0:
-            user_message += f"{dnl}PREVIOUSLY FAILED TASKS: [[[{nl}{nl.join(failed_tasks[:3])}{nl}]]]"
-        if validation_response_um and len(validation_response_um) > 0:
-            user_message += f"{dnl}PREVIOUS VALIDATION RESULTS: [[[{nl}{nl.join(validation_response_um[:max_db_results])}{nl}]]]"
+        def flatten_list_of_lists_of_lists(nested_list):
+            # Flatten a list of lists of lists into a single list
+            return list(itertools.chain.from_iterable(itertools.chain.from_iterable(nested_list)))
 
-        if previous_errors and len(previous_errors) > 0:
-            user_message += f"{dnl}PREVIOUS ATTEMPTS TO CODE THE TASK: [[[{nl}"
-            for previous_error, previous_score, previous_code in zip(previous_errors, previous_scores, previous_codes):
-                user_message += f"{nl}<<ATTEMPT FEEDBACK: {previous_error.content}" + (
-                    f"{dnl}SCORE: {previous_score}" if previous_score else "") + f"{dnl}CODE: {previous_code}{nl}>>"
-            user_message += f"{nl}]]]"
+        # Retrieve data from HumanLLMMonitor
+        metadata = {'step_id': HumanLLMMonitor.step_id}
+        previous_errors = HumanLLMMonitor.get_agent_data(self.name, 'previous_errors', metadata_filter=metadata)
+        previous_scores = HumanLLMMonitor.get_agent_data(self.name, 'previous_scores', metadata_filter=metadata)
+        previous_codes = HumanLLMMonitor.get_agent_data(self.name, 'previous_codes', metadata_filter=metadata)
+        error_patches = HumanLLMMonitor.get_agent_data(self.name, 'error_patches', metadata_filter=metadata)
 
-        # Add the error patches to the user_message
-        if self.error_patches and len(self.error_patches) > 0:
-            user_message += f"{dnl}PREVIOUS ERRORS AND FIXES: [[[{nl}"
-            for error_msg, diff_text in self.error_patches:
-                user_message += f"{nl}<<ERROR MESSAGE: {error_msg}{dnl}FIX APPLIED (diff):{dnl}{diff_text}{nl}>>"
-            user_message += f"{nl}]]]"
+        # Ensure variables are initialized
+        previous_errors = previous_errors if previous_errors else []
+        previous_scores = previous_scores if previous_scores else []
+        previous_codes = previous_codes if previous_codes else []
+        error_patches = flatten_list_of_lists_of_lists(error_patches) if error_patches else []
 
+        env_states = "\n".join([env.get_state(extended=False) for env in self.envs])
+        primitives = "\n".join(self.get_primitives())
+        successful_tasks = "\n".join(HumanLLMMonitor.get_learnt_tasks())
+        failed_tasks = "\n".join(HumanLLMMonitor.get_failed_tasks())
+        validation_response_um = "\n".join(HumanLLMMonitor.get_validation_results())
+
+        previous_attempts = ""
+        for errors_list, scores_list, codes_list in zip(previous_errors, previous_scores, previous_codes):
+            for err, score, code in zip(errors_list, scores_list, codes_list):
+                previous_attempts += f"\n<<ATTEMPT FEEDBACK: {err.content}\nSCORE: {score}\nCODE: {code}>>\n"
+
+        error_patches_str = ""
+        for error_msg, diff_text in error_patches:
+            error_patches_str += f"\n<<ERROR MESSAGE: {error_msg}\nFIX APPLIED (diff):\n{diff_text}>>\n"
+
+        # Define data for template placeholders
+        template_data = {
+            "refined_task": refined_task,
+            "env_states": env_states,
+            "primitives": primitives,
+            "successful_tasks": successful_tasks,
+            "failed_tasks": failed_tasks,
+            "validation_response_um": validation_response_um,
+            "previous_attempts": previous_attempts,
+            "error_patches_str": error_patches_str
+        }
+
+        # Load and format the user message from a file template
+        user_message = HumanLLMMonitor.load_prompt("coding_agent_user_message_template", template_data=template_data, directory='prompts')
+
+        # Set the formatted user message
         self.last_user_message = user_message
 
         current_skip_rounds = self.human_llm_code_task.skip_rounds  # save the initial value to align it for code validation
@@ -768,30 +797,55 @@ class ValidationAgent():
             for key, value in self.additional_check_list.items():
                 self.human_llm_validate_code.add_inference_check(key, value)
 
-    def validate_code(self, code: str, no_runtime_error: bool, exec_result: str, task: str = None,
-                      human_evaluation_required=False, scores=None, env_states=None) -> str:
-        runtime_errors = f'\033[32mno runtime errors at execution - code returned:\n{exec_result}\n\033[0m' if no_runtime_error else f'\033[31mruntime errors at execution - error:{exec_result}\033[0m'
+    def validate_code(self, code, no_runtime_error, exec_result, task=None, human_evaluation_required=False,
+                      scores=None, env_states=None):
+        # Prepare data for placeholders
+        runtime_errors = "no runtime errors at execution" if no_runtime_error else f"runtime errors at execution: {exec_result}"
+        envs_status = "\n".join(env_states)
+        human_evaluation = ''
         if human_evaluation_required:
-            human_evaluation = smart_input(
-                f"\n\n*******************\n{code}\n************\nCODE ABOVE EXECUTED with result: {runtime_errors}\n****\System may not efficiently evaluate what is produced by the code, please add your evaluation of the result (or hit enter): ")
-        else:
-            human_evaluation = ""
-        runtime_errors = 'no runtime errors at execution' if no_runtime_error else 'runtime errors at execution'  # just to avoid to break colors inside HumanLLMMonitor
-        envs_status = '\n'.join(env_states)
+            human_evaluation = smart_input(f"""
+************
+{code}
+************
+CODE ABOVE EXECUTED with result: {runtime_errors}
+****\System may not efficiently evaluate what is produced by the code, please add your evaluation of the result (or hit enter): """)
 
-        user_message = f"Task: << {task} >>\n\n" + \
-                       f"Code: << {code} >>\n\n" + \
-                       f"Code execution returned: << {runtime_errors} >>\n\n" + \
-                       f"Execution result returned by exec command of code provided: << {exec_result} >>\n\n" + \
-                       (f"Human evaluation of the result: << {human_evaluation} >>\n\n" if human_evaluation != "" else "") + \
-                       f"Performance scores: << {scores} >>\n" + \
-                       f"New environment status of examples on which the task has been tested on: << {envs_status} >>\n"
+        # Define user_message template
+        user_message_template = """
+Task: <<{task}>>
 
-        code_validation = self.human_llm_validate_code.CallHumanLLM(system_prompt_template="validate_code",
-                                                                    user_message=user_message,
-                                                                    return_message_content_only=False,
-                                                                    optuna=self.optuna_opti,
-                                                                    model_choice=self.model_choice)
+Code: <<{code}>>
+
+Code execution returned: <<{runtime_errors}>>
+
+Execution result returned by exec command of code provided: <<{exec_result}>>
+
+Human evaluation of the result: <<{human_evaluation}>>
+
+Performance scores: <<{scores}>>
+
+New environment status of examples on which the task has been tested on: <<{envs_status}>>
+"""
+
+        # Create user_message by replacing placeholders
+        user_message = user_message_template.format(
+            task=task,
+            code=code,
+            runtime_errors=runtime_errors,
+            exec_result=exec_result,
+            human_evaluation=human_evaluation,
+            scores=scores,
+            envs_status=envs_status
+        )
+
+        code_validation = self.human_llm_validate_code.CallHumanLLM(
+            system_prompt_template='validate_code',
+            user_message=user_message,
+            return_message_content_only=False,
+            optuna=self.optuna_opti,
+            model_choice=self.model_choice
+        )
         return code_validation
 
 
@@ -1280,15 +1334,25 @@ def get_highest_score_index(score_array, mode='total'):
 def coding_and_validation_loop(agent_coding, agent_validation, task_description, max_attempts,
                                extra_manual_validation_to_capitalize=True, continue_even_if_successful=True,
                                optuna=None, end_time=None):
-    previous_errors, previous_codes, previous_scores = [], [], []
-    successful_codes = []  # To store successful codes
-    all_results = []  # Store all results from each attempt for statistics
-    unique_codes = set()
+    metadata = {'step_id': HumanLLMMonitor.step_id}
+    # Retrieve data
+    previous_errors = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_errors',
+                                                     metadata_filter=metadata) or []
+    previous_codes = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_codes', metadata_filter=metadata) or []
+    previous_scores = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_scores',
+                                                     metadata_filter=metadata) or []
+    unique_codes = set(
+        HumanLLMMonitor.get_agent_data(agent_coding.name, 'unique_codes', metadata_filter=metadata) or [])
+    successful_codes = HumanLLMMonitor.get_agent_data(agent_coding.name, 'successful_codes',
+                                                      metadata_filter=metadata) or []
+    all_results = HumanLLMMonitor.get_agent_data(agent_coding.name, 'all_results', metadata_filter=metadata) or []
 
     for attempt in range(max_attempts):
+        # Check for timeouts
         if end_time is not None and time.time() >= end_time:
             break
-        # Remove duplicates before passing to agent_coding
+
+        # Filter out duplicates
         temp_errors, temp_codes, temp_scores = [], [], []
         for err, code, score in zip(previous_errors, previous_codes, previous_scores):
             if code not in unique_codes:
@@ -1298,15 +1362,22 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
                 temp_scores.append(score)
         previous_errors, previous_codes, previous_scores = temp_errors, temp_codes, temp_scores
 
-        results = agent_coding.code_task_and_run_test(task_description, previous_errors, previous_scores, previous_codes)
-        all_results.extend(results) # Store all results for statistics
-        # previous_errors, previous_codes, previous_scores = [], [], [] #TEST reset
+        # Store updated data
+        HumanLLMMonitor.add_agent_data(agent_coding.name, 'previous_errors', previous_errors, metadata=metadata)
+        HumanLLMMonitor.add_agent_data(agent_coding.name, 'previous_codes', previous_codes, metadata=metadata)
+        HumanLLMMonitor.add_agent_data(agent_coding.name, 'previous_scores', previous_scores, metadata=metadata)
+        HumanLLMMonitor.add_agent_data(agent_coding.name, 'unique_codes', list(unique_codes), metadata=metadata)
 
-        # First part: Process all codes and collect results
+        results = agent_coding.code_task_and_run_test(task_description)
+
+        all_results.extend(results)
+        HumanLLMMonitor.add_agent_data(agent_coding.name, 'all_results', all_results, metadata=metadata)
+
         current_skip_rounds = agent_validation.human_llm_validate_code.skip_rounds
         for index, (parsed_code, no_runtime_error, exec_result, scores, env_states, times) in enumerate(results):
             agent_validation.human_llm_validate_code.skip_rounds = current_skip_rounds  # to prevent skip_rounds decreased multiple times by multiple calls of HumanLLMMonitor
-            smart_print(f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace(
+            smart_print(
+                f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace(
                     "\\n", "\n"), "coding_and_validation_loop", "coding_and_validation_loop RESULT")
             validation_agent_feedback = agent_validation.validate_code(parsed_code["program_code"], no_runtime_error,
                                                                        exec_result, task=task_description,
@@ -1315,26 +1386,37 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
                         "coding_and_validation_loop WARNING")
             validation_agent_feedback = validation_agent_feedback[0]
             afb = validation_agent_feedback.content.replace('\\n', '\n')
-            smart_print("#" * 20 + f"\nAgent validation feedback: {afb}", "coding_and_validation_loop", "coding_and_validation_loop RESULT")
+            smart_print("#" * 20 + f"\nAgent validation feedback: {afb}", "coding_and_validation_loop",
+                        "coding_and_validation_loop RESULT")
 
             if extra_manual_validation_to_capitalize:
                 validated = (smart_input(
-                    "#" * 20 + f"\nADD THIS FUNCTION TO LIBRARY ? Please enter 'yes' if this a success and you want to add this function to library, 'no' if this failed: ", "coding_and_validation_loop").lower() in [
+                    "#" * 20 + f"\nADD THIS FUNCTION TO LIBRARY ? Please enter 'yes' if this a success and you want to add this function to library, 'no' if this failed: ",
+                    "coding_and_validation_loop").lower() in [
                                  "yes", "y", True])
             else:
                 validated = get_success_value_in_text(afb) in ["yes", "y", True]
             if validated:
                 successful_codes.append((parsed_code, validation_agent_feedback, scores))
 
-            # Update previous errors and codes lists
             if index < len(previous_errors):
                 previous_errors[index] = validation_agent_feedback
                 previous_scores[index] = scores
-                previous_codes[index] = parsed_code["program_code"]
+                previous_codes[index] = parsed_code['program_code']
             else:
                 previous_errors.append(validation_agent_feedback)
                 previous_scores.append(scores)
-                previous_codes.append(parsed_code["program_code"])
+                previous_codes.append(parsed_code['program_code'])
+
+                # Store updated data
+            HumanLLMMonitor.add_agent_data(agent_coding.name, 'previous_errors', previous_errors, metadata=metadata)
+            HumanLLMMonitor.add_agent_data(agent_coding.name, 'previous_codes', previous_codes, metadata=metadata)
+            HumanLLMMonitor.add_agent_data(agent_coding.name, 'previous_scores', previous_scores, metadata=metadata)
+
+            if validated:
+                successful_codes.append((parsed_code, validation_agent_feedback, scores))
+                HumanLLMMonitor.add_agent_data(agent_coding.name, 'successful_codes', successful_codes,
+                                               metadata=metadata)
 
         if not optuna and not successful_codes:
             stop = smart_input("No successful code yet, do you want to stop coding attempts for this task (too hard) and try a new one ? (yes/no): ","coding_and_validation_loop", "VALIDATION_INFO",optional=False).lower() in ["yes", "y", True]
