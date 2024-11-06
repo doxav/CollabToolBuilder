@@ -2,6 +2,8 @@ import inspect
 import random
 import string
 import traceback
+import contextlib
+import ast
 import types
 import time
 
@@ -13,6 +15,7 @@ from typing import Dict
 from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, smart_print, smart_input
 
 import os
+import io
 import uuid
 import re
 import shutil
@@ -70,26 +73,35 @@ class Environment:
                    target_is_directory=True)
 
     def step(self, action_code, context={}):
-        # memorize current directory, to allow to change to temp directory, then change back to memorized directory
+        # Memorize current directory and switch to temporary directory
         current_dir = os.getcwd()
         os.chdir(self.current_temp_dir)
-        # Regular expression to check if the last line assigns to 'result'
+
+        # Ensure `result` is set in the code
         if not re.search(r'\bresult\s*=', action_code.strip().splitlines()[-1]):
             helper = "\nresult = locals().get('_', True)"
         else:
             helper = ""
 
-        # execute action
+        # Setup for capturing stdout and stderr
+        stdout, stderr = io.StringIO(), io.StringIO()
+
         try:
-            # capture stdout and stderr while executing code
-            exec(action_code + helper, context)
-            exec_result = context.get('result', True)
+            # Execute code with redirected stdout and stderr
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                exec(action_code + helper, context)
+            # Safely evaluate and retrieve result
+            exec_result = ast.literal_eval(repr(context.get('result', True)))
             no_runtime_error = True
         except Exception as e:
-            exec_result = f"Failed to execute provided code. Error: {e} Traceback: {traceback.format_exc()}"
+            # Format traceback and include captured output for clarity
+            error_traceback = ''.join(traceback.format_exception(None, e, e.__traceback__))
+            exec_result = f"Execution failed. Error: {e}\nTraceback:\n{error_traceback}\nStdout:\n{stdout.getvalue()}\nStderr:\n{stderr.getvalue()}"
             no_runtime_error = False
-        # set execution environment back to the memorized directory
-        os.chdir(current_dir)
+        finally:
+            # Restore original directory
+            os.chdir(current_dir)
+
         return no_runtime_error, exec_result
 
     def close(self, backup_previous_temp_dir=True):
@@ -484,6 +496,7 @@ class CodingAgent():
                 time.sleep(0.1)
 
         self.parsed_code = f"Error parsing action response (before program execution): {error}"
+        smart_print(f"CODE PARSING ERROR!!!\n{error}", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
         return False, self.parsed_code
 
     def run_tests_on_code(self, message, parsed_code=None, skip_already_processed=False, output_id=None, restore_state=True, custom_agent=None):
@@ -587,7 +600,7 @@ class CodingAgent():
                         no_runtime_error, exec_result = env.step(code_to_run)
                         # Update parsed_code if re-run is successful
                         parsed_code["program_code"] = edited_code
-                        smart_print(f"# UPDATED **{'SUCCESFUL' if no_runtime_error else 'FAILED'}** CODE:\n{edited_code}", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                        smart_print(f"# UPDATED **{'SUCCESFUL' if no_runtime_error else 'FAILED'}** CODE:\n{edited_code}", custom_agent if custom_agent else self.name, "UPDATED_CODE", optional=False, column_id=output_id)
                         # If no runtime error, store the error and diff
                         if no_runtime_error:
                             smart_print(env.get_state(extended=True), custom_agent if custom_agent else self.name, "CODE_RESULT", optional=False, column_id=output_id)
@@ -605,7 +618,7 @@ class CodingAgent():
 
         # Return combined results
         result = (parsed_code, all(no_runtime_errors), exec_results, [env.get_score() for env in self.envs],
-                  [env.get_state(extended=True) for env in self.envs], total_execution_time)
+                  [env.get_state(extended=False) for env in self.envs], total_execution_time)
 
         if restore_state:
             for env in self.envs:
@@ -639,7 +652,7 @@ class CodingAgent():
         nl, dnl = "\n", "\n\n"
         max_db_results = 10
         if self.envs and len(self.envs) > 0:
-            user_message += f"{nl}CURRENT STATE OF DOCUMENTS TO PERFORM/TEST TASK: [[[{nl}{nl.join([env.get_state(extended=True) for env in self.envs])}{nl}]]]"
+            user_message += f"{nl}CURRENT STATE OF DOCUMENTS TO PERFORM/TEST TASK: [[[{nl}{nl.join([env.get_state(extended=False) for env in self.envs])}{nl}]]]"
         if len(primitives) > 0:
             user_message += f"{dnl}RE-USABLE CODE PRIMITIVES: [[[{nl}{nl.join(primitives)}{nl}]]]"
         successful_tasks = list(HumanLLMMonitor.get_learnt_tasks())
@@ -766,13 +779,13 @@ class ValidationAgent():
         runtime_errors = 'no runtime errors at execution' if no_runtime_error else 'runtime errors at execution'  # just to avoid to break colors inside HumanLLMMonitor
         envs_status = '\n'.join(env_states)
 
-        user_message = f"Task: {task}\n\n" + \
-                       f"Code: {code}\n\n" + \
-                       f"Code execution returned: {runtime_errors}\n\n" + \
-                       f"Execution result returned by exec command of code provided: {exec_result}\n\n" + \
-                       (f"Human evaluation of the result: {human_evaluation}\n\n" if human_evaluation != "" else "") + \
-                       f"Performance scores: {scores}\n" + \
-                       f"New environment status of examples on which the task has been tested on: {envs_status}\n"
+        user_message = f"Task: << {task} >>\n\n" + \
+                       f"Code: << {code} >>\n\n" + \
+                       f"Code execution returned: << {runtime_errors} >>\n\n" + \
+                       f"Execution result returned by exec command of code provided: << {exec_result} >>\n\n" + \
+                       (f"Human evaluation of the result: << {human_evaluation} >>\n\n" if human_evaluation != "" else "") + \
+                       f"Performance scores: << {scores} >>\n" + \
+                       f"New environment status of examples on which the task has been tested on: << {envs_status} >>\n"
 
         code_validation = self.human_llm_validate_code.CallHumanLLM(system_prompt_template="validate_code",
                                                                     user_message=user_message,
@@ -853,8 +866,9 @@ class CapitalizationAgent:
                     f"Function file {function_file_path} already exists, please provide a new name for the function.",
                     self.name, "capitalize_successful_tasks WARNING")
                 if self.optuna_opti:
-                    i = random.randint(0, 1000)
-                    function_file_path = os.path.join("functions", self.name + f"_{i}.py")
+                    # generate an id based on the current time and a random number
+                    id = datetime.datetime.now().strftime("%Y%m%d%H%M%S") + "_" + str(random.randint(0, 1000))
+                    function_file_path = os.path.join("functions", self.name + f"_{id}.py")
                 else:
                     function_file_path = os.path.join("functions", smart_input("This function already exists, please provide a new function name: ", message_type="VALIDATION_INFO") + ".py")
 
@@ -1039,7 +1053,6 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     scores = None
 
     if unique_id is None:
-        # Set unique_id to the name of the machine + timestamp (dd-mm-yyyy-hh-mm-ss)
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
 
     if unique_id is not False :
@@ -1047,6 +1060,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             UnifiedVectorDB.set_unique_collection_id(unique_id)
 
     HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
+    HumanLLMMonitor.check_init_class_db(force=True)
 
     if params_user_message is None and optuna_opti is None:
         params_user_message = {
@@ -1060,6 +1074,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             HumanLLMMonitor.initialize_websocket_server()
 
     smart_print(str(max_execution_time), "orchestrate_agents", "time_end")
+    smart_print(unique_id, "orchestrate_agents", "XP_unique_id", optional=True)
 
     time_end = time.time() + max_execution_time
 
@@ -1183,14 +1198,13 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                     # Apply the code to the environments without restoring their state
                     test_results = agent_coding.run_tests_on_code(message="", parsed_code=parsed_code, skip_already_processed=False, restore_state=False, custom_agent="orchestrate_agents")
                     # Unpack the results if needed
-                    parsed_code, success, exec_results, scores, env_states, execution_time = test_results
+                    _parsed_code_, _success_, exec_results, _scores_, _env_states_, _execution_time_ = test_results
 
                     # Optionally display the execution results for each environment
                     for env, result in zip(test_environments, exec_results):
                         smart_print(f"Execution result in environment {env.id}: {result}", "orchestrate_agents", "Execution Result")
                 else:
                     smart_print("No code to run.", "orchestrate_agents", "Execution Error")
-
 
 
         # Calculate the average score of the task, and return it with other statistics
@@ -1208,6 +1222,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                     10 * scores['best_score_without_validation'] +
                     (20 * (1 + validated_score_avg) if scores['validated_scores'] else 0)
             )
+            if total_score_weighted_with_stats > 0:
+                print(f"total_score_weighted_with_stats: {total_score_weighted_with_stats}; scores['percentage_no_runtime_error']: {scores['percentage_no_runtime_error']}; scores['best_score_without_validation']: {scores['best_score_without_validation']}; validated_score_avg: {validated_score_avg}")
             # add total_score_weighted_with_stats to total_scores
             total_scores.append(total_score_weighted_with_stats)
         else:
@@ -1346,7 +1362,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
     percentage_no_runtime_error = (sum(1 for _, no_runtime_error, _, _, _, _ in all_results if no_runtime_error) / len(
         all_results)) if all_results else 0
     best_score_without_validation = (
-        max(max(sum(scores.values()) for scores in score_dict) for _, _, _, score_dict, _, _ in all_results)) if len(
+        max(max(sum(scores.values()) / len(scores) if len(scores) > 0 else 0 for scores in score_dict) for _, _, _, score_dict, _, _ in all_results)) if len(
         all_results) > 0 else 0
     all_scores = {
         'percentage_no_runtime_error': percentage_no_runtime_error,
@@ -1378,7 +1394,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
                 selection = smart_input(
                     f"Several codes were successful. Please enter the number of the code you want to add to the library:\n{successful_codes_str}",agent_name="CapitalizationAgent",message_type="Capitalization_info").strip()
             if selection.isdigit() and 0 <= int(selection) <= len(successful_codes):
-                selected_index = int(selection)
+                selected_index = max(0, min(int(selection), len(successful_codes) - 1))
                 smart_print("Code validated successfully.", "coding_and_validation_loop", "coding_and_validation_loop RESULT")
                 selected_code, _, scores = successful_codes[selected_index]
                 all_scores['validated_scores'] = scores
@@ -1473,7 +1489,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Initialize the WebSocket server with port autodetection and proxy
-    HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy)
+    unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+    HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy, unique_id=unique_id)
 
     # Allow some time for the WebSocket server to start
     time.sleep(1)  # Adjust if necessary
@@ -1506,7 +1523,7 @@ if __name__ == "__main__":
     envs = []
     for doc in documents:
         env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
-                                 target_file_path=doc['target_file_path'], id=doc['id']).get_environment()
+                                 target_file_path=doc['target_file_path'], id=doc['id'], llm=llmORchains_list["default_llm"]).get_environment()
         envs.append(env)
 
     # Run the learning loop
@@ -1526,4 +1543,5 @@ if __name__ == "__main__":
                               agcoding_skip_rounds=0,  # Auto-test: 4
                               agvalidation_skip_rounds=0,  # Auto-test: 4
                               agcapitalize_skip_rounds=0,
-                              agcoding_num_parallel_inferences=2)  # Auto-test: 0"""
+                              agcoding_num_parallel_inferences=2,
+                              unique_id=unique_id)  # Auto-test: 0"""

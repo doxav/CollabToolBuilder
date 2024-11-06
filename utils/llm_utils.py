@@ -156,7 +156,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
         HumanLLMMonitor.websocket_server.send_message(message_json)
 
         async def receive_message(timeout=86400):
-            async with websockets.connect(ws_url) as websocket:
+            async with websockets.connect(ws_url, ping_interval=30, ping_timeout=60) as websocket:
                 try:
                     print("SMART INPUT Waiting for response from WebSocket")
                     while True:
@@ -173,7 +173,15 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
                                 print(f"An error occurred: {e}, retry {i+1}/{max_retry}")
                                 await asyncio.sleep(1)
                         print("SMART INPUT Received response from WebSocket")
-                        json_data = json.loads(response)
+                        try:
+                            # Check that the response is not a NoneType
+                            if response is None:
+                                print("Received None response from WebSocket")
+                                return None
+                            json_data = json.loads(response)
+                        except json.JSONDecodeError as e:
+                            print(f"Error decoding JSON: {e}")
+                            return None
                         # Ignore messages from self
                         if 'sender_id' in json_data and json_data['sender_id'] == HumanLLMMonitor.websocket_server.server_id:
                             print("Received message from self, ignoring")
@@ -204,7 +212,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
             # Attempt to get the current running event loop
             loop = asyncio.get_running_loop()
             # If a loop is running, schedule the receive_message coroutine
-            future = asyncio.run_coroutine_threadsafe(receive_message(), loop)
+            future = asyncio.run_coroutine_threadsafe(receive_message())
             return future.result()
         except RuntimeError:
             # No running loop, create a new event loop and run the coroutine
@@ -461,7 +469,7 @@ class UnifiedVectorDB:
         elif UnifiedVectorDB.db_type == 'elasticsearch':
             elastic_client = Elasticsearch(UnifiedVectorDB.es_url,
                                            http_auth=(UnifiedVectorDB.es_user,
-                                                      UnifiedVectorDB.es_password) if UnifiedVectorDB.es_user else None,
+                                                      UnifiedVectorDB.es_password) if (UnifiedVectorDB.es_user not in [False, "", None]) else None,
                                            verify_certs=False, ssl_show_warn=False)
             self.db = ElasticsearchStore(
                 index_name=self.collection_name,
@@ -605,25 +613,43 @@ class HumanLLMMonitor:
     db_learnt_tasks = None
     db_failed_tasks = None
 
+    @staticmethod
+    def _check_and_init_vector_db(embedding_function=None, reset_db_indices=False):
+        if embedding_function:
+            HumanLLMMonitor.set_common_vectordb_embedding_function(embedding_function)
+        if HumanLLMMonitor.common_vectordb is None:
+            HumanLLMMonitor.common_vectordb = UnifiedVectorDB(
+                collection_name=HumanLLMMonitor.common_vectordb_collection_name,
+                embedding_function=HumanLLMMonitor.common_vectordb_embedding_function,
+                persist_directory=HumanLLMMonitor.common_vectordb_persist_directory,
+                reset_db_indices=reset_db_indices
+            )
+
     @classmethod
-    def check_init_db(cls):
+    def check_init_class_db(cls, force=False):
         if cls.common_vectordb_embedding_function is None:
             raise ValueError("embeddingfunction must be set to allow HumanLLMMonitor to manage tasks and other memories")
-        if cls.db_learnt_tasks is None:
+        if cls.db_learnt_tasks is None or force:
             cls.db_learnt_tasks = UnifiedVectorDB(
                 collection_name=cls.db_collection_success,
                 embedding_function=cls.common_vectordb_embedding_function,
                 persist_directory=cls.common_vectordb_persist_directory+cls.db_collection_success,
                 reset_db_indices=cls.reset_db_indices)
-        if cls.db_failed_tasks is None:
+        if cls.db_failed_tasks is None or force:
             cls.db_failed_tasks = UnifiedVectorDB(collection_name=cls.db_collection_failed,
                 embedding_function=cls.common_vectordb_embedding_function,
                 persist_directory=cls.common_vectordb_persist_directory+cls.db_collection_failed,
                 reset_db_indices=cls.reset_db_indices)
+        # if cls.common_vectordb is None or force:
+        #     cls.common_vectordb = UnifiedVectorDB(
+        #         collection_name=cls.common_vectordb_collection_name,
+        #         embedding_function=cls.common_vectordb_embedding_function,
+        #         persist_directory=cls.common_vectordb_persist_directory,
+        #         reset_db_indices=cls.reset_db_indices)
 
     @classmethod
     def get_learnt_tasks(cls, query_text="*", k=10, metadata_filter=None, sort_order=None, similarity_search=False):
-        cls.check_init_db()
+        cls.check_init_class_db()
         if similarity_search:
             results = cls.db_learnt_tasks.similarity_search_with_score(query=query_text, k=k)
         else:
@@ -634,7 +660,7 @@ class HumanLLMMonitor:
 
     @classmethod
     def get_failed_tasks(cls, query_text="*", k=10, metadata_filter=None, sort_order=None, similarity_search=False):
-        cls.check_init_db()
+        cls.check_init_class_db()
         if similarity_search:
             results = cls.db_failed_tasks.similarity_search_with_score(query=query_text, k=k)
         else:
@@ -645,7 +671,7 @@ class HumanLLMMonitor:
 
     @classmethod
     def get_validation_results(cls, query_text="*", k=10, sort_order=None, similarity_search=False):
-        cls.check_init_db()
+        cls.check_init_class_db()
         metadata_filter = {'agent_name': 'ValidationAgent'}
         if similarity_search:
             results = cls.common_vectordb.similarity_search_with_score(
@@ -820,9 +846,9 @@ class HumanLLMMonitor:
         cls.db_failed_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
 
     @classmethod
-    def initialize_websocket_server(cls, port=6789, secret=None, proxy_enabled=False):
+    def initialize_websocket_server(cls, port=6789, secret=None, proxy_enabled=False, unique_id=None):
         if cls.use_websocket and cls.websocket_server is None:
-            cls.websocket_server = WebsocketServer(port=port, secret=secret, proxy_enabled=proxy_enabled)
+            cls.websocket_server = WebsocketServer(port=port, secret=secret, proxy_enabled=proxy_enabled, unique_id=unique_id)
             cls.stop_event.clear()
             cls.ws_thread = threading.Thread(target=cls.run_websocket_server)
             cls.ws_thread.daemon = True  # Run the WebSocket server in a daemon thread
@@ -858,18 +884,6 @@ class HumanLLMMonitor:
                     model_kwargs={"trust_remote_code": True})
         else:
             HumanLLMMonitor.common_vectordb_embedding_function = embedding_function
-
-    @staticmethod
-    def _check_and_init_vector_db(embedding_function=None, reset_db_indices=False):
-        if embedding_function:
-            HumanLLMMonitor.set_common_vectordb_embedding_function(embedding_function)
-        if HumanLLMMonitor.common_vectordb is None:
-            HumanLLMMonitor.common_vectordb = UnifiedVectorDB(
-                collection_name=HumanLLMMonitor.common_vectordb_collection_name,
-                embedding_function=HumanLLMMonitor.common_vectordb_embedding_function,
-                persist_directory=HumanLLMMonitor.common_vectordb_persist_directory,
-                reset_db_indices=reset_db_indices
-            )
 
     @staticmethod
     def get_few_shots_tag_args(prompt):
@@ -1556,7 +1570,7 @@ class HumanLLMMonitor:
         return forced_llm_output
 
     def add_instruction(self, initial_user_message, messages):
-        instructions = smart_input(f"ENTER ADDITIONAL INSTRUCTIONS FOR THE AGENT: ", self.agent_name, optional=False)
+        instructions = smart_input(f"ENTER ADDITIONAL INSTRUCTIONS FOR THE AGENT: ", self.agent_name, message_type="ADDITIONAL_INFO",optional=False)
         messages[1].content = initial_user_message + f"\n\nADDITIONAL INSTRUCTIONS: << {instructions} >>"
 
     def modify_prompt(self, callable_system_message, comments, default_llm_function, forced_llm_output, messages,
@@ -1826,7 +1840,7 @@ class HumanLLMMonitor:
                 self.modifyAnswer(inference_result_msg, output_id)
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
-                inference_result_msg = self.criticAnswer(comments, inference_result_msg, annotated_critics=False)
+                inference_result_msg.content = self.criticAnswer(comments, inference_result_msg, annotated_critics=False)
 
             elif action == "C":  # Find a better Prompt by providing critic and ideal answer
                 comments = self.findBetterPrompt(comments, inference_result_msg, premium_llm_function)
@@ -1846,9 +1860,10 @@ class HumanLLMMonitor:
             # Count time spent and occurrences waiting and in each option
             self.track_time_spent(action, mode='after')
 
-            if self.temp_inference_result_content: # it means an async function has modified the content and we should not exit but continue the loop
-                inference_result_msg.content = self.temp_inference_result_content
-                smart_print(menu, self.agent_name, "ANSWER MODIFIED, RUNNING CHECKS BEFORE CONTINUING", column_id=output_id-1, column_max=outputs_count)
+            # check also that inference_result_msg is not of type str or int 
+            if self.temp_inference_result_content and not isinstance(inference_result_msg, str) and not isinstance(inference_result_msg, int):
+                #inference_result_msg.content = f"{self.temp_inference_result_content}"
+                smart_print("ANSWER MODIFIED, NEW CHECKS REQUIRED BEFORE CONTINUING", self.agent_name, "code_task_and_run_test SystemMessage", column_id=output_id-1, column_max=outputs_count)
                 #check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
             elif action in [None, "", "E", "Z"]:
                 break  # E: Go back BEFORE inference to improve system prompt or add information to user message

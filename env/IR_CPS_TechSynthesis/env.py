@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 import re
 from typing import List, SupportsFloat, Any, Tuple, Dict
 from dataclasses import asdict
+from langchain_core.messages import SystemMessage, HumanMessage
 
 from config import *
 #from attr import dataclass, field
@@ -78,8 +79,9 @@ class DocumentStructure:
                  synthesis_type: str,
                  initial_goal: str,
                  refined_goals: List[str] = None,
-                 embedding_model_name: str = "intfloat/e5-base-v2", # nomic-embed-text:latest, intfloat/e5-base-v2
-                 embedding_model_query_prefix: str = '', # e.g. "query: " for intfloat/e5-base-v2 should improve for QA but we are in estimating straight semantic similarity
+                 embedding_model_name: str = "intfloat/e5-base-v2",  # nomic-embed-text:latest, intfloat/e5-base-v2
+                 embedding_model_query_prefix: str = '',
+                 # e.g. "query: " for intfloat/e5-base-v2 should improve for QA but we are in estimating straight semantic similarity
                  title: str = None,
                  context: str = None,
                  abstract: str = None,
@@ -92,17 +94,21 @@ class DocumentStructure:
             if embedding_model_name == "text-embedding-ada-002":
                 if not os.getenv("OPENAI_API_KEY"):
                     raise ValueError("OpenAI API key is required for OpenAI ada-002 model.")
-                self.embedding_model = OpenAIEmbeddings(model=embedding_model_name) # , openAIApiKey=os.getenv("OPENAI_API_KEY")
+                self.embedding_model = OpenAIEmbeddings(
+                    model=embedding_model_name)  # , openAIApiKey=os.getenv("OPENAI_API_KEY")
             else:
-                self.embedding_model = HuggingFaceEmbeddings(model_name=embedding_model_name, encode_kwargs={"normalize_embeddings": True}, model_kwargs={"trust_remote_code": True}) # , openAIApiKey=os.getenv("OPENAI_API_KEY"
+                self.embedding_model = HuggingFaceEmbeddings(model_name=embedding_model_name,
+                                                             encode_kwargs={"normalize_embeddings": True},
+                                                             model_kwargs={
+                                                                 "trust_remote_code": True})  # , openAIApiKey=os.getenv("OPENAI_API_KEY"
             DocumentStructure.embedding_model_cls = self.embedding_model
         else:
             self.embedding_model = DocumentStructure.embedding_model_cls
 
         self.synthesis_type = synthesis_type
         self.initial_goal = initial_goal
-        self.refined_goals = [initial_goal] if refined_goals is None else refined_goals 
-        self.document_content = Document() # self.document_content = copy.deepcopy(DOCUMENT_SCHEMA)
+        self.refined_goals = [initial_goal] if refined_goals is None else refined_goals
+        self.document_content = Document()  # self.document_content = copy.deepcopy(DOCUMENT_SCHEMA)
         # self.document_content.sections_list = []
         self.title = title
         if title and title != "":
@@ -1119,7 +1125,7 @@ class SynthesisManager:
         else:
             self.min_plan_titles_cosine_similarity = self.min_plan_contents_cosine_similarity = self.min_plan_cosine_similarity = 0 
 
-    def get_distance_to_targetJSON(self, target_section_title_embedding_label: str = "section_embedding_2", target_section_content_embedding_label: str = "content_embedding_2", target_plan_embedding_label: str = "plan_embedding_2", get_progress: bool = True):
+    def get_distance_to_targetJSON(self, target_section_title_embedding_label: str = "section_embedding_2", target_section_content_embedding_label: str = "content_embedding_2", target_plan_embedding_label: str = "plan_embedding_2", get_progress: bool = False):
         # if self does not have target_file_path
         if not hasattr(self, 'target_file_path'):
             raise ValueError("Please set target_file_path using set_targetJSON_comparison method")
@@ -1138,7 +1144,7 @@ class SynthesisManager:
         current_sections_count = len(self.document.document_content.sections_list)
         current_plan_non_empty_sections_content_count = sum(1 for section in self.document.document_content.sections_list if section.content and len(section.content) > 1)
         current_plan_non_empty_sections_title_count = sum(1 for section in self.document.document_content.sections_list if section.title and len(section.title) > 1)
-        current_content_length = sum(len(getattr(section, 'content', 0)) for section in self.document.document_content.sections_list)
+        current_content_length = sum(len(getattr(section, 'content', '')) for section in self.document.document_content.sections_list)
 
         # Get embeddings
         plan_embedding = self.document.document_content.sections_list_embedding
@@ -1203,8 +1209,8 @@ class SynthesisManager:
             status_data_full = [
                 section.section_id,
                 section.title,
-                len(section.content),
-                section.content[:100],
+                len(section.content) if section.content is not None else 0,
+                section.content[:100] if section.content is not None else 0,
                 #round(section.content_progress_validation_status, 1),
                 #section.local_feedback_to_process,
                 #section.local_feedback_processed,
@@ -1282,6 +1288,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
                  embedding_model_name: str = "intfloat/e5-base-v2", # nomic-embed-text:latest, intfloat/e5-base-v2
                  openai_api_key: str = None,
                  target_file_path: str = None,
+                 llm = None,
                  id: str = None,
                  ):
         super().__init__()
@@ -1294,7 +1301,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         self.refined_goals = [goal] if refined_goals is None else refined_goals
         self.title = title
         self.context = context
-
+        VoyagerEnvIR_CPS_TechSynthesis.llm_model = llm
         self.document = DocumentStructure(synthesis_type=synthesis_type, initial_goal=goal, refined_goals=self.refined_goals, embedding_model_name=embedding_model_name, title=title, context=context)  # Initialize your document structure
         self.synthesis_manager = SynthesisManager(document=self.document, target_file_path=target_file_path)  # Initialize your Synthesis Manager
         #self.server = f"{server_host}:{server_port}" # TODO: voir si on a besoin d'un serveur type TGI pour les inférences
@@ -1302,6 +1309,11 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         self.log_path = log_path
         self.has_reset_once = False
         self.state = None  # Placeholder: initial state of the environment
+
+    # llm static method
+    @staticmethod
+    def llm(prompt: str):
+        return VoyagerEnvIR_CPS_TechSynthesis.llm_model.invoke([SystemMessage(content=""), HumanMessage(content=prompt)]).content
 
     def get_score(self):
         distance = self.synthesis_manager.get_distance_to_targetJSON()
@@ -1340,7 +1352,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         if not self.has_reset_once:
             print("Environment has not been reset yet - resetting now !")
             self.reset()
-        return super().step(action_code=code, context={'problem': self.synthesis_manager, 'bot': self.synthesis_manager, 'results': None, 'SynthesisManager': SynthesisManager, 'DocumentStructure': DocumentStructure, 'Section': Section, 'Document': Document})
+        return super().step(action_code=code, context={'problem': self.synthesis_manager, 'bot': self.synthesis_manager, 'results': None, 'SynthesisManager': SynthesisManager, 'DocumentStructure': DocumentStructure, 'Section': Section, 'Document': Document, 'llm':VoyagerEnvIR_CPS_TechSynthesis.llm})
 
     def get_state(self, extended: bool = False):
         #TODO: move to self.document.get_state() ?
@@ -1349,8 +1361,8 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         table_of_content = "\n".join([str(section) for section in table_of_content_list])
         resources_observation = self.synthesis_manager.get_resources_status(compact_string_format=True)
         document_state = f"<<< Document #{self.id} properties:\n"
-        document_state += f"> Title: {self.title}\n"
-        document_state += f"> Abstract (first 100 characters): {self.context[:100]}\n"
+        if extended: document_state += f"> Title: {self.title}\n"
+        if extended: document_state += f"> Abstract (first 100 characters): {self.context[:100]}\n"
         document_state += f"> Current table of content:\n{table_of_content if len(table_of_content) > 0 else 'Empty'}\n"
         document_state += f"> Current resources: {resources_observation if len(resources_observation) > 0 else 'Empty'}\n"
         if extended:

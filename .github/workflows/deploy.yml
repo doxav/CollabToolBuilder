@@ -4,7 +4,7 @@ name: Deploy static content to Pages
 on:
   # Runs on pushes targeting the desired branch
   push:
-    branches: ["IHM_EXP2_InColumnsErrors"]
+    branches: ["IHM_EXP2_InColumnsErrors","IHMv6"]
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -32,7 +32,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: IHM_EXP2_InColumnsErrors  # Ensure the right branch is checked out
+          ref: IHMv6  # Ensure the right branch is checked out
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

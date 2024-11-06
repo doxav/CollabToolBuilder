@@ -23,7 +23,9 @@
     let pendingCallbacks = {};
     let wsUrl = 'ws://localhost:6789';
     let reconnectAttempts = 0; // Track the number of reconnection attempts
-    const maxAutoReconnectAttempts = 5; // Set the number of reconnection attempts
+    const maxAutoReconnectAttempts = 10; // Set the number of reconnection attempts
+    let isFunctionCallInProgress = false;
+    let selectedLLM = "";
     
     // Function to get URL parameter by name
     function getUrlParameter(name) {
@@ -88,22 +90,24 @@
 
         socket.onclose = function(event) {
             if (reconnectAttempts < maxAutoReconnectAttempts) {
+                let statusDiv = document.getElementById('connection-status');
                 reconnectAttempts++;
                 console.log('WebSocket connection closed:', event);
-                console.log(`Reconnection attempt ${reconnectAttempts} in 3 seconds...`);
+                console.log(`Connection attempt ${reconnectAttempts}...`);
                 if (statusDiv) {
                     statusDiv.style.display = 'block';
-                    statusDiv.innerText = 'Waiting connection...';
+                    statusDiv.innerText = `Connection attempt ${reconnectAttempts}...`;
                 }
-                setTimeout(initWebSocket, 3000); // Wait 3 seconds before trying to reconnect
+                setTimeout(initWebSocket, 1500); // Wait 3 seconds before trying to reconnect
             } else {
                 console.log('Max reconnection attempts reached. Prompting user for input.');
                 let statusDiv = document.getElementById('connection-status');
                 if (statusDiv) {
                     statusDiv.style.display = 'block';
-                    statusDiv.innerText = 'Unable to reconnect. Please check the WebSocket server and reload the page.';
+                    statusDiv.innerText = 'Unable to reconnect. Please check the WebSocket server.';
                 }
                 reconnectAttempts = 0; // Reset after max attempts to avoid infinite retries
+                initWebSocket();
             }
         };
 
@@ -124,21 +128,52 @@
     initWebSocket();
 
     function sendFunctionCall(agentName, functionName, params, callback = null) {
+        if (isFunctionCallInProgress) {
+            // Function is already in progress, alert the user and give options
+            let userChoice = confirm(`Another call is currently running (${isFunctionCallInProgress}). Do you want to cancel the current call or retry after it finishes?\n\nPress 'OK' to retry after the current call finishes.\nPress 'Cancel' to cancel the new call.`);
+
+            if (userChoice) {
+                // Retry after the current call finishes
+                const retryAfterCompletion = setInterval(() => {
+                        if(isFunctionCallInProgress) {
+                            if(confirm(`Another call is still running (${isFunctionCallInProgress}) Do you want to ignore and force the call ?`))
+                                isFunctionCallInProgress = false;
+                        }
+                        clearInterval(retryAfterCompletion);
+                        sendFunctionCall(agentName, functionName, params, callback);
+                }, 2000); // Check every 500ms if the function call has completed
+            } else {
+                // Cancel the new function call attempt
+                console.log('New function call canceled by the user.');
+            }
+            return;
+        }
+
+        // Set the flag indicating that a function call is in progress
+        isFunctionCallInProgress = functionName;
+
         let message = {
             agent_name: agentName,
             function: functionName,
             params: params
         };
-        msgString = JSON.stringify(message);
+        let msgString = JSON.stringify(message);
         socket.send(msgString);
 
         addLogLine('SENT: ' + msgString);
 
         if (callback) {
             console.log('Setting up callback for', functionName);
-            pendingCallbacks[functionName] = callback;
-        }
+            pendingCallbacks[functionName] = (result) => {
+                callback(result);
+                // Reset the flag once the call is completed
+                isFunctionCallInProgress = false;
+            };
+        } else {
+            // Reset the flag when the call finishes (without callback)
+            isFunctionCallInProgress = false;}
     }
+
 
     function displayMessage(data) {
         if (data.agent_name !== undefined) {
@@ -221,7 +256,7 @@
 
         // Places infos for each answers in columns in their columns
 
-        if(data.agent_name === "CodingAgent" && (data.message_type === "code_task_and_run_test SystemMessage" || data.message_type === "fix_error" || data.message_type === "CODE_RESULT")) {
+        if(data.agent_name === "CodingAgent" && (data.message_type === "code_task_and_run_test SystemMessage" || data.message_type === "fix_error" || data.message_type === "CODE_RESULT" || data.message_type === "UPDATED_CODE")) {
             // Retrieve the columns of the CodingAgent
             let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
             let $columns = $agentAccordion.find('.solution-column');
@@ -229,6 +264,15 @@
             // Retrieve the targeted column
             let targetColumn = document.getElementById(`column-${columnId}`);
 
+            // Check if the message_type is UPDATED_CODE and update the Monaco editor's content
+            if (data.message_type === "UPDATED_CODE" && data.agent_name && data.column_id !== undefined) {
+                const editorContainer = document.getElementById(`column-${columnId}`);
+                const editorInstance = editorContainer.editorInstance;
+                if (editorContainer && editorContainer.editorInstance) {
+                    editorInstance.setValue(data.message);
+                    console.log(`Monaco editor content updated for agent editor-${columnId}`);
+                } else console.error(`Monaco editor not found for agent editor-${columnId} editorContainer:${editorContainer} editorInstance:${editorInstance}/ `);
+            }
             if (data.message_type === "fix_error") {
                 // if Edition in VSCode, alert and do not display the buttons
                 if (data.message.startsWith("Please edit and save")) {alert(data.message); return;}
@@ -237,7 +281,7 @@
                 let $noButton = $(`<button id="no-button">No (edit > save > continue to test it)</button>`);
                 let $autofixButton = $(`<button id="autofix-button">Try autofix with LLM</button>`);
                 let $customAutofixButton = $(`<button id="custom-autofix-button">Add instruction to autofix with LLM</button>`);
-                let $container = $(`<div></div>`);
+                let $container = $(`<div style="background-color: #ff7f7f;"></div>`);
                 $container.append($question);
                 $container.append($noButton);
                 $container.append($autofixButton);
@@ -600,7 +644,11 @@
         } else if(data.agent_name === "Pipeline/Function Mode" && data.message_type === "Files loaded" ){
             // Do nothing
 
-        }  else if(data.message_type === "TASK SELECTION" || data.message_type === "VALIDATION_INFO" || data.message_type === "Capitalization_info"){
+        } else if(data.message.includes("Enter the number of the new default LLM (0-3):")){
+           // Send the selectedLLM to the backend
+           socket.send(JSON.stringify({message: selectedLLM}));
+
+        } else if(data.message_type === "TASK SELECTION" || data.message_type === "VALIDATION_INFO" || data.message_type === "Capitalization_info" || data.message_type === "ADDITIONAL_INFO"){
             if ($agentAccordion.length === 0) {
                 $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
                 $("#message-accordion").append($agentAccordion);
@@ -698,17 +746,95 @@
                 wordWrap: "on"
             });
 
-            // Debounce timer variable for auto-save
-            let debounceTimer;
+            // Initialize versions with the initial content
+            let versions = [content];
+            let isSettingContent = false; // Flag to prevent infinite loops
 
-            // Auto-Save: Listen for content changes
+            // Create a container for controls
+            const editorContainer = document.getElementById(elementId);
+            const controlsContainer = document.createElement('div');
+            controlsContainer.className = 'editor-controls';
+
+            // Create Undo button
+            const undoButton = document.createElement('button');
+            undoButton.innerText = 'Undo';
+            undoButton.addEventListener('click', function() {
+                editor.trigger('keyboard', 'undo', null);
+            });
+
+            // Create Redo button
+            const redoButton = document.createElement('button');
+            redoButton.innerText = 'Redo';
+            redoButton.addEventListener('click', function() {
+                editor.trigger('keyboard', 'redo', null);
+            });
+
+            // Create History selector
+            const historySelect = document.createElement('select');
+            const initialOption = document.createElement('option');
+            initialOption.value = 0;
+            initialOption.text = 'Version 1';
+            historySelect.appendChild(initialOption);
+
+            // Select the last version by default
+            historySelect.selectedIndex = versions.length - 1;
+
+            historySelect.addEventListener('change', function() {
+                const selectedIndex = this.selectedIndex;
+                if (selectedIndex >= 0) {
+                    const versionContent = versions[selectedIndex];
+                    isSettingContent = true;
+                    editor.setValue(versionContent);
+                    isSettingContent = false;
+                }
+            });
+
+            // Append controls
+            controlsContainer.appendChild(undoButton);
+            controlsContainer.appendChild(redoButton);
+            controlsContainer.appendChild(historySelect);
+            editorContainer.parentNode.insertBefore(controlsContainer, editorContainer);
+
+            // Debounce timer variables
+            let debounceSaveTimer;
+            let debounceVersionTimer;
+
             const contentDisposable = editor.onDidChangeModelContent(function(event) {
-                console.log('Content changed:', event);
-                document.querySelector(`#save-${agentName}-${columnId}`).style.display = 'inline-block'; // Correctly reference the full agent_columnId
+                if (!isSettingContent) {
+                    // Debounce versioning: create a new version after 1000ms of inactivity
+                    clearTimeout(debounceVersionTimer);
+                    debounceVersionTimer = setTimeout(function() {
+                        let currentContent = editor.getValue();
+                        versions.push(currentContent);
+
+                        // Update historySelect options
+                        const option = document.createElement('option');
+                        option.value = versions.length - 1;
+                        option.text = 'Version ' + versions.length;
+                        historySelect.appendChild(option);
+
+                        // Select the last version by default
+                        historySelect.selectedIndex = versions.length - 1;
+                    }, 1000);
+                }
+
+                // Existing auto-save logic
+                document.querySelector(`#save-${agentName}-${columnId}`).style.display = 'inline-block';
+                clearTimeout(debounceSaveTimer);
+                debounceSaveTimer = setTimeout(function() {
+                    let currentContent = editor.getValue();
+                    let requestData = { answer: currentContent, column_id: columnId };
+                    sendFunctionCall(agentName, "updateAnswer", requestData, function(responseMessage) {
+                        console.log("Auto-save response:", responseMessage);
+                        document.querySelector(`#save-${agentName}-${columnId}`).style.display = 'none';
+                    });
+                }, 3000);
             });
 
             // Annotation Handling: Listen for cursor selection changes
             const selectionDisposable = editor.onDidChangeCursorSelection(function(event) {
+                if (!document.getElementById("show-annotation-menu").checked) return;
+
                 const selection = editor.getSelection();
                 const selectedText = editor.getModel().getValueInRange(selection);
 
@@ -722,6 +848,9 @@
                         const menuTop = editorRect.top + position.top + window.scrollY;
                         const menuLeft = editorRect.left + position.left + window.scrollX;
 
+                        // Make the annotation menu draggable
+                        $(".annotation-menu").draggable();
+
                         // Show the annotation menu at the calculated position
                         $(".annotation-menu")
                             .css({ top: menuTop + 'px', left: menuLeft + 'px' })
@@ -731,19 +860,20 @@
                         activeEditor = editor;
                         activeSelection = selection;
                     }
+                } else {
+                    // Hide the annotation menu if no text is selected
+                    $(".annotation-menu").hide();
                 }
             });
 
             // Store the editor and its disposables in the global array
-            editors.push({ 
-                editor, 
-                disposables: [contentDisposable, selectionDisposable], 
-                elementId 
-            });
+            editors.push({  editor, disposables: [contentDisposable, selectionDisposable],  elementId, versions, historySelect, isSettingContent});
 
             return editor;
         });
     }
+
+    
     // Dispose of an editor and its listener
     function disposeEditor(editor) {
         const disposable = editorDisposables.get(editor);
@@ -1194,6 +1324,7 @@ color: white;
         <div class="auto-open-checkbox">
             <label style="color:black;" for="auto-open-accordion"><input type="checkbox" id="auto-open-accordion" checked>Auto-focus new messages</label>
             <label style="color:black;"><input type="checkbox" id="show-optionals">Show optional messages</label>
+            <label style="color:black;"><input type="checkbox" id="show-annotation-menu" checked>Allow annotation menu on answers</label>
             <select id="filter-message-type">
                 <option value="all">All Message Types</option>
             </select>
@@ -1201,6 +1332,7 @@ color: white;
                 <option value="all">All Agent Types</option>
             </select>
             <input type="text" id="search-filter" placeholder="Search...">
+            <label style="color:black;">Default LLM in use: <span id="default-llm-in-use" style="font-weight: bold;">default_llm</span></label>
         </div>
 
         <div id="message-accordion" class="accordion"></div>
@@ -1304,10 +1436,10 @@ color: white;
 <div class="annotation-menu">
     <button class="close-btn">&times;</button>
     <select id="annotation-action">
-        <option value="keep">KEEP</option>
-        <option value="fix">FIX</option>
-        <option value="improve">IMPROVE</option>
-        <option value="explore">EXPLORE</option>
+        <option value="KEEP">KEEP</option>
+        <option value="FIX">FIX</option>
+        <option value="IMPROVE">IMPROVE</option>
+        <option value="EXPLORE">EXPLORE</option>
     </select>
     <input width="300" type="text" id="annotation-input" placeholder="Enter your annotation">
     <button id="apply-annotation">Apply</button>
@@ -1468,6 +1600,7 @@ function updateButtonVisibility() {
         $('.menu-option').hide();
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('go back');}).show();
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('give instruction or');}).show();
+        //$('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('change default agent');}).show();
         //$('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('edit answer');}).show();
     }
     else if (selection === 'ALL' || selection === 'ALL_SEND') {
@@ -1508,7 +1641,15 @@ function updateButtonVisibility() {
                button#regenwithmymodifbutton-${otherFullColumnId},
                input#comment-${otherFullColumnId}`).hide();
         });
-    } else if ($greenContinueButton.length > 0) console.log("multiple columns with button:"+$greenContinueButton.length);
+    } else if ($greenContinueButton.length > 1){ console.log("multiple columns with button:"+$greenContinueButton.length);}
+    else {
+        // If no green "Continue" button is visible, hide all relevant buttons across all columns
+        $(`button[id^="save-"], 
+           button[id^="evaluate-"], 
+           button[id^="regenallbutton-"], 
+           button[id^="regenwithmymodifbutton-"], 
+           input[id^="comment-"]`).hide();
+    }
 }
 
 // Call updateButtonVisibility when the selector changes
@@ -1758,33 +1899,32 @@ function getColumnsToKeep(agent) {
 
             const evaluationType = agentEvaluations[data.agent_name] || 'default';
 
+            // Add Select and Remove buttons if more than 1 solution
+            let selectionButtonsHtml = (data.column_max > 1) ?
+                    `<div style="text-align: center;"><button id="delete-${agent_columnId}"><i class="fa-regular fa-trash-can"></i>Remove</button></div>` : "";
+                    //`<div style="text-align: center;"><button id="select-${agent_columnId}"><i class="fa-regular fa-check-circle"></i> Select</button></div>
+                    //<div style="text-align: center;"><button id="delete-${agent_columnId}"><i class="fa-regular fa-trash-can"></i> Remove</button></div>` : "";
             targetColumn.innerHTML += `
             <div style="text-align: center;">
                 <div style="display: flex; justify-content: center; align-items: flex-start;">
-                    <div style="display: none; flex-direction: column; align-items: center; margin-right: 10px;">
-                        <input type="range" min="-1" max="10" value="-1" step="1" class="slider" id="slider-${agent_columnId}">
-                        <span id="value-${agent_columnId}" style="font-size: smaller;">Unscored</span>
+                    <!-- Left: Remove and Save buttons -->
+                    <div style="display: flex; flex-direction: column; align-items: center; margin-right: 10px;">
+                        ${selectionButtonsHtml}
+                        <button id="save-${agent_columnId}" style="display: none; margin-top: 5px;"><i class="fa-solid fa-rotate"></i>Save your Edit</button>
                     </div>
-                    <button id="save-${agent_columnId}" style="display: none;"><i class="fa-solid fa-rotate"></i>Save your Edit</button>
-                    <input type="text" id="comment-${agent_columnId}" placeholder="Write instructions to regenerate..." style="margin-right: 10px; width: 350px;">
-                    <button id="evaluate-${agent_columnId}"><i class="fa-regular fa-paper-plane"></i> Regenerate</button>
+
+                    <!-- Center: Textarea -->
+                    <textarea type="text" id="comment-${agent_columnId}" placeholder="Write instructions to regenerate... (or annotate the answer)" style="margin-right: 10px; width: 350px; height: 100px;"></textarea>
+
+                    <!-- Right: Evaluate and Regenerate buttons -->
+                    <div style="display: flex; flex-direction: column; align-items: left; gap: 5px;">
+                        <button id="evaluate-${agent_columnId}"><i class="fa-regular fa-paper-plane"></i>Regenerate from instructions</button><br>
+                        <button id="regenwithmymodifbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i>Regenerate from this answer's annotations</button>
+                        <button id="regenallbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i>Regenerate from all answers & annotations</button>
+                    </div>
                 </div>
             </div>
             `;
-
-            // Add Select and Remove buttons if more than 1 solution
-            let selectionButtonsHtml = (data.column_max > 1) ?
-                    `<div style="text-align: center;"><button id="delete-${agent_columnId}"><i class="fa-regular fa-trash-can"></i> Remove</button></div>` : "";
-                    //`<div style="text-align: center;"><button id="select-${agent_columnId}"><i class="fa-regular fa-check-circle"></i> Select</button></div>
-                    //<div style="text-align: center;"><button id="delete-${agent_columnId}"><i class="fa-regular fa-trash-can"></i> Remove</button></div>` : "";
-
-            // Add the regenerate buttons (regardless of the number of solutions)
-            targetColumn.innerHTML += `
-            <div style="display: flex; justify-content: center; gap: 10px;">
-                ${selectionButtonsHtml}
-                <div style="text-align: center;"><button id="regenwithmymodifbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i> Apply answer's annotations</button></div>
-                <div style="text-align: center;"><button id="regenallbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i> Merge all answers & annotations</button></div>
-            </div>`;
 
             if(evaluationType === 'score') {
                 targetColumn.innerHTML += `
@@ -1847,7 +1987,7 @@ function getColumnsToKeep(agent) {
                 }
             }
 
-        $(document).on("click", `#save-${agent_columnId}`, function () {
+        $(`#save-${agent_columnId}`).click(function () {
             // Retrieve the target column and editor instance
             let targetColumn = document.getElementById(`column-${agent_columnId}`);
             if (!targetColumn || !targetColumn.editorInstance) {
@@ -1869,7 +2009,7 @@ function getColumnsToKeep(agent) {
             });
         });
 
-    $(document).on("click", `#evaluate-${agent_columnId}`, function () {
+    $(`#evaluate-${agent_columnId}`).click(function () {
         // Check if the input field is empty
         let comment = $(`#comment-${agent_columnId}`).val().trim();
         if (comment === '') {
@@ -1925,7 +2065,7 @@ function getColumnsToKeep(agent) {
                 });
     });
 
-            $(document).on("click", `#regenallbutton-${agent_columnId}`, function () {
+            $(`#regenallbutton-${agent_columnId}`).click(function () {
                 // Disable all generation buttons
                 enableGenButtons(false);
 
@@ -1980,8 +2120,7 @@ function getColumnsToKeep(agent) {
                     addHistoryEntry(actionDescription);
                 });
             });
-
-            $(document).on("click", `#regenwithmymodifbutton-${agent_columnId}`, function () {
+          $(`#regenwithmymodifbutton-${agent_columnId}`).click(function () {
                 let targetColumn = document.getElementById(`column-${agent_columnId}`);
 
                 if(!targetColumn || !targetColumn.editorInstance) {
@@ -2278,6 +2417,8 @@ $(document).on('click', '.collapsible-header', function() {
 });
 
 
+
+
     function displayInputField() {
         $(".input-area").show();
         $("#user-input").show();
@@ -2331,7 +2472,7 @@ $(document).on('click', '.collapsible-header', function() {
                 let match = option.match(/\[(.)\](.*)/);
                 if (match && match[1]) {
                     let letter = match[1].toUpperCase();
-                    if (!match[2].includes("Change default") && !match[2].includes("Change premium") && !match[2].includes("Exit") && !match[2].includes("Log comments")) {
+                    if (!match[2].includes("Change premium") && !match[2].includes("Exit") && !match[2].includes("Log comments")) {
                         if (match[2].includes("Change num of parallel inferences")) {
                             // Remove ANSI codes
                             let cleanString = match[2].replace(/\u001b\[\d+m/g, '');
@@ -2341,6 +2482,41 @@ $(document).on('click', '.collapsible-header', function() {
                             // Set button color to green
                             let $option = $(`<div class="menu-option" data-option="${letter}" style="background-color: green;">${match[2]}</div>`);
                             $menuOptionsColumn.append($option);
+                        } else if (match[2].includes("Change default agent")){
+                            // Create a select element with the LLM "default" and "premium"
+                            let $select = $(`<select id="llm-select" name="llm-select" class="menu-option" data-option="${letter}"></select>`);
+                            // Set the default option with the current LLM used and set the text of the default option to this value and get value depends on the text
+                            let currentLLM = $("#default-llm-in-use").text();
+                            if(currentLLM === "premium_llm"){
+                                $select.append(`<option value="0">default_llm</option>`);
+                                $select.append(`<option value="1" selected>premium_llm</option>`);
+                                $select.append(`<option value="2">3_majority_chain</option>`);
+                                $select.append(`<option value="3">10_majority_chain</option>`);
+                            }
+                            else if(currentLLM === "default_llm"){
+                                $select.append(`<option value="0" selected>default_llm</option>`);
+                                $select.append(`<option value="1">premium_llm</option>`);
+                                $select.append(`<option value="2">3_majority_chain</option>`);
+                                $select.append(`<option value="3">10_majority_chain</option>`);
+                            }
+                            else if(currentLLM === "3_majority_chain"){
+                                $select.append(`<option value="0">default_llm</option>`);
+                                $select.append(`<option value="1">premium_llm</option>`);
+                                $select.append(`<option value="2" selected>3_majority_chain</option>`);
+                                $select.append(`<option value="3">10_majority_chain</option>`);
+                            }
+                            else if(currentLLM === "10_majority_chain"){
+                                $select.append(`<option value="0">default_llm</option>`);
+                                $select.append(`<option value="1">premium_llm</option>`);
+                                $select.append(`<option value="2">3_majority_chain</option>`);
+                                $select.append(`<option value="3" selected>10_majority_chain</option>`);
+                            }
+
+                            // Adds the select element to the menu options column
+                            $menuOptionsColumn.append($select);
+
+
+
                         } else {
                             // add a specific on click event for the go back button which will clear by doing $(`#message-accordion > div[data-agent="${data.agent_name}"]`).children("div").empty();
                             let actionOnclik = "";
@@ -2367,7 +2543,7 @@ $(document).on('click', '.collapsible-header', function() {
                 let match = option.match(/\[(.)\](.*)/);
                 if (match && match[1]) {
                     let letter = match[1].toUpperCase();
-                    if (!match[2].includes("Change default") && !match[2].includes("Change premium") && !match[2].includes("Exit") && !match[2].includes("Log comments")) {
+                    if (!match[2].includes("Change premium") && !match[2].includes("Exit") && !match[2].includes("Log comments")) {
                          if (match[2].includes("Change num of parallel inferences")) {
                         // Remove ANSI codes
                         let cleanString = match[2].replace(/\u001b\[\d+m/g, '');
@@ -2377,7 +2553,40 @@ $(document).on('click', '.collapsible-header', function() {
                         // Set button color to green
                         let $option = $(`<div class="menu-option" data-option="${letter}" style="background-color: green;">${match[2]}</div>`);
                         $("#menu-options").append($option);
-                    } else {
+                    } else if (match[2].includes("Change default agent")){
+                            // Create a select element with the LLM "default" and "premium"
+                            let $select = $(`<select id="llm-select" name="llm-select" class="menu-option" data-option="${letter}"></select>`);
+                            // Set the default option with the current LLM used and set the text of the default option to this value and get value depends on the text
+                            let currentLLM = $("#default-llm-in-use").text();
+                            if(currentLLM === "premium_llm"){
+                                $select.append(`<option value="0">default_llm</option>`);
+                                $select.append(`<option value="1" selected>premium_llm</option>`);
+                                $select.append(`<option value="2">3_majority_chain</option>`);
+                                $select.append(`<option value="3">10_majority_chain</option>`);
+                            }
+                            else if(currentLLM === "default_llm"){
+                                $select.append(`<option value="0" selected>default_llm</option>`);
+                                $select.append(`<option value="1">premium_llm</option>`);
+                                $select.append(`<option value="2">3_majority_chain</option>`);
+                                $select.append(`<option value="3">10_majority_chain</option>`);
+                            }
+                            else if(currentLLM === "3_majority_chain"){
+                                $select.append(`<option value="0">default_llm</option>`);
+                                $select.append(`<option value="1">premium_llm</option>`);
+                                $select.append(`<option value="2" selected>3_majority_chain</option>`);
+                                $select.append(`<option value="3">10_majority_chain</option>`);
+                            }
+                            else if(currentLLM === "10_majority_chain"){
+                                $select.append(`<option value="0">default_llm</option>`);
+                                $select.append(`<option value="1">premium_llm</option>`);
+                                $select.append(`<option value="2">3_majority_chain</option>`);
+                                $select.append(`<option value="3" selected>10_majority_chain</option>`);
+                            }
+
+                            // Adds the select element to the menu options column
+                            $("#menu-options").append($select);
+
+                        } else {
                         let $option = $(`<div class="menu-option" data-option="${letter}">${match[2]}</div>`);
                         $("#menu-options").append($option);
                     }
@@ -2500,6 +2709,8 @@ $(document).on('click', '.collapsible-header', function() {
 
     // Add a listener for mouseup events on messages or hljs code blocks
     $(document).on("mouseup", function(e) {
+        // If "show-annotation-menu" is disabled, return
+        if (!document.getElementById("show-annotation-menu").checked) return;
         let selection = window.getSelection();
         let selectedText = selection.toString();
         if (selectedText) {
@@ -2516,6 +2727,9 @@ $(document).on('click', '.collapsible-header', function() {
                 let extractedContents = range.extractContents();
                 span.appendChild(extractedContents);
                 range.insertNode(span);
+
+                // Make the annotation menu draggable
+                $(".annotation-menu").draggable();
 
                 saveSelection();
                 $(".annotation-menu")
@@ -2651,7 +2865,29 @@ $(document).on('click', '.collapsible-header', function() {
         }
     });
 
+
+
     $(document).on("click", ".menu-option", function() {
+        // If the click is on a select element, send the selected value
+        if ($(this).is("select")) {
+            // If the id of the select element is llm-select, send a "H"
+            if ($(this).attr("id") === "llm-select") {
+                let option = $(this).find("option:selected").val();
+                socket.send(JSON.stringify({ message: `H` }));
+                selectedLLM = option;
+            }
+
+            // Hide the menu options after selecting one
+            $("#menu-options").empty();
+            // Hide all the menu options starting with menu-options-column-
+            $("div[id^='menu-options-column-']").empty();
+            // Retrieve the text of the selected option
+            let text = $(this).find("option:selected").text();
+            let actionDescription = `User selected menu option "${text}"`;
+            addHistoryEntry(actionDescription);
+            // Set the default LLM in use
+            $("#default-llm-in-use").text($(this).find("option:selected").text());
+        }
         let option = $(this).data("option");
         let input = $("#user-input").val();
         socket.send(JSON.stringify({ message: `${option}` }));

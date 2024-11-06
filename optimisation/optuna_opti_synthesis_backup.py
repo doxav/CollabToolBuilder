@@ -1,6 +1,6 @@
 import os
 import subprocess
-from datetime import datetime, timedelta
+from datetime import datetime
 from elasticsearch import Elasticsearch
 from new_environment import stop_containers
 from optimisation.optuna_main import global_main, launch_run
@@ -10,6 +10,29 @@ import time
 from elasticsearch.helpers import bulk
 from elasticsearch import ConnectionError
 import shutil
+
+import sys
+
+# Generate a timestamped filename
+timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+name_exp = f"{os.path.splitext(os.path.basename(__file__))[0]}_{timestamp}"
+log_filename = f"logs/{name_exp}.log"
+
+# Redirect stdout to both console and log file
+class DualLogger:
+    def __init__(self, filename):
+        self.terminal = sys.stdout
+        if not os.path.exists('logs'):
+            os.chdir('..')
+        self.log = open(filename, "w")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):  pass # For compatibility with `sys.stdout`
+
+sys.stdout = DualLogger(log_filename)
 
 def get_docker_compose_command():
     """
@@ -40,57 +63,42 @@ def wait_for_elasticsearch(host, port, timeout=60):
             return None
         time.sleep(5)
 
-def extract_timestamp_from_text(text_field, metadata_dict_field):
+def extract_timestamp_from_text(text_field):
     """
     Extrait le timestamp du champ 'time' dans 'text' et le convertit en objet datetime.
     """
-    if not text_field and not metadata_dict_field:
-        print("Both 'text_field' and 'metadata_dict_field' are empty.")
+    if not text_field:
+        print("Le champ 'text' est vide.")
         return None
-    
-    def parse_time(time_str):
-        """Helper function to parse the time string into a datetime object."""
+
+    try:
+        # Essayer de parser le champ 'text' comme JSON
+        text_dict = json.loads(text_field)
+    except json.JSONDecodeError:
         try:
-            return datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%S.%f')
-        except ValueError:
-            print(f"Invalid date format for 'time': {time_str}")
+            # Si JSON échoue, essayer avec ast.literal_eval
+            text_dict = ast.literal_eval(text_field)
+        except (ValueError, SyntaxError):
+            print("Impossible de parser le champ 'text' en dictionnaire.")
             return None
-        
-    # First attempt to extract 'time' from text_field
-    if text_field:
-        try:
-            # Try parsing as JSON
-            text_dict = json.loads(text_field)
-        except json.JSONDecodeError:
-            try:
-                # Fall back to ast.literal_eval for safe evaluation
-                text_dict = ast.literal_eval(text_field)
-            except (ValueError, SyntaxError):
-                print("Failed to parse 'text_field' into a dictionary.")
-                text_dict = None
 
-        if isinstance(text_dict, dict):
-            time_str = text_dict.get('time')
-            if time_str:
-                print(f"Timestamp found in 'text_field': {time_str}")
-                return parse_time(time_str)
-            else:
-                print("'time' key not found in 'text_field'.")
-
-    # Fallback: Attempt to extract 'time' from metadata_dict_field
-    if isinstance(metadata_dict_field, dict):
-        time_str = metadata_dict_field.get('time')
+    if isinstance(text_dict, dict):
+        time_str = text_dict.get('time')
         if time_str:
-            print(f"Timestamp found in 'metadata_dict_field': {time_str}")
-            return parse_time(time_str)
+            # Ajuster le format de la date si nécessaire
+            try:
+                timestamp_dt = datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%S.%f')
+                print(f"Timestamp extrait de 'text': {timestamp_dt}")
+                return timestamp_dt
+            except ValueError:
+                print(f"Format de date invalide pour 'time': {time_str}")
+                return None
         else:
-            print("'time' key not found in 'metadata_dict_field'.")
+            print("La clé 'time' n'est pas présente dans 'text'.")
+            return None
     else:
-        print("'metadata_dict_field' is not a dictionary.")
-
-    # If neither field contains a valid 'time', return None
-    print("Timestamp not found in either 'text_field' or 'metadata_dict_field'.")
-    return None
+        print("Le champ 'text' n'est pas un dictionnaire après parsing.")
+        return None
 
 def get_all_documents(es_client, es_index):
     """
@@ -103,42 +111,62 @@ def get_all_documents(es_client, es_index):
     }
 
     all_hits = []
-    page = es_client.search(
-        index=es_index,
-        body=query,
-        scroll='2m',
-        size=500,
-        request_timeout=120
-    )
-    sid = page['_scroll_id']
-    scroll_size = len(page['hits']['hits'])
-    all_hits.extend(page['hits']['hits'])
+    delays = [3, 6, 9, 18]  # Progressive delays for retries
+    for attempt, delay in enumerate(delays, start=1):
+        try:
+            page = es_client.search(index=es_index, body=query, scroll='2m', size=1000)
+            sid = page['_scroll_id']
+            all_hits.extend(page['hits']['hits'])
 
-    while scroll_size > 0:
-        page = es_client.scroll(scroll_id=sid, scroll='2m')
-        sid = page['_scroll_id']
-        scroll_size = len(page['hits']['hits'])
-        all_hits.extend(page['hits']['hits'])
+            while len(page['hits']['hits']) > 0:
+                page = es_client.scroll(scroll_id=sid, scroll='2m')
+                sid = page['_scroll_id']
+                all_hits.extend(page['hits']['hits'])
 
-    print(f"Total de documents récupérés dans l'index '{es_index}': {len(all_hits)}")
-    return all_hits
+            print(f"Total de documents récupérés dans l'index '{es_index}': {len(all_hits)}")
+            return all_hits  # Success; return results if no exceptions
+
+        except Exception as e:
+            if attempt == len(delays):
+                break  # Last attempt; do not wait
+            print(f"Attempt {attempt} failed: {e}. Retrying in {delay} seconds...")
+            time.sleep(delay)
+
+    return []  # Return empty list if all retries fail
+
+from datetime import timedelta
 
 def filter_documents_by_timestamp(all_hits, desired_datetime, duration_minutes):
     """
-    Filtre les documents dont le timestamp extrait de 'text' est dans la plage de temps désirée.
+    Filters documents within a desired time range.
+    If desired_datetime is None, uses the earliest timestamp found.
+    Returns an empty list if duration_minutes is 0 or no valid timestamps exist.
     """
+    if duration_minutes == 0:
+        return []
+
+    # Extract timestamps and determine desired_datetime if needed
+    timestamps = [
+        extract_timestamp_from_text(hit['_source'].get('text', '')) or extract_timestamp_from_text(str(hit['_source'].get('metadata', '')))
+        for hit in all_hits
+    ]
+    timestamps = [ts for ts in timestamps if ts]
+
+    if not timestamps:
+        return []  # No valid timestamps
+
+    desired_datetime = desired_datetime or min(timestamps)
     end_datetime = desired_datetime + timedelta(minutes=duration_minutes)
-    filtered_documents = []
-    for hit in all_hits:
-        source = hit['_source']
-        text_field = source.get('text', '')
-        metadata_dict_field = source.get('metadata', '')
-        timestamp_dt = extract_timestamp_from_text(text_field, metadata_dict_field)
-        if timestamp_dt:
-            if desired_datetime <= timestamp_dt < end_datetime:
-                filtered_documents.append(hit)
-    print(f"{len(filtered_documents)} documents filtrés entre {desired_datetime} et {end_datetime}")
+
+    # Filter documents within the time range
+    filtered_documents = [
+        hit for hit in all_hits
+        if desired_datetime <= (timestamp := (extract_timestamp_from_text(hit['_source'].get('text', '')) or extract_timestamp_from_text(str(hit['_source'].get('metadata', ''))))) < end_datetime
+    ]
+
+    print(f"{len(filtered_documents)} documents filtered between {desired_datetime} and {end_datetime}")
     return filtered_documents
+
 
 def copy_backup_to_container(backup_folder : str, container_name : str):
     """
@@ -155,22 +183,8 @@ def copy_backup_to_container(backup_folder : str, container_name : str):
                 # Créer le dossier dans le conteneur si nécessaire
                 container_dir = os.path.dirname(container_path)
                 subprocess.run(['docker', 'exec', container_name, 'mkdir', '-p', container_dir])
-
-                # Vérifier si le fichier existe déjà dans le conteneur
-                result = subprocess.run(['docker', 'exec', container_name, 'test', '-f', container_path],
-                                        capture_output=True)
-
-                if result.returncode == 0:
-                    # Fichier existe déjà, fusionner (ajouter un suffixe pour éviter d'écraser)
-                    base, ext = os.path.splitext(file)
-                    new_file = f"{base}_fusion{ext}"
-                    container_path = os.path.join(container_dir, new_file)
-                    print(f"Fichier '{file}' existe déjà, renommé en '{new_file}' pour éviter l'écrasement.")
-
-                # Copier le fichier dans le conteneur
+                # Copier le fichier sans écraser
                 subprocess.run(['docker', 'cp', local_path, f'{container_name}:{container_path}'])
-                print(f"Fichier '{local_path}' copié dans '{container_path}'")
-
         print("Copie des fichiers terminée.")
     else:
         print(f"Le dossier '{backup_folder}' n'existe pas.")
@@ -184,9 +198,7 @@ def restart_original_container(docker_compose_file):
     subprocess.run(docker_compose_cmd + ['-f', docker_compose_file, 'start'])
     print("Conteneur Elasticsearch original redémarré.")
 
-def main(docker_compose_file, time_human_xp, name_xp):
-    print(os.getcwd())
-    backup_folder = 'backup'
+def set_elastic_docker_with_backup_data(docker_compose_file, time_human_xp, name_xp, backup_folder = 'optimisation/backup_'):
     es_host = 'localhost'
     es_port = 9200
     index_pattern = f'*{name_xp}*'   # Filtre pour les noms d'index contenant 'name_exp'
@@ -195,19 +207,23 @@ def main(docker_compose_file, time_human_xp, name_xp):
     # Obtenir le nom du conteneur Elasticsearch en cours d'exécution
     result = subprocess.run(['docker', 'ps', '--filter', 'ancestor=docker.elastic.co/elasticsearch/elasticsearch:8.10.1', '--format', '{{.Names}}'], capture_output=True, text=True)
     container_name = result.stdout.strip()
-    # if container_name:
-    #     copy_backup_to_container(backup_folder, container_name)
-    # else:
-    #     print("Aucun conteneur Elasticsearch en cours d'exécution trouvé.")
-    #     return
+    if container_name:
+        copy_backup_to_container(backup_folder, container_name)
+    else:
+        print("Aucun conteneur Elasticsearch en cours d'exécution trouvé.")
+        return
 
     es_client = wait_for_elasticsearch(es_host, es_port, timeout=120)
     if es_client is None:
         print("Arrêt du script en raison de l'indisponibilité de Elasticsearch.")
         return
-
-    # Récupérer la liste des index contenant 'name_exp' dans le nom
+    # Récupérer la liste des index contenant 'name_exp' dans le nom with retry/sleep mechanism
+    delays = [3, 6, 9, 18]
     indices = es_client.indices.get_alias(index=index_pattern)
+    for delay in delays:
+        try: indices = es_client.indices.get_alias(index=index_pattern); break
+        except Exception as e:
+            time.sleep(delay) if delay != delays[-1] else print(f"Error: {e}. No more retries.")
     index_names = list(indices.keys())
     if not index_names:
         print(f"Aucun index trouvé avec le motif '{index_pattern}'.")
@@ -229,13 +245,14 @@ def main(docker_compose_file, time_human_xp, name_xp):
             try:
                 desired_datetime = datetime.strptime(date_time_str, '%d-%m-%Y-%H-%M-%S')
             except ValueError as e:
-                print(f"Erreur lors de la conversion de la date et l'heure pour l'index '{es_index}': {e}")
-                continue
+                print(f"Error in trying to convert from backup name '{es_index}': {e}\nUse current time instead.")
+                desired_datetime = None
         else:
             print(f"Format du nom de l'index inattendu pour '{es_index}'.")
             continue
 
         duration_minutes = time_human_xp  # Durée en minutes du filtre
+        desired_datetime = None
 
         # Étape 3 : Filtrer les documents en fonction du timestamp extrait de 'text'
         filtered_documents = filter_documents_by_timestamp(all_hits, desired_datetime, duration_minutes)
@@ -254,7 +271,7 @@ def main(docker_compose_file, time_human_xp, name_xp):
     print(f"\nNombre total de documents après filtrage : {len(all_filtered_documents)}")
 
     # **Étape 4 : Mettre les documents filtrés dans le dossier 'backup'**
-    backup_folder = 'backup'
+    backup_folder = 'backup_temp'
     if not os.path.exists(backup_folder):
         os.makedirs(backup_folder)
         print(f"Dossier '{backup_folder}' créé.")
@@ -281,24 +298,18 @@ def main(docker_compose_file, time_human_xp, name_xp):
         print("Arrêt du script en raison de l'indisponibilité de la nouvelle instance Elasticsearch.")
         return
 
-    # Créer les index dans la nouvelle instance Elasticsearch
+    # Créer les index dans la nouvelle instance et insérer les documents
     for es_index in index_names:
         # Charger le mapping sauvegardé
         with open(f'mappings/{es_index}_mapping.json', 'r', encoding='utf-8') as f:
             old_mapping = json.load(f)
 
-        # Modify the settings to avoid replicas
-        settings = {
-            "settings": {
-                "number_of_replicas": 0  # Set replicas to 0
-            },
-            "mappings": old_mapping['mappings']
-        }
-
         # Créer l'index dans la nouvelle instance Elasticsearch
         if not new_es_client.indices.exists(index=es_index):
-            new_es_client.indices.create(index=es_index, body=settings)
-            print(f"Index '{es_index}' créé dans la nouvelle instance Elasticsearch avec 0 répliques.")
+            new_es_client.indices.create(index=es_index, body={
+                "mappings": old_mapping['mappings']
+            })
+            print(f"Index '{es_index}' créé dans la nouvelle instance Elasticsearch.")
 
     # Préparer les actions pour l'API bulk
     actions = []
@@ -314,39 +325,64 @@ def main(docker_compose_file, time_human_xp, name_xp):
     success, _ = bulk(new_es_client, actions)
     print(f"{success} documents ont été insérés dans la nouvelle instance Elasticsearch.")
 
+    return success
+
+initial_HumanXp_duration_values = [50] # [0, 20, 30, 60]
+name_experiments = ["auto", "msi_30-10-2024-14-58-34", "msi_30-10-2024-14-25-12", "msi_30-10-2024-15-01-19", "msi_29-10-2024-20-28-27", "msi_29-10-2024-20-27-18", "msi_30-10-2024-13-20-11"] # "msi_30-10-2024-14-25-12" "msi_20-10-2024-12-02-28" "msi_30-10-2024-14-58-34" ["auto"]
+name_experiments = ["msi_30-10-2024-14-58-34", "msi_30-10-2024-15-01-19", "msi_29-10-2024-20-28-27", "msi_30-10-2024-13-20-11"] # "auto", "msi_29-10-2024-20-27-18", "msi_30-10-2024-14-25-12"] #
+name_experiments = ["msi_29-10-2024-20-27-18"] # "auto", "msi_29-10-2024-20-27-18", "msi_30-10-2024-14-25-12"] #
+#totalxp_duration_values = [30, 30, 30]
+totalxp_duration_values = [10]
+#name_experiments = ["msi_30-10-2024-14-58-34"] # "msi_30-10-2024-14-25-12" "msi_20-10-2024-12-02-28" "msi_30-10-2024-14-58-34"
+from optuna.samplers import GridSampler
+my_grid = GridSampler({'time_human_xp': initial_HumanXp_duration_values, 'name_xp': name_experiments, 'totalxp_duration_value': totalxp_duration_values})
+n_trials = len(initial_HumanXp_duration_values) * len(name_experiments) * len(totalxp_duration_values)
+skip_learning_to_test_backup = False
+time_xp_auto_deduced_from_human_xp = False
 
 def objective(trial, name_xp : str):
-    name_experiment = "msi_20-10-2024-12-02-28"
-    time_human_xp = trial.suggest_categorical("time_human_xp", [0, 10, 20, 30, 40, 50])
-    time_xp_auto = (60 - time_human_xp) * 60 # recuperate the time in seconds
+    global initial_HumanXp_duration_values, skip_learning_to_test_backup, time_xp_auto_deduced_from_human_xp, totalxp_duration_values
 
-    main('docker-compose-backup.yml', time_human_xp, name_experiment)
+    time_human_xp = trial.suggest_categorical("time_human_xp", initial_HumanXp_duration_values)
+    totalxp_duration_value = trial.suggest_categorical("totalxp_duration_value", totalxp_duration_values)
+    if time_xp_auto_deduced_from_human_xp:
+        time_xp_auto = max((totalxp_duration_value - time_human_xp), 1) * 60 # To avoid 0 time, minimum 1 minute
+    else:
+        time_xp_auto = totalxp_duration_value * 60
+    print(f"Time_human_xp: {time_human_xp}, Time_xp_auto: {time_xp_auto}")
 
-    with open(f'Optuna_results/{name_xp}.txt', 'a') as f:
-        f.write(f"Time_human_xp: {time_human_xp}\n")
+    name_experiment = trial.suggest_categorical("name_xp", name_experiments)
 
-    performance = launch_run(default_llm_key="default_llm",
-                             premium_llm_key="premium_llm",
-                             problem_prompts_subdir="IR_CPS_TechSynthesis",
-                             max_execution_time=time_xp_auto,
-                             model_choice={"coach": "default_llm","coder": "premium_llm","critic": "default_llm","capitalizer": "default_llm"},
-                             optuna_opti="coach",
-                             name_exp=name_experiment,
-                             arrayn_ret=True,
-                             continue_each_loop=True)
+    number_selected = set_elastic_docker_with_backup_data('docker-compose-backup.yml', time_human_xp, name_experiment)
+    performance = 0
+    if not skip_learning_to_test_backup:
+        performance = launch_run(default_llm_key="default_llm",
+                                premium_llm_key="premium_llm",
+                                problem_prompts_subdir="IR_CPS_TechSynthesis",
+                                max_execution_time=time_xp_auto,
+                                max_coding_attempts=10,
+                                # special_criteria={"CodingAgent#max_autofix": 2},
+                                model_choice={"coach": "default_llm","coder": "premium_llm","critic": "default_llm","capitalizer": "default_llm"},
+                                optuna_opti="coach",
+                                name_exp=name_experiment,
+                                arrayn_ret=True,
+                                continue_each_loop=True)
 
-    with open(f'Optuna_results/{name_xp}.txt', 'a') as f:
-        f.write(f"performance: {max(performance)}\n")
+        with open(f'Optuna_results/{name_xp}.txt', 'a') as f:
+            f.write(f"Time_human_xp: {time_human_xp}\n")
+            f.write(f"performances: {performance}\n")
+            if performance and len(performance) > 0:
+                f.write(f"performance: {max(performance)}\n")
+            else:
+                f.write(f"performance: None\n")
 
     stop_containers('docker-compose-backup.yml')
     restart_original_container('elasticsearch/docker-compose.yml')
-    wait_for_elasticsearch('localhost', 9200)
 
-    return max(performance)
-
-
-
-
+    if not skip_learning_to_test_backup:
+        return max(performance)
+    else:
+        return number_selected
 
 if __name__ == "__main__":
-    global_main(objective, '', 'backup', initial_trials=[{'time_human_xp': 50}, {'time_human_xp': 40}, {'time_human_xp': 30}, {'time_human_xp': 20}, {'time_human_xp': 10}, {'time_human_xp': 0}], n_trials=5)
+    global_main(objective, '', 'backup', name_exp=name_exp, n_trials=n_trials, sampler=my_grid)

@@ -130,8 +130,8 @@ This continuous feedback loop ensures that the model’s outputs align more clos
 
 # Pipeline integration for Anomalies Solver
 
-A special environnement has recently been add to the current loop. By creating pipelines instead of functions, and by loading it immediatly on OpenWebUI plateform, it will allow users to solve Anomalies dependning on its personnal labels such as : title, abstract, comments...
-Thanks to the connection to a Neo4j database which containts all of the previous anomalies, pipelines are able to solve new anomalies by using RAG method (Retrieve Augmeneted Generation)
+A special environnement has recently been added to the current loop. By creating pipelines instead of functions, and by loading it immediatly on OpenWebUI plateform, it allows users to solve Anomalies dependning on its personnal labels such as : title, abstract, comments...
+Thanks to the connection to a Neo4j database which containts all of the previous anomalies, pipelines are able to solve new anomalies by using graph RAG method (Retrieve Augmeneted Generation)
 
 
 ![RAG](images/rag_rm.png)

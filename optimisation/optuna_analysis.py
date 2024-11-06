@@ -25,8 +25,9 @@ def analysis(name_exp: str, in_dir = False):
         # File to save results
         output_file = os.path.join(current_folder, f"{name_exp}_analysis.txt" if in_dir else f"Optuna_results/{name_exp}_analysis.txt")
 
-        sqlite_file_original = os.path.join(current_folder, f"{name_exp}.db" if in_dir else f"Optuna_db/{name_exp}.db")
-        sqlite_file = os.path.join(current_folder, f"{name_exp}_copy_{current_datetime}.db" if in_dir else f"Optuna_db/{name_exp}_copy_{current_datetime}.db")
+        name_with_extension = f"{name_exp.rstrip('.db')}.db"
+        sqlite_file_original = os.path.join(current_folder, name_with_extension if in_dir else f"Optuna_db/{name_with_extension}")
+        sqlite_file = os.path.join(current_folder, f"{name_with_extension}_copy_{current_datetime}" if in_dir else f"Optuna_db/{name_with_extension}_copy_{current_datetime}")
 
         # Function to write results to the file
         def write_to_file(text, mode="a"):
@@ -69,10 +70,10 @@ def analysis(name_exp: str, in_dir = False):
             df = study.trials_dataframe()
 
             if len(df) > 0:
-                # Sort by `value` to display top 10 trials (or fewer if less than 10)
-                sorted_df = df.sort_values(by='value', ascending=False).head(min(10, len(df)))
+                # Sort by `value` to display top 20 trials (or fewer if less than 20)
+                sorted_df = df.sort_values(by='value', ascending=False).head(min(20, len(df)))
 
-                write_to_file(f"\nTop 10 Trials by Performance (out of {total_trials} trials):\n")
+                write_to_file(f"\nTop 20 Trials by Performance (out of {total_trials} trials):\n")
                 write_to_file(f"{'Value':<10} | {'State':<10} | {'Params':<40} | {'Datetime':<20} | {'Trial ID'}")
                 write_to_file("-" * 120)
 
@@ -93,10 +94,10 @@ def analysis(name_exp: str, in_dir = False):
                     # Write the row with params string
                     write_to_file(f"{trial_value:<10} | {trial_state:<10} | {params_str:<40} | {datetime_short:<20} | {row['number']}")
  
-                # Sort by `value` to display top 10 trials (or fewer if less than 10)
-                sorted_df = df.sort_values(by='value', ascending=True).head(min(10, len(df)))
+                # Sort by `value` to display top 20 trials (or fewer if less than 20)
+                sorted_df = df.sort_values(by='value', ascending=True).head(min(20, len(df)))
 
-                write_to_file(f"\nLeast 10 Trials by Performance (out of {total_trials} trials):\n")
+                write_to_file(f"\nLeast 20 Trials by Performance (out of {total_trials} trials):\n")
                 write_to_file(f"{'Value':<10} | {'State':<10} | {'Params':<40} | {'Datetime':<20} | {'Trial ID'}")
                 write_to_file("-" * 120)
 
