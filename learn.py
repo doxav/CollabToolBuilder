@@ -205,7 +205,7 @@ def apply_special_criteria(agent, special_criteria, available_locals=None):
 
     :param agent: The agent instance to modify.
     :param special_criteria: Dictionary containing the special criteria.
-    :param params: Dictionary of captured parameters (by default, uses locals().copy()). If None:, uses inspect to dynamically capture calling function's parameters.
+    :param available_locals: Dictionary containing the local variables of the caller function.
     :return: Dictionary of only the modified parameters.
     """
     # Dictionary to store only the modified parameters

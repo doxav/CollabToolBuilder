@@ -1,6 +1,6 @@
 import os
 import subprocess
-from datetime import datetime, timedelta
+from datetime import datetime
 from elasticsearch import Elasticsearch
 from new_environment import stop_containers
 from optimisation.optuna_main import global_main, launch_run
@@ -22,6 +22,8 @@ log_filename = f"logs/{name_exp}.log"
 class DualLogger:
     def __init__(self, filename):
         self.terminal = sys.stdout
+        if not os.path.exists('logs'):
+            os.chdir('..')
         self.log = open(filename, "w")
 
     def write(self, message):
@@ -115,12 +117,12 @@ def get_all_documents(es_client, es_index):
             page = es_client.search(index=es_index, body=query, scroll='2m', size=1000)
             sid = page['_scroll_id']
             all_hits.extend(page['hits']['hits'])
-            
+
             while len(page['hits']['hits']) > 0:
                 page = es_client.scroll(scroll_id=sid, scroll='2m')
                 sid = page['_scroll_id']
                 all_hits.extend(page['hits']['hits'])
-                
+
             print(f"Total de documents récupérés dans l'index '{es_index}': {len(all_hits)}")
             return all_hits  # Success; return results if no exceptions
 
@@ -161,7 +163,7 @@ def filter_documents_by_timestamp(all_hits, desired_datetime, duration_minutes):
         hit for hit in all_hits
         if desired_datetime <= (timestamp := (extract_timestamp_from_text(hit['_source'].get('text', '')) or extract_timestamp_from_text(str(hit['_source'].get('metadata', ''))))) < end_datetime
     ]
-    
+
     print(f"{len(filtered_documents)} documents filtered between {desired_datetime} and {end_datetime}")
     return filtered_documents
 
@@ -175,7 +177,9 @@ def copy_backup_to_container(backup_folder : str, container_name : str):
         for root, dirs, files in os.walk(backup_folder):
             for file in files:
                 local_path = os.path.join(root, file)
-                container_path = os.path.join('/usr/share/elasticsearch/data', os.path.relpath(local_path, backup_folder))
+                container_path = os.path.join('/usr/share/elasticsearch/data',
+                                              os.path.relpath(local_path, backup_folder))
+
                 # Créer le dossier dans le conteneur si nécessaire
                 container_dir = os.path.dirname(container_path)
                 subprocess.run(['docker', 'exec', container_name, 'mkdir', '-p', container_dir])
@@ -323,10 +327,10 @@ def set_elastic_docker_with_backup_data(docker_compose_file, time_human_xp, name
 
     return success
 
-initial_HumanXp_duration_values = [50] # [0, 20, 30, 60] 
+initial_HumanXp_duration_values = [50] # [0, 20, 30, 60]
 name_experiments = ["auto", "msi_30-10-2024-14-58-34", "msi_30-10-2024-14-25-12", "msi_30-10-2024-15-01-19", "msi_29-10-2024-20-28-27", "msi_29-10-2024-20-27-18", "msi_30-10-2024-13-20-11"] # "msi_30-10-2024-14-25-12" "msi_20-10-2024-12-02-28" "msi_30-10-2024-14-58-34" ["auto"]
-name_experiments = ["msi_30-10-2024-14-58-34", "msi_30-10-2024-15-01-19", "msi_29-10-2024-20-28-27", "msi_30-10-2024-13-20-11"] # "auto", "msi_29-10-2024-20-27-18", "msi_30-10-2024-14-25-12"] # 
-name_experiments = ["msi_29-10-2024-20-27-18"] # "auto", "msi_29-10-2024-20-27-18", "msi_30-10-2024-14-25-12"] # 
+name_experiments = ["msi_30-10-2024-14-58-34", "msi_30-10-2024-15-01-19", "msi_29-10-2024-20-28-27", "msi_30-10-2024-13-20-11"] # "auto", "msi_29-10-2024-20-27-18", "msi_30-10-2024-14-25-12"] #
+name_experiments = ["msi_29-10-2024-20-27-18"] # "auto", "msi_29-10-2024-20-27-18", "msi_30-10-2024-14-25-12"] #
 #totalxp_duration_values = [30, 30, 30]
 totalxp_duration_values = [10]
 #name_experiments = ["msi_30-10-2024-14-58-34"] # "msi_30-10-2024-14-25-12" "msi_20-10-2024-12-02-28" "msi_30-10-2024-14-58-34"
@@ -350,7 +354,7 @@ def objective(trial, name_xp : str):
     name_experiment = trial.suggest_categorical("name_xp", name_experiments)
 
     number_selected = set_elastic_docker_with_backup_data('docker-compose-backup.yml', time_human_xp, name_experiment)
-
+    performance = 0
     if not skip_learning_to_test_backup:
         performance = launch_run(default_llm_key="default_llm",
                                 premium_llm_key="premium_llm",

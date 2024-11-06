@@ -6,14 +6,13 @@ from utils.llm_utils import  HumanLLMMonitor
 from config import MODELS_CONFIG_LIST
 from langchain_openai import ChatOpenAI
 
-def generate_annotations(output: str):
+def generate_annotations(output: str, output_id : int = None):
     """
     Ask a LLM to generate annotations on a prompt given in parameters.
 
     Parameters:
         output (str): The prompt to annotate.
-        prompt_critic (str): The prompt for annotations management.
-
+        output_id (int): The id of the output to annotate.
     Returns:
         str: The annotated prompt.
     """

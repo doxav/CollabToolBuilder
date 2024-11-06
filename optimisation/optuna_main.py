@@ -228,7 +228,7 @@ def launch_study(objective, name_exp : str, n_trials=200, sampler=None):
         study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}", study_name=name_exp)
     study.optimize(objective, n_trials=n_trials)
 
-def global_main(objective, agent_name : str = "", params_tested : str = "", name_exp : str = None, n_trials=200, sampler=None):
+def global_main(objective, agent_name : str = "", params_tested : str = "", name_exp : str = None, n_trials = 200, sampler=None):
     """
     Main function to launch the Optuna study.
 
@@ -248,7 +248,7 @@ def global_main(objective, agent_name : str = "", params_tested : str = "", name
         else :
             timestamp_xp = int(time.time())
             name_exp = f"xp_{agent_name}{params_tested}{timestamp_xp}"
-    launch_study(lambda trial: objective(trial, name_exp), name_exp, n_trials, sampler=sampler)
+    launch_study(lambda trial: objective(trial, name_exp), name_exp, n_trials=n_trials, sampler=sampler)
 
 documentation = """
 DOCUMENTATION OF AVAILABLE FUNCTIONS IN THE "bot" OBJECT (SynthesisManager class): {{{

@@ -1,5 +1,4 @@
 from inference_functions import generate_annotations
-from learn import CodingAgent
 from optimisation.optuna_main import launch_run, definition_few_shots, global_main, init_prompts_directory
 from optimisation.optuna_main import documentation
 import os
@@ -26,7 +25,10 @@ def objective(trial, name_xp : str):
 
     tries_annotations = trial.suggest_categorical("tries_annotations", ['TaskIdentificationAgent', 'CodingAgent'])
     
-    #annotation_types_filter = trial.suggest_categorical("annotation_types_filter", ['FIX', 'DELETE', 'APPROVE', 'ALL'])
+    annotation_types_filter = trial.suggest_categorical("annotation_types_filter", ['FIX', 'DELETE', 'APPROVE', 'ALL'])
+    if annotation_types_filter == "ALL":
+        annotation_types_filter = 'FIX, \DELETE, \APPROVE'
+    annotation_number = trial.suggest_int("annotation_number", 1, 5)
     
     annotations_critic_system_prompt = trial.suggest_categorical("annotations_system_prompt", [
         """Your Task:
@@ -93,6 +95,18 @@ Your task is to extract and organize feedback tags from the **ANNOTATED ANSWER**
 """
     ])
 
+    annotation_generate_prompt = f"""
+        You're an AI assistant. Your task is to generate annotations on the prompt given to you. The output should be exactly the same as the input but with some annotations
+    in it, no changes on the text itself. The annotations will have this format:
+    '\\{annotation_types_filter}{{the text to annotate}}{{the feedback for the text (what is wrong, what is right, etc.)}}'
+    You should not change anything of the content of the given prompt, only add annotations. You have to add {annotation_number} annotations, and for each one of them don't place
+    them randomly, but place them in a way that they are relevant to the text.
+    Try to give real feedbacks for the annotations, and not just random feedbacks. Finally, don't annotate the same text twice or the full text in one; place annotations
+    on phrases or keywords that are relevant.
+    
+    INPUT:
+    """
+
     # Reasoning and Task instructions based on file content
 
     coder_task_description = f"""
@@ -147,6 +161,9 @@ Your task is to extract and organize feedback tags from the **ANNOTATED ANSWER**
 
     with open(f"./prompts/IR_CPS_TechSynthesis/{name_xp}/apply_annotations.txt", "w") as f:
         f.write(annotations_critic_system_prompt)
+
+    with open(f"./prompts/IR_CPS_TechSynthesis/{name_xp}/generate_annotations.txt", "w") as f:
+        f.write(annotation_generate_prompt)
 
     # Write the generated prompt to a file that will be used by the Coder agent
     with open(f"./prompts/IR_CPS_TechSynthesis/{name_xp}/code_task.txt", "w") as f:
