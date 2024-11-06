@@ -40,41 +40,57 @@ def wait_for_elasticsearch(host, port, timeout=60):
             return None
         time.sleep(5)
 
-def extract_timestamp_from_text(text_field):
+def extract_timestamp_from_text(text_field, metadata_dict_field):
     """
     Extrait le timestamp du champ 'time' dans 'text' et le convertit en objet datetime.
     """
-    if not text_field:
-        print("Le champ 'text' est vide.")
+    if not text_field and not metadata_dict_field:
+        print("Both 'text_field' and 'metadata_dict_field' are empty.")
         return None
-
-    try:
-        # Essayer de parser le champ 'text' comme JSON
-        text_dict = json.loads(text_field)
-    except json.JSONDecodeError:
+    
+    def parse_time(time_str):
+        """Helper function to parse the time string into a datetime object."""
         try:
-            # Si JSON échoue, essayer avec ast.literal_eval
-            text_dict = ast.literal_eval(text_field)
-        except (ValueError, SyntaxError):
-            print("Impossible de parser le champ 'text' en dictionnaire.")
+            return datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%S.%f')
+        except ValueError:
+            print(f"Invalid date format for 'time': {time_str}")
             return None
-
-    if isinstance(text_dict, dict):
-        time_str = text_dict.get('time')
-        if time_str:
-            # Ajuster le format de la date si nécessaire
+        
+    # First attempt to extract 'time' from text_field
+    if text_field:
+        try:
+            # Try parsing as JSON
+            text_dict = json.loads(text_field)
+        except json.JSONDecodeError:
             try:
-                timestamp_dt = datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%S.%f')
-                return timestamp_dt
-            except ValueError:
-                print(f"Format de date invalide pour 'time': {time_str}")
-                return None
+                # Fall back to ast.literal_eval for safe evaluation
+                text_dict = ast.literal_eval(text_field)
+            except (ValueError, SyntaxError):
+                print("Failed to parse 'text_field' into a dictionary.")
+                text_dict = None
+
+        if isinstance(text_dict, dict):
+            time_str = text_dict.get('time')
+            if time_str:
+                print(f"Timestamp found in 'text_field': {time_str}")
+                return parse_time(time_str)
+            else:
+                print("'time' key not found in 'text_field'.")
+
+    # Fallback: Attempt to extract 'time' from metadata_dict_field
+    if isinstance(metadata_dict_field, dict):
+        time_str = metadata_dict_field.get('time')
+        if time_str:
+            print(f"Timestamp found in 'metadata_dict_field': {time_str}")
+            return parse_time(time_str)
         else:
-            print("La clé 'time' n'est pas présente dans 'text'.")
-            return None
+            print("'time' key not found in 'metadata_dict_field'.")
     else:
-        print("Le champ 'text' n'est pas un dictionnaire après parsing.")
-        return None
+        print("'metadata_dict_field' is not a dictionary.")
+
+    # If neither field contains a valid 'time', return None
+    print("Timestamp not found in either 'text_field' or 'metadata_dict_field'.")
+    return None
 
 def get_all_documents(es_client, es_index):
     """
@@ -91,7 +107,8 @@ def get_all_documents(es_client, es_index):
         index=es_index,
         body=query,
         scroll='2m',
-        size=1000
+        size=500,
+        request_timeout=120
     )
     sid = page['_scroll_id']
     scroll_size = len(page['hits']['hits'])
@@ -115,7 +132,8 @@ def filter_documents_by_timestamp(all_hits, desired_datetime, duration_minutes):
     for hit in all_hits:
         source = hit['_source']
         text_field = source.get('text', '')
-        timestamp_dt = extract_timestamp_from_text(text_field)
+        metadata_dict_field = source.get('metadata', '')
+        timestamp_dt = extract_timestamp_from_text(text_field, metadata_dict_field)
         if timestamp_dt:
             if desired_datetime <= timestamp_dt < end_datetime:
                 filtered_documents.append(hit)
@@ -131,12 +149,28 @@ def copy_backup_to_container(backup_folder : str, container_name : str):
         for root, dirs, files in os.walk(backup_folder):
             for file in files:
                 local_path = os.path.join(root, file)
-                container_path = os.path.join('/usr/share/elasticsearch/data', os.path.relpath(local_path, backup_folder))
+                container_path = os.path.join('/usr/share/elasticsearch/data',
+                                              os.path.relpath(local_path, backup_folder))
+
                 # Créer le dossier dans le conteneur si nécessaire
                 container_dir = os.path.dirname(container_path)
                 subprocess.run(['docker', 'exec', container_name, 'mkdir', '-p', container_dir])
-                # Copier le fichier sans écraser
-                subprocess.run(['docker', 'cp', '-n', local_path, f'{container_name}:{container_path}'])
+
+                # Vérifier si le fichier existe déjà dans le conteneur
+                result = subprocess.run(['docker', 'exec', container_name, 'test', '-f', container_path],
+                                        capture_output=True)
+
+                if result.returncode == 0:
+                    # Fichier existe déjà, fusionner (ajouter un suffixe pour éviter d'écraser)
+                    base, ext = os.path.splitext(file)
+                    new_file = f"{base}_fusion{ext}"
+                    container_path = os.path.join(container_dir, new_file)
+                    print(f"Fichier '{file}' existe déjà, renommé en '{new_file}' pour éviter l'écrasement.")
+
+                # Copier le fichier dans le conteneur
+                subprocess.run(['docker', 'cp', local_path, f'{container_name}:{container_path}'])
+                print(f"Fichier '{local_path}' copié dans '{container_path}'")
+
         print("Copie des fichiers terminée.")
     else:
         print(f"Le dossier '{backup_folder}' n'existe pas.")
@@ -151,7 +185,8 @@ def restart_original_container(docker_compose_file):
     print("Conteneur Elasticsearch original redémarré.")
 
 def main(docker_compose_file, time_human_xp, name_xp):
-    backup_folder = '../backup'
+    print(os.getcwd())
+    backup_folder = 'backup'
     es_host = 'localhost'
     es_port = 9200
     index_pattern = f'*{name_xp}*'   # Filtre pour les noms d'index contenant 'name_exp'
@@ -160,11 +195,11 @@ def main(docker_compose_file, time_human_xp, name_xp):
     # Obtenir le nom du conteneur Elasticsearch en cours d'exécution
     result = subprocess.run(['docker', 'ps', '--filter', 'ancestor=docker.elastic.co/elasticsearch/elasticsearch:8.10.1', '--format', '{{.Names}}'], capture_output=True, text=True)
     container_name = result.stdout.strip()
-    if container_name:
-        copy_backup_to_container(backup_folder, container_name)
-    else:
-        print("Aucun conteneur Elasticsearch en cours d'exécution trouvé.")
-        return
+    # if container_name:
+    #     copy_backup_to_container(backup_folder, container_name)
+    # else:
+    #     print("Aucun conteneur Elasticsearch en cours d'exécution trouvé.")
+    #     return
 
     es_client = wait_for_elasticsearch(es_host, es_port, timeout=120)
     if es_client is None:
@@ -219,7 +254,7 @@ def main(docker_compose_file, time_human_xp, name_xp):
     print(f"\nNombre total de documents après filtrage : {len(all_filtered_documents)}")
 
     # **Étape 4 : Mettre les documents filtrés dans le dossier 'backup'**
-    backup_folder = 'backup_temp'
+    backup_folder = 'backup'
     if not os.path.exists(backup_folder):
         os.makedirs(backup_folder)
         print(f"Dossier '{backup_folder}' créé.")
@@ -246,18 +281,24 @@ def main(docker_compose_file, time_human_xp, name_xp):
         print("Arrêt du script en raison de l'indisponibilité de la nouvelle instance Elasticsearch.")
         return
 
-    # Créer les index dans la nouvelle instance et insérer les documents
+    # Créer les index dans la nouvelle instance Elasticsearch
     for es_index in index_names:
         # Charger le mapping sauvegardé
         with open(f'mappings/{es_index}_mapping.json', 'r', encoding='utf-8') as f:
             old_mapping = json.load(f)
 
+        # Modify the settings to avoid replicas
+        settings = {
+            "settings": {
+                "number_of_replicas": 0  # Set replicas to 0
+            },
+            "mappings": old_mapping['mappings']
+        }
+
         # Créer l'index dans la nouvelle instance Elasticsearch
         if not new_es_client.indices.exists(index=es_index):
-            new_es_client.indices.create(index=es_index, body={
-                "mappings": old_mapping['mappings']
-            })
-            print(f"Index '{es_index}' créé dans la nouvelle instance Elasticsearch.")
+            new_es_client.indices.create(index=es_index, body=settings)
+            print(f"Index '{es_index}' créé dans la nouvelle instance Elasticsearch avec 0 répliques.")
 
     # Préparer les actions pour l'API bulk
     actions = []
@@ -297,8 +338,9 @@ def objective(trial, name_xp : str):
     with open(f'Optuna_results/{name_xp}.txt', 'a') as f:
         f.write(f"performance: {max(performance)}\n")
 
-    stop_containers('../docker-compose-backup.yml')
-    restart_original_container('../elasticsearch/docker-compose.yml')
+    stop_containers('docker-compose-backup.yml')
+    restart_original_container('elasticsearch/docker-compose.yml')
+    wait_for_elasticsearch('localhost', 9200)
 
     return max(performance)
 
@@ -307,4 +349,4 @@ def objective(trial, name_xp : str):
 
 
 if __name__ == "__main__":
-    global_main(objective, '', 'backup')
+    global_main(objective, '', 'backup', initial_trials=[{'time_human_xp': 50}, {'time_human_xp': 40}, {'time_human_xp': 30}, {'time_human_xp': 20}, {'time_human_xp': 10}, {'time_human_xp': 0}], n_trials=5)
