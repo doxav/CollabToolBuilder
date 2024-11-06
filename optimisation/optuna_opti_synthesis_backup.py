@@ -40,41 +40,57 @@ def wait_for_elasticsearch(host, port, timeout=60):
             return None
         time.sleep(5)
 
-def extract_timestamp_from_text(text_field):
+def extract_timestamp_from_text(text_field, metadata_dict_field):
     """
     Extrait le timestamp du champ 'time' dans 'text' et le convertit en objet datetime.
     """
-    if not text_field:
-        print("Le champ 'text' est vide.")
+    if not text_field and not metadata_dict_field:
+        print("Both 'text_field' and 'metadata_dict_field' are empty.")
         return None
-
-    try:
-        # Essayer de parser le champ 'text' comme JSON
-        text_dict = json.loads(text_field)
-    except json.JSONDecodeError:
+    
+    def parse_time(time_str):
+        """Helper function to parse the time string into a datetime object."""
         try:
-            # Si JSON échoue, essayer avec ast.literal_eval
-            text_dict = ast.literal_eval(text_field)
-        except (ValueError, SyntaxError):
-            print("Impossible de parser le champ 'text' en dictionnaire.")
+            return datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%S.%f')
+        except ValueError:
+            print(f"Invalid date format for 'time': {time_str}")
             return None
-
-    if isinstance(text_dict, dict):
-        time_str = text_dict.get('time')
-        if time_str:
-            # Ajuster le format de la date si nécessaire
+        
+    # First attempt to extract 'time' from text_field
+    if text_field:
+        try:
+            # Try parsing as JSON
+            text_dict = json.loads(text_field)
+        except json.JSONDecodeError:
             try:
-                timestamp_dt = datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%S.%f')
-                return timestamp_dt
-            except ValueError:
-                print(f"Format de date invalide pour 'time': {time_str}")
-                return None
+                # Fall back to ast.literal_eval for safe evaluation
+                text_dict = ast.literal_eval(text_field)
+            except (ValueError, SyntaxError):
+                print("Failed to parse 'text_field' into a dictionary.")
+                text_dict = None
+
+        if isinstance(text_dict, dict):
+            time_str = text_dict.get('time')
+            if time_str:
+                print(f"Timestamp found in 'text_field': {time_str}")
+                return parse_time(time_str)
+            else:
+                print("'time' key not found in 'text_field'.")
+
+    # Fallback: Attempt to extract 'time' from metadata_dict_field
+    if isinstance(metadata_dict_field, dict):
+        time_str = metadata_dict_field.get('time')
+        if time_str:
+            print(f"Timestamp found in 'metadata_dict_field': {time_str}")
+            return parse_time(time_str)
         else:
-            print("La clé 'time' n'est pas présente dans 'text'.")
-            return None
+            print("'time' key not found in 'metadata_dict_field'.")
     else:
-        print("Le champ 'text' n'est pas un dictionnaire après parsing.")
-        return None
+        print("'metadata_dict_field' is not a dictionary.")
+
+    # If neither field contains a valid 'time', return None
+    print("Timestamp not found in either 'text_field' or 'metadata_dict_field'.")
+    return None
 
 def get_all_documents(es_client, es_index):
     """
@@ -116,7 +132,8 @@ def filter_documents_by_timestamp(all_hits, desired_datetime, duration_minutes):
     for hit in all_hits:
         source = hit['_source']
         text_field = source.get('text', '')
-        timestamp_dt = extract_timestamp_from_text(text_field)
+        metadata_dict_field = source.get('metadata', '')
+        timestamp_dt = extract_timestamp_from_text(text_field, metadata_dict_field)
         if timestamp_dt:
             if desired_datetime <= timestamp_dt < end_datetime:
                 filtered_documents.append(hit)
@@ -237,7 +254,7 @@ def main(docker_compose_file, time_human_xp, name_xp):
     print(f"\nNombre total de documents après filtrage : {len(all_filtered_documents)}")
 
     # **Étape 4 : Mettre les documents filtrés dans le dossier 'backup'**
-    backup_folder = 'backup_temp'
+    backup_folder = 'backup'
     if not os.path.exists(backup_folder):
         os.makedirs(backup_folder)
         print(f"Dossier '{backup_folder}' créé.")
