@@ -1,0 +1,134 @@
+name: Script for XP
+
+on:
+  workflow_dispatch: # This allows manual triggers from the GitHub Actions UI.
+
+jobs:
+  run-script:
+    runs-on: ubuntu-20.04
+    env:
+      OPEN_API_KEY: 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
+
+    steps:
+    - name: Checkout code from the branch
+      uses: actions/checkout@v4
+      with:
+        ref: IHMv6
+
+    - name: Create config.py file
+      run: |
+        cat <<EOF > ${{ github.workspace }}/config.py
+        import os
+        # Check the docker environment variables to see if LLM_MODE is set (to launch on a cluster/macstudio using ollama)
+        IN_MACSTU = os.environ.get('LLM_MODE')
+        if IN_MACSTU in ["macstudio", "gpu"]:
+            os.environ['OPENAI_BASE_URL'] = 'http://localhost:11434/v1'
+            OPENAI_API_KEY = "ollama"
+            if IN_MACSTU == "macstudio":
+                MODELS_CONFIG_LIST = {
+                        "basic_gpt":"codestral_latest_20k:latest",
+                        "smart_gpt":"codestral_latest_20k:latest",
+                        "code_gpt":"codestral_latest_20k:latest",
+                }
+            else:
+                MODELS_CONFIG_LIST = {
+                        "basic_gpt":"codestral:latest-20k",
+                        "smart_gpt":"codestral:latest-20k",
+                        "code_gpt":"codestral:latest-20k",
+                }
+        else:
+            OPENAI_API_KEY = "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"
+            MODELS_CONFIG_LIST = {
+                "code_gpt": "gpt-4o-mini-2024-07-18",
+                "smart_gpt": "gpt-4o-mini-2024-07-18",
+                "basic_gpt": "gpt-4o-mini-2024-07-18",
+            }
+        openai_api_key = OPENAI_API_KEY
+        os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
+
+        # Elastic search and Kibana information
+        elastic_url_port = 'http://localhost:9200'
+        kibana_url_port = 'http://localhost:5601'
+        elastic_user=""
+        elastic_password=""
+        PickleCacheActivated = False
+
+        # Neo4j database information
+        NEO4J_URI = 'URI_of_your_neo4j_database'
+        NEO4J_USER = 'neo4j_user'
+        NEO4J_PASSWORD = 'neo4j_password'
+        EOF
+
+    - name: Cache Docker layers
+      uses: actions/cache@v3
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-docker-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-docker-
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Install Docker Compose
+      run: |
+        sudo curl -L "https://github.com/docker/compose/releases/download/$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep -Po '"tag_name": "\K.*?(?=")')/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        sudo chmod +x /usr/local/bin/docker-compose
+
+    - name: Pull Docker Image
+      run: docker pull jitaross/pythonwithdependencies
+
+    - name: Install npm and localtunnel inside Docker
+      run: |
+        docker run --rm jitaross/pythonwithdependencies bash -c "
+          apt-get update && apt-get install -y npm && \
+          npm install -g localtunnel && \
+          echo 'localtunnel installed successfully'
+        "
+    
+    - name: Print environment variables for debugging
+      run: printenv
+
+    - name: Start Elasticsearch
+      run: |
+        cd elasticsearch
+        docker-compose up -d
+
+    - name: Wait for Elasticsearch to be ready
+      run: |
+        for i in {1..10}; do
+          if curl -s http://localhost:9200 >/dev/null; then
+            echo "Elasticsearch is up!"
+            break
+          else
+            echo "Waiting for Elasticsearch to start..."
+            sleep 5
+          fi
+        done
+
+    - name: Test multiple connections to Elasticsearch in Docker
+      run: |
+        docker run --network="host" -v /home/runner/work/CollabFunctionsGPTCreator/CollabFunctionsGPTCreator:/workspace --rm jitaross/pythonwithdependencies cat /workspace/utils/llm_utils.py
+        # Test connection without user and password
+        echo "Testing Elasticsearch connection without authentication..."
+        docker run --network="host" --rm jitaross/pythonwithdependencies curl -X GET http://localhost:9200
+        
+        # Test connection with user and password set as empty
+        echo "Testing Elasticsearch connection with empty user and password..."
+        docker run --network="host" --rm jitaross/pythonwithdependencies curl -u "" "" -X GET http://localhost:9200
+        
+        # Test connection with a specific user and no password (if applicable)
+        echo "Testing Elasticsearch connection with a specific user and no password..."
+        docker run --network="host" --rm jitaross/pythonwithdependencies curl -u "elastic" "" -X GET http://localhost:9200
+        
+        # Test connection with empty user and some password (if applicable)
+        echo "Testing Elasticsearch connection with empty user and some password..."
+        docker run --network="host" --rm jitaross/pythonwithdependencies curl -u "" "somepassword" -X GET http://localhost:9200
+        
+        # Finally print the results
+        echo "Elasticsearch connection tests completed."
+
+
+    - name: Run Docker Container with mounted code
+      run: docker run --network="host" -v /home/runner/work/CollabFunctionsGPTCreator/CollabFunctionsGPTCreator:/workspace -e OPENAI_API_KEY="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" jitaross/pythonwithdependencies bash -c "cat /workspace/config.py && python /workspace/learn.py --secret --proxy"
+
