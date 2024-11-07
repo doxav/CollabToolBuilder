@@ -1,0 +1,8 @@
+TASK DEFINITION: [[[{refined_task}]]]
+CURRENT STATE OF DOCUMENTS TO PERFORM/TEST TASK: [[[{env_states}]]]
+RE-USABLE CODE PRIMITIVES: [[[{primitives}]]]
+PREVIOUSLY SUCCESSFUL TASKS: [[[{successful_tasks}]]]
+PREVIOUSLY FAILED TASKS: [[[{failed_tasks}]]]
+PREVIOUS VALIDATION RESULTS: [[[{validation_response_um}]]]
+PREVIOUS ATTEMPTS TO CODE THE TASK: [[[{previous_attempts}]]]
+PREVIOUS ERRORS AND FIXES: [[[{error_patches_str}]]]
