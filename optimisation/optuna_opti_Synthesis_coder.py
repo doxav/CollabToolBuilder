@@ -8,6 +8,7 @@ def objective(trial, name_xp : str):
         "Numpy, Pandas, Matplotlib",
         "TensorFlow, PyTorch"
     ])
+    logs_user_message = f"logs/log_um_{name_xp}.log"
     max_autofix = trial.suggest_int('max_autofix', 0, 5)
     temperature = trial.suggest_float('temperature', 0.0, 1.0)
     presence_penalty = trial.suggest_float('presence_penalty', -2.0, 2.0)
@@ -83,7 +84,7 @@ def objective(trial, name_xp : str):
         max_execution_time=900,
         model_choice={"coach": "default_llm","coder": "premium_llm","critic": "default_llm","capitalizer": "default_llm"},
         optuna_opti="coder",
-        special_criteria={"max_autofix": max_autofix, "temperature": temperature, "presence_penalty": presence_penalty},
+        special_criteria={"max_autofix": max_autofix, "temperature": temperature, "presence_penalty": presence_penalty, "log_user_message": logs_user_message},
         name_exp=name_xp
     )
 

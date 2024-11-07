@@ -6,6 +6,7 @@ import contextlib
 import ast
 import types
 import time
+from zipfile import error
 
 from config import *
 
@@ -251,6 +252,8 @@ class TaskIdentificationAgent():
         self.optuna_opti = optuna
         self.model_choice = model_choice
         new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
+        if special_criteria is not None and 'log_user_message' in special_criteria:
+            setattr(self, 'log_user_message', special_criteria['log_user_message'])
 
         HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
@@ -282,6 +285,10 @@ class TaskIdentificationAgent():
             few_shots=few_shots,
             envs_status=envs_status
         )
+
+        if hasattr(self, 'log_user_message') and self.log_user_message:
+            with open(self.log_user_message, "a") as f:
+                f.write("Coach -- identify_best_task:<<\n" + user_message + "\n>>\n\n")
 
         task = self.human_llm_identify_best_task.CallHumanLLM(
             system_prompt_template=self.problem_prompts_subdir + 'identify_best_task',
@@ -348,7 +355,8 @@ class CodingAgent():
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         if special_criteria is not None:
             for key, value in special_criteria.items():
-                setattr(self, key, value)
+                if not hasattr(self, key):
+                    setattr(self, key, value)
         self.last_user_message = None
 
         HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
@@ -658,11 +666,45 @@ class CodingAgent():
         return primitives
 
     def code_task_and_run_test(self, refined_task):
-        import itertools
+        def flatten_and_pair(nested_list):
+            def flatten(nested):
+                flat_list = []
+                for item in nested:
+                    if isinstance(item, list):
+                        flat_list.extend(flatten(item))
+                    elif isinstance(item, tuple):
+                        flat_list.append(item)  # Préserver les tuples tels quels
+                    else:
+                        flat_list.append(item)
+                return flat_list
 
-        def flatten_list_of_lists_of_lists(nested_list):
-            # Flatten a list of lists of lists into a single list
-            return list(itertools.chain.from_iterable(itertools.chain.from_iterable(nested_list)))
+            flat_list = flatten(nested_list)
+
+            # Décomposer les tuples pour éviter les tuples imbriqués
+            def unpack_tuples(items):
+                unpacked = []
+                for item in items:
+                    if isinstance(item, tuple):
+                        unpacked.extend(item)
+                    else:
+                        unpacked.append(item)
+                return unpacked
+
+            # Unpack tuples in the flat_list to avoid tuples inside tuples
+            flat_list = unpack_tuples(flat_list)
+
+            # Toujours regrouper les éléments par paires de 2 et retourner une liste de tuples
+            paired_list = []
+            i = 0
+            while i < len(flat_list):
+                if i + 1 < len(flat_list):
+                    paired_list.append((flat_list[i], flat_list[i + 1]))
+                    i += 2
+                else:
+                    # Si le nombre d'éléments est impair, le dernier élément est ajouté seul dans un tuple
+                    paired_list.append((flat_list[i],))
+                    i += 1
+            return paired_list
 
         # Retrieve data from HumanLLMMonitor
         metadata = {'step_id': HumanLLMMonitor.step_id}
@@ -675,7 +717,7 @@ class CodingAgent():
         previous_errors = previous_errors if previous_errors else []
         previous_scores = previous_scores if previous_scores else []
         previous_codes = previous_codes if previous_codes else []
-        error_patches = flatten_list_of_lists_of_lists(error_patches) if error_patches else []
+        error_patches = flatten_and_pair(error_patches) if error_patches else []
 
         env_states = "\n".join([env.get_state(extended=False) for env in self.envs])
         primitives = "\n".join(self.get_primitives())
@@ -689,7 +731,7 @@ class CodingAgent():
                 previous_attempts += f"\n<<ATTEMPT FEEDBACK: {err.content}\nSCORE: {score}\nCODE: {code}>>\n"
 
         error_patches_str = ""
-        for error_msg, diff_text in error_patches:
+        for (error_msg, diff_text) in error_patches:
             error_patches_str += f"\n<<ERROR MESSAGE: {error_msg}\nFIX APPLIED (diff):\n{diff_text}>>\n"
 
         # Define data for template placeholders
@@ -706,6 +748,10 @@ class CodingAgent():
 
         # Load and format the user message from a file template
         user_message = HumanLLMMonitor.load_prompt("coding_agent_user_message_template", template_data=template_data, directory='prompts')
+
+        if hasattr(self, 'log_user_message') and self.log_user_message:
+            with open(self.log_user_message, "a") as f:
+                f.write("Coder -- code_task_and_run_test:<<\n" + user_message + "\n>>\n\n")
 
         # Set the formatted user message
         self.last_user_message = user_message
@@ -783,6 +829,8 @@ class ValidationAgent():
         self.name = self.__class__.__name__
 
         new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
+        if special_criteria is not None and 'log_user_message' in special_criteria:
+            setattr(self, 'log_user_message', special_criteria['log_user_message'])
         HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
         print(f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
@@ -839,6 +887,10 @@ New environment status of examples on which the task has been tested on: <<{envs
             envs_status=envs_status
         )
 
+        if hasattr(self, 'log_user_message') and self.log_user_message:
+            with open(self.log_user_message, "a") as f:
+                f.write("Validation -- validate_code:<<\n" + user_message + "\n>>\n\n")
+
         code_validation = self.human_llm_validate_code.CallHumanLLM(
             system_prompt_template='validate_code',
             user_message=user_message,
@@ -860,6 +912,8 @@ class CapitalizationAgent:
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
 
         new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
+        if special_criteria is not None and 'log_user_message' in special_criteria:
+            setattr(self, 'log_user_message', special_criteria['log_user_message'])
         HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
         print(f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
@@ -1046,6 +1100,11 @@ class CapitalizationAgent:
 
     def generate_tool_description(self, program_name, program_code):
         user_message = f"MAIN FUNCTION: `{program_name}`\n\nFULL CODE:\n{program_code}"
+
+        if hasattr(self, 'log_user_message') and self.log_user_message:
+            with open(self.log_user_message, "a") as f:
+                f.write("Capitalization -- generate_tool_description:<<\n" + user_message + "\n>>\n\n")
+
         tool_description = self.human_llm_generate_function_description.CallHumanLLM(
             system_prompt_template="generate_function_description", user_message=user_message,
             return_message_content_only=True, optuna=self.optuna_opti, model_choice=self.model_choice)

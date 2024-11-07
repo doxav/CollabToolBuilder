@@ -625,14 +625,17 @@ class HumanLLMMonitor:
         cls.common_vectordb.add_texts(texts=[serialized_data], metadatas=[tags])
 
     @classmethod
-    def get_agent_data(cls, agent_name, data_key, metadata_filter=None, sort_order=None):
+    def get_agent_data(cls, agent_name, data_key, metadata_filter=None, sort_order=None, k=5):
         """Retrieves agent-specific data based on the agent name and data key."""
         metadata = {"agent_name": agent_name, "data_key": data_key}
         if metadata_filter:
             metadata.update(metadata_filter)
         results = cls.common_vectordb.query(
-            query_text='', metadata_filter=metadata, sort_order=sort_order)
-        return [json.loads(item.page_content)[data_key] for item in results]
+            query_text='', metadata_filter=metadata, sort_order=sort_order, k=k)
+        ret = []
+        for item in results:
+            ret += json.loads(item.page_content)[data_key]
+        return ret
 
     @staticmethod
     def _check_and_init_vector_db(embedding_function=None, reset_db_indices=False):
