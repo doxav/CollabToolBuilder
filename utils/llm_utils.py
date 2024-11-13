@@ -15,6 +15,7 @@ import time
 import json
 from elasticsearch import Elasticsearch
 import requests
+from pydantic_core.core_schema import none_schema
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
@@ -627,6 +628,13 @@ class HumanLLMMonitor:
     @classmethod
     def get_agent_data(cls, agent_name, data_key, metadata_filter=None, sort_order=None, k=5):
         """Retrieves agent-specific data based on the agent name and data key."""
+        save = None
+        if type(data_key) == dict:
+            save = data_key
+            temp = list(data_key.keys())
+            data_key = temp[0]
+            data_key2 = temp[1]
+
         metadata = {"agent_name": agent_name, "data_key": data_key}
         if metadata_filter:
             metadata.update(metadata_filter)
@@ -634,7 +642,9 @@ class HumanLLMMonitor:
             query_text='', metadata_filter=metadata, sort_order=sort_order, k=k)
         ret = []
         for item in results:
-            ret += json.loads(item.page_content)[data_key]
+            if save :
+                ret.append({data_key: json.loads(item.page_content)[data_key], data_key2: json.loads(item.page_content)[data_key2]})
+            else: ret += json.loads(item.page_content)[data_key]
         return ret
 
     @staticmethod
@@ -1848,11 +1858,14 @@ class HumanLLMMonitor:
             # Run inference checks if any
             check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
             check_display = ""
-            check_display = ""
+            critique = None
             # Display inference check results
             for check_name, result in check_results.items():
                 if check_name == "Generate annotations" :
                     inference_result_msg.content = result
+                elif check_name == 'Recommend critiques':
+                    critique = {"improvement_suggestion": result, "improvement_suggestion_user": None}
+                    smart_print(critique["improvement_suggestion"]["suggestions"], self.agent_name, "Recommend critiques", optional=True, column_id=critique["improvement_suggestion"]["output_id"])
                 check_display += f"{nl}CHECK {check_name} result: " + str(result).replace("\\n", "\n")
 
             menu = (
@@ -1885,7 +1898,7 @@ class HumanLLMMonitor:
                 self.modifyAnswer(inference_result_msg, output_id)
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
-                inference_result_msg.content = self.criticAnswer(comments, inference_result_msg, annotated_critics=False)
+                inference_result_msg.content = self.criticAnswer(comments, inference_result_msg, annotated_critics=False, critique=critique)
 
             elif action == "C":  # Find a better Prompt by providing critic and ideal answer
                 comments = self.findBetterPrompt(comments, inference_result_msg, premium_llm_function)
@@ -2023,7 +2036,7 @@ class HumanLLMMonitor:
 
         return comments
 
-    def criticAnswer(self, content_annotated, inference_result_msg, annotated_critics=True):
+    def criticAnswer(self, content_annotated, inference_result_msg, annotated_critics=True, critique=None):
         def is_valid_python_structure(s):
             import ast
             output = None
@@ -2033,13 +2046,13 @@ class HumanLLMMonitor:
             except (ValueError, SyntaxError):
                 return output, False
 
-        if(annotated_critics):
+        if annotated_critics:
             if content_annotated is None:
                 content_structure, is_structure = is_valid_python_structure(inference_result_msg.content)
                 content_pretty = json.dumps(content_structure, indent=4) if is_structure else inference_result_msg.content
                 content_annotated = _visual_input(content_pretty, filetype="py" if is_structure else "md")
             # if annotated_critics is a list, then make a different prompt
-            if (isinstance(content_annotated, list) and len(content_annotated)>1):
+            if isinstance(content_annotated, list) and len(content_annotated)>1:
                 prompt_start = "Your task is to merge the best of different **ANNOTATED ANSWERS** into 1  **ANNOTATED ANSWERS**"
             else:
                 prompt_start = "Your task is to refine the **ANNOTATED ANSWER**"
@@ -2553,3 +2566,72 @@ The following annotations are provided to guide the refinement process. Each ann
         )
 
         return [message.content for message in output_messages] if return_message_content_only else output_messages
+
+    def generate_best_improvement_suggestions(self, inference_result_content=None, output_id=None):
+        """
+        Uses a premium LLM to generate top suggestions or critiques for improving
+        the inference output, identified by output_id. If there are no check results,
+        it requests general improvement suggestions based on the inference result content.
+
+        :param output_id: The ID of the output message to critique.
+        :param inference_result_content: The actual content of the inference result to be critiqued.
+        :return: A dictionary of improvement suggestions.
+        """
+
+        # Run checks on the inference content if available
+        improvement_feedback = []
+        check_results = []
+        for inference_check in self.last_inference_check_results:
+            if inference_check:
+                check_results += [inference_check]
+                break
+
+        # Collect insights from various checks, focusing on quality-related results
+        if check_results:
+            for check_result in check_results:
+                for check_name, result in check_result.items():
+                    if isinstance(result, str) and result:  # Include only meaningful, non-empty results
+                        improvement_feedback.append(f"Feedback from {check_name}: {result}")
+                    elif isinstance(result, list) and result:
+                        improvement_feedback.extend([f"{check_name} feedback: {item}" for item in result if item])
+
+        previous_suggestions = HumanLLMMonitor.get_agent_data(self.agent_name, "improvement_suggestion")
+        prev_sugg = ""
+        prev_sugg_u = ""
+        if previous_suggestions:
+            for sugg in previous_suggestions:
+                prev_sugg += f"\n{sugg['improvement_suggestion']}"
+                prev_sugg_u += f"\n{sugg['improvement_suggestion_user']}"
+
+        # Prepare a prompt based on whether feedback is available
+        if improvement_feedback:
+            feedback_prompt = "\n".join(improvement_feedback)
+            improvement_prompt = (
+                "Based on the feedback below, generate concise, actionable suggestions "
+                "to improve or correct the ANSWER. Focus on clarity, accuracy, and style improvements. "
+                "\n\n"
+                f"PROMPT:<<<{self.system_prompt}>>>\n\n"
+                f"ANSWER:<<<{inference_result_content}>>>\n\n"
+                f"Feedback:<<<{feedback_prompt}>>>\n\n"
+                f"Previous LLM Suggestions:<<<{prev_sugg}>>>\n\n"
+                f"Previous User Suggestions:<<<{prev_sugg_u}>>>\n\n"
+                "Provide your improvement suggestions below."
+            )
+        else:
+            improvement_prompt = (
+                "Provide improvement suggestions to enhance the clarity, accuracy, and quality of the following ANSWER. "
+                f"PROMPT:<<<{self.system_prompt}>>>\n\n"
+                f"ANSWER:<<<{inference_result_content}>>>\n\n"
+                f"Previous LLM Suggestions:<<<{prev_sugg}>>>\n\n"
+                f"Previous User Suggestions:<<<{prev_sugg_u}>>>\n\n"
+                "List your improvement suggestions below."
+            )
+
+        # Use the premium LLM to generate suggestions
+        response = self.premium_llm.invoke([
+            SystemMessage(content="You are tasked with analyzing feedback to improve model outputs."),
+            HumanMessage(content=improvement_prompt)
+        ])
+
+        # Return formatted suggestions from the premium LLM
+        return {"output_id": output_id, "suggestions": response.content}
