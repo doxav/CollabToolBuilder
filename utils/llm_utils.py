@@ -15,7 +15,6 @@ import time
 import json
 from elasticsearch import Elasticsearch
 import requests
-from pydantic_core.core_schema import none_schema
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
@@ -1865,7 +1864,6 @@ class HumanLLMMonitor:
                     inference_result_msg.content = result
                 elif check_name == 'Recommend critiques':
                     critique = {"improvement_suggestion": result, "improvement_suggestion_user": None}
-                    smart_print(critique["improvement_suggestion"]["suggestions"], self.agent_name, "Recommend critiques", optional=True, column_id=critique["improvement_suggestion"]["output_id"])
                 check_display += f"{nl}CHECK {check_name} result: " + str(result).replace("\\n", "\n")
 
             menu = (
