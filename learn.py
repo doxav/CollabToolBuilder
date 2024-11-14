@@ -267,6 +267,9 @@ class TaskIdentificationAgent():
             for key, value in self.additional_check_list.items():
                 self.human_llm_identify_best_task.add_inference_check(key, value)
 
+        self.human_llm_identify_best_task.add_inference_check("Recommend critiques",
+                                                              self.human_llm_identify_best_task.generate_best_improvement_suggestions)
+
     def identify_best_task(self):
         # Prepare data
         envs_status = "\n".join([env.get_state() for env in self.envs])
