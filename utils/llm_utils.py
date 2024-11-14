@@ -1892,7 +1892,7 @@ class HumanLLMMonitor:
                 self.modifyAnswer(inference_result_msg, output_id)
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
-                inference_result_msg.content = self.criticAnswer(comments, inference_result_msg, annotated_critics=False, critique=critique)
+                inference_result_msg.content = self.criticAnswer(comments, inference_result_msg, test_has_annotations=False, critique=critique)
 
             elif action == "C":  # Find a better Prompt by providing critic and ideal answer
                 comments = self.findBetterPrompt(comments, inference_result_msg, premium_llm_function)
@@ -2030,7 +2030,7 @@ class HumanLLMMonitor:
 
         return comments
 
-    def criticAnswer(self, content_annotated, inference_result_msg, annotated_critics=True, critique=None):
+    def criticAnswer(self, suggestions, text_content, test_has_annotations=True):
         def is_valid_python_structure(s):
             import ast
             output = None
@@ -2040,13 +2040,13 @@ class HumanLLMMonitor:
             except (ValueError, SyntaxError):
                 return output, False
 
-        if annotated_critics:
-            if content_annotated is None:
-                content_structure, is_structure = is_valid_python_structure(inference_result_msg.content)
-                content_pretty = json.dumps(content_structure, indent=4) if is_structure else inference_result_msg.content
-                content_annotated = _visual_input(content_pretty, filetype="py" if is_structure else "md")
+        if test_has_annotations:
+            if suggestions is None:
+                content_structure, is_structure = is_valid_python_structure(text_content.content)
+                content_pretty = json.dumps(content_structure, indent=4) if is_structure else text_content.content
+                suggestions = _visual_input(content_pretty, filetype="py" if is_structure else "md")
             # if annotated_critics is a list, then make a different prompt
-            if isinstance(content_annotated, list) and len(content_annotated)>1:
+            if isinstance(suggestions, list) and len(suggestions)>1:
                 prompt_start = "Your task is to merge the best of different **ANNOTATED ANSWERS** into 1  **ANNOTATED ANSWERS**"
             else:
                 prompt_start = "Your task is to refine the **ANNOTATED ANSWER**"
@@ -2089,27 +2089,27 @@ The following annotations are provided to guide the refinement process. Each ann
 3. **Revise** the text by making necessary corrections, improvements, or explorations as instructed.
 4. Ensure that the **final text** is clear, accurate, relevant, and stylistically appropriate for the INITIAL TASK and expected format.
 >>"""
-            if (isinstance(content_annotated, list) and len(content_annotated)>1):
+            if (isinstance(suggestions, list) and len(suggestions)>1):
                 user_prompt = ""
-                for i, content in enumerate(content_annotated):
+                for i, content in enumerate(suggestions):
                     user_prompt += f"\n\n### ANNOTATED ANSWER {i+1}: << {content} >>"
             else:
-                user_prompt = f"ANNOTATED ANSWER: << {content_annotated} >>"
+                user_prompt = f"ANNOTATED ANSWER: << {suggestions} >>"
 
             llm_output = self.premium_llm.with_config(configurable={"llm_temperature": 0.1}).invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
             # remove the reasoning part of the answer between [[[[ and ]]]] from llm_output.content
             if ">>]]" in llm_output.content:
-                print("Annotated answer: ", content_annotated)
+                print("Annotated answer: ", suggestions)
                 print("Removing reasoning part of the answer - before: ", llm_output.content)
                 llm_output.content = re.sub(r'\[\[<<.*?>>\]\]', '', llm_output.content)
                 print("Removing reasoning part of the answer - after: ", llm_output.content)
         else:
-            if content_annotated is None:
-                content_annotated = smart_input("Provide critic/feedback/request: ", self.agent_name, column_max=self.num_parallel_inferences)
+            if suggestions is None:
+                suggestions = smart_input("Provide critic/feedback/request: ", self.agent_name, column_max=self.num_parallel_inferences)
             system_prompt = f"""Given the INSTRUCTION provided by the user (and the **INITIAL PROMPT**), your task is to generate a very different new answer from the INITIAL ANSWER or to refine the initial answer.
             ### INITIAL PROMPT: << {self.llm_input_messages[0].content} >>
-            ### INITIAL ANSWER: << {inference_result_msg} >> """
-            user_prompt = f"INSTRUCTION: << {content_annotated} >>"
+            ### INITIAL ANSWER: << {text_content} >> """
+            user_prompt = f"INSTRUCTION: << {suggestions} >>"
             llm_output = self.premium_llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
 
         self.temp_inference_result_content = llm_output.content # to be captured in the menu if function called outside of the menu and get inference checks
@@ -2628,6 +2628,15 @@ The following annotations are provided to guide the refinement process. Each ann
         ])
 
         # Return formatted suggestions from the premium LLM
+        # Check if in the message there are no unexpected non-whitespace characters
+        if re.search(r'[^\x20-\x7E\t\n\r]', response.content):
+            # Remove unexpected characters
+            response.content = re.sub(r'[^\x20-\x7E\t\n\r]', "", response.content)
+
+        # Check if in the message there are no unexpected non-whitespace characters
+        if re.search(r'[^\x20-\x7E\t\n\r]', improvement_prompt):
+            # Remove unexpected characters
+            improvement_prompt = re.sub(r'[^\x20-\x7E\t\n\r]', "", improvement_prompt)
         ret = {"output_id": output_id, "suggestions": response.content, "improvement_prompt" : improvement_prompt}
-        smart_print(str(ret), self.agent_name, "CRITIC SUGGESTIONS", column_id=output_id, optional=True)
+        smart_print(json.dumps(ret), self.agent_name, "CRITIC SUGGESTIONS", column_id=output_id, optional=False)
         return ret
