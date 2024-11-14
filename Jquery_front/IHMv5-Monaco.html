@@ -26,6 +26,8 @@
     const maxAutoReconnectAttempts = 10; // Set the number of reconnection attempts
     let isFunctionCallInProgress = false;
     let selectedLLM = "";
+    let annotationId = 0;
+    let annotationswithID = "";
     
     // Function to get URL parameter by name
     function getUrlParameter(name) {
@@ -861,7 +863,7 @@
 
                         // Show the annotation menu at the calculated position
                         $(".annotation-menu")
-                            .css({ top: menuTop + 'px', left: menuLeft + 'px' })
+                            .css({ top: (menuTop + 20) + 'px', left: menuLeft + 'px' })
                             .show();
 
                         // Update global active editor and selection
@@ -1340,6 +1342,13 @@ color: white;
                 <option value="all">All Agent Types</option>
             </select>
             <input type="text" id="search-filter" placeholder="Search...">
+            <select id="annotation-type">
+                <option value="latex-inline">Latex inline</option>
+                <option value="latex-id">Latex with id</option>
+                <option value="HTML-inline">HTML inline</option>
+                <option value="HTML-id">HTML with id</option>
+            </select>
+
 
         </div>
 
@@ -2356,9 +2365,9 @@ function getColumnsToKeep(agent) {
                 editorContainer.classList.add("expanded");
                 // Agrandir l'éditeur
                 editorContainer.style.width = "100%";
-                editorContainer.style.height = "800px";
+                editorContainer.style.height = "400px";
                 editorContainer.style.position = "absolute";
-                editorContainer.style.top = "0";
+                editorContainer.style.top = "400px";
                 editorContainer.style.left = "0";
                 editorContainer.style.zIndex = "1000";
                 expandButton.innerHTML = `<i class="fas fa-compress"></i>`;
@@ -2788,10 +2797,6 @@ $(document).on('click', '.collapsible-header', function() {
             if ($(e.target).closest(".message, pre, code, .language-python, .language-csharp").length) {
                 // Highlight selected text
                 let range = selection.getRangeAt(0);
-                let span = document.createElement("span");
-                span.style.backgroundColor = "yellow";
-                span.style.color = "black";
-                span.id = "temphighlight";
 
                 // Replace range.surroundContents(span) with extractContents and insertNode
                 let extractedContents = range.extractContents();
@@ -2803,7 +2808,7 @@ $(document).on('click', '.collapsible-header', function() {
 
                 saveSelection();
                 $(".annotation-menu")
-                    .css({ top: e.pageY, left: e.pageX })
+                    .css({ top: e.pageY + 20, left: e.pageX })
                     .show();
             }
         }
@@ -2818,16 +2823,7 @@ $(document).on('click', '.collapsible-header', function() {
                 if (!window.getSelection().toString()) {
                     $(".annotation-menu").hide();
                     savedSelection = null;
-                    // Remove all tempHighlight spans
-                    let tempHighlights = document.querySelectorAll("#temphighlight");
-                    for (let i = 0; i < tempHighlights.length; i++) {
-                        let parent = tempHighlights[i].parentNode;
-                        while (tempHighlights[i].firstChild) {
-                            parent.insertBefore(tempHighlights[i].firstChild, tempHighlights[i]);
-                        }
-                        parent.removeChild(tempHighlights[i]);
-                    }
-                }
+                                    }
             }
             // Collapse the column if clicking outside of it unless it's on the annotation menu or autocomplete list
             if (
@@ -2880,7 +2876,50 @@ $(document).on('click', '.collapsible-header', function() {
         const selectedText = editor.getModel().getValueInRange(selection);
 
         if (selectedText) {
-            let annotatedText = `\\${annotationAction}[${annotationText}]{${selectedText}}`;
+
+
+            let annotatedText = "";
+
+            let annotationType = $("#annotation-type").val();
+
+            if(annotationType === "latex-inline"){
+                annotatedText = `\\${annotationAction}[${annotationText}]{${selectedText}}`;
+            } else if(annotationType === "HTML-inline"){
+                annotatedText = `<${annotationAction} action="${annotationText}">${selectedText}</${annotationAction}>`;
+            } else if(annotationType === "latex-id"){
+                annotatedText = `[${annotationId}]{${selectedText}}`;
+                let text = `[${annotationId}]: ${annotationAction} ${annotationText}`;
+                annotationswithID += text + "\n";
+                // Retrieve the id of monaco-editor
+                let editorId = editor._domElement.id;
+                editorId = editorId.replace("editor-", "");
+                console.log("agent_columnId:", editorId);
+                let comment_editor = window[`editorInstance_${editorId}`];
+                console.log("editor:", comment_editor);
+                // Add text in the comment editor
+               comment_editor.setValue(annotationswithID);
+                annotationId++;
+            } else if(annotationType === "HTML-id"){
+                annotatedText = `<${annotationId}>${selectedText}</${annotationId}>`;
+                let text = `[${annotationId}]: ${annotationAction} ${annotationText}`;
+                annotationswithID += text + "\n";
+                // Retrieve the id of monaco-editor
+                // Retrieve the id of monaco-editor
+                let editorId = editor._domElement.id;
+                editorId = editorId.replace("editor-", "");
+                console.log("agent_columnId:", editorId);
+                let comment_editor = window[`editorInstance_${editorId}`];
+                console.log("editor:", comment_editor);
+                // Add text in the comment editor
+               comment_editor.setValue(annotationswithID);
+                annotationId++;
+            }
+
+
+
+
+
+
 
             // Replace the selected text with the annotated text
             editor.executeEdits("annotation", [{
@@ -2888,20 +2927,6 @@ $(document).on('click', '.collapsible-header', function() {
                 text: annotatedText,
                 forceMoveMarkers: true
             }]);
-
-            // Apply decorations for visual feedback
-            const decoration = {
-                range: new monaco.Range(
-                    selection.startLineNumber,
-                    selection.startColumn,
-                    selection.endLineNumber,
-                    selection.endColumn
-                ),
-                options: {
-                    inlineClassName: 'applied-annotation'
-                }
-            };
-            editor.deltaDecorations([], [decoration]);
 
             // Hide the annotation menu
             $(".annotation-menu").hide();
@@ -2924,15 +2949,6 @@ $(document).on('click', '.collapsible-header', function() {
     $(".annotation-menu .close-btn").click(function() {
         $(".annotation-menu").hide();
         savedSelection = null;
-        // Remove all tempHighlight spans
-        let tempHighlights = document.querySelectorAll("#temphighlight");
-        for (let i = 0; i < tempHighlights.length; i++) {
-            let parent = tempHighlights[i].parentNode;
-            while (tempHighlights[i].firstChild) {
-                parent.insertBefore(tempHighlights[i].firstChild, tempHighlights[i]);
-            }
-            parent.removeChild(tempHighlights[i]);
-        }
     });
 
 
