@@ -2070,7 +2070,9 @@ function getColumnsToKeep(agent) {
 
     $(`#evaluate-${agent_columnId}`).click(function () {
         // Check if the input field is empty
-        let comment = $(`#comment-${agent_columnId}`).val().trim();
+        let comment_editor = window[`editorInstance_${agent_columnId}`];
+        // Add text in the comment editor
+        let comment = comment_editor.getValue();
         if (comment === '') {
             alert("Write your instructions first");
             return;
