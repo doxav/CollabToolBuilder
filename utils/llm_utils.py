@@ -619,7 +619,10 @@ class HumanLLMMonitor:
         if type(data_value) == list and len(data_value) > 0:
             if type(data_value[0]) == AIMessage:
                 data_value = data_value[0].content
-        serialized_data = json.dumps({data_key: data_value})
+        if type(data_value) == dict:
+            serialized_data = json.dumps(data_value)
+        else:
+            serialized_data = json.dumps({data_key: data_value})
         tags = metadata or {}
         tags.update({"agent_name": agent_name, "data_key": data_key})
         cls.common_vectordb.add_texts(texts=[serialized_data], metadatas=[tags])
@@ -627,13 +630,6 @@ class HumanLLMMonitor:
     @classmethod
     def get_agent_data(cls, agent_name, data_key, metadata_filter=None, sort_order=None, k=5):
         """Retrieves agent-specific data based on the agent name and data key."""
-        save = None
-        if type(data_key) == dict:
-            save = data_key
-            temp = list(data_key.keys())
-            data_key = temp[0]
-            data_key2 = temp[1]
-
         metadata = {"agent_name": agent_name, "data_key": data_key}
         if metadata_filter:
             metadata.update(metadata_filter)
@@ -641,9 +637,15 @@ class HumanLLMMonitor:
             query_text='', metadata_filter=metadata, sort_order=sort_order, k=k)
         ret = []
         for item in results:
-            if save :
-                ret.append({data_key: json.loads(item.page_content)[data_key], data_key2: json.loads(item.page_content)[data_key2]})
-            else: ret += json.loads(item.page_content)[data_key]
+            temp = json.loads(item.page_content)
+            if type(temp) == dict:
+                tmp = {}
+                for key in temp:
+                    if temp[key]:
+                        tmp[key] = temp[key]
+                ret.append(tmp)
+            else:
+                ret += temp[data_key]
         return ret
 
     @staticmethod
@@ -2045,13 +2047,18 @@ class HumanLLMMonitor:
             """
         critic = None
         if self.last_inference_check_results:
-            for key, value in self.last_inference_check_results.items():
-                if 'Recommend critiques' in value:
-                    critic = value['Recommend critiques']
+            for result in self.last_inference_check_results:
+                if result is not None and isinstance(result, dict):
+                    for key, value in result.items():
+                        if key == 'Recommend critiques':
+                            critic = value
+                            break
+                else :
                     break
+
         if critic:
-            self.add_agent_data(self.agent_name, "llm_suggestions",
-                        {'llm_suggestions': critic['sugegstions'], 'user_suggestions': suggestions, 'llm_suggestions_prompt': critic['improvement_prompt']})
+            HumanLLMMonitor.add_agent_data(self.agent_name, "llm_suggestions",
+                        {'llm_suggestions': critic['suggestions'], 'user_suggestions': suggestions, 'llm_suggestions_prompt': critic['improvement_prompt']})
 
         if text_has_annotations:
             # if annotated_critics is a list, then make a different prompt
