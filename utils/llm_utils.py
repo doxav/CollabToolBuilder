@@ -1857,7 +1857,6 @@ class HumanLLMMonitor:
             # Run inference checks if any
             check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
             check_display = ""
-            critique = None
             # Display inference check results
             for check_name, result in check_results.items():
                 check_display += f"{nl}CHECK {check_name} result: " + str(result).replace("\\n", "\n")
@@ -1892,7 +1891,7 @@ class HumanLLMMonitor:
                 self.modifyAnswer(inference_result_msg, output_id)
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
-                inference_result_msg.content = self.criticAnswer(comments, inference_result_msg, annotated_critics=False, critique=critique)
+                inference_result_msg.content = self.criticAnswer(comments, inference_result_msg, text_has_annotations=False)
 
             elif action == "C":  # Find a better Prompt by providing critic and ideal answer
                 comments = self.findBetterPrompt(comments, inference_result_msg, premium_llm_function)
@@ -2030,8 +2029,30 @@ class HumanLLMMonitor:
 
         return comments
 
-    def criticAnswer(self, content_annotated, inference_result_msg, annotated_critics=True, critique=None):
+    def criticAnswer(self, suggestions, text_content, text_has_annotations=True):
+        """
+            This method processes the suggestions and text content to generate an improved answer.
+            It can handle annotated critics to refine the text content based on the provided suggestions.
+
+            Args:
+                suggestions (str): The suggestions or critics to be applied to the text content.
+                text_content (str): The original text content that needs to be improved.
+                text_has_annotations (bool): A flag indicating whether the suggestions contain annotated critics. 
+                                          Default is True.
+
+            Returns:
+                str: The improved text content after applying the suggestions and critics.
+            """
         def is_valid_python_structure(s):
+            """
+                    Checks if the given string is a valid Python structure.
+
+                    Args:
+                        s (str): The string to be checked.
+
+                    Returns:
+                        bool: True if the string is a valid Python structure, False otherwise.
+                    """
             import ast
             output = None
             try:
@@ -2040,76 +2061,91 @@ class HumanLLMMonitor:
             except (ValueError, SyntaxError):
                 return output, False
 
-        if annotated_critics:
-            if content_annotated is None:
-                content_structure, is_structure = is_valid_python_structure(inference_result_msg.content)
-                content_pretty = json.dumps(content_structure, indent=4) if is_structure else inference_result_msg.content
-                content_annotated = _visual_input(content_pretty, filetype="py" if is_structure else "md")
+        critic = None
+        if self.last_inference_check_results:
+            for key, value in self.last_inference_check_results.items():
+                if 'Recommend critiques' in value:
+                    critic = value['Recommend critiques']
+                    break
+        if critic:
+            self.add_agent_data(self.agent_name, "llm_suggestions",
+                        {'llm_suggestions': critic['sugegstions'], 'user_suggestions': suggestions, 'llm_suggestions_prompt': critic['improvement_prompt']})
+
+        if text_has_annotations:
             # if annotated_critics is a list, then make a different prompt
-            if isinstance(content_annotated, list) and len(content_annotated)>1:
+            if isinstance(text_content, list) and len(text_content)>1:
                 prompt_start = "Your task is to merge the best of different **ANNOTATED ANSWERS** into 1  **ANNOTATED ANSWERS**"
             else:
                 prompt_start = "Your task is to refine the **ANNOTATED ANSWER**"
+            prompt_sugg = ""
+            if suggestions:
+                prompt_sugg = ("Tour task is also to take into account the **SUGGESTIONS** and modify the answer accordingly.\n"
+                               f"\n### SUGGESTIONS: << {suggestions} >>\n")
             system_prompt = f"""
-{prompt_start} given inline annotation of ths answer and the **INITIAL PROMPT**.
-Each inline text annotations instructions use tags (see **ANNOTATION TAGS** for interpretation - e.g. \TAG[optional instruction]{{original text...}} ).
-You should generate an improved answer replacing each tags/instructions by strictly following the instructions provided in the inline annotations.
-Before replacing each inline annotation, put between [[<< and >>]] your detailed reasoning process to solve the inline detected annotation and associated solution.
-It allows you to express enough your reasoning at each annotation, and me to easily remove afterward any text between [[<< and >>]] to get the final answer. 
-Generate the improved answer without additional introduction or comments except your different [[<< detailed reasoning steps >>]] .
-
-### INITIAL PROMPT: << {self.llm_input_messages[0].content} >>
-
-### ANNOTATION TAGS: <<
-The following annotations are provided to guide the refinement process. Each annotation is in the format `\TAG[optional instruction]{{original text...}}`. The tags indicate specific actions you should take to improve or finalize the text. Please follow the instructions for each tag carefully:
-
-1. **\KEEP:**
-   - This tag indicates that the content is correct, clear, and relevant to the subject.
-   - **Action:** **No changes are necessary.** Retain this content exactly as it is.
-   - **Example:** \KEEP{{The system's reliability is essential for maintaining continuous operation.}}
-
-2. **\FIX:**
-   - Content marked with this tag requires **correction or improvement**. There may be issues related to accuracy, clarity, or relevance.
-   - **Action:** Make necessary revisions to ensure the text is accurate, clear, and aligned with the overall subject matter.
-   - **Example:** \FIX[it should first search on the web for a reliable recipe, then use llm.]{{tomato_sauce_recipe = rubish_llm_factory('tell me how to make tomato sauce for my italian noodles')}}
-
-3. **\IMPROVE:**
-   - This tag suggests enhancing the content by making it more complete, efficient, or stylistically refined.
-   - **Action:** Improve the marked text by expanding, rewording, or refining it to better suit the purpose.
-   - **Example:** \IMPROVE[Explain why a more efficient algorithm might be necessary for large datasets.]{{The algorithm finishes in O(n^2) time.}}
-
-4. **\EXPLORE:**
-   - This tag encourages exploring alternative ideas, methods, or perspectives to provide a richer or broader answer.
-   - **Action:** Propose new angles, approaches, or solutions for the marked text, considering alternative possibilities.
-   - **Example:** \EXPLORE[Explore whether parallelization could speed up the process.]{{The standard approach is sufficient.}}
-
-### Your Task:
-1. **Understand** the initial task and subject matter to ensure that the text aligns with the overall objectives and audience requirements.
-2. **Interpret** the annotations in the provided text according to the guidelines above.
-3. **Revise** the text by making necessary corrections, improvements, or explorations as instructed.
-4. Ensure that the **final text** is clear, accurate, relevant, and stylistically appropriate for the INITIAL TASK and expected format.
->>"""
-            if (isinstance(content_annotated, list) and len(content_annotated)>1):
+                {prompt_start} given inline annotation of ths answer and the **INITIAL PROMPT**.
+                Each inline text annotations instructions use tags (see **ANNOTATION TAGS** for interpretation - e.g. \TAG[optional instruction]{{original text...}} ).
+                You should generate an improved answer replacing each tags/instructions by strictly following the instructions provided in the inline annotations.
+                Before replacing each inline annotation, put between [[<< and >>]] your detailed reasoning process to solve the inline detected annotation and associated solution.
+                It allows you to express enough your reasoning at each annotation, and me to easily remove afterward any text between [[<< and >>]] to get the final answer. 
+                Generate the improved answer without additional introduction or comments except your different [[<< detailed reasoning steps >>]] .
+                {prompt_sugg}
+                ### INITIAL PROMPT: << {self.llm_input_messages[0].content} >>
+                
+                ### ANNOTATION TAGS: <<
+                The following annotations are provided to guide the refinement process. Each annotation is in the format `\TAG[optional instruction]{{original text...}}`. The tags indicate specific actions you should take to improve or finalize the text. Please follow the instructions for each tag carefully:
+                
+                1. **\KEEP:**
+                   - This tag indicates that the content is correct, clear, and relevant to the subject.
+                   - **Action:** **No changes are necessary.** Retain this content exactly as it is.
+                   - **Example:** \KEEP{{The system's reliability is essential for maintaining continuous operation.}}
+                
+                2. **\FIX:**
+                   - Content marked with this tag requires **correction or improvement**. There may be issues related to accuracy, clarity, or relevance.
+                   - **Action:** Make necessary revisions to ensure the text is accurate, clear, and aligned with the overall subject matter.
+                   - **Example:** \FIX[it should first search on the web for a reliable recipe, then use llm.]{{tomato_sauce_recipe = rubish_llm_factory('tell me how to make tomato sauce for my italian noodles')}}
+                
+                3. **\IMPROVE:**
+                   - This tag suggests enhancing the content by making it more complete, efficient, or stylistically refined.
+                   - **Action:** Improve the marked text by expanding, rewording, or refining it to better suit the purpose.
+                   - **Example:** \IMPROVE[Explain why a more efficient algorithm might be necessary for large datasets.]{{The algorithm finishes in O(n^2) time.}}
+                
+                4. **\EXPLORE:**
+                   - This tag encourages exploring alternative ideas, methods, or perspectives to provide a richer or broader answer.
+                   - **Action:** Propose new angles, approaches, or solutions for the marked text, considering alternative possibilities.
+                   - **Example:** \EXPLORE[Explore whether parallelization could speed up the process.]{{The standard approach is sufficient.}}
+                
+                ### Your Task:
+                1. **Understand** the initial task and subject matter to ensure that the text aligns with the overall objectives and audience requirements.
+                2. **Interpret** the annotations in the provided text according to the guidelines above.
+                3. **Revise** the text by making necessary corrections, improvements, or explorations as instructed.
+                4. Ensure that the **final text** is clear, accurate, relevant, and stylistically appropriate for the INITIAL TASK and expected format.
+                >>"""
+            if (isinstance(suggestions, list) and len(suggestions)>1):
                 user_prompt = ""
-                for i, content in enumerate(content_annotated):
+                for i, content in enumerate(suggestions):
                     user_prompt += f"\n\n### ANNOTATED ANSWER {i+1}: << {content} >>"
             else:
-                user_prompt = f"ANNOTATED ANSWER: << {content_annotated} >>"
+                user_prompt = f"ANNOTATED ANSWER: << {suggestions} >>"
 
             llm_output = self.premium_llm.with_config(configurable={"llm_temperature": 0.1}).invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
             # remove the reasoning part of the answer between [[[[ and ]]]] from llm_output.content
             if ">>]]" in llm_output.content:
-                print("Annotated answer: ", content_annotated)
+                print("Annotated answer: ", suggestions)
                 print("Removing reasoning part of the answer - before: ", llm_output.content)
                 llm_output.content = re.sub(r'\[\[<<.*?>>\]\]', '', llm_output.content)
                 print("Removing reasoning part of the answer - after: ", llm_output.content)
         else:
-            if content_annotated is None:
-                content_annotated = smart_input("Provide critic/feedback/request: ", self.agent_name, column_max=self.num_parallel_inferences)
+            if suggestions is None:
+                suggestions = smart_input("Provide critic/feedback/request: ", self.agent_name, column_max=self.num_parallel_inferences)
+            prompt_sugg = ""
+            if suggestions:
+                prompt_sugg = ("Tour task is also to take into account the **SUGGESTIONS** and modify the answer accordingly.\n"
+                               f"\n### SUGGESTIONS: << {suggestions} >>\n")
             system_prompt = f"""Given the INSTRUCTION provided by the user (and the **INITIAL PROMPT**), your task is to generate a very different new answer from the INITIAL ANSWER or to refine the initial answer.
+            {prompt_sugg}
             ### INITIAL PROMPT: << {self.llm_input_messages[0].content} >>
-            ### INITIAL ANSWER: << {inference_result_msg} >> """
-            user_prompt = f"INSTRUCTION: << {content_annotated} >>"
+            ### INITIAL ANSWER: << {text_content} >> """
+            user_prompt = f"INSTRUCTION: << {suggestions} >>"
             llm_output = self.premium_llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
 
         self.temp_inference_result_content = llm_output.content # to be captured in the menu if function called outside of the menu and get inference checks
@@ -2589,13 +2625,13 @@ The following annotations are provided to guide the refinement process. Each ann
                     elif isinstance(result, list) and result:
                         improvement_feedback.extend([f"{check_name} feedback: {item}" for item in result if item])
 
-        previous_suggestions = HumanLLMMonitor.get_agent_data(self.agent_name, "improvement_suggestion")
+        previous_suggestions = HumanLLMMonitor.get_agent_data(self.agent_name, "llm_suggestions")
         prev_sugg = ""
         prev_sugg_u = ""
         if previous_suggestions:
             for sugg in previous_suggestions:
-                prev_sugg += f"\n{sugg['improvement_suggestion']}"
-                prev_sugg_u += f"\n{sugg['improvement_suggestion_user']}"
+                prev_sugg += f"\n{sugg['llm_suggestions']}"
+                prev_sugg_u += f"\n{sugg['user_suggestions']}"
 
         # Prepare a prompt based on whether feedback is available
         if improvement_feedback:
