@@ -2211,8 +2211,8 @@ function getColumnsToKeep(agent) {
 
                 // Prepare data for sendFunctionCall
                 let requestData = {
-                    suggestions: textWithoutHtml,
-                    text_content: ""
+                    suggestions: "",
+                    text_content: textWithoutHtml
                 };
 
                 // Send the function call
