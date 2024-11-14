@@ -176,6 +176,13 @@
             isFunctionCallInProgress = false;}
     }
 
+    function removeUnicodeSequences(jsonString) {
+        // Expression régulière pour trouver les séquences \uXXXX
+        const unicodeRegex = /\\u[\dA-Fa-f]{4}/g;
+
+        // Remplacer toutes les occurrences par une chaîne vide
+        return jsonString.replace(unicodeRegex, "");
+    }
 
     function displayMessage(data) {
         if(data.agent_name == null){
@@ -653,6 +660,17 @@
         } else if(data.agent_name === "Pipeline/Function Mode" && data.message_type === "Files loaded" ){
             // Do nothing
 
+        } else if(data.agent_name === "TaskIdentificationAgent" && data.message_type === "CRITIC SUGGESTIONS"){
+            console.log("CRITIC SUGGESTIONS");
+            console.log(data.message);
+            const cleanSuggestions = removeUnicodeSequences(data.message.replace(/'/g, '"'));
+            let suggestions = JSON.parse(cleanSuggestions);
+            console.log("suggestsions:", suggestions);
+            annotationswithID = suggestions.suggestions;
+            let comment_editor = window[`editorInstance_TaskIdentificationAgent-${suggestions.output_id}`];
+            console.log("editor:", comment_editor);
+            // Add text in the comment editor
+           comment_editor.setValue(annotationswithID);
         } else if(data.message.includes("Enter the number of the new default LLM (0-3):")){
            // Send the selectedLLM to the backend
            console.log("Sending the selected LLM to the backend : ", selectedLLM);
@@ -1253,6 +1271,9 @@ color: white;
             display: none; /* Hide by default */
         }
 
+.monaco-editor .margin-view-overlays .folding::after {
+z-index: -1;
+}
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
@@ -1341,10 +1362,10 @@ color: white;
             </select>
             <input type="text" id="search-filter" placeholder="Search...">
             <select id="annotation-type">
-                <option value="latex-inline">Latex inline</option>
-                <option value="latex-id">Latex with id</option>
                 <option value="HTML-inline">HTML inline</option>
                 <option value="HTML-id">HTML with id</option>
+                <option value="latex-inline">Latex inline</option>
+                <option value="latex-id">Latex with id</option>
             </select>
 
 
@@ -1451,10 +1472,9 @@ color: white;
 <div class="annotation-menu">
     <button class="close-btn">&times;</button>
     <select id="annotation-action">
-        <option value="KEEP">KEEP</option>
         <option value="FIX">FIX</option>
+        <option value="INSERT">INSERT</option>
         <option value="IMPROVE">IMPROVE</option>
-        <option value="EXPLORE">EXPLORE</option>
     </select>
     <input width="300" type="text" id="annotation-input" placeholder="Enter your annotation">
     <button id="apply-annotation">Apply</button>
@@ -1932,7 +1952,7 @@ function getColumnsToKeep(agent) {
                     </div>
 
 
-                    <div id="comment-monaco-editor-${agent_columnId}" style="margin-right: 10px; width: 350px; height: 100px; position: relative;">
+                    <div id="comment-monaco-editor-${agent_columnId}" style="margin-right: 10px; width: 750px; height: 250px; position: relative;">
                         <button class="expand-button" id="comment-expand-${agent_columnId}">
                             <i class="fas fa-expand"></i>
                         </button>
@@ -1981,11 +2001,13 @@ function getColumnsToKeep(agent) {
                 // Apply a black border around the container
                 editorContainer.style.border = "2px solid silver";
                 editorContainer.style.borderRadius = "5px";
+                editorContainer.style.textAlign = "left";
                 const editor = monaco.editor.create(document.getElementById(`comment-monaco-editor-${agent_columnId}`), {
                     value: '', // Provide default content if needed
                     language: 'markdown', // Change language if necessary
                     automaticLayout: true,
                     wordWrap: "on",
+                    folding: true,
                 });
                 // Optionally, store the editor instance for further interaction
                 window[`editorInstance_${agent_columnId}`] = editor;
@@ -2052,7 +2074,9 @@ function getColumnsToKeep(agent) {
 
     $(`#evaluate-${agent_columnId}`).click(function () {
         // Check if the input field is empty
-        let comment = $(`#comment-${agent_columnId}`).val().trim();
+        let comment_editor = window[`editorInstance_${agent_columnId}`];
+        // Add text in the comment editor
+        let comment = comment_editor.getValue();
         if (comment === '') {
             alert("Write your instructions first");
             return;
@@ -2083,9 +2107,9 @@ function getColumnsToKeep(agent) {
 
         // Prepare data for sendFunctionCall
         let requestData = {
-            content_annotated: comment,
-            inference_result_msg: originalContent,
-            annotated_critics: false
+            suggestions: comment,
+            text_content: originalContent,
+            text_has_annotations: false
         };
 
         // Send the function call
@@ -2137,8 +2161,8 @@ function getColumnsToKeep(agent) {
 
                 // Prepare data for sendFunctionCall
                 let requestData = {
-                    content_annotated: annotatedTexts,
-                    inference_result_msg: ""
+                    suggestions: annotatedTexts,
+                    text_content: ""
                 };
 
                 // Send the function call
@@ -2162,6 +2186,7 @@ function getColumnsToKeep(agent) {
                 });
             });
           $(`#regenwithmymodifbutton-${agent_columnId}`).click(function () {
+              console.log("regenwithmymodifbutton clicked");
                 let targetColumn = document.getElementById(`column-${agent_columnId}`);
 
                 if(!targetColumn || !targetColumn.editorInstance) {
@@ -2184,15 +2209,16 @@ function getColumnsToKeep(agent) {
 
                 // Retrieve and process the editor content
                 let text = editor.getValue();
-                let textWithoutHtml = text.replace(/<[^>]*>/g, '');
+                let textWithoutHtml = text.replace(/<[^>]*>/g, ''); // TODO: I removed and don't understand the purpose
 
                 // Disable the button and update its text
                 enableGenButtons(false);
 
                 // Prepare data for sendFunctionCall
                 let requestData = {
-                    content_annotated: textWithoutHtml,
-                    inference_result_msg: ""
+                    suggestions: "",
+                    text_content: text, // TODO: textWithoutHtml IGNORED => check !
+                    annotation_format: $("#annotation-type").val()
                 };
 
                 // Send the function call
@@ -2373,8 +2399,8 @@ function getColumnsToKeep(agent) {
             } else {
                 editorContainer.classList.remove("expanded");
                 // Réduire l'éditeur
-                editorContainer.style.width = "350px";
-                editorContainer.style.height = "100px";
+                editorContainer.style.width = "750px";
+                editorContainer.style.height = "250px";
                 editorContainer.style.position = "relative";
                 editorContainer.style.top = "";
                 editorContainer.style.left = "";

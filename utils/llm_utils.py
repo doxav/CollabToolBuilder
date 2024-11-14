@@ -619,7 +619,10 @@ class HumanLLMMonitor:
         if type(data_value) == list and len(data_value) > 0:
             if type(data_value[0]) == AIMessage:
                 data_value = data_value[0].content
-        serialized_data = json.dumps({data_key: data_value})
+        if type(data_value) == dict:
+            serialized_data = json.dumps(data_value)
+        else:
+            serialized_data = json.dumps({data_key: data_value})
         tags = metadata or {}
         tags.update({"agent_name": agent_name, "data_key": data_key})
         cls.common_vectordb.add_texts(texts=[serialized_data], metadatas=[tags])
@@ -627,13 +630,6 @@ class HumanLLMMonitor:
     @classmethod
     def get_agent_data(cls, agent_name, data_key, metadata_filter=None, sort_order=None, k=5):
         """Retrieves agent-specific data based on the agent name and data key."""
-        save = None
-        if type(data_key) == dict:
-            save = data_key
-            temp = list(data_key.keys())
-            data_key = temp[0]
-            data_key2 = temp[1]
-
         metadata = {"agent_name": agent_name, "data_key": data_key}
         if metadata_filter:
             metadata.update(metadata_filter)
@@ -641,9 +637,15 @@ class HumanLLMMonitor:
             query_text='', metadata_filter=metadata, sort_order=sort_order, k=k)
         ret = []
         for item in results:
-            if save :
-                ret.append({data_key: json.loads(item.page_content)[data_key], data_key2: json.loads(item.page_content)[data_key2]})
-            else: ret += json.loads(item.page_content)[data_key]
+            temp = json.loads(item.page_content)
+            if type(temp) == dict:
+                tmp = {}
+                for key in temp:
+                    if temp[key]:
+                        tmp[key] = temp[key]
+                ret.append(tmp)
+            else:
+                ret += temp[data_key]
         return ret
 
     @staticmethod
@@ -1857,7 +1859,6 @@ class HumanLLMMonitor:
             # Run inference checks if any
             check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
             check_display = ""
-            critique = None
             # Display inference check results
             for check_name, result in check_results.items():
                 check_display += f"{nl}CHECK {check_name} result: " + str(result).replace("\\n", "\n")
@@ -1892,7 +1893,7 @@ class HumanLLMMonitor:
                 self.modifyAnswer(inference_result_msg, output_id)
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
-                inference_result_msg.content = self.criticAnswer(comments, inference_result_msg, annotated_critics=False, critique=critique)
+                inference_result_msg.content = self.criticAnswer(comments, inference_result_msg, text_has_annotations=False)
 
             elif action == "C":  # Find a better Prompt by providing critic and ideal answer
                 comments = self.findBetterPrompt(comments, inference_result_msg, premium_llm_function)
@@ -2030,91 +2031,207 @@ class HumanLLMMonitor:
 
         return comments
 
-    def criticAnswer(self, content_annotated, inference_result_msg, annotated_critics=True, critique=None):
-        def is_valid_python_structure(s):
-            import ast
-            output = None
-            try:
-                output = ast.literal_eval(s)
-                return output, True
-            except (ValueError, SyntaxError):
-                return output, False
+    def criticAnswer(self, suggestions, text_content, text_has_annotations=True, annotation_format=None,
+                     instruction_processing_approach='ANNOTATIONS_ALL'):
+        """
+            This method processes the suggestions and text content to generate an improved answer.
+            It can handle annotated critics to refine the text content based on the provided suggestions.
 
-        if annotated_critics:
-            if content_annotated is None:
-                content_structure, is_structure = is_valid_python_structure(inference_result_msg.content)
-                content_pretty = json.dumps(content_structure, indent=4) if is_structure else inference_result_msg.content
-                content_annotated = _visual_input(content_pretty, filetype="py" if is_structure else "md")
-            # if annotated_critics is a list, then make a different prompt
-            if isinstance(content_annotated, list) and len(content_annotated)>1:
-                prompt_start = "Your task is to merge the best of different **ANNOTATED ANSWERS** into 1  **ANNOTATED ANSWERS**"
+            Args:
+                suggestions (str): The suggestions or critics to be applied to the text content.
+                text_content (str): The original text content that needs to be improved.
+                text_has_annotations (bool): Indicates whether the text contains annotations. Default is True.
+                annotation_format (str): The format of the annotations. If None and text_has_annotations is True,
+                                     the format will be auto-detected.
+            instruction_processing_approach (str): The approach for processing instructions. Possible values are
+                                                   'FULLTEXT_ALL', 'FULLTEXT_EACH', 'ANNOTATIONS_ALL', 'ANNOTATIONS_EACH'.
+                                                   Default is 'FULLTEXT_ALL'.
+
+        Returns:
+            str: The improved text content after applying the suggestions and critics.
+        """
+        import re
+        import json
+
+        # Auto-detect annotation format if necessary
+        def detect_annotation_format(text):
+            patterns = {
+                'latex-inline': re.compile(r'\\(?P<tag>\w+)(\[(?P<instruction>[^\]]*)\])?\{(?P<content>.*?)\}',
+                                           re.DOTALL),
+                'HTML-inline': re.compile(
+                    r'<(?P<tag>\w+)( action="(?P<instruction>[^"]*)")?>(?P<content>.*?)</(?P=tag)>', re.DOTALL),
+                'latex-id': re.compile(r'\[(?P<id>\d+)\]\{(?P<content>.*?)\}', re.DOTALL),
+                'HTML-id': re.compile(r'<(?P<id>\d+)>(?P<content>.*?)</(?P=id)>', re.DOTALL)
+            }
+            for fmt, pattern in patterns.items():
+                if pattern.search(text):
+                    return fmt
+            return None
+
+        # Parse annotations from text
+        def parse_annotations(text, annotation_format):
+            annotations = []
+            if annotation_format == 'latex-inline':
+                pattern = re.compile(r'\\(?P<tag>\w+)(\[(?P<instruction>[^\]]*)\])?\{(?P<content>.*?)\}', re.DOTALL)
+            elif annotation_format == 'HTML-inline':
+                # pattern = re.compile(r'<(?P<tag>\w+)(\s+action="(?P<instruction>[^"]*)")?>(?P<content>.*?)</(?P=tag)>', re.DOTALL)
+                pattern = re.compile(
+                    r'(<(?P<tag>\w+)(\s+action="(?P<instruction>[^"]*)")?>)(?P<content>.*?)(</(?P=tag)>)', re.DOTALL)
+            elif annotation_format == 'latex-id':
+                pattern = re.compile(r'\[(?P<id>\d+)\]\{(?P<content>.*?)\}', re.DOTALL)
+            elif annotation_format == 'HTML-id':
+                pattern = re.compile(r'<(?P<id>\d+)>(?P<content>.*?)</(?P=id)>', re.DOTALL)
             else:
-                prompt_start = "Your task is to refine the **ANNOTATED ANSWER**"
-            system_prompt = f"""
-{prompt_start} given inline annotation of ths answer and the **INITIAL PROMPT**.
-Each inline text annotations instructions use tags (see **ANNOTATION TAGS** for interpretation - e.g. \TAG[optional instruction]{{original text...}} ).
-You should generate an improved answer replacing each tags/instructions by strictly following the instructions provided in the inline annotations.
-Before replacing each inline annotation, put between [[<< and >>]] your detailed reasoning process to solve the inline detected annotation and associated solution.
-It allows you to express enough your reasoning at each annotation, and me to easily remove afterward any text between [[<< and >>]] to get the final answer. 
-Generate the improved answer without additional introduction or comments except your different [[<< detailed reasoning steps >>]] .
+                return annotations
+            for match in pattern.finditer(text):
+                annotation = match.groupdict()
+                annotation['full_match'] = match.group(0)
+                annotation['start'] = match.start()
+                annotation['end'] = match.end()
+                annotations.append(annotation)
+            return annotations
 
-### INITIAL PROMPT: << {self.llm_input_messages[0].content} >>
+        # Parse instructions from suggestions
+        def parse_instructions(suggestions):
+            instructions = {}
+            if suggestions:
+                pattern = re.compile(r'\[(?P<id>\d+)\]:\s*(?P<instruction>.+)')
+                for line in suggestions.strip().splitlines():
+                    match = pattern.match(line.strip())
+                    if match:
+                        id_ = match.group('id')
+                        instruction = match.group('instruction').strip()
+                        instructions[id_] = instruction
+            return instructions
 
-### ANNOTATION TAGS: <<
-The following annotations are provided to guide the refinement process. Each annotation is in the format `\TAG[optional instruction]{{original text...}}`. The tags indicate specific actions you should take to improve or finalize the text. Please follow the instructions for each tag carefully:
+        critic = None
+        if self.last_inference_check_results:
+            for result in self.last_inference_check_results:
+                if result is not None and isinstance(result, dict):
+                    for key, value in result.items():
+                        if key == 'Recommend critiques':
+                            critic = value
+                            break
+                else :
+                    break
 
-1. **\KEEP:**
-   - This tag indicates that the content is correct, clear, and relevant to the subject.
-   - **Action:** **No changes are necessary.** Retain this content exactly as it is.
-   - **Example:** \KEEP{{The system's reliability is essential for maintaining continuous operation.}}
+        if critic:
+            HumanLLMMonitor.add_agent_data(self.agent_name, "llm_suggestions",
+                        {'llm_suggestions': critic['suggestions'], 'user_suggestions': suggestions, 'llm_suggestions_prompt': critic['improvement_prompt']})
 
-2. **\FIX:**
-   - Content marked with this tag requires **correction or improvement**. There may be issues related to accuracy, clarity, or relevance.
-   - **Action:** Make necessary revisions to ensure the text is accurate, clear, and aligned with the overall subject matter.
-   - **Example:** \FIX[it should first search on the web for a reliable recipe, then use llm.]{{tomato_sauce_recipe = rubish_llm_factory('tell me how to make tomato sauce for my italian noodles')}}
-
-3. **\IMPROVE:**
-   - This tag suggests enhancing the content by making it more complete, efficient, or stylistically refined.
-   - **Action:** Improve the marked text by expanding, rewording, or refining it to better suit the purpose.
-   - **Example:** \IMPROVE[Explain why a more efficient algorithm might be necessary for large datasets.]{{The algorithm finishes in O(n^2) time.}}
-
-4. **\EXPLORE:**
-   - This tag encourages exploring alternative ideas, methods, or perspectives to provide a richer or broader answer.
-   - **Action:** Propose new angles, approaches, or solutions for the marked text, considering alternative possibilities.
-   - **Example:** \EXPLORE[Explore whether parallelization could speed up the process.]{{The standard approach is sufficient.}}
-
-### Your Task:
-1. **Understand** the initial task and subject matter to ensure that the text aligns with the overall objectives and audience requirements.
-2. **Interpret** the annotations in the provided text according to the guidelines above.
-3. **Revise** the text by making necessary corrections, improvements, or explorations as instructed.
-4. Ensure that the **final text** is clear, accurate, relevant, and stylistically appropriate for the INITIAL TASK and expected format.
->>"""
-            if (isinstance(content_annotated, list) and len(content_annotated)>1):
-                user_prompt = ""
-                for i, content in enumerate(content_annotated):
-                    user_prompt += f"\n\n### ANNOTATED ANSWER {i+1}: << {content} >>"
+        if text_has_annotations:
+            if annotation_format is None:
+                annotation_format = detect_annotation_format(text_content)
+                if annotation_format is None:
+                    raise ValueError("Could not auto-detect annotation format.")
+            annotations = parse_annotations(text_content, annotation_format)
+            if annotation_format in ['latex-inline', 'HTML-inline']:
+                # Instructions are inline within annotations
+                for annotation in annotations:
+                    instruction = annotation.get('instruction', '').strip()
+                    annotation['instruction'] = instruction
+            elif annotation_format in ['latex-id', 'HTML-id']:
+                # Instructions are provided in suggestions
+                instructions = parse_instructions(suggestions)
+                for annotation in annotations:
+                    id_ = annotation.get('id')
+                    instruction = instructions.get(id_)
+                    if instruction:
+                        annotation['instruction'] = instruction
+                    else:
+                        raise ValueError(f"No instruction found for annotation ID {id_}")
             else:
-                user_prompt = f"ANNOTATED ANSWER: << {content_annotated} >>"
+                raise ValueError("Unsupported annotation format.")
 
-            llm_output = self.premium_llm.with_config(configurable={"llm_temperature": 0.1}).invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
-            # remove the reasoning part of the answer between [[[[ and ]]]] from llm_output.content
-            if ">>]]" in llm_output.content:
-                print("Annotated answer: ", content_annotated)
-                print("Removing reasoning part of the answer - before: ", llm_output.content)
-                llm_output.content = re.sub(r'\[\[<<.*?>>\]\]', '', llm_output.content)
-                print("Removing reasoning part of the answer - after: ", llm_output.content)
+            if instruction_processing_approach == 'FULLTEXT_ALL':
+                system_prompt = """
+                Your task is to improve the following text by processing the annotations and following the instructions provided.
+                Please replace the annotated parts according to the instructions and produce the final improved version of the text.
+
+                Possible actions:
+                1. **FIX:** Make necessary corrections.
+                2. **IMPROVE:** Enhance the content.
+                3. **INSERT:** Add new content as instructed.
+                """
+                user_prompt = f"{text_content}"
+                llm_output = self.premium_llm.invoke(
+                    [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+                final_text = llm_output.content
+
+            elif instruction_processing_approach == 'FULLTEXT_EACH':
+                final_text = text_content
+                for annotation in annotations:
+                    system_prompt = """
+                Your task is to improve the following text by processing the annotation and following the instruction.
+                Please replace the annotated part according to the instruction and produce the final improved version of the text.
+                """
+                    # Replace other annotations with their content
+                    temp_text = final_text
+                    for other_annotation in annotations:
+                        if other_annotation != annotation:
+                            temp_text = temp_text.replace(other_annotation['full_match'], other_annotation['content'])
+                    llm_output = self.premium_llm.invoke(
+                        [SystemMessage(content=system_prompt), HumanMessage(content=temp_text)])
+                    final_text = llm_output.content
+
+            elif instruction_processing_approach == 'ANNOTATIONS_ALL':
+                annotations_data = {annotation.get('id') or str(i): {
+                    'content': annotation['content'],
+                    'instruction': annotation['instruction']
+                } for i, annotation in enumerate(annotations)}
+                system_prompt = """
+                Your task is to generate new content for the annotated parts according to the instructions.
+                Provide your output as a JSON dictionary mapping IDs to the new content.
+                """
+                user_prompt = f"Annotations:\n{json.dumps(annotations_data)}"
+                llm_output = self.premium_llm.invoke(
+                    [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+                new_contents = json.loads(llm_output.content)
+                final_text = text_content
+                for annotation in annotations:
+                    id_ = annotation.get('id') or str(annotations.index(annotation))
+                    full_match = annotation['full_match']
+                    new_content = new_contents.get(id_)
+                    if new_content:
+                        final_text = final_text.replace(full_match, new_content)
+                    else:
+                        raise ValueError(f"No new content found for annotation ID {id_}")
+
+            elif instruction_processing_approach == 'ANNOTATIONS_EACH':
+                final_text = text_content
+                for annotation in annotations:
+                    system_prompt = """
+                Your task is to generate new content for the following text according to the instruction.
+                """
+                    user_prompt = f"Text: {annotation['content']}\nInstruction: {annotation['instruction']}"
+                    llm_output = self.premium_llm.invoke(
+                        [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+                    new_content = llm_output.content.strip()
+                    full_match = annotation['full_match']
+                    final_text = final_text.replace(full_match, new_content)
+            else:
+                raise ValueError("Unsupported instruction processing approach.")
         else:
-            if content_annotated is None:
-                content_annotated = smart_input("Provide critic/feedback/request: ", self.agent_name, column_max=self.num_parallel_inferences)
+            # Existing logic for non-annotated text
+            if suggestions is None:
+                suggestions = smart_input("Provide critic/feedback/request: ", self.agent_name,
+                                          column_max=self.num_parallel_inferences)
+            prompt_sugg = ""
+            if suggestions:
+                prompt_sugg = (
+                    "Your task is also to take into account the **SUGGESTIONS** and modify the answer accordingly.\n"
+                    f"\n### SUGGESTIONS: << {suggestions} >>\n")
             system_prompt = f"""Given the INSTRUCTION provided by the user (and the **INITIAL PROMPT**), your task is to generate a very different new answer from the INITIAL ANSWER or to refine the initial answer.
+            {prompt_sugg}
             ### INITIAL PROMPT: << {self.llm_input_messages[0].content} >>
-            ### INITIAL ANSWER: << {inference_result_msg} >> """
-            user_prompt = f"INSTRUCTION: << {content_annotated} >>"
-            llm_output = self.premium_llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+            ### INITIAL ANSWER: << {text_content} >> """
+            user_prompt = f"INSTRUCTION: << {suggestions} >>"
+            llm_output = self.premium_llm.invoke(
+                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+            final_text = llm_output.content
 
-        self.temp_inference_result_content = llm_output.content # to be captured in the menu if function called outside of the menu and get inference checks
-
-        return llm_output.content
+        self.temp_inference_result_content = final_text  # Capture the result
+        return final_text
 
     def modifyAnswer(self, inference_result_msg, column_id=None):
         inference_result_msg.content = _visual_input(inference_result_msg.content)
@@ -2589,13 +2706,13 @@ The following annotations are provided to guide the refinement process. Each ann
                     elif isinstance(result, list) and result:
                         improvement_feedback.extend([f"{check_name} feedback: {item}" for item in result if item])
 
-        previous_suggestions = HumanLLMMonitor.get_agent_data(self.agent_name, "improvement_suggestion")
+        previous_suggestions = HumanLLMMonitor.get_agent_data(self.agent_name, "llm_suggestions")
         prev_sugg = ""
         prev_sugg_u = ""
         if previous_suggestions:
             for sugg in previous_suggestions:
-                prev_sugg += f"\n{sugg['improvement_suggestion']}"
-                prev_sugg_u += f"\n{sugg['improvement_suggestion_user']}"
+                prev_sugg += f"\n{sugg['llm_suggestions']}"
+                prev_sugg_u += f"\n{sugg['user_suggestions']}"
 
         # Prepare a prompt based on whether feedback is available
         if improvement_feedback:
@@ -2628,6 +2745,19 @@ The following annotations are provided to guide the refinement process. Each ann
         ])
 
         # Return formatted suggestions from the premium LLM
+        # Check if in the message there are no unexpected non-whitespace characters
+        if re.search(r'[^\x20-\x7E\t\n\r]', response.content):
+            # Remove unexpected characters
+            response.content = re.sub(r'[^\x20-\x7E\t\n\r]', "", response.content)
+
+        # Check if in the message there are no unexpected non-whitespace characters
+        if re.search(r'[^\x20-\x7E\t\n\r]', improvement_prompt):
+            # Remove unexpected characters
+            improvement_prompt = re.sub(r'[^\x20-\x7E\t\n\r]', "", improvement_prompt)
+
+        response.content = re.sub(r'\\u[0-9A-Fa-f]{4}', '', response.content)
+        improvement_prompt = re.sub(r'\\u[0-9A-Fa-f]{4}', '', improvement_prompt)
+
         ret = {"output_id": output_id, "suggestions": response.content, "improvement_prompt" : improvement_prompt}
-        smart_print(str(ret), self.agent_name, "CRITIC SUGGESTIONS", column_id=output_id, optional=True)
+        smart_print(json.dumps(ret), self.agent_name, "CRITIC SUGGESTIONS", column_id=output_id, optional=False)
         return ret

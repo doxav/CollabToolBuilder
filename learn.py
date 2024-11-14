@@ -673,10 +673,11 @@ class CodingAgent():
             def flatten(nested):
                 flat_list = []
                 for item in nested:
-                    if isinstance(item, list):
+                    if isinstance(item, (list, tuple)):
                         flat_list.extend(flatten(item))
-                    elif isinstance(item, tuple):
-                        flat_list.append(item)  # Préserver les tuples tels quels
+                    elif isinstance(item, dict):
+                        for value in item.values():
+                            flat_list.extend(flatten(value))
                     else:
                         flat_list.append(item)
                 return flat_list
@@ -688,12 +689,11 @@ class CodingAgent():
                 unpacked = []
                 for item in items:
                     if isinstance(item, tuple):
-                        unpacked.extend(item)
+                        unpacked.extend(unpack_tuples(item))
                     else:
                         unpacked.append(item)
                 return unpacked
 
-            # Unpack tuples in the flat_list to avoid tuples inside tuples
             flat_list = unpack_tuples(flat_list)
 
             # Toujours regrouper les éléments par paires de 2 et retourner une liste de tuples
@@ -730,8 +730,9 @@ class CodingAgent():
 
         previous_attempts = ""
         for errors_list, scores_list, codes_list in zip(previous_errors, previous_scores, previous_codes):
-            for err, score, code in zip(errors_list, scores_list, codes_list):
-                previous_attempts += f"\n<<ATTEMPT FEEDBACK: {err.content}\nSCORE: {score}\nCODE: {code}>>\n"
+            if errors_list and scores_list and codes_list:
+                for err, score, code in zip(errors_list.items(), scores_list.items(), codes_list.items()):
+                    previous_attempts += f"\n<<ATTEMPT FEEDBACK: {err[1]}\nSCORE: {score[1]}\nCODE: {code[1]}>>\n"
 
         error_patches_str = ""
         for (error_msg, diff_text) in error_patches:
