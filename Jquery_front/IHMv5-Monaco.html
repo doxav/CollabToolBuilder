@@ -1469,10 +1469,9 @@ color: white;
 <div class="annotation-menu">
     <button class="close-btn">&times;</button>
     <select id="annotation-action">
-        <option value="KEEP">KEEP</option>
+        <option value="INSERT">INSERT</option>
         <option value="FIX">FIX</option>
         <option value="IMPROVE">IMPROVE</option>
-        <option value="EXPLORE">EXPLORE</option>
     </select>
     <input width="300" type="text" id="annotation-input" placeholder="Enter your annotation">
     <button id="apply-annotation">Apply</button>
@@ -2071,7 +2070,9 @@ function getColumnsToKeep(agent) {
 
     $(`#evaluate-${agent_columnId}`).click(function () {
         // Check if the input field is empty
-        let comment = $(`#comment-${agent_columnId}`).val().trim();
+        let comment_editor = window[`editorInstance_${agent_columnId}`];
+        // Add text in the comment editor
+        let comment = comment_editor.getValue();
         if (comment === '') {
             alert("Write your instructions first");
             return;
