@@ -2037,7 +2037,7 @@ class HumanLLMMonitor:
             Args:
                 suggestions (str): The suggestions or critics to be applied to the text content.
                 text_content (str): The original text content that needs to be improved.
-                text_has_annotations (bool): A flag indicating whether the suggestions contain annotated critics. 
+                text_has_annotations (bool): A flag indicating whether the suggestions contain annotated critics.
                                           Default is True.
 
             Returns:
@@ -2664,6 +2664,15 @@ class HumanLLMMonitor:
         ])
 
         # Return formatted suggestions from the premium LLM
+        # Check if in the message there are no unexpected non-whitespace characters
+        if re.search(r'[^\x20-\x7E\t\n\r]', response.content):
+            # Remove unexpected characters
+            response.content = re.sub(r'[^\x20-\x7E\t\n\r]', "", response.content)
+
+        # Check if in the message there are no unexpected non-whitespace characters
+        if re.search(r'[^\x20-\x7E\t\n\r]', improvement_prompt):
+            # Remove unexpected characters
+            improvement_prompt = re.sub(r'[^\x20-\x7E\t\n\r]', "", improvement_prompt)
         ret = {"output_id": output_id, "suggestions": response.content, "improvement_prompt" : improvement_prompt}
-        smart_print(str(ret), self.agent_name, "CRITIC SUGGESTIONS", column_id=output_id, optional=True)
+        smart_print(json.dumps(ret), self.agent_name, "CRITIC SUGGESTIONS", column_id=output_id, optional=False)
         return ret

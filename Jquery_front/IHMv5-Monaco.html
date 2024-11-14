@@ -176,6 +176,13 @@
             isFunctionCallInProgress = false;}
     }
 
+    function removeUnicodeSequences(jsonString) {
+        // Expression régulière pour trouver les séquences \uXXXX
+        const unicodeRegex = /\\u[\dA-Fa-f]{4}/g;
+
+        // Remplacer toutes les occurrences par une chaîne vide
+        return jsonString.replace(unicodeRegex, "");
+    }
 
     function displayMessage(data) {
         if(data.agent_name == null){
@@ -653,6 +660,17 @@
         } else if(data.agent_name === "Pipeline/Function Mode" && data.message_type === "Files loaded" ){
             // Do nothing
 
+        } else if(data.agent_name === "TaskIdentificationAgent" && data.message_type === "CRITIC SUGGESTIONS"){
+            console.log("CRITIC SUGGESTIONS");
+            console.log(data.message);
+            const cleanSuggestions = removeUnicodeSequences(data.message.replace(/'/g, '"'));
+            let suggestions = JSON.parse(cleanSuggestions);
+            console.log("suggestsions:", suggestions);
+            annotationswithID = suggestions.suggestions;
+            let comment_editor = window[`editorInstance_TaskIdentificationAgent-${suggestions.output_id}`];
+            console.log("editor:", comment_editor);
+            // Add text in the comment editor
+           comment_editor.setValue(annotationswithID);
         } else if(data.message.includes("Enter the number of the new default LLM (0-3):")){
            // Send the selectedLLM to the backend
            console.log("Sending the selected LLM to the backend : ", selectedLLM);
@@ -1981,6 +1999,7 @@ function getColumnsToKeep(agent) {
                 // Apply a black border around the container
                 editorContainer.style.border = "2px solid silver";
                 editorContainer.style.borderRadius = "5px";
+                editorContainer.style.textAlign = "left";
                 const editor = monaco.editor.create(document.getElementById(`comment-monaco-editor-${agent_columnId}`), {
                     value: '', // Provide default content if needed
                     language: 'markdown', // Change language if necessary
@@ -2083,9 +2102,9 @@ function getColumnsToKeep(agent) {
 
         // Prepare data for sendFunctionCall
         let requestData = {
-            content_annotated: comment,
-            inference_result_msg: originalContent,
-            annotated_critics: false
+            suggestions: comment,
+            text_content: originalContent,
+            text_has_annotations: false
         };
 
         // Send the function call
@@ -2137,8 +2156,8 @@ function getColumnsToKeep(agent) {
 
                 // Prepare data for sendFunctionCall
                 let requestData = {
-                    content_annotated: annotatedTexts,
-                    inference_result_msg: ""
+                    suggestions: annotatedTexts,
+                    text_content: ""
                 };
 
                 // Send the function call
