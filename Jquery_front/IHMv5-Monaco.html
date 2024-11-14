@@ -1271,6 +1271,9 @@ color: white;
             display: none; /* Hide by default */
         }
 
+.monaco-editor .margin-view-overlays .folding::after {
+z-index: -1;
+}
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
@@ -2004,6 +2007,7 @@ function getColumnsToKeep(agent) {
                     language: 'markdown', // Change language if necessary
                     automaticLayout: true,
                     wordWrap: "on",
+                    folding: true,
                 });
                 // Optionally, store the editor instance for further interaction
                 window[`editorInstance_${agent_columnId}`] = editor;
@@ -2182,6 +2186,7 @@ function getColumnsToKeep(agent) {
                 });
             });
           $(`#regenwithmymodifbutton-${agent_columnId}`).click(function () {
+              console.log("regenwithmymodifbutton clicked");
                 let targetColumn = document.getElementById(`column-${agent_columnId}`);
 
                 if(!targetColumn || !targetColumn.editorInstance) {

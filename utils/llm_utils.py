@@ -2738,6 +2738,10 @@ class HumanLLMMonitor:
         if re.search(r'[^\x20-\x7E\t\n\r]', improvement_prompt):
             # Remove unexpected characters
             improvement_prompt = re.sub(r'[^\x20-\x7E\t\n\r]', "", improvement_prompt)
+
+        response.content = re.sub(r'\\u[0-9A-Fa-f]{4}', '', response.content)
+        improvement_prompt = re.sub(r'\\u[0-9A-Fa-f]{4}', '', improvement_prompt)
+
         ret = {"output_id": output_id, "suggestions": response.content, "improvement_prompt" : improvement_prompt}
         smart_print(json.dumps(ret), self.agent_name, "CRITIC SUGGESTIONS", column_id=output_id, optional=False)
         return ret
