@@ -26,6 +26,8 @@
     const maxAutoReconnectAttempts = 10; // Set the number of reconnection attempts
     let isFunctionCallInProgress = false;
     let selectedLLM = "";
+    let annotationId = 0;
+    let annotationswithID = "";
     
     // Function to get URL parameter by name
     function getUrlParameter(name) {
@@ -176,9 +178,16 @@
 
 
     function displayMessage(data) {
+        if(data.agent_name == null){
+            return;
+        }
+        if(data.agent_name !== currentAgent && data.message_type !== "orchestrate_agents" && data.message_type !== "null"){
+            console.log("Current agent is : ", currentAgent, " and data.agent_name is : ", data.agent_name);
+            current_llm_in_use = "default_llm";
+        }
         if (data.agent_name !== undefined) {
            if (currentAgent !== data.agent_name) {
-                // Clear the agent content for this agent
+               // Clear the agent content for this agent
                 let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
                 if ($agentAccordion.length) {
                     $agentAccordion.children("div").empty();
@@ -646,6 +655,7 @@
 
         } else if(data.message.includes("Enter the number of the new default LLM (0-3):")){
            // Send the selectedLLM to the backend
+           console.log("Sending the selected LLM to the backend : ", selectedLLM);
            socket.send(JSON.stringify({message: selectedLLM}));
 
         } else if(data.message_type === "TASK SELECTION" || data.message_type === "VALIDATION_INFO" || data.message_type === "Capitalization_info" || data.message_type === "ADDITIONAL_INFO"){
@@ -853,7 +863,7 @@
 
                         // Show the annotation menu at the calculated position
                         $(".annotation-menu")
-                            .css({ top: menuTop + 'px', left: menuLeft + 'px' })
+                            .css({ top: (menuTop + 20) + 'px', left: menuLeft + 'px' })
                             .show();
 
                         // Update global active editor and selection
@@ -945,9 +955,7 @@ body {
 }
 
 .applied-annotation {
-    background-color: rgba(255, 255, 0, 0.5); /* Semi-transparent yellow */
     color: black;
-    border-bottom: 1px dashed orange; /* Optional: Add underline for emphasis */
 }
 
 #main-container {
@@ -1332,7 +1340,14 @@ color: white;
                 <option value="all">All Agent Types</option>
             </select>
             <input type="text" id="search-filter" placeholder="Search...">
-            <label style="color:black;">Default LLM in use: <span id="default-llm-in-use" style="font-weight: bold;">default_llm</span></label>
+            <select id="annotation-type">
+                <option value="latex-inline">Latex inline</option>
+                <option value="latex-id">Latex with id</option>
+                <option value="HTML-inline">HTML inline</option>
+                <option value="HTML-id">HTML with id</option>
+            </select>
+
+
         </div>
 
         <div id="message-accordion" class="accordion"></div>
@@ -1449,6 +1464,7 @@ let messageCounter = 0;
 let logEditorInstance;
 let logData = ''; // Variable pour stocker les logs
 let logLines = [];
+let current_llm_in_use = "default_llm";
 
 monacoLoaderPromise.then(function() {
     logEditorInstance = monaco.editor.create(document.getElementById('log-editor'), {
@@ -1496,6 +1512,8 @@ socket.addEventListener('message', function(event) {
         console.warn('Log not initialized.');
     }
 });
+
+
 
 document.addEventListener('keydown', function (event) {
     // Check if Ctrl + Shift + L is pressed to display the log editor
@@ -1907,17 +1925,22 @@ function getColumnsToKeep(agent) {
             targetColumn.innerHTML += `
             <div style="text-align: center;">
                 <div style="display: flex; justify-content: center; align-items: flex-start;">
-                    <!-- Left: Remove and Save buttons -->
+
                     <div style="display: flex; flex-direction: column; align-items: center; margin-right: 10px;">
                         ${selectionButtonsHtml}
                         <button id="save-${agent_columnId}" style="display: none; margin-top: 5px;"><i class="fa-solid fa-rotate"></i>Save your Edit</button>
                     </div>
 
-                    <!-- Center: Textarea -->
-                    <textarea type="text" id="comment-${agent_columnId}" placeholder="Write instructions to regenerate... (or annotate the answer)" style="margin-right: 10px; width: 350px; height: 100px;"></textarea>
 
-                    <!-- Right: Evaluate and Regenerate buttons -->
-                    <div style="display: flex; flex-direction: column; align-items: left; gap: 5px;">
+                    <div id="comment-monaco-editor-${agent_columnId}" style="margin-right: 10px; width: 350px; height: 100px; position: relative;">
+                        <button class="expand-button" id="comment-expand-${agent_columnId}">
+                            <i class="fas fa-expand"></i>
+                        </button>
+                    </div>
+
+
+
+                    <div style="display: flex; flex-direction: column; gap: 5px;">
                         <button id="evaluate-${agent_columnId}"><i class="fa-regular fa-paper-plane"></i>Regenerate from instructions</button><br>
                         <button id="regenwithmymodifbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i>Regenerate from this answer's annotations</button>
                         <button id="regenallbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i>Regenerate from all answers & annotations</button>
@@ -1952,6 +1975,24 @@ function getColumnsToKeep(agent) {
                     $(`#value-${agent_columnId}`).text(this.value);
                 }
             });
+
+            monacoLoaderPromise.then(function () {
+                const editorContainer = document.getElementById(`comment-monaco-editor-${agent_columnId}`);
+                // Apply a black border around the container
+                editorContainer.style.border = "2px solid silver";
+                editorContainer.style.borderRadius = "5px";
+                const editor = monaco.editor.create(document.getElementById(`comment-monaco-editor-${agent_columnId}`), {
+                    value: '', // Provide default content if needed
+                    language: 'markdown', // Change language if necessary
+                    automaticLayout: true,
+                    wordWrap: "on",
+                });
+                // Optionally, store the editor instance for further interaction
+                window[`editorInstance_${agent_columnId}`] = editor;
+            });
+
+
+
 
             let toggleTimeouts = {}; // To store timeout references by `agent_columnId`
 
@@ -2233,6 +2274,8 @@ function getColumnsToKeep(agent) {
     }
 }
 
+
+
     function adjustColumnWidths() {
         console.log('Adjusting column widths with', document.querySelectorAll('.solution-columns .solution-column').length, 'columns');
         const columns = document.querySelectorAll('.solution-columns .solution-column');
@@ -2307,18 +2350,51 @@ function getColumnsToKeep(agent) {
         return marked.parse(message);
     }
 
-    // Adds the listener for the expand button
+    // Adds the listener for the expand button of the solution columns
     $(document).on("click", ".expand-button", function() {
-        let $column = $(this).closest(".solution-column");
-        let $icon = $(this).find("i");
-        if ($column.hasClass("expanded")) {
-            $column.removeClass("expanded");
-            // Modify the icon to show the expand icon
-            $icon.removeClass("fa-compress").addClass("fa-expand");
-        } else {
-            $column.addClass("expanded");
-            // Modify the icon to show the compress icon
-            $icon.removeClass("fa-expand").addClass("fa-compress");
+        // If the expand button has an id
+        if (this.id) {
+            editorContainer = document.getElementById(this.id.replace("expand-", "monaco-editor-"));
+            console.log(this.id.replace("expand-", "editor-"));
+            expandButton = this;
+            console.log("Expanding editor");
+            const isExpanded = editorContainer.classList.contains("expanded");
+            if (!isExpanded) {
+                editorContainer.classList.add("expanded");
+                // Agrandir l'éditeur
+                editorContainer.style.width = "100%";
+                editorContainer.style.height = "400px";
+                editorContainer.style.position = "absolute";
+                editorContainer.style.top = "400px";
+                editorContainer.style.left = "0";
+                editorContainer.style.zIndex = "1000";
+                expandButton.innerHTML = `<i class="fas fa-compress"></i>`;
+
+            } else {
+                editorContainer.classList.remove("expanded");
+                // Réduire l'éditeur
+                editorContainer.style.width = "350px";
+                editorContainer.style.height = "100px";
+                editorContainer.style.position = "relative";
+                editorContainer.style.top = "";
+                editorContainer.style.left = "";
+                editorContainer.style.zIndex = "";
+                expandButton.innerHTML = `<i class="fas fa-expand"></i>`;
+            }
+
+        }
+        else{
+            let $column = $(this).closest(".solution-column");
+            let $icon = $(this).find("i");
+            if ($column.hasClass("expanded")) {
+                $column.removeClass("expanded");
+                // Modify the icon to show the expand icon
+                $icon.removeClass("fa-compress").addClass("fa-expand");
+            } else {
+                $column.addClass("expanded");
+                // Modify the icon to show the compress icon
+                $icon.removeClass("fa-expand").addClass("fa-compress");
+            }
         }
     });
 
@@ -2486,7 +2562,7 @@ $(document).on('click', '.collapsible-header', function() {
                             // Create a select element with the LLM "default" and "premium"
                             let $select = $(`<select id="llm-select" name="llm-select" class="menu-option" data-option="${letter}"></select>`);
                             // Set the default option with the current LLM used and set the text of the default option to this value and get value depends on the text
-                            let currentLLM = $("#default-llm-in-use").text();
+                            let currentLLM = current_llm_in_use;
                             if(currentLLM === "premium_llm"){
                                 $select.append(`<option value="0">default_llm</option>`);
                                 $select.append(`<option value="1" selected>premium_llm</option>`);
@@ -2557,7 +2633,8 @@ $(document).on('click', '.collapsible-header', function() {
                             // Create a select element with the LLM "default" and "premium"
                             let $select = $(`<select id="llm-select" name="llm-select" class="menu-option" data-option="${letter}"></select>`);
                             // Set the default option with the current LLM used and set the text of the default option to this value and get value depends on the text
-                            let currentLLM = $("#default-llm-in-use").text();
+                            let currentLLM = current_llm_in_use;
+                            console.log("currentLLM:"+currentLLM);
                             if(currentLLM === "premium_llm"){
                                 $select.append(`<option value="0">default_llm</option>`);
                                 $select.append(`<option value="1" selected>premium_llm</option>`);
@@ -2718,10 +2795,6 @@ $(document).on('click', '.collapsible-header', function() {
             if ($(e.target).closest(".message, pre, code, .language-python, .language-csharp").length) {
                 // Highlight selected text
                 let range = selection.getRangeAt(0);
-                let span = document.createElement("span");
-                span.style.backgroundColor = "yellow";
-                span.style.color = "black";
-                span.id = "temphighlight";
 
                 // Replace range.surroundContents(span) with extractContents and insertNode
                 let extractedContents = range.extractContents();
@@ -2733,7 +2806,7 @@ $(document).on('click', '.collapsible-header', function() {
 
                 saveSelection();
                 $(".annotation-menu")
-                    .css({ top: e.pageY, left: e.pageX })
+                    .css({ top: e.pageY + 20, left: e.pageX })
                     .show();
             }
         }
@@ -2748,16 +2821,7 @@ $(document).on('click', '.collapsible-header', function() {
                 if (!window.getSelection().toString()) {
                     $(".annotation-menu").hide();
                     savedSelection = null;
-                    // Remove all tempHighlight spans
-                    let tempHighlights = document.querySelectorAll("#temphighlight");
-                    for (let i = 0; i < tempHighlights.length; i++) {
-                        let parent = tempHighlights[i].parentNode;
-                        while (tempHighlights[i].firstChild) {
-                            parent.insertBefore(tempHighlights[i].firstChild, tempHighlights[i]);
-                        }
-                        parent.removeChild(tempHighlights[i]);
-                    }
-                }
+                                    }
             }
             // Collapse the column if clicking outside of it unless it's on the annotation menu or autocomplete list
             if (
@@ -2810,7 +2874,50 @@ $(document).on('click', '.collapsible-header', function() {
         const selectedText = editor.getModel().getValueInRange(selection);
 
         if (selectedText) {
-            let annotatedText = `\\${annotationAction}[${annotationText}]{${selectedText}}`;
+
+
+            let annotatedText = "";
+
+            let annotationType = $("#annotation-type").val();
+
+            if(annotationType === "latex-inline"){
+                annotatedText = `\\${annotationAction}[${annotationText}]{${selectedText}}`;
+            } else if(annotationType === "HTML-inline"){
+                annotatedText = `<${annotationAction} action="${annotationText}">${selectedText}</${annotationAction}>`;
+            } else if(annotationType === "latex-id"){
+                annotatedText = `[${annotationId}]{${selectedText}}`;
+                let text = `[${annotationId}]: ${annotationAction} ${annotationText}`;
+                annotationswithID += text + "\n";
+                // Retrieve the id of monaco-editor
+                let editorId = editor._domElement.id;
+                editorId = editorId.replace("editor-", "");
+                console.log("agent_columnId:", editorId);
+                let comment_editor = window[`editorInstance_${editorId}`];
+                console.log("editor:", comment_editor);
+                // Add text in the comment editor
+               comment_editor.setValue(annotationswithID);
+                annotationId++;
+            } else if(annotationType === "HTML-id"){
+                annotatedText = `<${annotationId}>${selectedText}</${annotationId}>`;
+                let text = `[${annotationId}]: ${annotationAction} ${annotationText}`;
+                annotationswithID += text + "\n";
+                // Retrieve the id of monaco-editor
+                // Retrieve the id of monaco-editor
+                let editorId = editor._domElement.id;
+                editorId = editorId.replace("editor-", "");
+                console.log("agent_columnId:", editorId);
+                let comment_editor = window[`editorInstance_${editorId}`];
+                console.log("editor:", comment_editor);
+                // Add text in the comment editor
+               comment_editor.setValue(annotationswithID);
+                annotationId++;
+            }
+
+
+
+
+
+
 
             // Replace the selected text with the annotated text
             editor.executeEdits("annotation", [{
@@ -2854,15 +2961,6 @@ $(document).on('click', '.collapsible-header', function() {
     $(".annotation-menu .close-btn").click(function() {
         $(".annotation-menu").hide();
         savedSelection = null;
-        // Remove all tempHighlight spans
-        let tempHighlights = document.querySelectorAll("#temphighlight");
-        for (let i = 0; i < tempHighlights.length; i++) {
-            let parent = tempHighlights[i].parentNode;
-            while (tempHighlights[i].firstChild) {
-                parent.insertBefore(tempHighlights[i].firstChild, tempHighlights[i]);
-            }
-            parent.removeChild(tempHighlights[i]);
-        }
     });
 
 
@@ -2874,6 +2972,7 @@ $(document).on('click', '.collapsible-header', function() {
             if ($(this).attr("id") === "llm-select") {
                 let option = $(this).find("option:selected").val();
                 socket.send(JSON.stringify({ message: `H` }));
+                // Retrieve the text of the selected option
                 selectedLLM = option;
             }
 
@@ -2885,11 +2984,12 @@ $(document).on('click', '.collapsible-header', function() {
             let text = $(this).find("option:selected").text();
             let actionDescription = `User selected menu option "${text}"`;
             addHistoryEntry(actionDescription);
-            // Set the default LLM in use
-            $("#default-llm-in-use").text($(this).find("option:selected").text());
+            current_llm_in_use = $(this).find("option:selected").text();
+            return;
         }
         let option = $(this).data("option");
         let input = $("#user-input").val();
+        console.log("Sending option:", option);
         socket.send(JSON.stringify({ message: `${option}` }));
         // Hide the menu options after selecting one
         $("#menu-options").empty();
