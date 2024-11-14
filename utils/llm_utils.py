@@ -2031,7 +2031,7 @@ class HumanLLMMonitor:
         return comments
 
     def criticAnswer(self, suggestions, text_content, text_has_annotations=True, annotation_format=None,
-                     instruction_processing_approach='FULLTEXT_ALL'):
+                     instruction_processing_approach='ANNOTATIONS_ALL'):
         """
         This method processes the suggestions and text content to generate an improved answer.
         It can handle annotated critics to refine the text content based on the provided suggestions.
@@ -2055,12 +2055,12 @@ class HumanLLMMonitor:
         # Auto-detect annotation format if necessary
         def detect_annotation_format(text):
             patterns = {
-                'latex_inline': re.compile(r'\\(?P<tag>\w+)(\[(?P<instruction>[^\]]*)\])?\{(?P<content>.*?)\}',
+                'latex-inline': re.compile(r'\\(?P<tag>\w+)(\[(?P<instruction>[^\]]*)\])?\{(?P<content>.*?)\}',
                                            re.DOTALL),
-                'web_inline': re.compile(
+                'HTML-inline': re.compile(
                     r'<(?P<tag>\w+)( action="(?P<instruction>[^"]*)")?>(?P<content>.*?)</(?P=tag)>', re.DOTALL),
-                'latex_id': re.compile(r'\[(?P<id>\d+)\]\{(?P<content>.*?)\}', re.DOTALL),
-                'web_id': re.compile(r'<(?P<id>\d+)>(?P<content>.*?)</(?P=id)>', re.DOTALL)
+                'latex-id': re.compile(r'\[(?P<id>\d+)\]\{(?P<content>.*?)\}', re.DOTALL),
+                'HTML-id': re.compile(r'<(?P<id>\d+)>(?P<content>.*?)</(?P=id)>', re.DOTALL)
             }
             for fmt, pattern in patterns.items():
                 if pattern.search(text):
@@ -2070,14 +2070,14 @@ class HumanLLMMonitor:
         # Parse annotations from text
         def parse_annotations(text, annotation_format):
             annotations = []
-            if annotation_format == 'latex_inline':
+            if annotation_format == 'latex-inline':
                 pattern = re.compile(r'\\(?P<tag>\w+)(\[(?P<instruction>[^\]]*)\])?\{(?P<content>.*?)\}', re.DOTALL)
-            elif annotation_format == 'web_inline':
-                pattern = re.compile(r'<(?P<tag>\w+)( action="(?P<instruction>[^"]*)")?>(?P<content>.*?)</(?P=tag)>',
-                                     re.DOTALL)
-            elif annotation_format == 'latex_id':
+            elif annotation_format == 'HTML-inline':
+                #pattern = re.compile(r'<(?P<tag>\w+)(\s+action="(?P<instruction>[^"]*)")?>(?P<content>.*?)</(?P=tag)>', re.DOTALL)
+                pattern = re.compile(r'(<(?P<tag>\w+)(\s+action="(?P<instruction>[^"]*)")?>)(?P<content>.*?)(</(?P=tag)>)', re.DOTALL)
+            elif annotation_format == 'latex-id':
                 pattern = re.compile(r'\[(?P<id>\d+)\]\{(?P<content>.*?)\}', re.DOTALL)
-            elif annotation_format == 'web_id':
+            elif annotation_format == 'HTML-id':
                 pattern = re.compile(r'<(?P<id>\d+)>(?P<content>.*?)</(?P=id)>', re.DOTALL)
             else:
                 return annotations
@@ -2109,12 +2109,12 @@ class HumanLLMMonitor:
                     raise ValueError("Could not auto-detect annotation format.")
 
             annotations = parse_annotations(text_content, annotation_format)
-            if annotation_format in ['latex_inline', 'web_inline']:
+            if annotation_format in ['latex-inline', 'HTML-inline']:
                 # Instructions are inline within annotations
                 for annotation in annotations:
                     instruction = annotation.get('instruction', '').strip()
                     annotation['instruction'] = instruction
-            elif annotation_format in ['latex_id', 'web_id']:
+            elif annotation_format in ['latex-id', 'HTML-id']:
                 # Instructions are provided in suggestions
                 instructions = parse_instructions(suggestions)
                 for annotation in annotations:

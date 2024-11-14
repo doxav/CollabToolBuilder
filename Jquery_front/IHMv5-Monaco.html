@@ -1362,10 +1362,10 @@ z-index: -1;
             </select>
             <input type="text" id="search-filter" placeholder="Search...">
             <select id="annotation-type">
-                <option value="latex-inline">Latex inline</option>
-                <option value="latex-id">Latex with id</option>
                 <option value="HTML-inline">HTML inline</option>
                 <option value="HTML-id">HTML with id</option>
+                <option value="latex-inline">Latex inline</option>
+                <option value="latex-id">Latex with id</option>
             </select>
 
 
@@ -2209,7 +2209,7 @@ function getColumnsToKeep(agent) {
 
                 // Retrieve and process the editor content
                 let text = editor.getValue();
-                let textWithoutHtml = text.replace(/<[^>]*>/g, '');
+                let textWithoutHtml = text.replace(/<[^>]*>/g, ''); // TODO: I removed and don't understand the purpose
 
                 // Disable the button and update its text
                 enableGenButtons(false);
@@ -2217,7 +2217,8 @@ function getColumnsToKeep(agent) {
                 // Prepare data for sendFunctionCall
                 let requestData = {
                     suggestions: "",
-                    text_content: textWithoutHtml
+                    text_content: text, // TODO: textWithoutHtml IGNORED => check !
+                    annotation_format: $("#annotation-type").val()
                 };
 
                 // Send the function call

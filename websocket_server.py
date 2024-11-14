@@ -97,7 +97,9 @@ class WebsocketServer:
                 for client in self.connected_clients:
                     if client != websocket and message is not None:
                         await client.send(message)
-        except Exception:
+        except Exception as e:
+            # print exception details
+            print(f"Error in WebSocket handler: {e}")
             pass
         finally:
             self.connected_clients.remove(websocket)
