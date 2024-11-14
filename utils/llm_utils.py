@@ -1860,10 +1860,6 @@ class HumanLLMMonitor:
             critique = None
             # Display inference check results
             for check_name, result in check_results.items():
-                if check_name == "Generate annotations" :
-                    inference_result_msg.content = result
-                elif check_name == 'Recommend critiques':
-                    critique = {"improvement_suggestion": result, "improvement_suggestion_user": None}
                 check_display += f"{nl}CHECK {check_name} result: " + str(result).replace("\\n", "\n")
 
             menu = (
@@ -2632,4 +2628,6 @@ The following annotations are provided to guide the refinement process. Each ann
         ])
 
         # Return formatted suggestions from the premium LLM
-        return {"output_id": output_id, "suggestions": response.content}
+        ret = {"output_id": output_id, "suggestions": response.content, "improvement_prompt" : improvement_prompt}
+        smart_print(str(ret), self.agent_name, "CRITIC SUGGESTIONS", column_id=output_id, optional=True)
+        return ret
