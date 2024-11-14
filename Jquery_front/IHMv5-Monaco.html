@@ -1469,8 +1469,8 @@ color: white;
 <div class="annotation-menu">
     <button class="close-btn">&times;</button>
     <select id="annotation-action">
-        <option value="INSERT">INSERT</option>
         <option value="FIX">FIX</option>
+        <option value="INSERT">INSERT</option>
         <option value="IMPROVE">IMPROVE</option>
     </select>
     <input width="300" type="text" id="annotation-input" placeholder="Enter your annotation">
@@ -2211,8 +2211,8 @@ function getColumnsToKeep(agent) {
 
                 // Prepare data for sendFunctionCall
                 let requestData = {
-                    content_annotated: textWithoutHtml,
-                    inference_result_msg: ""
+                    suggestions: textWithoutHtml,
+                    text_content: ""
                 };
 
                 // Send the function call
