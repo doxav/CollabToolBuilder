@@ -2043,24 +2043,6 @@ class HumanLLMMonitor:
             Returns:
                 str: The improved text content after applying the suggestions and critics.
             """
-        def is_valid_python_structure(s):
-            """
-                    Checks if the given string is a valid Python structure.
-
-                    Args:
-                        s (str): The string to be checked.
-
-                    Returns:
-                        bool: True if the string is a valid Python structure, False otherwise.
-                    """
-            import ast
-            output = None
-            try:
-                output = ast.literal_eval(s)
-                return output, True
-            except (ValueError, SyntaxError):
-                return output, False
-
         critic = None
         if self.last_inference_check_results:
             for key, value in self.last_inference_check_results.items():
@@ -2137,10 +2119,9 @@ class HumanLLMMonitor:
         else:
             if suggestions is None:
                 suggestions = smart_input("Provide critic/feedback/request: ", self.agent_name, column_max=self.num_parallel_inferences)
-            prompt_sugg = ""
-            if suggestions:
-                prompt_sugg = ("Tour task is also to take into account the **SUGGESTIONS** and modify the answer accordingly.\n"
-                               f"\n### SUGGESTIONS: << {suggestions} >>\n")
+            prompt_sugg = ("Tour task is also to take into account the **SUGGESTIONS** and modify the answer accordingly.\n"
+                            f"\n### SUGGESTIONS: << {suggestions} >>\n")
+
             system_prompt = f"""Given the INSTRUCTION provided by the user (and the **INITIAL PROMPT**), your task is to generate a very different new answer from the INITIAL ANSWER or to refine the initial answer.
             {prompt_sugg}
             ### INITIAL PROMPT: << {self.llm_input_messages[0].content} >>
