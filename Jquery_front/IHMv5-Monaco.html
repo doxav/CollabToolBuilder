@@ -955,9 +955,7 @@ body {
 }
 
 .applied-annotation {
-    background-color: rgba(255, 255, 0, 0.5); /* Semi-transparent yellow */
     color: black;
-    border-bottom: 1px dashed orange; /* Optional: Add underline for emphasis */
 }
 
 #main-container {
@@ -1942,7 +1940,7 @@ function getColumnsToKeep(agent) {
 
 
 
-                    <div style="display: flex; flex-direction: column; align-items: left; gap: 5px;">
+                    <div style="display: flex; flex-direction: column; gap: 5px;">
                         <button id="evaluate-${agent_columnId}"><i class="fa-regular fa-paper-plane"></i>Regenerate from instructions</button><br>
                         <button id="regenwithmymodifbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i>Regenerate from this answer's annotations</button>
                         <button id="regenallbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i>Regenerate from all answers & annotations</button>
@@ -2927,6 +2925,20 @@ $(document).on('click', '.collapsible-header', function() {
                 text: annotatedText,
                 forceMoveMarkers: true
             }]);
+
+            // Apply decorations for visual feedback
+            const decoration = {
+                range: new monaco.Range(
+                    selection.startLineNumber,
+                    selection.startColumn,
+                    selection.endLineNumber,
+                    selection.endColumn
+                ),
+                options: {
+                    inlineClassName: 'applied-annotation'
+                }
+            };
+            editor.deltaDecorations([], [decoration]);
 
             // Hide the annotation menu
             $(".annotation-menu").hide();
