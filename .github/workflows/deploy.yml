@@ -32,7 +32,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: IHMv6  # Ensure the right branch is checked out
+          ref: IHMv8  # Ensure the right branch is checked out
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
