@@ -1118,6 +1118,120 @@ class CapitalizationAgent:
 #        function_code = _visual_input(current_function_code, filetype="py")
 
 
+class PlannerAgent:
+    def __init__(self, default_llm_choice, envs, premium_llm_choice=None, problem_prompts_subdir=None,
+                 skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, special_criteria=None,
+                 num_parallel_inferences=2):
+        # Define necessary class variables
+        self.name = self.__class__.__name__
+        self.last_user_message = None
+        self.processed_codes = set()
+        self.envs = envs
+        self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
+        self.model_choice = model_choice
+        self.optuna_opti = optuna
+
+        # Initialize an instance of CodingAgent to use its methods
+        self.coder = CodingAgent(
+            default_llm_choice=default_llm_choice,
+            envs=envs,
+            premium_llm_choice=premium_llm_choice,
+            problem_prompts_subdir=problem_prompts_subdir,
+            skip_rounds=skip_rounds,
+            llmORchains_list=llmORchains_list,
+            optuna=optuna,
+            model_choice=model_choice,
+            special_criteria=special_criteria,
+            num_parallel_inferences=num_parallel_inferences
+        )
+
+        # Use the coder's human_llm_code_task for consistency
+        self.human_llm_code_task = self.coder.human_llm_code_task
+
+    def plan(self):
+        # Ask the user to formulate their question using smart_input
+        question = smart_input("Please formulate your question: ", agent_name=self.name)
+        self.last_user_message = question
+
+        # Use the LLM to generate code answering the question
+        refined_task = question
+
+        # Call the method to generate code and run tests
+        results = self.code_task_and_run_test(refined_task)
+
+        # Process the results
+        if results:
+            for result in results:
+                parsed_code, success, _, _, _, _ = result
+                if success:
+                    # Exécuter la fonction générée pour chaque environnement
+                    code_to_run = parsed_code['program_code']
+                    exec_locals = {}
+                    try:
+                        exec(code_to_run, globals(), exec_locals)
+                        main_function_name = parsed_code['main_function']['name']
+                        if main_function_name in exec_locals:
+                            # Itérer sur chaque environnement
+                            for env in self.envs:
+                                bot = env  # Ou env.bot si le bot est un attribut de l'environnement
+                                answer = exec_locals[main_function_name](bot)
+                                smart_print(f"Answer for document {bot.document.title} (Id : {bot.id}): {answer}", agent_name=self.name)
+                        else:
+                            smart_print("Main function not found in generated code.", agent_name=self.name)
+                    except Exception as e:
+                        smart_print(f"Error executing the code: {e}", agent_name=self.name)
+                else:
+                    smart_print("Generated code failed to run successfully.", agent_name=self.name)
+        else:
+            smart_print("No code generated.", agent_name=self.name)
+
+    def code_task_and_run_test(self, refined_task):
+        # Prepare the user message for the LLM
+        template_data = {
+            "refined_task": refined_task,
+            "env_states": "\n".join([env.get_state(extended=False) for env in self.envs]),
+            "primitives": "\n".join(self.coder.get_primitives()),
+            "successful_tasks": "\n".join(HumanLLMMonitor.get_learnt_tasks()),
+            "failed_tasks": "\n".join(HumanLLMMonitor.get_failed_tasks()),
+            "validation_response_um": "\n".join(HumanLLMMonitor.get_validation_results()),
+            "previous_attempts": "",
+            "error_patches_str": ""
+        }
+
+        # Load and format the user message from a template
+        user_message = HumanLLMMonitor.load_prompt(
+            self.problem_prompts_subdir + "coding_agent_user_message_template",
+            template_data=template_data,
+            directory='prompts'
+        )
+
+        self.last_user_message = user_message
+
+        # Call the LLM to generate code
+        codes = self.human_llm_code_task.CallHumanLLM(
+            system_prompt_template=self.problem_prompts_subdir + "code_task",
+            user_message=user_message,
+            return_message_content_only=False,
+            stream_output=False,
+            optuna=self.optuna_opti,
+            model_choice=self.model_choice
+        )
+
+        results = []
+
+        for index, code in enumerate(codes):
+            # Get the check results corresponding to the output_id
+            check_results = self.human_llm_code_task.last_inference_check_results[index]
+
+            code_parsing_success, parsed_code = check_results.get("Code Parsing", (False, None))
+            if code_parsing_success and isinstance(parsed_code, dict):
+                test_results = check_results.get("Run Tests", None)
+                if test_results:
+                    results.append(test_results)
+
+        return results
+
+
 def validate_function_code(code, function_name, local_scope=None, compile_test_only=False):
     if local_scope is None:
         local_scope = {}
@@ -1353,6 +1467,62 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         return total_scores
     else:
         return max(total_scores)
+
+
+def run_planner(default_llm_key, premium_llm_key, test_environments=None, problem_prompts_subdir=None,
+                skip_rounds=0, llmORchains_list=None, model_choice=None, special_criteria=None,
+                num_parallel_inferences=2, optuna_opti=None, temperature_max=1, unique_id=None):
+    # Initialize unique_id
+    if unique_id is None:
+        unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+
+    if unique_id is not False:
+        if UnifiedVectorDB.unique_collection_id is None:
+            UnifiedVectorDB.set_unique_collection_id(unique_id)
+
+    # Initialize HumanLLMMonitor databases
+    HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
+    HumanLLMMonitor.check_init_class_db(force=True)
+
+    # Initialize WebSocket server if used
+    if HumanLLMMonitor.use_websocket:
+        if HumanLLMMonitor.websocket_server is None:
+            HumanLLMMonitor.initialize_websocket_server()
+
+    # Set the maximum temperature for LLM if not provided
+    if temperature_max is None:
+        temperature_max = 1
+
+    # Select the problem prompts subdirectory if not provided
+    if problem_prompts_subdir is None:
+        # Get the list of subdirectories in the 'prompts' directory
+        problem_prompts_subdirs = [name for name in os.listdir("prompts") if
+                                   os.path.isdir(os.path.join("prompts", name))]
+        default_subdir = problem_prompts_subdirs[0] if problem_prompts_subdirs else ""
+        choice = smart_input("Enter a capital letter for subdirectory (leave empty for default): " + "; ".join(
+            f"\n[{i}] {subdir}" for i, subdir in zip(string.ascii_uppercase, problem_prompts_subdirs)) + " ?", "run_planner")
+        problem_prompts_subdir = problem_prompts_subdirs[ord(choice) - 65] if choice and choice.isupper() and ord(
+            choice) - 65 in range(len(problem_prompts_subdirs)) else default_subdir
+
+    # Initialize test environments if not provided
+    if test_environments is None:
+        env_type = "default"
+        manager = EnvironmentManager(env_type)
+        test_environments = [manager.get_environment()]
+
+    # Initialize the PlannerAgent with the correct parameters
+    planner = PlannerAgent(
+        default_llm_choice=default_llm_key,
+        envs=test_environments,
+        premium_llm_choice=premium_llm_key,
+        skip_rounds=skip_rounds,
+        llmORchains_list=llmORchains_list,
+        optuna=optuna_opti,
+        model_choice=model_choice,
+        special_criteria=special_criteria,
+        num_parallel_inferences=num_parallel_inferences
+    )
+    planner.plan()
 
 
 def get_success_value_in_text(text):
@@ -1670,6 +1840,14 @@ if __name__ == "__main__":
         env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
                                  target_file_path=doc['target_file_path'], id=doc['id'], llm=llmORchains_list["default_llm"]).get_environment()
         envs.append(env)
+
+    # Run the planner agent
+    # run_planner(default_llm_key="default_llm",
+    #             premium_llm_key="premium_llm",
+    #             problem_prompts_subdir="IR_CPS_TechSynthesis",
+    #             test_environments=envs,
+    #             llmORchains_list=llmORchains_list,
+    #             num_parallel_inferences=2)
 
     # Run the learning loop
     run_4agents_learning_loop(default_llm_key="default_llm",
