@@ -1151,6 +1151,7 @@ class PlannerAgent:
     def plan(self):
         # Ask the user to formulate their question using smart_input
         question = smart_input("Please formulate your question: ", agent_name=self.name)
+        smart_print(f"Question: {question.capitalize()}", agent_name=self.name)
         self.last_user_message = question
 
         # Use the LLM to generate code answering the question
@@ -1842,29 +1843,29 @@ if __name__ == "__main__":
         envs.append(env)
 
     # Run the planner agent
-    # run_planner(default_llm_key="default_llm",
-    #             premium_llm_key="premium_llm",
-    #             problem_prompts_subdir="IR_CPS_TechSynthesis",
-    #             test_environments=envs,
-    #             llmORchains_list=llmORchains_list,
-    #             num_parallel_inferences=2)
+    run_planner(default_llm_key="default_llm",
+                 premium_llm_key="premium_llm",
+                 problem_prompts_subdir="IR_CPS_TechSynthesis",
+                 test_environments=envs,
+                 llmORchains_list=llmORchains_list,
+                 num_parallel_inferences=2)
 
     # Run the learning loop
-    run_4agents_learning_loop(default_llm_key="default_llm",
-                              premium_llm_key="premium_llm",
-                              llmORchains_list=llmORchains_list,
-                              test_environments=envs,
-                              manual_validation_to_capitalize=False,
-                              problem_prompts_subdir="IR_CPS_TechSynthesis",
-                              max_coding_attempts=4,
-                              include_code=False,
-                              selected_successful_functions=[],
-                              selected_failed_functions=[],
-                              max_execution_time=3600,
-                              agtask_premium_llm_by_default=False,
-                              agtask_skip_rounds=0,  # Auto-test: 1
-                              agcoding_skip_rounds=0,  # Auto-test: 4
-                              agvalidation_skip_rounds=0,  # Auto-test: 4
-                              agcapitalize_skip_rounds=0,
-                              agcoding_num_parallel_inferences=2,
-                              unique_id=unique_id)  # Auto-test: 0"""
+    #run_4agents_learning_loop(default_llm_key="default_llm",
+                              # premium_llm_key="premium_llm",
+                              # llmORchains_list=llmORchains_list,
+                              # test_environments=envs,
+                              # manual_validation_to_capitalize=False,
+                              # problem_prompts_subdir="IR_CPS_TechSynthesis",
+                              # max_coding_attempts=4,
+                              # include_code=False,
+                              # selected_successful_functions=[],
+                              # selected_failed_functions=[],
+                              # max_execution_time=3600,
+                              # agtask_premium_llm_by_default=False,
+                              # agtask_skip_rounds=0,  # Auto-test: 1
+                              # agcoding_skip_rounds=0,  # Auto-test: 4
+                              # agvalidation_skip_rounds=0,  # Auto-test: 4
+                              # agcapitalize_skip_rounds=0,
+                              # agcoding_num_parallel_inferences=2,
+                              # unique_id=unique_id)  # Auto-test: 0"""

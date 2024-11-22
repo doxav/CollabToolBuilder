@@ -2756,14 +2756,6 @@ $(document).on('click', '.collapsible-header', function() {
 
     $("#send-button").click(function() {
         sendMessage();
-        // Show the message sent by the user in the chat if the accordion is PlannerAgent
-        let userMessage = $("#user-input").val();
-        let $userMessageDiv = $(`<div class="message user-message">${userMessage}</div>`);
-        let $accordion = $("#message-accordion > div").last().children("div");
-        if($accordion.attr("data-agent") === "PlannerAgent") {
-            $accordion.append($userMessageDiv);
-        }
-
         // Hide options menu
         $("#menu-options").empty();
     });
