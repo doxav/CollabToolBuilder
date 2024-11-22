@@ -16,6 +16,7 @@
 <script>
     currentAgent = '';
     let savedSelection = null;
+    let debounceSaveTimer = null;
     let number_created_functions = 0;
     let number_validated_functions = 0;
     let inputAwaited = false; // Flag to track if input is awaited
@@ -28,7 +29,7 @@
     let selectedLLM = "";
     let annotationId = 0;
     let annotationswithID = "";
-    
+
     // Function to get URL parameter by name
     function getUrlParameter(name) {
         const urlParams = new URLSearchParams(window.location.search);
@@ -47,7 +48,7 @@
             wsUrl = userInput ? userInput : wsUrl; // Default to the parameter or fallback wsUrl if nothing is entered
         }
         socket = new WebSocket(wsUrl);
-        
+
         socket.onopen = function() {
             console.log('WebSocket connection established');
             // Hide the connection status layer if it's visible
@@ -416,6 +417,82 @@
                 $pageInfo.text(`Page ${currentPage} of ${totalPages}`);
             }
 
+        } else if(data.message_type === "successful_tasks_list"){
+            console.log(data.message)
+            // Step 1: Parse the outer JSON array
+            const outerArray = JSON.parse(data.message);
+
+            // Step 2: Parse each string in the array to convert it into a JSON object
+            const parsedObjects = outerArray.map(item => JSON.parse(item));
+
+            // Step 3: Extract class_name and parameters from each function
+            const extractedData = parsedObjects.map(entry => {
+                const className = entry.class_name;
+                const programCode = entry.program_code;
+
+                // Extract parameters from the program code using a regular expression
+                const paramsMatch = programCode.match(/def\s+\w+\(([^)]*)\)/);
+                const params = paramsMatch ? paramsMatch[1].split(',').map(param => param.trim()) : [];
+
+                // Extract the docstring using a regular expression
+                const docstringMatch = programCode.match(/"""\s*([\s\S]*?)\s*"""/);
+                const docstring = docstringMatch ? docstringMatch[1].trim() : "";
+
+                return { class_name: className, parameters: params, docstring: docstring };
+            });
+
+            // Step 4: Extract the class names adding there parameters
+            const classNames = extractedData.map(entry => {
+                const params = entry.parameters.length > 0 ? `(${entry.parameters.join(', ')})` : '';
+                return `${entry.class_name}${params}`;
+            });
+
+            // For each className in classNames, add the name in a div in the func-names-content div
+            const funcNamesContent = document.getElementById('func-names-content');
+            funcNamesContent.innerHTML = '';
+            // Create a foldable div element for each className which is folded by default and contains the docstring when unfolded
+            classNames.forEach((className, index) => {
+                const foldableDiv = document.createElement('div');
+                foldableDiv.className = 'foldable';
+                foldableDiv.innerHTML = `
+                    <div class="foldable-header">
+                        <span class="arrow"><i class="fa-solid fa-chevron-right"></i></span>
+                        <span><strong>${className}</strong></span>
+                    </div>
+                    <div class="foldable-content" style="display: none;">
+                        <p>${extractedData[index].docstring}</p>
+                    </div>
+                `;
+                foldableDiv.querySelector('.foldable-header').addEventListener('click', function() {
+                    const arrow = this.querySelector('.arrow i');
+                    const content = this.nextElementSibling;
+                    if (content.style.display === 'none') {
+                        content.style.display = 'block';
+                        arrow.classList.remove('fa-chevron-right');
+                        arrow.classList.add('fa-chevron-down');
+                    } else {
+                        content.style.display = 'none';
+                        arrow.classList.remove('fa-chevron-down');
+                        arrow.classList.add('fa-chevron-right');
+                    }
+                });
+                funcNamesContent.appendChild(foldableDiv);
+            });
+
+        } else if(data.agent_name === "PlannerAgent"){
+            // Show message in a new accordion named "PlannerAgent" if it doesn't exist else append the message to the existing accordion
+            let $plannerAccordion = $(`#message-accordion > div[data-agent="PlannerAgent"]`);
+            if ($plannerAccordion.length === 0) {
+                $plannerAccordion = $(`<div data-agent="PlannerAgent"><h3>PlannerAgent</h3><div></div></div>`);
+                $("#message-accordion").append($plannerAccordion);
+            }
+            let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${content}</div>`);
+            $plannerAccordion.children("div").append($messageContainer);
+            if (data.input) {
+                displayInputField();
+            }
+
+
         } else if(data.message.includes("Time spent in each option and occurrences" || data.message.includes("Choose an action (or hit Enter for inference)"))){
 //        } else if(data.message && (data.message.includes("Time spent in each option and occurrences" || data.message.includes("Choose an action (or hit Enter for inference)")))){
 
@@ -663,10 +740,11 @@
         } else if(data.agent_name === "TaskIdentificationAgent" && data.message_type === "CRITIC SUGGESTIONS"){
             console.log("CRITIC SUGGESTIONS");
             console.log(data.message);
-            const cleanSuggestions = removeUnicodeSequences(data.message.replace(/'/g, '"'));
+            const cleanSuggestions = data.message;
             let suggestions = JSON.parse(cleanSuggestions);
             console.log("suggestsions:", suggestions);
             annotationswithID = suggestions.suggestions;
+            console.log("output_id:", suggestions.output_id);
             let comment_editor = window[`editorInstance_TaskIdentificationAgent-${suggestions.output_id}`];
             console.log("editor:", comment_editor);
             // Add text in the comment editor
@@ -856,7 +934,7 @@
                         console.log("Auto-save response:", responseMessage);
                         document.querySelector(`#save-${agentName}-${columnId}`).style.display = 'none';
                     });
-                }, 3000);
+                }, 2500);
             });
 
             // Annotation Handling: Listen for cursor selection changes
@@ -901,7 +979,7 @@
         });
     }
 
-    
+
     // Dispose of an editor and its listener
     function disposeEditor(editor) {
         const disposable = editorDisposables.get(editor);
@@ -983,7 +1061,7 @@ body {
 }
 
 #history-sidebar, #settings-sidebar {
-    width: 275px;
+    width: 20%;
     padding: 20px;
     border-color: #f6f6f6; /* Light Blue */
     display: none;
@@ -1174,6 +1252,18 @@ pre {
     will-change: transform;
 }
 
+.foldable-header {
+    display: flex; /* Align items in a row */
+    align-items: center; /* Vertically center-align the items */
+    gap: 8px; /* Add spacing between the arrow and the text */
+}
+
+.arrow {
+    display: flex; /* Ensure proper alignment for the icon */
+    align-items: center;
+}
+
+
 /* Add an overlay when expanded */
 .overlay {
     display: none;
@@ -1274,6 +1364,15 @@ color: white;
 .monaco-editor .margin-view-overlays .folding::after {
 z-index: -1;
 }
+
+.user-message{
+    background-color: #67a1d5;
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    }
+
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
@@ -1341,6 +1440,11 @@ z-index: -1;
                 <label style="font-size: x-small">Number of created functions : </label><label id="number-functions">0</label><br><br>
                 <label style="font-size: x-small">Number of validated functions : </label><label id="number-validated-functions">0</label><br><br>
                 <label style="font-size: x-small">Number of generated solutions : </label><label id="number-solutions">0</label><br><br>
+            </div>
+        </div>
+        <div id="func-names-accordion" class="accordion">
+            <h3>Functions</h3>
+            <div id="func-names-content">
             </div>
         </div>
     </div>
@@ -1474,7 +1578,7 @@ z-index: -1;
     <select id="annotation-action">
         <option value="FIX">FIX</option>
         <option value="INSERT">INSERT</option>
-        <option value="IMPROVE">IMPROVE</option>
+        <option value="EXPAND">EXPAND</option>
     </select>
     <input width="300" type="text" id="annotation-input" placeholder="Enter your annotation">
     <button id="apply-annotation">Apply</button>
@@ -1532,7 +1636,6 @@ socket.addEventListener('message', function(event) {
         console.warn('Log not initialized.');
     }
 });
-
 
 
 document.addEventListener('keydown', function (event) {
@@ -1682,10 +1785,10 @@ function updateButtonVisibility() {
     } else if ($greenContinueButton.length > 1){ console.log("multiple columns with button:"+$greenContinueButton.length);}
     else {
         // If no green "Continue" button is visible, hide all relevant buttons across all columns
-        $(`button[id^="save-"], 
-           button[id^="evaluate-"], 
-           button[id^="regenallbutton-"], 
-           button[id^="regenwithmymodifbutton-"], 
+        $(`button[id^="save-"],
+           button[id^="evaluate-"],
+           button[id^="regenallbutton-"],
+           button[id^="regenwithmymodifbutton-"],
            input[id^="comment-"]`).hide();
     }
 }
@@ -2073,6 +2176,7 @@ function getColumnsToKeep(agent) {
         });
 
     $(`#evaluate-${agent_columnId}`).click(function () {
+        clearTimeout(debounceSaveTimer); // to avoid saving at the same time
         // Check if the input field is empty
         let comment_editor = window[`editorInstance_${agent_columnId}`];
         // Add text in the comment editor
@@ -2131,6 +2235,7 @@ function getColumnsToKeep(agent) {
     });
 
             $(`#regenallbutton-${agent_columnId}`).click(function () {
+                clearTimeout(debounceSaveTimer);  // to avoid saving at the same time
                 // Disable all generation buttons
                 enableGenButtons(false);
 
@@ -2186,6 +2291,7 @@ function getColumnsToKeep(agent) {
                 });
             });
           $(`#regenwithmymodifbutton-${agent_columnId}`).click(function () {
+              clearTimeout(debounceSaveTimer);  // to avoid saving at the same time
               console.log("regenwithmymodifbutton clicked");
                 let targetColumn = document.getElementById(`column-${agent_columnId}`);
 
@@ -2727,6 +2833,12 @@ $(document).on('click', '.collapsible-header', function() {
         heightStyle: "content"
     });
 
+    $("#func-names-accordion").accordion({
+        collapsible: true,
+        active: false,
+        heightStyle: "content"
+    });
+
     $("#send-button").click(function() {
         sendMessage();
         // Hide options menu
@@ -2909,7 +3021,7 @@ $(document).on('click', '.collapsible-header', function() {
             if(annotationType === "latex-inline"){
                 annotatedText = `\\${annotationAction}[${annotationText}]{${selectedText}}`;
             } else if(annotationType === "HTML-inline"){
-                annotatedText = `<${annotationAction} action="${annotationText}">${selectedText}</${annotationAction}>`;
+                annotatedText = `<${annotationAction} instruction="${annotationText}">${selectedText}</${annotationAction}>`;
             } else if(annotationType === "latex-id"){
                 annotatedText = `[${annotationId}]{${selectedText}}`;
                 let text = `[${annotationId}]: ${annotationAction} ${annotationText}`;
