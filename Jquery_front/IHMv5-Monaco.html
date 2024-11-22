@@ -417,6 +417,41 @@
                 $pageInfo.text(`Page ${currentPage} of ${totalPages}`);
             }
 
+        } else if(data.message_type === "successful_tasks_list"){
+            console.log(data.message)
+            // Step 1: Parse the outer JSON array
+            const outerArray = JSON.parse(data.message);
+
+            // Step 2: Parse each string in the array to convert it into a JSON object
+            const parsedObjects = outerArray.map(item => JSON.parse(item));
+
+            // Step 3: Extract class_name and parameters from each function
+            const extractedData = parsedObjects.map(entry => {
+                const className = entry.class_name;
+                const programCode = entry.program_code;
+
+                // Extract parameters from the program code using a regular expression
+                const paramsMatch = programCode.match(/def\s+\w+\(([^)]*)\)/);
+                const params = paramsMatch ? paramsMatch[1].split(',').map(param => param.trim()) : [];
+
+                return { class_name: className, parameters: params };
+            });
+
+            // Step 4: Extract the class names adding there parameters
+            const classNames = extractedData.map(entry => {
+                const params = entry.parameters.length > 0 ? `(${entry.parameters.join(', ')})` : '';
+                return `${entry.class_name}${params}`;
+            });
+
+            // For each className in classNames, add the name in a div in the func-names-content div
+            const funcNamesContent = document.getElementById('func-names-content');
+            funcNamesContent.innerHTML = '';
+            classNames.forEach(className => {
+                const div = document.createElement('div');
+                div.textContent = className;
+                funcNamesContent.appendChild(div);
+            });
+
         } else if(data.agent_name === "PlannerAgent"){
             // Show message in a new accordion named "PlannerAgent" if it doesn't exist else append the message to the existing accordion
             let $plannerAccordion = $(`#message-accordion > div[data-agent="PlannerAgent"]`);
@@ -1366,6 +1401,11 @@ z-index: -1;
                 <label style="font-size: x-small">Number of created functions : </label><label id="number-functions">0</label><br><br>
                 <label style="font-size: x-small">Number of validated functions : </label><label id="number-validated-functions">0</label><br><br>
                 <label style="font-size: x-small">Number of generated solutions : </label><label id="number-solutions">0</label><br><br>
+            </div>
+        </div>
+        <div id="func-names-accordion" class="accordion">
+            <h3>Functions</h3>
+            <div id="func-names-content">
             </div>
         </div>
     </div>
@@ -2749,6 +2789,12 @@ $(document).on('click', '.collapsible-header', function() {
     });
 
     $("#stats-accordion").accordion({
+        collapsible: true,
+        active: false,
+        heightStyle: "content"
+    });
+
+    $("#func-names-accordion").accordion({
         collapsible: true,
         active: false,
         heightStyle: "content"

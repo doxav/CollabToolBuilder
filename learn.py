@@ -1271,6 +1271,21 @@ def extract_function_code(task_content, function_name, current_function_code=Non
     return function_code
 
 
+def import_functions_from_directory(regex=".*"):
+    """
+    Imports functions from files in the functions directory that match the given regex pattern,
+    excluding directories.
+    """
+    functions = {}
+    for file in os.listdir("functions"):
+        file_path = os.path.join("functions", file)
+        if os.path.isfile(file_path) and re.match(regex, file):
+            with open(file_path, "r") as f:
+                code = f.read()
+                functions[file.replace(".py", "")] = code
+    return functions
+
+
 # Main learning loop orchestration functions
 def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environments=None,
                               manual_validation_to_capitalize=True, problem_prompts_subdir=None,
@@ -1280,8 +1295,10 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                               optuna_opti=None, allow_custom_score_state_functions=False,
                               params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
-                              agcoach_num_parallel_inferences=2, fixed_coach=False, unique_id=None, return_array=False, agcoding_num_parallel_inferences=2,
+                              agcoach_num_parallel_inferences=2, fixed_coach=False, functions_to_import=None, unique_id=None, return_array=False, agcoding_num_parallel_inferences=2,
                               continue_each_loop=False):
+
+    import datetime
     scores = None
 
     if unique_id is None:
@@ -1293,6 +1310,20 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
 
     HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
     HumanLLMMonitor.check_init_class_db(force=True)
+
+    if functions_to_import is not None:
+        # Imports the functions with the regex pattern given from functions directory into the elastic database
+        functions = import_functions_from_directory(functions_to_import)
+        for function in functions.items():
+            serialized_entry = json.dumps({
+                "time": datetime.datetime.now().isoformat(),
+                "class_name": function[0],
+                "program_code": function[1],
+                "tool_description": "",
+                "task_description": "",
+            }, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
+            tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": HumanLLMMonitor.step_id}
+            HumanLLMMonitor.add_learnt_task(serialized_entry, tags)
 
     if params_user_message is None and optuna_opti is None:
         params_user_message = {
@@ -1307,6 +1338,13 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
 
     smart_print(str(max_execution_time), "orchestrate_agents", "time_end")
     smart_print(unique_id, "orchestrate_agents", "XP_unique_id", optional=True)
+
+    successful_tasks = HumanLLMMonitor.get_learnt_tasks()
+    successful_tasks_list = [task for task in successful_tasks]
+    smart_print(json.dumps(successful_tasks_list), "orchestrate_agents", "successful_tasks_list")
+
+
+
 
     time_end = time.time() + max_execution_time
 
@@ -1843,29 +1881,30 @@ if __name__ == "__main__":
         envs.append(env)
 
     # Run the planner agent
-    run_planner(default_llm_key="default_llm",
-                 premium_llm_key="premium_llm",
-                 problem_prompts_subdir="IR_CPS_TechSynthesis",
-                 test_environments=envs,
-                 llmORchains_list=llmORchains_list,
-                 num_parallel_inferences=2)
+    # run_planner(default_llm_key="default_llm",
+    #              premium_llm_key="premium_llm",
+    #              problem_prompts_subdir="IR_CPS_TechSynthesis",
+    #              test_environments=envs,
+    #              llmORchains_list=llmORchains_list,
+    #              num_parallel_inferences=2)
 
     # Run the learning loop
-    #run_4agents_learning_loop(default_llm_key="default_llm",
-                              # premium_llm_key="premium_llm",
-                              # llmORchains_list=llmORchains_list,
-                              # test_environments=envs,
-                              # manual_validation_to_capitalize=False,
-                              # problem_prompts_subdir="IR_CPS_TechSynthesis",
-                              # max_coding_attempts=4,
-                              # include_code=False,
-                              # selected_successful_functions=[],
-                              # selected_failed_functions=[],
-                              # max_execution_time=3600,
-                              # agtask_premium_llm_by_default=False,
-                              # agtask_skip_rounds=0,  # Auto-test: 1
-                              # agcoding_skip_rounds=0,  # Auto-test: 4
-                              # agvalidation_skip_rounds=0,  # Auto-test: 4
-                              # agcapitalize_skip_rounds=0,
-                              # agcoding_num_parallel_inferences=2,
-                              # unique_id=unique_id)  # Auto-test: 0"""
+    run_4agents_learning_loop(default_llm_key="default_llm",
+                              premium_llm_key="premium_llm",
+                              llmORchains_list=llmORchains_list,
+                              test_environments=envs,
+                              manual_validation_to_capitalize=False,
+                              problem_prompts_subdir="IR_CPS_TechSynthesis",
+                              max_coding_attempts=4,
+                              include_code=False,
+                              selected_successful_functions=[],
+                              selected_failed_functions=[],
+                              max_execution_time=3600,
+                              agtask_premium_llm_by_default=False,
+                              agtask_skip_rounds=0,  # Auto-test: 1
+                              agcoding_skip_rounds=0,  # Auto-test: 4
+                              agvalidation_skip_rounds=0,  # Auto-test: 4
+                              agcapitalize_skip_rounds=0,
+                              agcoding_num_parallel_inferences=2,
+                              unique_id=unique_id,
+                              functions_to_import=".*")  # Auto-test: 0"""
