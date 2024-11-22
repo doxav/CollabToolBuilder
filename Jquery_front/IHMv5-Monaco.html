@@ -16,6 +16,7 @@
 <script>
     currentAgent = '';
     let savedSelection = null;
+    let debounceSaveTimer = null;
     let number_created_functions = 0;
     let number_validated_functions = 0;
     let inputAwaited = false; // Flag to track if input is awaited
@@ -28,7 +29,7 @@
     let selectedLLM = "";
     let annotationId = 0;
     let annotationswithID = "";
-    
+
     // Function to get URL parameter by name
     function getUrlParameter(name) {
         const urlParams = new URLSearchParams(window.location.search);
@@ -47,7 +48,7 @@
             wsUrl = userInput ? userInput : wsUrl; // Default to the parameter or fallback wsUrl if nothing is entered
         }
         socket = new WebSocket(wsUrl);
-        
+
         socket.onopen = function() {
             console.log('WebSocket connection established');
             // Hide the connection status layer if it's visible
@@ -416,6 +417,20 @@
                 $pageInfo.text(`Page ${currentPage} of ${totalPages}`);
             }
 
+        } else if(data.agent_name === "PlannerAgent"){
+            // Show message in a new accordion named "PlannerAgent" if it doesn't exist else append the message to the existing accordion
+            let $plannerAccordion = $(`#message-accordion > div[data-agent="PlannerAgent"]`);
+            if ($plannerAccordion.length === 0) {
+                $plannerAccordion = $(`<div data-agent="PlannerAgent"><h3>PlannerAgent</h3><div></div></div>`);
+                $("#message-accordion").append($plannerAccordion);
+            }
+            let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${content}</div>`);
+            $plannerAccordion.children("div").append($messageContainer);
+            if (data.input) {
+                displayInputField();
+            }
+
+
         } else if(data.message.includes("Time spent in each option and occurrences" || data.message.includes("Choose an action (or hit Enter for inference)"))){
 //        } else if(data.message && (data.message.includes("Time spent in each option and occurrences" || data.message.includes("Choose an action (or hit Enter for inference)")))){
 
@@ -663,10 +678,11 @@
         } else if(data.agent_name === "TaskIdentificationAgent" && data.message_type === "CRITIC SUGGESTIONS"){
             console.log("CRITIC SUGGESTIONS");
             console.log(data.message);
-            const cleanSuggestions = removeUnicodeSequences(data.message.replace(/'/g, '"'));
+            const cleanSuggestions = data.message;
             let suggestions = JSON.parse(cleanSuggestions);
             console.log("suggestsions:", suggestions);
             annotationswithID = suggestions.suggestions;
+            console.log("output_id:", suggestions.output_id);
             let comment_editor = window[`editorInstance_TaskIdentificationAgent-${suggestions.output_id}`];
             console.log("editor:", comment_editor);
             // Add text in the comment editor
@@ -856,7 +872,7 @@
                         console.log("Auto-save response:", responseMessage);
                         document.querySelector(`#save-${agentName}-${columnId}`).style.display = 'none';
                     });
-                }, 3000);
+                }, 2500);
             });
 
             // Annotation Handling: Listen for cursor selection changes
@@ -901,7 +917,7 @@
         });
     }
 
-    
+
     // Dispose of an editor and its listener
     function disposeEditor(editor) {
         const disposable = editorDisposables.get(editor);
@@ -1274,6 +1290,15 @@ color: white;
 .monaco-editor .margin-view-overlays .folding::after {
 z-index: -1;
 }
+
+.user-message{
+    background-color: #67a1d5;
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    }
+
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
@@ -1474,7 +1499,7 @@ z-index: -1;
     <select id="annotation-action">
         <option value="FIX">FIX</option>
         <option value="INSERT">INSERT</option>
-        <option value="IMPROVE">IMPROVE</option>
+        <option value="EXPAND">EXPAND</option>
     </select>
     <input width="300" type="text" id="annotation-input" placeholder="Enter your annotation">
     <button id="apply-annotation">Apply</button>
@@ -1532,7 +1557,6 @@ socket.addEventListener('message', function(event) {
         console.warn('Log not initialized.');
     }
 });
-
 
 
 document.addEventListener('keydown', function (event) {
@@ -1682,10 +1706,10 @@ function updateButtonVisibility() {
     } else if ($greenContinueButton.length > 1){ console.log("multiple columns with button:"+$greenContinueButton.length);}
     else {
         // If no green "Continue" button is visible, hide all relevant buttons across all columns
-        $(`button[id^="save-"], 
-           button[id^="evaluate-"], 
-           button[id^="regenallbutton-"], 
-           button[id^="regenwithmymodifbutton-"], 
+        $(`button[id^="save-"],
+           button[id^="evaluate-"],
+           button[id^="regenallbutton-"],
+           button[id^="regenwithmymodifbutton-"],
            input[id^="comment-"]`).hide();
     }
 }
@@ -2073,6 +2097,7 @@ function getColumnsToKeep(agent) {
         });
 
     $(`#evaluate-${agent_columnId}`).click(function () {
+        clearTimeout(debounceSaveTimer); // to avoid saving at the same time
         // Check if the input field is empty
         let comment_editor = window[`editorInstance_${agent_columnId}`];
         // Add text in the comment editor
@@ -2131,6 +2156,7 @@ function getColumnsToKeep(agent) {
     });
 
             $(`#regenallbutton-${agent_columnId}`).click(function () {
+                clearTimeout(debounceSaveTimer);  // to avoid saving at the same time
                 // Disable all generation buttons
                 enableGenButtons(false);
 
@@ -2186,6 +2212,7 @@ function getColumnsToKeep(agent) {
                 });
             });
           $(`#regenwithmymodifbutton-${agent_columnId}`).click(function () {
+              clearTimeout(debounceSaveTimer);  // to avoid saving at the same time
               console.log("regenwithmymodifbutton clicked");
                 let targetColumn = document.getElementById(`column-${agent_columnId}`);
 
@@ -2729,6 +2756,14 @@ $(document).on('click', '.collapsible-header', function() {
 
     $("#send-button").click(function() {
         sendMessage();
+        // Show the message sent by the user in the chat if the accordion is PlannerAgent
+        let userMessage = $("#user-input").val();
+        let $userMessageDiv = $(`<div class="message user-message">${userMessage}</div>`);
+        let $accordion = $("#message-accordion > div").last().children("div");
+        if($accordion.attr("data-agent") === "PlannerAgent") {
+            $accordion.append($userMessageDiv);
+        }
+
         // Hide options menu
         $("#menu-options").empty();
     });
@@ -2909,7 +2944,7 @@ $(document).on('click', '.collapsible-header', function() {
             if(annotationType === "latex-inline"){
                 annotatedText = `\\${annotationAction}[${annotationText}]{${selectedText}}`;
             } else if(annotationType === "HTML-inline"){
-                annotatedText = `<${annotationAction} action="${annotationText}">${selectedText}</${annotationAction}>`;
+                annotatedText = `<${annotationAction} instruction="${annotationText}">${selectedText}</${annotationAction}>`;
             } else if(annotationType === "latex-id"){
                 annotatedText = `[${annotationId}]{${selectedText}}`;
                 let text = `[${annotationId}]: ${annotationAction} ${annotationText}`;
