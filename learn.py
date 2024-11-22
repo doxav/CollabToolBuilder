@@ -8,8 +8,6 @@ import types
 import time
 from zipfile import error
 
-from sympy.codegen.ast import continue_
-
 from config import *
 
 import openai
@@ -1124,7 +1122,7 @@ class PlannerAgent:
     def __init__(self, default_llm_choice, envs, premium_llm_choice=None, problem_prompts_subdir=None,
                  skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, special_criteria=None,
                  num_parallel_inferences=2):
-        # Définir les variables de classe nécessaires
+        # Define necessary class variables
         self.name = self.__class__.__name__
         self.last_user_message = None
         self.processed_codes = set()
@@ -1133,7 +1131,7 @@ class PlannerAgent:
         self.model_choice = model_choice
         self.optuna_opti = optuna
 
-        # Initialiser une instance de CodingAgent pour utiliser ses méthodes
+        # Initialize an instance of CodingAgent to use its methods
         self.coder = CodingAgent(
             default_llm_choice=default_llm_choice,
             envs=envs,
@@ -1147,7 +1145,7 @@ class PlannerAgent:
             num_parallel_inferences=num_parallel_inferences
         )
 
-        # Utiliser human_llm_code_task du coder pour la cohérence
+        # Use the coder's human_llm_code_task for consistency
         self.human_llm_code_task = self.coder.human_llm_code_task
 
     def plan(self, question: str):
