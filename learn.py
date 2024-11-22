@@ -1124,7 +1124,7 @@ class PlannerAgent:
     def __init__(self, default_llm_choice, envs, premium_llm_choice=None, problem_prompts_subdir=None,
                  skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, special_criteria=None,
                  num_parallel_inferences=2):
-        # Define necessary class variables
+        # Définir les variables de classe nécessaires
         self.name = self.__class__.__name__
         self.last_user_message = None
         self.processed_codes = set()
@@ -1133,7 +1133,7 @@ class PlannerAgent:
         self.model_choice = model_choice
         self.optuna_opti = optuna
 
-        # Initialize an instance of CodingAgent to use its methods
+        # Initialiser une instance de CodingAgent pour utiliser ses méthodes
         self.coder = CodingAgent(
             default_llm_choice=default_llm_choice,
             envs=envs,
@@ -1147,89 +1147,92 @@ class PlannerAgent:
             num_parallel_inferences=num_parallel_inferences
         )
 
-        # Use the coder's human_llm_code_task for consistency
+        # Utiliser human_llm_code_task du coder pour la cohérence
         self.human_llm_code_task = self.coder.human_llm_code_task
 
-    def plan(self, question : str):
+    def plan(self, question: str):
         self.last_user_message = question
 
-        # Use the LLM to generate code answering the question
-        refined_task = question
+        # Récupérer les tâches apprises (fonctions/code)
+        learnt_tasks = HumanLLMMonitor.get_learnt_tasks()
+        if not learnt_tasks:
+            smart_print("Aucune tache apprise n'est disponible pour repondre à la question.", agent_name=self.name)
+            return "no code available"
 
-        # Call the method to generate code and run tests
-        results = self.code_task_and_run_test(refined_task)
+        # Préparer la chaîne de snippets de code
+        code_snippets = "\n\n".join(learnt_tasks)
 
-        # Process the results
-        if results:
-            for result in results:
-                parsed_code, success, _, _, _, _ = result
-                if success:
-                    # Exécuter la fonction générée pour chaque environnement
-                    code_to_run = parsed_code['program_code']
-                    exec_locals = {}
-                    try:
-                        exec(code_to_run, globals(), exec_locals)
-                        main_function_name = parsed_code['main_function']['name']
-                        if main_function_name in exec_locals:
-                            # Itérer sur chaque environnement
-                            for env in self.envs:
-                                bot = env  # Ou env.bot si le bot est un attribut de l'environnement
-                                answer = exec_locals[main_function_name](bot)
-                                smart_print(f"Answer for document {bot.document.title} (Id : {bot.id}): {answer}", agent_name=self.name)
-                        else:
-                            smart_print("Main function not found in generated code.", agent_name=self.name)
-                    except Exception as e:
-                        smart_print(f"Error executing the code: {e}", agent_name=self.name)
-                else:
-                    smart_print("Generated code failed to run successfully.", agent_name=self.name)
-        else:
-            smart_print("No code generated.", agent_name=self.name)
-
-    def code_task_and_run_test(self, refined_task):
-        # Prepare the user message for the LLM
-        template_data = {
-            "refined_task": refined_task,
-            "env_states": "\n".join([env.get_state(extended=False) for env in self.envs]),
-            "primitives": "\n".join(self.coder.get_primitives()),
-            "successful_tasks": "\n".join(HumanLLMMonitor.get_learnt_tasks()),
-            "failed_tasks": "\n".join(HumanLLMMonitor.get_failed_tasks()),
-            "validation_response_um": "\n".join(HumanLLMMonitor.get_validation_results()),
-            "previous_attempts": "",
-            "error_patches_str": ""
-        }
-
-        # Load and format the user message from a template
-        user_message = HumanLLMMonitor.load_prompt(
-            self.problem_prompts_subdir + "coding_agent_user_message_template",
-            template_data=template_data,
-            directory='prompts'
+        # Préparer le prompt pour le LLM
+        prompt_template = (
+            "Vous êtes un assistant utile qui sélectionne le meilleur code pour répondre à la question de l'utilisateur.\n"
+            "Question de l'utilisateur :\n{question}\n\n"
+            "Snippets de code disponibles :\n{code_snippets}\n\n"
+            "Veuillez sélectionner le code qui répondra le mieux à la question. "
+            "Si plusieurs fonctions font exactement la même chose, choisissez la plus efficace.\n"
+            "Fournissez uniquement le code qui doit être exécuté pour répondre à la question."
         )
+        prompt = prompt_template.format(question=question, code_snippets=code_snippets)
 
-        self.last_user_message = user_message
-
-        # Call the LLM to generate code
-        codes = self.human_llm_code_task.CallHumanLLM(
-            system_prompt_template=self.problem_prompts_subdir + "code_task",
-            user_message=user_message,
-            return_message_content_only=False,
+        # Envoyer le prompt au LLM
+        selected_code = self.human_llm_code_task.CallHumanLLM(
+            system_prompt_template="",  # Pas de prompt système supplémentaire
+            user_message=prompt,
+            return_message_content_only=True,
             stream_output=False,
             optuna=self.optuna_opti,
             model_choice=self.model_choice
         )
 
-        results = []
+        # Vérifier que le code ne produit pas d'erreurs
+        code_parsing_success, parsed_code = self.parse_code(selected_code)
 
-        for index, code in enumerate(codes):
-            # Get the check results corresponding to the output_id
-            check_results = self.human_llm_code_task.last_inference_check_results[index]
+        if code_parsing_success and isinstance(parsed_code, dict):
+            # Le code est correctement analysé
+            code_to_run = parsed_code['program_code']
+            exec_locals = {}
+            try:
+                exec(code_to_run, globals(), exec_locals)
+                main_function_name = parsed_code['main_function']['name']
+                if main_function_name in exec_locals:
+                    # Itérer sur chaque environnement
+                    for env in self.envs:
+                        bot = env  # Ou env.bot si le bot est un attribut de l'environnement
+                        answer = exec_locals[main_function_name](bot)
+                        smart_print(f"Réponse pour le document {bot.document.title} (Id : {bot.id}) : {answer}", agent_name=self.name)
+                else:
+                    smart_print("La fonction principale n'a pas été trouvée dans le code sélectionné.", agent_name=self.name)
+            except Exception as e:
+                smart_print(f"Erreur lors de l'exécution du code : {e}", agent_name=self.name)
+        else:
+            smart_print("Le code sélectionné n'a pas pu être analysé ou contient des erreurs.", agent_name=self.name)
 
-            code_parsing_success, parsed_code = check_results.get("Code Parsing", (False, None))
-            if code_parsing_success and isinstance(parsed_code, dict):
-                test_results = check_results.get("Run Tests", None)
-                if test_results:
-                    results.append(test_results)
-
-        return results
+    def parse_code(self, code_str):
+        import ast
+        try:
+            tree = ast.parse(code_str)
+            # Trouver la fonction principale
+            for node in tree.body:
+                if isinstance(node, ast.FunctionDef):
+                    main_function_name = node.name
+                    # Reconstruire le code de la fonction
+                    function_code = ast.get_source_segment(code_str, node)
+                    if function_code is None:
+                        # Si get_source_segment ne fonctionne pas, extraire le code manuellement
+                        lines = code_str.split('\n')
+                        function_lines = lines[node.lineno - 1: node.end_lineno]
+                        function_code = '\n'.join(function_lines)
+                    return True, {
+                        'program_code': code_str,
+                        'main_function': {
+                            'name': main_function_name,
+                            'body': function_code
+                        },
+                        'runnable_code': function_code
+                    }
+            return False, None
+        except Exception as e:
+            print(f"Erreur lors de l'analyse du code : {e}")
+            return False, None
 
 
 def validate_function_code(code, function_name, local_scope=None, compile_test_only=False):
@@ -1519,7 +1522,26 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
                                       agcoding_num_parallel_inferences=agcoding_num_parallel_inferences,
                                       unique_id=unique_id)
         else:
-            planner.plan(question)
+            temp = planner.plan(question)
+            if temp == "no code available":
+                run_4agents_learning_loop(default_llm_key=default_llm_key,
+                                          premium_llm_key=premium_llm_key,
+                                          llmORchains_list=llmORchains_list,
+                                          test_environments=envs,
+                                          manual_validation_to_capitalize=manual_validation_to_capitalize,
+                                          problem_prompts_subdir=problem_prompts_subdir,
+                                          max_coding_attempts=max_coding_attempts,
+                                          include_code=include_code,
+                                          selected_successful_functions=selected_successful_functions,
+                                          selected_failed_functions=selected_failed_functions,
+                                          max_execution_time=max_execution_time,
+                                          agtask_premium_llm_by_default=agtask_premium_llm_by_default,
+                                          agtask_skip_rounds=agtask_skip_rounds,  # Auto-test: 1
+                                          agcoding_skip_rounds=agcoding_skip_rounds,  # Auto-test: 4
+                                          agvalidation_skip_rounds=agvalidation_skip_rounds,  # Auto-test: 4
+                                          agcapitalize_skip_rounds=agcapitalize_skip_rounds,
+                                          agcoding_num_parallel_inferences=agcoding_num_parallel_inferences,
+                                          unique_id=unique_id)
         question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ",
                                agent_name='PlannerAgent')
         smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
