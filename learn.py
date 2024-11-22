@@ -8,6 +8,8 @@ import types
 import time
 from zipfile import error
 
+from sympy.codegen.ast import continue_
+
 from config import *
 
 import openai
@@ -1148,9 +1150,7 @@ class PlannerAgent:
         # Use the coder's human_llm_code_task for consistency
         self.human_llm_code_task = self.coder.human_llm_code_task
 
-    def plan(self):
-        # Ask the user to formulate their question using smart_input
-        question = smart_input("Please formulate your question: ", agent_name=self.name)
+    def plan(self, question : str):
         self.last_user_message = question
 
         # Use the LLM to generate code answering the question
@@ -1283,16 +1283,6 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               continue_each_loop=False):
     scores = None
 
-    if unique_id is None:
-        unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
-
-    if unique_id is not False :
-        if UnifiedVectorDB.unique_collection_id is None:
-            UnifiedVectorDB.set_unique_collection_id(unique_id)
-
-    HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
-    HumanLLMMonitor.check_init_class_db(force=True)
-
     if params_user_message is None and optuna_opti is None:
         params_user_message = {
             'sources': ["learnt", "failed", "default"],
@@ -1300,32 +1290,10 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             'format': ["json", "Jinja2", "Markdown"]
         }
 
-    if HumanLLMMonitor.use_websocket:
-        if HumanLLMMonitor.websocket_server is None:
-            HumanLLMMonitor.initialize_websocket_server()
-
     smart_print(str(max_execution_time), "orchestrate_agents", "time_end")
     smart_print(unique_id, "orchestrate_agents", "XP_unique_id", optional=True)
 
     time_end = time.time() + max_execution_time
-
-    if problem_prompts_subdir is None:
-        # menu to choose the problem prompts subdirectory
-        # get the list of subdirectories in the problem prompts directory
-        problem_prompts_subdirs = [name for name in os.listdir("prompts") if
-                                   os.path.isdir(os.path.join("prompts", name))]
-        # get first element of problem_prompts_subdirs if not empty, else set it to empty string
-        default_subdir = problem_prompts_subdirs[0] if problem_prompts_subdirs else ""
-        choice = smart_input("Enter a capital letter for subdirectory (leave empty for default): " + "; ".join(
-            f"\n[{i}] {subdir}" for i, subdir in zip(string.ascii_uppercase, problem_prompts_subdirs)) + " ?", "orchestrate_agents")
-        # if choise is empty or not a capital letter or not in the range of the list of subdirectories, set it to A
-        problem_prompts_subdir = problem_prompts_subdirs[ord(choice) - 65] if choice and choice.isupper() and ord(
-            choice) - 65 in range(len(problem_prompts_subdirs)) else default_subdir
-
-    if test_environments is None:
-        env_type = "default"
-        manager = EnvironmentManager(env_type)
-        test_environments = [manager.get_environment()]
 
     agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                              problem_prompts_subdir=problem_prompts_subdir,
@@ -1469,9 +1437,17 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         return max(total_scores)
 
 
-def run_planner(default_llm_key, premium_llm_key, test_environments=None, problem_prompts_subdir=None,
-                skip_rounds=0, llmORchains_list=None, model_choice=None, special_criteria=None,
-                num_parallel_inferences=2, optuna_opti=None, temperature_max=1, unique_id=None):
+def run_planner(default_llm_key, premium_llm_key, test_environments=None,
+                manual_validation_to_capitalize=True, problem_prompts_subdir=None,
+                max_coding_attempts=4, include_code=None, selected_successful_functions=None,
+                selected_failed_functions=None, agtask_premium_llm_by_default=True,
+                agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0,
+                agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
+                optuna_opti=None, allow_custom_score_state_functions=False,
+                params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
+                agcoach_num_parallel_inferences=2, fixed_coach=False, unique_id=None, return_array=False, agcoding_num_parallel_inferences=2,
+                continue_each_loop=False, skip_rounds=0):
+
     # Initialize unique_id
     if unique_id is None:
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
@@ -1488,10 +1464,6 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None, proble
     if HumanLLMMonitor.use_websocket:
         if HumanLLMMonitor.websocket_server is None:
             HumanLLMMonitor.initialize_websocket_server()
-
-    # Set the maximum temperature for LLM if not provided
-    if temperature_max is None:
-        temperature_max = 1
 
     # Select the problem prompts subdirectory if not provided
     if problem_prompts_subdir is None:
@@ -1520,9 +1492,37 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None, proble
         optuna=optuna_opti,
         model_choice=model_choice,
         special_criteria=special_criteria,
-        num_parallel_inferences=num_parallel_inferences
+        num_parallel_inferences=agcoach_num_parallel_inferences
     )
-    planner.plan()
+    # Ask the user to formulate their question using smart_input
+    question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ", agent_name='PlannerAgent').capitalize()
+    smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
+    while question not in ['q', 'Q', 'quit', 'Quit', 'QUIT', 'e', 'E', 'exit', 'Exit', 'EXIT']:
+        if question in ['LEARN', 'learn', 'Learn']:
+            # User wants to use the learning loop
+            run_4agents_learning_loop(default_llm_key=default_llm_key,
+                                      premium_llm_key=premium_llm_key,
+                                      llmORchains_list=llmORchains_list,
+                                      test_environments=envs,
+                                      manual_validation_to_capitalize=manual_validation_to_capitalize,
+                                      problem_prompts_subdir=problem_prompts_subdir,
+                                      max_coding_attempts=max_coding_attempts,
+                                      include_code=include_code,
+                                      selected_successful_functions=selected_successful_functions,
+                                      selected_failed_functions=selected_failed_functions,
+                                      max_execution_time=max_execution_time,
+                                      agtask_premium_llm_by_default=agtask_premium_llm_by_default,
+                                      agtask_skip_rounds=agtask_skip_rounds,  # Auto-test: 1
+                                      agcoding_skip_rounds=agcoding_skip_rounds,  # Auto-test: 4
+                                      agvalidation_skip_rounds=agvalidation_skip_rounds,  # Auto-test: 4
+                                      agcapitalize_skip_rounds=agcapitalize_skip_rounds,
+                                      agcoding_num_parallel_inferences=agcoding_num_parallel_inferences,
+                                      unique_id=unique_id)
+        else:
+            planner.plan(question)
+        question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ",
+                               agent_name='PlannerAgent')
+        smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
 
 
 def get_success_value_in_text(text):
@@ -1842,29 +1842,21 @@ if __name__ == "__main__":
         envs.append(env)
 
     # Run the planner agent
-    # run_planner(default_llm_key="default_llm",
-    #             premium_llm_key="premium_llm",
-    #             problem_prompts_subdir="IR_CPS_TechSynthesis",
-    #             test_environments=envs,
-    #             llmORchains_list=llmORchains_list,
-    #             num_parallel_inferences=2)
-
-    # Run the learning loop
-    run_4agents_learning_loop(default_llm_key="default_llm",
-                              premium_llm_key="premium_llm",
-                              llmORchains_list=llmORchains_list,
-                              test_environments=envs,
-                              manual_validation_to_capitalize=False,
-                              problem_prompts_subdir="IR_CPS_TechSynthesis",
-                              max_coding_attempts=4,
-                              include_code=False,
-                              selected_successful_functions=[],
-                              selected_failed_functions=[],
-                              max_execution_time=3600,
-                              agtask_premium_llm_by_default=False,
-                              agtask_skip_rounds=0,  # Auto-test: 1
-                              agcoding_skip_rounds=0,  # Auto-test: 4
-                              agvalidation_skip_rounds=0,  # Auto-test: 4
-                              agcapitalize_skip_rounds=0,
-                              agcoding_num_parallel_inferences=2,
-                              unique_id=unique_id)  # Auto-test: 0"""
+    run_planner(default_llm_key="default_llm",
+                premium_llm_key="premium_llm",
+                llmORchains_list=llmORchains_list,
+                test_environments=envs,
+                manual_validation_to_capitalize=False,
+                problem_prompts_subdir="IR_CPS_TechSynthesis",
+                max_coding_attempts=4,
+                include_code=False,
+                selected_successful_functions=[],
+                selected_failed_functions=[],
+                max_execution_time=3600,
+                agtask_premium_llm_by_default=False,
+                agtask_skip_rounds=0,  # Auto-test: 1
+                agcoding_skip_rounds=0,  # Auto-test: 4
+                agvalidation_skip_rounds=0,  # Auto-test: 4
+                agcapitalize_skip_rounds=0,
+                agcoding_num_parallel_inferences=2,
+                unique_id=unique_id)  # Auto-test: 0"""
