@@ -577,6 +577,8 @@ class CodingAgent():
                         elif self.optuna_opti:
                             decision = "n"
                         else:
+                            if output_id == None:
+                                output_id = 0
                             smart_print(parsed_code["program_code"], custom_agent if custom_agent else self.name, f"Inference streaming output {output_id}", append=True, column_id=output_id, column_max=self.human_llm_code_task.num_parallel_inferences)
                             decision = smart_input(
                                 f"ANSWER {output_id} Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ",
@@ -1358,7 +1360,6 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             'format': ["json", "Jinja2", "Markdown"]
         }
 
-    smart_print(str(max_execution_time), "orchestrate_agents", "time_end")
     smart_print(unique_id, "orchestrate_agents", "XP_unique_id", optional=True)
 
     time_end = time.time() + max_execution_time
@@ -1541,6 +1542,8 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
             }, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
             tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": HumanLLMMonitor.step_id}
             HumanLLMMonitor.add_learnt_task(serialized_entry, tags)
+
+    smart_print(str(max_execution_time), "orchestrate_agents", "time_end")
 
     successful_tasks = HumanLLMMonitor.get_learnt_tasks()
     successful_tasks_list = [task for task in successful_tasks]

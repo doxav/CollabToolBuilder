@@ -273,7 +273,7 @@
 
         // Places infos for each answers in columns in their columns
 
-        if(data.agent_name === "CodingAgent" && (data.message_type === "code_task_and_run_test SystemMessage" || data.message_type === "fix_error" || data.message_type === "CODE_RESULT" || data.message_type === "UPDATED_CODE")) {
+        if((data.agent_name === "CodingAgent" || data.agent_name === "PlannerAgent") && (data.message_type === "code_task_and_run_test SystemMessage" || data.message_type === "fix_error" || data.message_type === "CODE_RESULT" || data.message_type === "UPDATED_CODE")) {
             // Retrieve the columns of the CodingAgent
             let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
             let $columns = $agentAccordion.find('.solution-column');
@@ -479,20 +479,6 @@
                 funcNamesContent.appendChild(foldableDiv);
             });
 
-        } else if(data.agent_name === "PlannerAgent"){
-            // Show message in a new accordion named "PlannerAgent" if it doesn't exist else append the message to the existing accordion
-            let $plannerAccordion = $(`#message-accordion > div[data-agent="PlannerAgent"]`);
-            if ($plannerAccordion.length === 0) {
-                $plannerAccordion = $(`<div data-agent="PlannerAgent"><h3>PlannerAgent</h3><div></div></div>`);
-                $("#message-accordion").append($plannerAccordion);
-            }
-            let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${content}</div>`);
-            $plannerAccordion.children("div").append($messageContainer);
-            if (data.input) {
-                displayInputField();
-            }
-
-
         } else if(data.message.includes("Time spent in each option and occurrences" || data.message.includes("Choose an action (or hit Enter for inference)"))){
 //        } else if(data.message && (data.message.includes("Time spent in each option and occurrences" || data.message.includes("Choose an action (or hit Enter for inference)")))){
 
@@ -662,13 +648,14 @@
             });
             // END COPY
 
-        } else if(data.message_type.includes("Inference streaming output") && data.agent_name === "TaskIdentificationAgent") {
+        } else if(data.message_type.includes("Inference streaming output") && (data.agent_name === "TaskIdentificationAgent" || data.agent_name === "PlannerAgent")) {
 //        } else if(data.message_type && data.message_type.includes("Inference streaming output") && data.agent_name === "TaskIdentificationAgent") {
             // console.log("Inference streaming output");
             // Extract the inferenceNumber
             let inferenceNumber = parseInt(data.message_type.slice(-1));
             if (isNaN(inferenceNumber)) {
-                return;
+                inferenceNumber = 0;
+                //return;
             }
 
             const columnId = `${inferenceNumber}`;
@@ -766,8 +753,21 @@
             if (data.input) {
                 displayInputField();
             }
-        }
-        else {
+        } else if(data.agent_name === "PlannerAgent"){
+            // Show message in a new accordion named "PlannerAgent" if it doesn't exist else append the message to the existing accordion
+            let $plannerAccordion = $(`#message-accordion > div[data-agent="PlannerAgent"]`);
+            if ($plannerAccordion.length === 0) {
+                $plannerAccordion = $(`<div data-agent="PlannerAgent"><h3>PlannerAgent</h3><div></div></div>`);
+                $("#message-accordion").append($plannerAccordion);
+            }
+            let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${content}</div>`);
+            $plannerAccordion.children("div").append($messageContainer);
+            if (data.input) {
+                displayInputField();
+            }
+
+
+        } else {
             if ($agentAccordion.length === 0) {
                 $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
                 $("#message-accordion").append($agentAccordion);
