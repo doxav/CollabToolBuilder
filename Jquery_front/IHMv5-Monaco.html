@@ -1829,6 +1829,7 @@ function getColumnsToKeep(agent) {
     // Mapping of agent names to their evaluation types
     const agentEvaluations = {
         'CodingAgent': 'score',
+        'PlannerAgent': 'score',
         'TaskIdentificationAgent': 'compliance',
         // Add more agents and their evaluation types here
     };
@@ -2379,7 +2380,7 @@ function getColumnsToKeep(agent) {
                 return;
             }
             // Ajouter le bouton "Continue"
-            if(data.agent_name === "CodingAgent") {
+            if(data.agent_name === "CodingAgent" || data.agent_name === "PlannerAgent") {
                 let $continueButton = $(`<button id="continue-button-${data.agent_name}" disabled>Keep 0, 1 or more propositions, then HIT continue here</button>`);
                 $(solutionColumnsContainer).after($continueButton);
                 $continueButton.click(function () {
@@ -2413,7 +2414,7 @@ function getColumnsToKeep(agent) {
         const columns = document.querySelectorAll('.solution-columns .solution-column');
         const numColumns = columns.length;
         columns.forEach(column => {
-            column.style.flex = `1 1 calc(${100 / numColumns}% - 20px)`;
+            column.style.width = `calc(100% / ${numColumns})`;
         });
     }
 
@@ -2512,6 +2513,8 @@ function getColumnsToKeep(agent) {
                 editorContainer.style.left = "";
                 editorContainer.style.zIndex = "";
                 expandButton.innerHTML = `<i class="fas fa-expand"></i>`;
+                // Resize the width of a solution column
+                adjustColumnWidths();
             }
 
         }
@@ -2522,6 +2525,7 @@ function getColumnsToKeep(agent) {
                 $column.removeClass("expanded");
                 // Modify the icon to show the expand icon
                 $icon.removeClass("fa-compress").addClass("fa-expand");
+                adjustColumnWidths();
             } else {
                 $column.addClass("expanded");
                 // Modify the icon to show the compress icon
@@ -2969,6 +2973,7 @@ $(document).on('click', '.collapsible-header', function() {
             ) {
                 $(".solution-column").removeClass("expanded");
                 $(".expand-button i").removeClass("fa-compress").addClass("fa-expand");
+                adjustColumnWidths();
             }
         });
 
