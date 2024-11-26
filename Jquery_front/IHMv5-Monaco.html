@@ -275,6 +275,7 @@
 
         if((data.agent_name === "CodingAgent" || data.agent_name === "PlannerAgent") && (data.message_type === "code_task_and_run_test SystemMessage" || data.message_type === "fix_error" || data.message_type === "CODE_RESULT" || data.message_type === "UPDATED_CODE")) {
             // Retrieve the columns of the CodingAgent
+            console.log("AAAAAAAAAAAAAAAAAAAAAAA")
             let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
             let $columns = $agentAccordion.find('.solution-column');
             const columnId = `${data.agent_name}-${data.column_id}`;
@@ -363,6 +364,7 @@
 
         // Generalize handling of multiple solutions
         if (data.column_max !== undefined && data.column_id !== undefined && data.message_type === "NEW inference result recieved") {
+            console.log("BBBBBBBBBBB")
             // Wait 2 seconds for the last streaming output being received
             setTimeout(function() {
                 // Do nothing
@@ -656,6 +658,11 @@
             if (isNaN(inferenceNumber)) {
                 inferenceNumber = 0;
                 //return;
+            }
+
+            if(data.agent_name === "PlannerAgent"){
+                handleMultipleSolutions(data);
+                return;
             }
 
             const columnId = `${inferenceNumber}`;
