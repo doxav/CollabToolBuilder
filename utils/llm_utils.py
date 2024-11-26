@@ -2039,7 +2039,7 @@ class HumanLLMMonitor:
 
             Args:
                 suggestions (str): The suggestions or critics to be applied to the text content.
-                text_content (str): The original text content that needs to be improved.
+                text_content (str or List[str]): The original text content that needs to be improved.
                 text_has_annotations (bool): Indicates whether the text contains annotations. Default is True.
                 annotation_format (str): The format of the annotations. If None and text_has_annotations is True,
                                      the format will be auto-detected.
@@ -2053,13 +2053,22 @@ class HumanLLMMonitor:
         import re
         import json
 
+        # Combine text_content if it's a list
+        if isinstance(text_content, list):
+            combined_text_content = '\n'.join(text_content)
+        elif isinstance(text_content, str):
+            combined_text_content = text_content
+        else:
+            raise TypeError("text_content must be a string or a list of strings.")
+
         # Auto-detect annotation format if necessary
         def detect_annotation_format(text):
             patterns = {
                 'latex-inline': re.compile(r'\\(?P<tag>\w+)(\[(?P<instruction>[^\]]*)\])?\{(?P<content>.*?)\}',
                                            re.DOTALL),
                 'HTML-inline': re.compile(
-                    r'<(?P<tag>\w+)( action="(?P<instruction>[^"]*)")?>(?P<content>.*?)</(?P=tag)>', re.DOTALL),
+                    r'<(?P<tag>\w+)(\s+instruction="(?P<instruction>[^"]*)")?>\s*(?P<content>.*?)\s*</(?P=tag)>',
+                    re.DOTALL),
                 'latex-id': re.compile(r'\[(?P<id>\d+)\]\{(?P<content>.*?)\}', re.DOTALL),
                 'HTML-id': re.compile(r'<(?P<id>\d+)>(?P<content>.*?)</(?P=id)>', re.DOTALL)
             }
@@ -2074,9 +2083,9 @@ class HumanLLMMonitor:
             if annotation_format == 'latex-inline':
                 pattern = re.compile(r'\\(?P<tag>\w+)(\[(?P<instruction>[^\]]*)\])?\{(?P<content>.*?)\}', re.DOTALL)
             elif annotation_format == 'HTML-inline':
-                # pattern = re.compile(r'<(?P<tag>\w+)(\s+action="(?P<instruction>[^"]*)")?>(?P<content>.*?)</(?P=tag)>', re.DOTALL)
                 pattern = re.compile(
-                    r'(<(?P<tag>\w+)(\s+action="(?P<instruction>[^"]*)")?>)(?P<content>.*?)(</(?P=tag)>)', re.DOTALL)
+                    r'<(?P<tag>\w+)(\s+instruction="(?P<instruction>[^"]*)")?>\s*(?P<content>.*?)\s*</(?P=tag)>',
+                    re.DOTALL)
             elif annotation_format == 'latex-id':
                 pattern = re.compile(r'\[(?P<id>\d+)\]\{(?P<content>.*?)\}', re.DOTALL)
             elif annotation_format == 'HTML-id':
@@ -2112,19 +2121,22 @@ class HumanLLMMonitor:
                         if key == 'Recommend critiques':
                             critic = value
                             break
-                else :
+                else:
                     break
 
         if critic:
+            if suggestions == "":
+                suggestions = critic['suggestions']
             HumanLLMMonitor.add_agent_data(self.agent_name, "llm_suggestions",
-                        {'llm_suggestions': critic['suggestions'], 'user_suggestions': suggestions, 'llm_suggestions_prompt': critic['improvement_prompt']})
+                                           {'llm_suggestions': critic['suggestions'], 'user_suggestions': suggestions,
+                                            'llm_suggestions_prompt': critic['improvement_prompt']})
 
         if text_has_annotations:
             if annotation_format is None:
-                annotation_format = detect_annotation_format(text_content)
+                annotation_format = detect_annotation_format(combined_text_content)
                 if annotation_format is None:
                     raise ValueError("Could not auto-detect annotation format.")
-            annotations = parse_annotations(text_content, annotation_format)
+            annotations = parse_annotations(combined_text_content, annotation_format)
             if annotation_format in ['latex-inline', 'HTML-inline']:
                 # Instructions are inline within annotations
                 for annotation in annotations:
@@ -2153,13 +2165,13 @@ class HumanLLMMonitor:
                 2. **IMPROVE:** Enhance the content.
                 3. **INSERT:** Add new content as instructed.
                 """
-                user_prompt = f"{text_content}"
+                user_prompt = f"{combined_text_content}"
                 llm_output = self.premium_llm.invoke(
-                    [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+                    [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)])
                 final_text = llm_output.content
 
             elif instruction_processing_approach == 'FULLTEXT_EACH':
-                final_text = text_content
+                final_text = combined_text_content
                 for annotation in annotations:
                     system_prompt = """
                 Your task is to improve the following text by processing the annotation and following the instruction.
@@ -2171,7 +2183,7 @@ class HumanLLMMonitor:
                         if other_annotation != annotation:
                             temp_text = temp_text.replace(other_annotation['full_match'], other_annotation['content'])
                     llm_output = self.premium_llm.invoke(
-                        [SystemMessage(content=system_prompt), HumanMessage(content=temp_text)])
+                        [SystemMessage(content=system_prompt.strip()), HumanMessage(content=temp_text)])
                     final_text = llm_output.content
 
             elif instruction_processing_approach == 'ANNOTATIONS_ALL':
@@ -2182,30 +2194,40 @@ class HumanLLMMonitor:
                 system_prompt = """
                 Your task is to generate new content for the annotated parts according to the instructions.
                 Provide your output as a JSON dictionary mapping IDs to the new content.
+                The values should be strings containing the new content, without additional keys or nesting.
+                Example Output: {"1": "new content for annotation 1", "2": "new content for annotation 2"}
                 """
                 user_prompt = f"Annotations:\n{json.dumps(annotations_data)}"
                 llm_output = self.premium_llm.invoke(
-                    [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
-                new_contents = json.loads(llm_output.content)
-                final_text = text_content
+                    [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)])
+                llm_response = llm_output.content.strip()
+                try:
+                    new_contents = json.loads(llm_response)
+                except json.JSONDecodeError:
+                    raise ValueError(f"Invalid JSON response from LLM: {llm_response}")
+
+                final_text = combined_text_content
                 for annotation in annotations:
                     id_ = annotation.get('id') or str(annotations.index(annotation))
                     full_match = annotation['full_match']
                     new_content = new_contents.get(id_)
                     if new_content:
+                        # Ensure new_content is a string
+                        if not isinstance(new_content, str):
+                            raise ValueError(f"New content for annotation ID {id_} is not a string.")
                         final_text = final_text.replace(full_match, new_content)
                     else:
                         raise ValueError(f"No new content found for annotation ID {id_}")
 
             elif instruction_processing_approach == 'ANNOTATIONS_EACH':
-                final_text = text_content
+                final_text = combined_text_content
                 for annotation in annotations:
                     system_prompt = """
                 Your task is to generate new content for the following text according to the instruction.
                 """
                     user_prompt = f"Text: {annotation['content']}\nInstruction: {annotation['instruction']}"
                     llm_output = self.premium_llm.invoke(
-                        [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+                        [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)])
                     new_content = llm_output.content.strip()
                     full_match = annotation['full_match']
                     final_text = final_text.replace(full_match, new_content)
@@ -2224,10 +2246,10 @@ class HumanLLMMonitor:
             system_prompt = f"""Given the INSTRUCTION provided by the user (and the **INITIAL PROMPT**), your task is to generate a very different new answer from the INITIAL ANSWER or to refine the initial answer.
             {prompt_sugg}
             ### INITIAL PROMPT: << {self.llm_input_messages[0].content} >>
-            ### INITIAL ANSWER: << {text_content} >> """
+            ### INITIAL ANSWER: << {combined_text_content} >> """
             user_prompt = f"INSTRUCTION: << {suggestions} >>"
             llm_output = self.premium_llm.invoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+                [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)])
             final_text = llm_output.content
 
         self.temp_inference_result_content = final_text  # Capture the result

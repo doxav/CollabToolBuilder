@@ -2260,7 +2260,8 @@ function getColumnsToKeep(agent) {
                         let decorations = editor.getModel().getAllDecorations();
                         let hasAnnotations = decorations.some(decoration => decoration.options.inlineClassName === 'applied-annotation');
                         if (hasAnnotations) {
-                            let text = editor.getValue().replace(/<[^>]*>/g, '');
+                            let text = editor.getValue();
+                            console.log("Annotated text:", text);
                             annotatedTexts.push(text);
                         }
                     }
@@ -2274,8 +2275,9 @@ function getColumnsToKeep(agent) {
 
                 // Prepare data for sendFunctionCall
                 let requestData = {
-                    suggestions: annotatedTexts,
-                    text_content: ""
+                    suggestions: "",
+                    text_content: annotatedTexts,
+                    annotation_format: $("#annotation-type").val()
                 };
 
                 // Send the function call

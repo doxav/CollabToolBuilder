@@ -1584,7 +1584,7 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
         num_parallel_inferences=agcoach_num_parallel_inferences
     )
     # Ask the user to formulate their question using smart_input
-    question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ", agent_name='PlannerAgent').capitalize()
+    question = smart_input("Please formulate your question, or launch the learning loop by just sending the message 'learn' (or exit with q/e/quit/exit): ", agent_name='PlannerAgent').capitalize()
     smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
     while question not in ['q', 'Q', 'quit', 'Quit', 'QUIT', 'e', 'E', 'exit', 'Exit', 'EXIT']:
         if question in ['LEARN', 'learn', 'Learn']:
