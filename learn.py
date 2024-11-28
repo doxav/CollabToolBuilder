@@ -8,7 +8,7 @@ import types
 import time
 from zipfile import error
 
-from config import *
+from config import * 
 
 import openai
 from typing import Dict
