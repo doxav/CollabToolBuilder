@@ -266,8 +266,11 @@ class TaskIdentificationAgent():
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
                 self.human_llm_identify_best_task.add_inference_check(key, value)
-
-        self.human_llm_identify_best_task.add_inference_check("Recommend critiques",
+        if hasattr(self, 'recommendations_usage'):
+            if self.recommendations_usage:
+                self.human_llm_identify_best_task.add_inference_check("Recommendations", self.human_llm_identify_best_task.generate_best_improvement_suggestions)
+        else:
+            self.human_llm_identify_best_task.add_inference_check("Recommend critiques",
                                                               self.human_llm_identify_best_task.generate_best_improvement_suggestions)
 
     def identify_best_task(self):
@@ -371,7 +374,11 @@ class CodingAgent():
         self.human_llm_code_task.skip_rounds = skip_rounds
         self.human_llm_code_task.add_inference_check("Code Parsing", self.parse_ai_generated_code)
         self.human_llm_code_task.add_inference_check("Run Tests", self.run_tests_on_code)
-        self.human_llm_code_task.add_inference_check("Recommend critiques", self.human_llm_code_task.generate_best_improvement_suggestions)
+        if hasattr(self, 'recommendations_usage'):
+            if self.recommendations_usage:
+                self.human_llm_code_task.add_inference_check("Recommend critiques", self.human_llm_code_task.generate_best_improvement_suggestions)
+        else:
+            self.human_llm_code_task.add_inference_check("Recommend critiques", self.human_llm_code_task.generate_best_improvement_suggestions)
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
                 self.human_llm_code_task.add_inference_check(key, value)
@@ -1351,7 +1358,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               optuna_opti=None, allow_custom_score_state_functions=False,
                               params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
                               agcoach_num_parallel_inferences=2, fixed_coach=False, return_array=False, agcoding_num_parallel_inferences=2,
-                              continue_each_loop=False):
+                              continue_each_loop=False, unique_id=None):
     scores = None
 
     if params_user_message is None and optuna_opti is None:
@@ -1585,7 +1592,10 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
         num_parallel_inferences=agcoach_num_parallel_inferences
     )
     # Ask the user to formulate their question using smart_input
-    question = smart_input("Please formulate your question, or launch the learning loop by just sending the message 'learn' (or exit with q/e/quit/exit): ", agent_name='PlannerAgent').capitalize()
+    if optuna_opti:
+        question = "learn"
+    else:
+        question = smart_input("Please formulate your question, or launch the learning loop by just sending the message 'learn' (or exit with q/e/quit/exit): ", agent_name='PlannerAgent').capitalize()
     smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
     while question not in ['q', 'Q', 'quit', 'Quit', 'QUIT', 'e', 'E', 'exit', 'Exit', 'EXIT']:
         if question in ['LEARN', 'learn', 'Learn']:
@@ -1593,7 +1603,7 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
             run_4agents_learning_loop(default_llm_key=default_llm_key,
                                       premium_llm_key=premium_llm_key,
                                       llmORchains_list=llmORchains_list,
-                                      test_environments=envs,
+                                      test_environments=test_environments,
                                       manual_validation_to_capitalize=manual_validation_to_capitalize,
                                       problem_prompts_subdir=problem_prompts_subdir,
                                       max_coding_attempts=max_coding_attempts,
@@ -1606,7 +1616,10 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
                                       agcoding_skip_rounds=agcoding_skip_rounds,  # Auto-test: 4
                                       agvalidation_skip_rounds=agvalidation_skip_rounds,  # Auto-test: 4
                                       agcapitalize_skip_rounds=agcapitalize_skip_rounds,
-                                      agcoding_num_parallel_inferences=agcoding_num_parallel_inferences)
+                                      agcoding_num_parallel_inferences=agcoding_num_parallel_inferences,
+                                      optuna_opti=optuna_opti,
+                                      model_choice=model_choice,
+                                      unique_id=unique_id)
         else:
             temp = planner.plan(question)
             if temp == "no code available":
