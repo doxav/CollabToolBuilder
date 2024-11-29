@@ -2238,11 +2238,18 @@ class HumanLLMMonitor:
             if suggestions is None:
                 suggestions = smart_input("Provide critic/feedback/request: ", self.agent_name,
                                           column_max=self.num_parallel_inferences)
+            temp_prev_sugg = HumanLLMMonitor.get_agent_data(self.agent_name, "llm_suggestions")
+            prev_sugg = ""
+            for i in temp_prev_sugg:
+                prev_sugg += f"#{i['user_suggestions']}#\n"
             prompt_sugg = ""
             if suggestions:
                 prompt_sugg = (
-                    "Your task is also to take into account the **SUGGESTIONS** and modify the answer accordingly.\n"
-                    f"\n### SUGGESTIONS: << {suggestions} >>\n")
+                    "Your task is also to take into account the **SUGGESTIONS** and modify the answer accordingly. Also we will give you **PREVIOUS SUGGESTIONS** that were given on previous task.\n"
+                    "These previous suggestions are here to help you more understanding the suggestions and to help you to improve the answer.\n"
+                    f"\n### SUGGESTIONS: << {suggestions} >>\n"
+                    f"\n### PREVIOUS SUGGESTIONS: << {prev_sugg} >>"
+                )
             system_prompt = f"""Given the INSTRUCTION provided by the user (and the **INITIAL PROMPT**), your task is to generate a very different new answer from the INITIAL ANSWER or to refine the initial answer.
             {prompt_sugg}
             ### INITIAL PROMPT: << {self.llm_input_messages[0].content} >>
