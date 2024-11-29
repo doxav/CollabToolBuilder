@@ -371,6 +371,7 @@ class CodingAgent():
         self.human_llm_code_task.skip_rounds = skip_rounds
         self.human_llm_code_task.add_inference_check("Code Parsing", self.parse_ai_generated_code)
         self.human_llm_code_task.add_inference_check("Run Tests", self.run_tests_on_code)
+        self.human_llm_code_task.add_inference_check("Recommend critiques", self.human_llm_code_task.generate_best_improvement_suggestions)
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
                 self.human_llm_code_task.add_inference_check(key, value)

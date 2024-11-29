@@ -731,7 +731,7 @@
         } else if(data.agent_name === "Pipeline/Function Mode" && data.message_type === "Files loaded" ){
             // Do nothing
 
-        } else if(data.agent_name === "TaskIdentificationAgent" && data.message_type === "CRITIC SUGGESTIONS"){
+        } else if((data.agent_name === "TaskIdentificationAgent" || data.agent_name === "CodingAgent") && data.message_type === "CRITIC SUGGESTIONS"){
             console.log("CRITIC SUGGESTIONS");
             console.log(data.message);
             const cleanSuggestions = data.message;
@@ -739,7 +739,7 @@
             console.log("suggestsions:", suggestions);
             annotationswithID = suggestions.suggestions;
             console.log("output_id:", suggestions.output_id);
-            let comment_editor = window[`editorInstance_TaskIdentificationAgent-${suggestions.output_id}`];
+            let comment_editor = window[`editorInstance_${data.agent_name}-${suggestions.output_id}`];
             console.log("editor:", comment_editor);
             // Add text in the comment editor
            comment_editor.setValue(annotationswithID);
