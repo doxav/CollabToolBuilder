@@ -43,8 +43,8 @@ if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_UR
 
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
-# UnifiedVectorDB.es_user = elastic_user
-# UnifiedVectorDB.es_password = elastic_password
+UnifiedVectorDB.es_user = elastic_user
+UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function = "intfloat/e5-base-v2"  # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
@@ -1641,8 +1641,9 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
                                           agcapitalize_skip_rounds=agcapitalize_skip_rounds,
                                           agcoding_num_parallel_inferences=agcoding_num_parallel_inferences,
                                           unique_id=unique_id)
-        question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ",
-                               agent_name='PlannerAgent')
+        if optuna_opti: question = "learn"
+        else: question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ", agent_name='PlannerAgent')
+
         smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
 
 
