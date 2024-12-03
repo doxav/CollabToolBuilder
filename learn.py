@@ -43,8 +43,8 @@ if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_UR
 
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
-UnifiedVectorDB.es_user = elastic_user
-UnifiedVectorDB.es_password = elastic_password
+# UnifiedVectorDB.es_user = elastic_user
+# UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function = "intfloat/e5-base-v2"  # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
@@ -1592,6 +1592,7 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
         num_parallel_inferences=agcoach_num_parallel_inferences
     )
     # Ask the user to formulate their question using smart_input
+    performance = None
     if optuna_opti:
         question = "learn"
     else:
@@ -1600,7 +1601,7 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
     while question not in ['q', 'Q', 'quit', 'Quit', 'QUIT', 'e', 'E', 'exit', 'Exit', 'EXIT']:
         if question in ['LEARN', 'learn', 'Learn']:
             # User wants to use the learning loop
-            run_4agents_learning_loop(default_llm_key=default_llm_key,
+            performance = run_4agents_learning_loop(default_llm_key=default_llm_key,
                                       premium_llm_key=premium_llm_key,
                                       llmORchains_list=llmORchains_list,
                                       test_environments=test_environments,
@@ -1623,7 +1624,7 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
         else:
             temp = planner.plan(question)
             if temp == "no code available":
-                run_4agents_learning_loop(default_llm_key=default_llm_key,
+                performance = run_4agents_learning_loop(default_llm_key=default_llm_key,
                                           premium_llm_key=premium_llm_key,
                                           llmORchains_list=llmORchains_list,
                                           test_environments=envs,
@@ -1641,10 +1642,12 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
                                           agcapitalize_skip_rounds=agcapitalize_skip_rounds,
                                           agcoding_num_parallel_inferences=agcoding_num_parallel_inferences,
                                           unique_id=unique_id)
-        if optuna_opti: question = "learn"
+        if optuna_opti: question = "e"
         else: question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ", agent_name='PlannerAgent')
 
         smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
+
+    return performance
 
 
 def get_success_value_in_text(text):
