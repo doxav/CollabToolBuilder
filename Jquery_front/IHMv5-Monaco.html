@@ -273,8 +273,9 @@
 
         // Places infos for each answers in columns in their columns
 
-        if(data.agent_name === "CodingAgent" && (data.message_type === "code_task_and_run_test SystemMessage" || data.message_type === "fix_error" || data.message_type === "CODE_RESULT" || data.message_type === "UPDATED_CODE")) {
+        if((data.agent_name === "CodingAgent" || data.agent_name === "PlannerAgent") && (data.message_type === "code_task_and_run_test SystemMessage" || data.message_type === "fix_error" || data.message_type === "CODE_RESULT" || data.message_type === "UPDATED_CODE")) {
             // Retrieve the columns of the CodingAgent
+            console.log("AAAAAAAAAAAAAAAAAAAAAAA")
             let $agentAccordion = $(`#message-accordion > div[data-agent="${data.agent_name}"]`);
             let $columns = $agentAccordion.find('.solution-column');
             const columnId = `${data.agent_name}-${data.column_id}`;
@@ -363,6 +364,7 @@
 
         // Generalize handling of multiple solutions
         if (data.column_max !== undefined && data.column_id !== undefined && data.message_type === "NEW inference result recieved") {
+            console.log("BBBBBBBBBBB")
             // Wait 2 seconds for the last streaming output being received
             setTimeout(function() {
                 // Do nothing
@@ -478,20 +480,6 @@
                 });
                 funcNamesContent.appendChild(foldableDiv);
             });
-
-        } else if(data.agent_name === "PlannerAgent"){
-            // Show message in a new accordion named "PlannerAgent" if it doesn't exist else append the message to the existing accordion
-            let $plannerAccordion = $(`#message-accordion > div[data-agent="PlannerAgent"]`);
-            if ($plannerAccordion.length === 0) {
-                $plannerAccordion = $(`<div data-agent="PlannerAgent"><h3>PlannerAgent</h3><div></div></div>`);
-                $("#message-accordion").append($plannerAccordion);
-            }
-            let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${content}</div>`);
-            $plannerAccordion.children("div").append($messageContainer);
-            if (data.input) {
-                displayInputField();
-            }
-
 
         } else if(data.message.includes("Time spent in each option and occurrences" || data.message.includes("Choose an action (or hit Enter for inference)"))){
 //        } else if(data.message && (data.message.includes("Time spent in each option and occurrences" || data.message.includes("Choose an action (or hit Enter for inference)")))){
@@ -662,12 +650,18 @@
             });
             // END COPY
 
-        } else if(data.message_type.includes("Inference streaming output") && data.agent_name === "TaskIdentificationAgent") {
+        } else if(data.message_type.includes("Inference streaming output") && (data.agent_name === "TaskIdentificationAgent" || data.agent_name === "PlannerAgent")) {
 //        } else if(data.message_type && data.message_type.includes("Inference streaming output") && data.agent_name === "TaskIdentificationAgent") {
             // console.log("Inference streaming output");
             // Extract the inferenceNumber
             let inferenceNumber = parseInt(data.message_type.slice(-1));
             if (isNaN(inferenceNumber)) {
+                inferenceNumber = 0;
+                //return;
+            }
+
+            if(data.agent_name === "PlannerAgent"){
+                handleMultipleSolutions(data);
                 return;
             }
 
@@ -737,7 +731,7 @@
         } else if(data.agent_name === "Pipeline/Function Mode" && data.message_type === "Files loaded" ){
             // Do nothing
 
-        } else if(data.agent_name === "TaskIdentificationAgent" && data.message_type === "CRITIC SUGGESTIONS"){
+        } else if((data.agent_name === "TaskIdentificationAgent" || data.agent_name === "CodingAgent") && data.message_type === "CRITIC SUGGESTIONS"){
             console.log("CRITIC SUGGESTIONS");
             console.log(data.message);
             const cleanSuggestions = data.message;
@@ -745,7 +739,7 @@
             console.log("suggestsions:", suggestions);
             annotationswithID = suggestions.suggestions;
             console.log("output_id:", suggestions.output_id);
-            let comment_editor = window[`editorInstance_TaskIdentificationAgent-${suggestions.output_id}`];
+            let comment_editor = window[`editorInstance_${data.agent_name}-${suggestions.output_id}`];
             console.log("editor:", comment_editor);
             // Add text in the comment editor
            comment_editor.setValue(annotationswithID);
@@ -766,8 +760,21 @@
             if (data.input) {
                 displayInputField();
             }
-        }
-        else {
+        } else if(data.agent_name === "PlannerAgent"){
+            // Show message in a new accordion named "PlannerAgent" if it doesn't exist else append the message to the existing accordion
+            let $plannerAccordion = $(`#message-accordion > div[data-agent="PlannerAgent"]`);
+            if ($plannerAccordion.length === 0) {
+                $plannerAccordion = $(`<div data-agent="PlannerAgent"><h3>PlannerAgent</h3><div></div></div>`);
+                $("#message-accordion").append($plannerAccordion);
+            }
+            let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${content}</div>`);
+            $plannerAccordion.children("div").append($messageContainer);
+            if (data.input) {
+                displayInputField();
+            }
+
+
+        } else {
             if ($agentAccordion.length === 0) {
                 $agentAccordion = $(`<div data-agent="${data.agent_name}"><h3>${data.agent_name}</h3><div></div></div>`);
                 $("#message-accordion").append($agentAccordion);
@@ -1829,6 +1836,7 @@ function getColumnsToKeep(agent) {
     // Mapping of agent names to their evaluation types
     const agentEvaluations = {
         'CodingAgent': 'score',
+        'PlannerAgent': 'score',
         'TaskIdentificationAgent': 'compliance',
         // Add more agents and their evaluation types here
     };
@@ -2252,7 +2260,8 @@ function getColumnsToKeep(agent) {
                         let decorations = editor.getModel().getAllDecorations();
                         let hasAnnotations = decorations.some(decoration => decoration.options.inlineClassName === 'applied-annotation');
                         if (hasAnnotations) {
-                            let text = editor.getValue().replace(/<[^>]*>/g, '');
+                            let text = editor.getValue();
+                            console.log("Annotated text:", text);
                             annotatedTexts.push(text);
                         }
                     }
@@ -2266,8 +2275,9 @@ function getColumnsToKeep(agent) {
 
                 // Prepare data for sendFunctionCall
                 let requestData = {
-                    suggestions: annotatedTexts,
-                    text_content: ""
+                    suggestions: "",
+                    text_content: annotatedTexts,
+                    annotation_format: $("#annotation-type").val()
                 };
 
                 // Send the function call
@@ -2379,7 +2389,7 @@ function getColumnsToKeep(agent) {
                 return;
             }
             // Ajouter le bouton "Continue"
-            if(data.agent_name === "CodingAgent") {
+            if(data.agent_name === "CodingAgent" || data.agent_name === "PlannerAgent") {
                 let $continueButton = $(`<button id="continue-button-${data.agent_name}" disabled>Keep 0, 1 or more propositions, then HIT continue here</button>`);
                 $(solutionColumnsContainer).after($continueButton);
                 $continueButton.click(function () {
@@ -2413,7 +2423,7 @@ function getColumnsToKeep(agent) {
         const columns = document.querySelectorAll('.solution-columns .solution-column');
         const numColumns = columns.length;
         columns.forEach(column => {
-            column.style.flex = `1 1 calc(${100 / numColumns}% - 20px)`;
+            column.style.width = `calc(100% / ${numColumns})`;
         });
     }
 
@@ -2512,6 +2522,8 @@ function getColumnsToKeep(agent) {
                 editorContainer.style.left = "";
                 editorContainer.style.zIndex = "";
                 expandButton.innerHTML = `<i class="fas fa-expand"></i>`;
+                // Resize the width of a solution column
+                adjustColumnWidths();
             }
 
         }
@@ -2522,6 +2534,7 @@ function getColumnsToKeep(agent) {
                 $column.removeClass("expanded");
                 // Modify the icon to show the expand icon
                 $icon.removeClass("fa-compress").addClass("fa-expand");
+                adjustColumnWidths();
             } else {
                 $column.addClass("expanded");
                 // Modify the icon to show the compress icon
@@ -2969,6 +2982,7 @@ $(document).on('click', '.collapsible-header', function() {
             ) {
                 $(".solution-column").removeClass("expanded");
                 $(".expand-button i").removeClass("fa-compress").addClass("fa-expand");
+                adjustColumnWidths();
             }
         });
 

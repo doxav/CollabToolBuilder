@@ -43,8 +43,8 @@ if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_UR
 
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
-# UnifiedVectorDB.es_user = elastic_user
-# UnifiedVectorDB.es_password = elastic_password
+UnifiedVectorDB.es_user = elastic_user
+UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function = "intfloat/e5-base-v2"  # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
@@ -266,8 +266,11 @@ class TaskIdentificationAgent():
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
                 self.human_llm_identify_best_task.add_inference_check(key, value)
-
-        self.human_llm_identify_best_task.add_inference_check("Recommend critiques",
+        if hasattr(self, 'recommendations_usage'):
+            if self.recommendations_usage:
+                self.human_llm_identify_best_task.add_inference_check("Recommendations", self.human_llm_identify_best_task.generate_best_improvement_suggestions)
+        else:
+            self.human_llm_identify_best_task.add_inference_check("Recommend critiques",
                                                               self.human_llm_identify_best_task.generate_best_improvement_suggestions)
 
     def identify_best_task(self):
@@ -371,6 +374,11 @@ class CodingAgent():
         self.human_llm_code_task.skip_rounds = skip_rounds
         self.human_llm_code_task.add_inference_check("Code Parsing", self.parse_ai_generated_code)
         self.human_llm_code_task.add_inference_check("Run Tests", self.run_tests_on_code)
+        if hasattr(self, 'recommendations_usage'):
+            if self.recommendations_usage:
+                self.human_llm_code_task.add_inference_check("Recommend critiques", self.human_llm_code_task.generate_best_improvement_suggestions)
+        else:
+            self.human_llm_code_task.add_inference_check("Recommend critiques", self.human_llm_code_task.generate_best_improvement_suggestions)
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
                 self.human_llm_code_task.add_inference_check(key, value)
@@ -577,6 +585,8 @@ class CodingAgent():
                         elif self.optuna_opti:
                             decision = "n"
                         else:
+                            if output_id == None:
+                                output_id = 0
                             smart_print(parsed_code["program_code"], custom_agent if custom_agent else self.name, f"Inference streaming output {output_id}", append=True, column_id=output_id, column_max=self.human_llm_code_task.num_parallel_inferences)
                             decision = smart_input(
                                 f"ANSWER {output_id} Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ",
@@ -1348,7 +1358,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               optuna_opti=None, allow_custom_score_state_functions=False,
                               params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
                               agcoach_num_parallel_inferences=2, fixed_coach=False, return_array=False, agcoding_num_parallel_inferences=2,
-                              continue_each_loop=False):
+                              continue_each_loop=False, unique_id=None):
     scores = None
 
     if params_user_message is None and optuna_opti is None:
@@ -1358,7 +1368,6 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             'format': ["json", "Jinja2", "Markdown"]
         }
 
-    smart_print(str(max_execution_time), "orchestrate_agents", "time_end")
     smart_print(unique_id, "orchestrate_agents", "XP_unique_id", optional=True)
 
     time_end = time.time() + max_execution_time
@@ -1542,6 +1551,8 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
             tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": HumanLLMMonitor.step_id}
             HumanLLMMonitor.add_learnt_task(serialized_entry, tags)
 
+    smart_print(str(max_execution_time), "orchestrate_agents", "time_end")
+
     successful_tasks = HumanLLMMonitor.get_learnt_tasks()
     successful_tasks_list = [task for task in successful_tasks]
     smart_print(json.dumps(successful_tasks_list), "orchestrate_agents", "successful_tasks_list")
@@ -1581,15 +1592,19 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
         num_parallel_inferences=agcoach_num_parallel_inferences
     )
     # Ask the user to formulate their question using smart_input
-    question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ", agent_name='PlannerAgent').capitalize()
+    performance = None
+    if optuna_opti:
+        question = "learn"
+    else:
+        question = smart_input("Please formulate your question, or launch the learning loop by just sending the message 'learn' (or exit with q/e/quit/exit): ", agent_name='PlannerAgent').capitalize()
     smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
     while question not in ['q', 'Q', 'quit', 'Quit', 'QUIT', 'e', 'E', 'exit', 'Exit', 'EXIT']:
         if question in ['LEARN', 'learn', 'Learn']:
             # User wants to use the learning loop
-            run_4agents_learning_loop(default_llm_key=default_llm_key,
+            performance = run_4agents_learning_loop(default_llm_key=default_llm_key,
                                       premium_llm_key=premium_llm_key,
                                       llmORchains_list=llmORchains_list,
-                                      test_environments=envs,
+                                      test_environments=test_environments,
                                       manual_validation_to_capitalize=manual_validation_to_capitalize,
                                       problem_prompts_subdir=problem_prompts_subdir,
                                       max_coding_attempts=max_coding_attempts,
@@ -1602,11 +1617,14 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
                                       agcoding_skip_rounds=agcoding_skip_rounds,  # Auto-test: 4
                                       agvalidation_skip_rounds=agvalidation_skip_rounds,  # Auto-test: 4
                                       agcapitalize_skip_rounds=agcapitalize_skip_rounds,
-                                      agcoding_num_parallel_inferences=agcoding_num_parallel_inferences)
+                                      agcoding_num_parallel_inferences=agcoding_num_parallel_inferences,
+                                      optuna_opti=optuna_opti,
+                                      model_choice=model_choice,
+                                      unique_id=unique_id)
         else:
             temp = planner.plan(question)
             if temp == "no code available":
-                run_4agents_learning_loop(default_llm_key=default_llm_key,
+                performance = run_4agents_learning_loop(default_llm_key=default_llm_key,
                                           premium_llm_key=premium_llm_key,
                                           llmORchains_list=llmORchains_list,
                                           test_environments=envs,
@@ -1624,9 +1642,12 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
                                           agcapitalize_skip_rounds=agcapitalize_skip_rounds,
                                           agcoding_num_parallel_inferences=agcoding_num_parallel_inferences,
                                           unique_id=unique_id)
-        question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ",
-                               agent_name='PlannerAgent')
+        if optuna_opti: question = "e"
+        else: question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ", agent_name='PlannerAgent')
+
         smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
+
+    return performance
 
 
 def get_success_value_in_text(text):
