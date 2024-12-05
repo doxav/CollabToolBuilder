@@ -2520,6 +2520,27 @@ function getColumnsToKeep(agent) {
         return marked.parse(message);
     }
 
+    function updateTaskList(){
+        sendFunctionCall("TaskIdentificationAgent", "get_tasks", function (response) {
+            console.log("Task list:", response);
+            let taskListElement = document.getElementById("task-list");
+            taskListElement.innerHTML = "";
+            response.forEach(function(task, index) {
+                let taskElement = document.createElement("li");
+                taskElement.textContent = task;
+                taskElement.addEventListener("click", function() {
+                    let taskName = taskElement.textContent;
+                    let requestData = {task: taskName};
+                    sendFunctionCall("TaskIdentificationAgent", "goto_task", requestData, function(response) {
+                        console.log("Task set:", response);
+                        alert(`Task set to: ${taskName}`);
+                    });
+                });
+                taskListElement.appendChild(taskElement);
+            });
+        });
+    }
+
     // Adds the listener for the expand button of the solution columns
     $(document).on("click", ".expand-button", function() {
         // If the expand button has an id
