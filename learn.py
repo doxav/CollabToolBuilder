@@ -526,7 +526,7 @@ class CodingAgent():
     def run_tests_on_code(self, message, parsed_code=None, skip_already_processed=False, output_id=None, restore_state=True, custom_agent=None):
         # Retrieve error_patches from HumanLLMMonitor
         metadata = {'step_id': HumanLLMMonitor.step_id}
-        error_patches = HumanLLMMonitor.get_agent_data(self.name, 'error_patches', metadata_filter=metadata)
+        error_patches, _ = HumanLLMMonitor.get_agent_data(self.name, 'error_patches', metadata_filter=metadata)
         error_patches = error_patches if error_patches else []
 
         primitives = self.get_primitives()
@@ -721,10 +721,10 @@ class CodingAgent():
 
         # Retrieve data from HumanLLMMonitor
         metadata = {'step_id': HumanLLMMonitor.step_id}
-        previous_errors = HumanLLMMonitor.get_agent_data(self.name, 'previous_errors', metadata_filter=metadata)
-        previous_scores = HumanLLMMonitor.get_agent_data(self.name, 'previous_scores', metadata_filter=metadata)
-        previous_codes = HumanLLMMonitor.get_agent_data(self.name, 'previous_codes', metadata_filter=metadata)
-        error_patches = HumanLLMMonitor.get_agent_data(self.name, 'error_patches', metadata_filter=metadata)
+        previous_errors, _ = HumanLLMMonitor.get_agent_data(self.name, 'previous_errors', metadata_filter=metadata)
+        previous_scores, _ = HumanLLMMonitor.get_agent_data(self.name, 'previous_scores', metadata_filter=metadata)
+        previous_codes, _ = HumanLLMMonitor.get_agent_data(self.name, 'previous_codes', metadata_filter=metadata)
+        error_patches, _ = HumanLLMMonitor.get_agent_data(self.name, 'error_patches', metadata_filter=metadata)
 
         # Ensure variables are initialized
         previous_errors = previous_errors if previous_errors else []
@@ -1701,16 +1701,16 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
                                optuna=None, end_time=None):
     metadata = {'step_id': HumanLLMMonitor.step_id}
     # Retrieve data
-    previous_errors = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_errors',
+    previous_errors, _ = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_errors',
                                                      metadata_filter=metadata) or []
-    previous_codes = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_codes', metadata_filter=metadata) or []
-    previous_scores = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_scores',
+    previous_codes, _ = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_codes', metadata_filter=metadata) or []
+    previous_scores, _ = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_scores',
                                                      metadata_filter=metadata) or []
     unique_codes = set(
-        HumanLLMMonitor.get_agent_data(agent_coding.name, 'unique_codes', metadata_filter=metadata) or [])
-    successful_codes = HumanLLMMonitor.get_agent_data(agent_coding.name, 'successful_codes',
+        HumanLLMMonitor.get_agent_data(agent_coding.name, 'unique_codes', metadata_filter=metadata)[0] or [])
+    successful_codes, _ = HumanLLMMonitor.get_agent_data(agent_coding.name, 'successful_codes',
                                                       metadata_filter=metadata) or []
-    all_results = HumanLLMMonitor.get_agent_data(agent_coding.name, 'all_results', metadata_filter=metadata) or []
+    all_results, _ = HumanLLMMonitor.get_agent_data(agent_coding.name, 'all_results', metadata_filter=metadata) or []
 
     for attempt in range(max_attempts):
         # Check for timeouts

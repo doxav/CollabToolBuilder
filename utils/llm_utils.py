@@ -696,8 +696,8 @@ class HumanLLMMonitor:
                 ret.append(tmp)
             else:
                 ret += temp[data_key]
-
-        return ret
+        # Ret contains only text field of the data, results contains all the metadata
+        return ret, results
 
     @classmethod
     def get_tasks(cls, page_size=200, nb_pages=1, id_last_task=None):
@@ -714,7 +714,7 @@ class HumanLLMMonitor:
         start_index = 0
         end_index = page_size * nb_pages
 
-        tasks = cls.get_agent_data(
+        _, tasks = cls.get_agent_data(
             data_key=data_key,
             k=end_index,
             start_index=start_index,
@@ -723,7 +723,7 @@ class HumanLLMMonitor:
         # Check if there is a newer task (if id_last_task is not the last task of the list)
         if id_last_task:
             for i, task in enumerate(tasks):
-                if task["id_task"] == id_last_task and i + 1 < len(tasks):
+                if task.metadata["id_task"] == id_last_task and i + 1 < len(tasks):
                     tasks = tasks[i+1:]
                     break
 
@@ -1969,7 +1969,7 @@ class HumanLLMMonitor:
 
             if optuna:
                 if comments is None:
-                    temp = self.get_agent_data(self.agent_name, "llm_suggestions")
+                    temp, _ = self.get_agent_data(self.agent_name, "llm_suggestions")
                     if temp:
                         comments = temp[0]['llm_suggestions']
                 if 'Recommend critiques' in self.inference_checks and self.outputs[output_id - 1] is None:
@@ -2337,7 +2337,7 @@ class HumanLLMMonitor:
             if suggestions is None:
                 suggestions = smart_input("Provide critic/feedback/request: ", self.agent_name,
                                           column_max=self.num_parallel_inferences)
-            temp_prev_sugg = HumanLLMMonitor.get_agent_data(self.agent_name, "llm_suggestions")
+            temp_prev_sugg, _ = HumanLLMMonitor.get_agent_data(self.agent_name, "llm_suggestions")
             prev_sugg = ""
             for i in temp_prev_sugg:
                 llm_suggestion = i.get('llm_suggestions', '')
@@ -2862,7 +2862,7 @@ class HumanLLMMonitor:
                     elif isinstance(result, list) and result:
                         improvement_feedback.extend([f"{check_name} feedback: {item}" for item in result if item])
 
-        previous_suggestions = HumanLLMMonitor.get_agent_data(self.agent_name, "llm_suggestions")
+        previous_suggestions, _ = HumanLLMMonitor.get_agent_data(self.agent_name, "llm_suggestions")
         prev_sugg = ""
         prev_sugg_u = ""
         if previous_suggestions:
@@ -2915,7 +2915,7 @@ class HumanLLMMonitor:
 
         # Now generate annotations using the LLM
         # Retrieve previous annotations
-        previous_annotations = HumanLLMMonitor.get_agent_data(self.agent_name, "llm_annotations")
+        previous_annotations, _ = HumanLLMMonitor.get_agent_data(self.agent_name, "llm_annotations")
         prev_annotations = ""
         if previous_annotations:
             for ann in previous_annotations:
