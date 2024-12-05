@@ -13,6 +13,7 @@ from config import *
 import openai
 from typing import Dict
 
+
 from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, smart_print, smart_input
 
 import os
@@ -42,9 +43,9 @@ openai.api_key = os.environ['OPENAI_API_KEY']
 if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
 
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
-UnifiedVectorDB.es_url = elastic_url_port
-# UnifiedVectorDB.es_user = elastic_user
-# UnifiedVectorDB.es_password = elastic_password
+UnifiedVectorDB.es_url = elastic_url_port # self commented
+UnifiedVectorDB.es_user = elastic_user
+UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function = "intfloat/e5-base-v2"  # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
@@ -396,7 +397,7 @@ class CodingAgent():
         error = None
         while retry > 0:
             try:
-                if language == "py":  # Python case
+                if language == "py":  # Python caset
                     if code is None:
                         # Match Python code blocks
                         code_pattern = re.compile(r"```python(.*?)```", re.DOTALL)

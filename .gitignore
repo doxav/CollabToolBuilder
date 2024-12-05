@@ -11,3 +11,5 @@ Optuna_results/xp_*
 Optuna_db/xp_*
 functions/*.py
 .idea
+mvenv/
+
