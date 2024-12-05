@@ -20,15 +20,37 @@
     let number_created_functions = 0;
     let number_validated_functions = 0;
     let inputAwaited = false; // Flag to track if input is awaited
-    let socket;
-    let pendingCallbacks = {};
-    let wsUrl = 'ws://localhost:6789';
+    let socket; // WebSocket connection
+    let pendingCallbacks = {}; // Store pending callbacks for function calls
+    let wsUrl = 'ws://localhost:6789'; // Default WebSocket URL
     let reconnectAttempts = 0; // Track the number of reconnection attempts
     const maxAutoReconnectAttempts = 10; // Set the number of reconnection attempts
-    let isFunctionCallInProgress = false;
-    let selectedLLM = "";
-    let annotationId = 0;
-    let annotationswithID = "";
+    let isFunctionCallInProgress = false; // Flag to track if a function call is in progress
+    let selectedLLM = ""; // Track the selected LLM
+    let annotationId = 0; // Track the annotation ID
+    let annotationswithID = ""; // Track the annotations with ID
+
+    // Function to get an unique identifier for this device
+    function getUniqueIdentifier() {
+            let uniqueId = localStorage.getItem('uniqueId');
+            if (!uniqueId) {
+                uniqueId = generateUUID();
+                localStorage.setItem('uniqueId', uniqueId);
+            }
+            return uniqueId;
+        }
+
+    // Function to generate an UUID
+    function generateUUID() {
+        // Générateur d'UUID version 4
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
+    const uniqueId = getUniqueIdentifier();
+    console.log("Identifiant Unique de cet appareil :", uniqueId);
 
     // Function to get URL parameter by name
     function getUrlParameter(name) {
@@ -1459,6 +1481,12 @@ z-index: -1;
     <div id="main-content">
         <div class="toggle-buttons">
             <div class="sidebar-toggle" id="toggle-history-main">Show history</div>
+            <select id="task-selection" style="margin-right: 10px; background-color: mediumspringgreen; display: none;" >
+                <option value="TASK 1">TASK 1</option>
+                <option value="TASK 2">TASK 2</option>
+                <option value="TASK 3">TASK 3</option>
+                <option value="TASK 4">TASK 4</option>
+            </select>
             <div class="sidebar-toggle" id="toggle-settings-main">Show settings</div>
         </div>
         <div class="auto-open-checkbox">

@@ -1755,7 +1755,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
             HumanLLMMonitor.add_agent_data(agent_coding.name, 'previous_scores', previous_scores, metadata=metadata)
 
             if validated:
-                successful_codes.append((parsed_code, validation_agent_feedback, scores))
+                successful_codes.append((parsed_code, afb, scores))
                 HumanLLMMonitor.add_agent_data(agent_coding.name, 'successful_codes', successful_codes,
                                                metadata=metadata)
 
@@ -1801,7 +1801,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
         if current_skip_rounds <= 0:
             for i, (parsed_code, feedback, scores) in enumerate(successful_codes):
                 smart_print(
-                    f"\033Option {i + 1}:\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {scores}\033[0m\n",
+                    f"\033Option {i + 1}:\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback}\n\033[91mScore: {scores}\033[0m\n",
                     None, "coding_and_validation_loop RESULT")
             if optuna:
                 highest_score_index = get_highest_score_index([scores for _, _, scores in successful_codes],
@@ -1913,6 +1913,7 @@ if __name__ == "__main__":
 
     # Initialize the WebSocket server with port autodetection and proxy
     unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+    # unique_id = "Turing_29-11-2024-XPWithAnwarAndSebastien"
     HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy, unique_id=unique_id)
 
     # Allow some time for the WebSocket server to start
