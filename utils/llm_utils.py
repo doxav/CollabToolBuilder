@@ -3,6 +3,7 @@ import re
 import threading
 import urllib.request
 import subprocess
+import uuid
 
 from typing import List, Optional, Union
 from dataclasses import dataclass, field
@@ -613,32 +614,81 @@ class HumanLLMMonitor:
     db_learnt_tasks = None
     db_failed_tasks = None
 
+    skip_until = ""
+
     @classmethod
-    def add_agent_data(cls, agent_name, data_key, data_value, metadata=None):
-        """Stores agent-specific data with optional metadata."""
-        if type(data_value) == list and len(data_value) > 0:
-            if type(data_value[0]) == AIMessage:
+    def add_agent_data(cls, agent_name, data_key, data_value, function_name=None, id_task=False,
+                       before_after=None, user_id=None, step_id=None, metadata=None):
+        """Stores agent-specific data with additional metadata.
+        Elasticsearch generates an 'id' automatically and includes it in the metadata.
+        """
+        if isinstance(data_value, list) and len(data_value) > 0:
+            if isinstance(data_value[0], AIMessage):
                 data_value = data_value[0].content
-        if type(data_value) == dict:
+        if isinstance(data_value, dict):
             serialized_data = json.dumps(data_value)
         else:
             serialized_data = json.dumps({data_key: data_value})
+
+        # Generate UUID for id_task
+        id_task = str(uuid.uuid4()) if id_task else False
+
         tags = metadata or {}
-        tags.update({"agent_name": agent_name, "data_key": data_key})
+        tags.update({
+            "agent_name": agent_name,
+            "data_key": data_key
+        })
+        if function_name:
+            tags["function_name"] = function_name
+        if id_task:
+            tags["id_task"] = id_task
+        if before_after:
+            tags["before_after"] = before_after
+        if user_id:
+            tags["user_id"] = user_id
+        if step_id:
+            tags["step_id"] = step_id
+        tags["date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+
         cls.common_vectordb.add_texts(texts=[serialized_data], metadatas=[tags])
 
     @classmethod
-    def get_agent_data(cls, agent_name, data_key, metadata_filter=None, sort_order=None, k=5):
-        """Retrieves agent-specific data based on the agent name and data key."""
-        metadata = {"agent_name": agent_name, "data_key": data_key}
+    def get_agent_data(cls, agent_name=None, data_key=None, id_task=None, function_name=None, before_after=None, user_id=None,
+                       step_id=None,
+                       metadata_filter=None, sort_order=None, k=5, start_index=0, end_index=None):
+        """Retrieves agent-specific data based on the agent name, data key, and additional metadata.
+        Supports pagination by specifying start and end indices.
+        """
+        metadata = {}
+        if agent_name is not None:
+            metadata["agent_name"] = agent_name
+        if data_key is not None:
+            metadata["data_key"] = data_key
+        if function_name is not None:
+            metadata["function_name"] = function_name
+        if id_task is not None:
+            metadata["id_task"] = id_task
+        if before_after is not None:
+            metadata["before_after"] = before_after
+        if user_id is not None:
+            metadata["user_id"] = user_id
+        if step_id is not None:
+            metadata["step_id"] = step_id
         if metadata_filter:
             metadata.update(metadata_filter)
+
+        # Fetch results with a large 'k' to ensure we have enough data
+        max_k = end_index if end_index is not None else k
         results = cls.common_vectordb.query(
-            query_text='', metadata_filter=metadata, sort_order=sort_order, k=k)
+            query_text='*', metadata_filter=metadata, sort_order=sort_order, k=max_k)
+
+        # Apply pagination
+        paginated_results = results[start_index:end_index] if end_index is not None else results[start_index:]
+
         ret = []
-        for item in results:
+        for item in paginated_results:
             temp = json.loads(item.page_content)
-            if type(temp) == dict:
+            if isinstance(temp, dict):
                 tmp = {}
                 for key in temp:
                     if temp[key]:
@@ -646,7 +696,38 @@ class HumanLLMMonitor:
                 ret.append(tmp)
             else:
                 ret += temp[data_key]
+
         return ret
+
+    @classmethod
+    def get_tasks(cls, page_size=200, nb_pages=1, id_last_task=None):
+        """Retrieves saved tasks using get_agent_data with pagination.
+        Parameters:
+            page_size (int): Number of results per page. Default is 200.
+            nb_pages (int): Number of pages to retrieve. Default is 1.
+            id_last_task (str): ID of the last task retrieved. If provided, retrieves tasks after this ID.
+        Returns:
+            List: List of tasks.
+        """
+        data_key = "saved_task"
+
+        start_index = 0
+        end_index = page_size * nb_pages
+
+        tasks = cls.get_agent_data(
+            data_key=data_key,
+            k=end_index,
+            start_index=start_index,
+            end_index=end_index
+        )
+        # Check if there is a newer task (if id_last_task is not the last task of the list)
+        if id_last_task:
+            for i, task in enumerate(tasks):
+                if task["id_task"] == id_last_task and i + 1 < len(tasks):
+                    tasks = tasks[i+1:]
+                    break
+
+        return tasks
 
     @staticmethod
     def _check_and_init_vector_db(embedding_function=None, reset_db_indices=False):
@@ -2436,6 +2517,8 @@ class HumanLLMMonitor:
             'use_premium_llm': False
         }
         # Post-inference human intervention (traitement standard après une inférence)
+        if self.agent_name == "Coder" and self.skip_until is "after_coder":
+            self.skip_until = ""
         output_messages_instance, output_comments_instance, score_instance = self._after_inference(
             llm_output, premium_llm_function=None, output_id=counter,
             outputs_count=len(llm_outputs), optuna=optuna)
@@ -2589,6 +2672,22 @@ class HumanLLMMonitor:
                     self.agent_name, "Skipping round", optional=True)
 
             # Pre-inference human intervention
+            if self.agent_name == "Coder" :
+                # Save the state of the task
+                self.add_agent_data(self.agent_name, "State of task",
+                                    {'original_input_messages': original_input_messages,
+                                     'default_llm_function': default_llm_function,
+                                     'premium_llm_function': premium_llm_function,
+                                     'callable_system_message': callable_system_message,
+                                     'system_prompt_template': system_prompt_template, 'user_message': user_message,
+                                     'return_message_content_only': return_message_content_only,
+                                     'function_calling': function_calling, 'temperature_min': temperature_min,
+                                     'timeout_seconds': timeout_seconds, 'stream_output': stream_output,
+                                     'use_default_llm': use_default_llm, 'optuna': optuna, 'model_choice': model_choice,
+                                     'temperature_max': temperature_max})
+
+                if self.skip_until is "before_coder":
+                    self.skip_until = ""
             llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(
                 original_input_messages, default_llm_function, premium_llm_function, function_calling,
                 callable_system_message, optuna=optuna, model_choice=model_choice)

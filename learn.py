@@ -1591,6 +1591,13 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
         special_criteria=special_criteria,
         num_parallel_inferences=agcoach_num_parallel_inferences
     )
+
+    # # Push dummies tasks to the database
+    # HumanLLMMonitor.add_agent_data("TaskidentIficationAgent", data_key="saved_task", data_value="dummy_task", function_name="dummy_function", before_after="before", user_id=1234, step_id=123)
+    # HumanLLMMonitor.add_agent_data("CondingAgent", data_key="saved_task", data_value="dummy_task", function_name="dummy_function", before_after="before", user_id=1234, step_id=123)
+    #
+    # temp = HumanLLMMonitor.get_tasks()
+
     # Ask the user to formulate their question using smart_input
     performance = None
     if optuna_opti:
