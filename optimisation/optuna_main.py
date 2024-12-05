@@ -143,7 +143,7 @@ def definition_global_parameters(temperature : float = None, presence_penalty : 
     return llmORchains_list, envs
 
 def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "premium_llm", problem_prompts_subdir : str = None, max_coding_attempts : int = 2, max_execution_time : int = 900,
-               model_choice=None, optuna_opti : str = "coach", params_user_message : str = None, special_criteria : dict = None, name_exp : str = "", temperature_max : float = None, number_inferences : int = 1,
+               model_choice=None, automation : str = "coach", params_user_message : str = None, special_criteria : dict = None, name_exp : str = "", temperature_max : float = None, number_inferences : int = 1,
                fixed_coach : bool = False, arrayn_ret : bool = False, continue_each_loop : bool = False, unique_id : str = None):
     """
     Launch the run with the specified parameters.
@@ -155,7 +155,7 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
         max_coding_attempts (int, optional): The maximum number of coding attempts.
         max_execution_time (int, optional): The maximum execution time in seconds.
         model_choice (dict, optional): The model choices for different roles.
-        optuna_opti (str, optional): The Optuna optimization target.
+        automation (str, optional): The Optuna optimization target.
         params_user_message (str, optional): The criteria for evaluation.
         special_criteria (dict, optional): Special criteria for the run.
         name_exp (str, optional): The name of the experiment.
@@ -176,31 +176,31 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
     UnifiedVectorDB.set_unique_collection_id(f"{name_exp}")
 
     performance = run_planner(default_llm_key=default_llm_key,
-                                            premium_llm_key=premium_llm_key,
-                                            llmORchains_list=llmORchains_list,
-                                            test_environments=envs,
-                                            manual_validation_to_capitalize=False,
-                                            problem_prompts_subdir=problem_prompts_subdir,
-                                            max_coding_attempts=max_coding_attempts,
-                                            include_code=False,
-                                            selected_successful_functions=[],
-                                            selected_failed_functions=[],
-                                            agtask_premium_llm_by_default=True,
-                                            max_execution_time=max_execution_time,
-                                            agtask_skip_rounds=0,
-                                            agcoding_skip_rounds=0,
-                                            agvalidation_skip_rounds=0,
-                                            agcapitalize_skip_rounds=0,
-                                            model_choice=model_choice,
-                                            optuna_opti=optuna_opti,
-                                            params_user_message=params_user_message,
-                                            special_criteria=special_criteria,
-                                            agcoach_num_parallel_inferences=number_inferences,
-                                            temperature_max=temperature_max,
-                                            fixed_coach=fixed_coach,
-                                            return_array=arrayn_ret,
-                                            continue_each_loop=continue_each_loop,
-                                            unique_id=unique_id)
+                              premium_llm_key=premium_llm_key,
+                              llmORchains_list=llmORchains_list,
+                              test_environments=envs,
+                              manual_validation_to_capitalize=False,
+                              problem_prompts_subdir=problem_prompts_subdir,
+                              max_coding_attempts=max_coding_attempts,
+                              include_code=False,
+                              selected_successful_functions=[],
+                              selected_failed_functions=[],
+                              agtask_premium_llm_by_default=True,
+                              max_execution_time=max_execution_time,
+                              agtask_skip_rounds=0,
+                              agcoding_skip_rounds=0,
+                              agvalidation_skip_rounds=0,
+                              agcapitalize_skip_rounds=0,
+                              model_choice=model_choice,
+                              automation=automation,
+                              params_user_message=params_user_message,
+                              special_criteria=special_criteria,
+                              agcoach_num_parallel_inferences=number_inferences,
+                              temperature_max=temperature_max,
+                              fixed_coach=fixed_coach,
+                              return_array=arrayn_ret,
+                              continue_each_loop=continue_each_loop,
+                              unique_id=unique_id)
     print("Analysis...")
     analysis(name_exp)
     print("Analysis done.")

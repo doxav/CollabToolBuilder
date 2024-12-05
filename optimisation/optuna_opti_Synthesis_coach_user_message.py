@@ -177,7 +177,7 @@ def objective(trial, timestamp_exp: str):
         max_coding_attempts=2,
         max_execution_time=900,
         model_choice={"coach": "premium_llm", "coder": "premium_llm", "critic": "default_llm", "capitalizer": "default_llm"},
-        optuna_opti="coach",
+        automation="coach",
         params_user_message=user_message_parameters,
         temperature_max=temperature,
         special_criteria={"CodingAgent#max_autofix": 1},
