@@ -1873,7 +1873,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
             HumanLLMMonitor.add_agent_data(agent_coding.name, 'previous_scores', previous_scores, metadata=metadata)
 
             if validated:
-                successful_codes.append((parsed_code, validation_agent_feedback.content, scores))
+                successful_codes.append((parsed_code, afb, scores))
                 HumanLLMMonitor.add_agent_data(agent_coding.name, 'successful_codes', successful_codes,
                                                metadata=metadata)
 
@@ -2043,7 +2043,6 @@ if __name__ == "__main__":
     # Initialize the WebSocket server with port autodetection and proxy
     if not ('unique_id' in globals()):
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
-    print(f"port, secret, proxy: {args.port}, {args.secret}, {args.proxy}", flush=True)
     HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy, unique_id=unique_id)
 
     # Allow some time for the WebSocket server to start

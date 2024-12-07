@@ -20,15 +20,37 @@
     let number_created_functions = 0;
     let number_validated_functions = 0;
     let inputAwaited = false; // Flag to track if input is awaited
-    let socket;
-    let pendingCallbacks = {};
-    let wsUrl = 'ws://localhost:6789';
+    let socket; // WebSocket connection
+    let pendingCallbacks = {}; // Store pending callbacks for function calls
+    let wsUrl = 'ws://localhost:6789'; // Default WebSocket URL
     let reconnectAttempts = 0; // Track the number of reconnection attempts
     const maxAutoReconnectAttempts = 10; // Set the number of reconnection attempts
-    let isFunctionCallInProgress = false;
-    let selectedLLM = "";
-    let annotationId = 0;
-    let annotationswithID = "";
+    let isFunctionCallInProgress = false; // Flag to track if a function call is in progress
+    let selectedLLM = ""; // Track the selected LLM
+    let annotationId = 0; // Track the annotation ID
+    let annotationswithID = ""; // Track the annotations with ID
+
+    // Function to get an unique identifier for this device
+    function getUniqueIdentifier() {
+            let uniqueId = localStorage.getItem('uniqueId');
+            if (!uniqueId) {
+                uniqueId = generateUUID();
+                localStorage.setItem('uniqueId', uniqueId);
+            }
+            return uniqueId;
+        }
+
+    // Function to generate an UUID
+    function generateUUID() {
+        // Générateur d'UUID version 4
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
+    const uniqueId = getUniqueIdentifier();
+    console.log("Identifiant Unique de cet appareil :", uniqueId);
 
     // Function to get URL parameter by name
     function getUrlParameter(name) {
@@ -192,6 +214,9 @@
         if(data.agent_name !== currentAgent && data.message_type !== "orchestrate_agents" && data.message_type !== "null"){
             console.log("Current agent is : ", currentAgent, " and data.agent_name is : ", data.agent_name);
             current_llm_in_use = "default_llm";
+        }
+        if(data.agent_name === "TaskIdentificationAgent" && data.message.includes("BEFORE inference action MENU")){
+           updateTaskList();
         }
         if (data.agent_name !== undefined) {
            if (currentAgent !== data.agent_name) {
@@ -1459,6 +1484,12 @@ z-index: -1;
     <div id="main-content">
         <div class="toggle-buttons">
             <div class="sidebar-toggle" id="toggle-history-main">Show history</div>
+            <select id="task-selection" style="margin-right: 10px; background-color: mediumspringgreen; display: none;" >
+                <option value="TASK 1">TASK 1</option>
+                <option value="TASK 2">TASK 2</option>
+                <option value="TASK 3">TASK 3</option>
+                <option value="TASK 4">TASK 4</option>
+            </select>
             <div class="sidebar-toggle" id="toggle-settings-main">Show settings</div>
         </div>
         <div class="auto-open-checkbox">
@@ -2490,6 +2521,51 @@ function getColumnsToKeep(agent) {
 
     function formatMarkdown(message) {
         return marked.parse(message);
+    }
+
+    function updateTaskList(id){
+        if(id === null){
+            sendFunctionCall("TaskIdentificationAgent", "get_tasks", function (response) {
+                console.log("Task list:", response);
+                let taskListElement = document.getElementById("task-list");
+                taskListElement.innerHTML = "";
+                response.forEach(function(task, index) {
+                    let taskElement = document.createElement("li");
+                    taskElement.textContent = task;
+                    taskElement.addEventListener("click", function() {
+                        let taskName = taskElement.textContent;
+                        let requestData = {task: taskName};
+                        sendFunctionCall("TaskIdentificationAgent", "goto_task", requestData, function(response) {
+                            console.log("Task set:", response);
+                            alert(`Task set to: ${taskName}`);
+                        });
+                    });
+                    taskListElement.appendChild(taskElement);
+                });
+            });
+        }else{
+            sendFunctionCall("TaskIdentificationAgent", "get_tasks",id, function (response) {
+                // If the response is not "None", add the new tasks received to the list
+                if(response !== "None"){
+                    console.log("Task list:", response);
+                    let taskListElement = document.getElementById("task-list");
+                    taskListElement.innerHTML = "";
+                    response.forEach(function(task, index) {
+                        let taskElement = document.createElement("li");
+                        taskElement.textContent = task;
+                        taskElement.addEventListener("click", function() {
+                            let taskName = taskElement.textContent;
+                            let requestData = {task: taskName};
+                            sendFunctionCall("TaskIdentificationAgent", "goto_task", requestData, function(response) {
+                                console.log("Task set:", response);
+                                alert(`Task set to: ${taskName}`);
+                            });
+                        });
+                        taskListElement.appendChild(taskElement);
+                    });
+                }
+            });
+        }
     }
 
     // Adds the listener for the expand button of the solution columns
