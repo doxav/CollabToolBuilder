@@ -14,7 +14,7 @@ from config import *
 import openai
 from typing import Dict
 
-from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, smart_print, smart_input
+from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, smart_print, smart_input, automation_global
 
 import os
 import io
@@ -252,6 +252,7 @@ class TaskIdentificationAgent:
         self.envs = envs
         self.automation = automation
         self.model_choice = model_choice
+        saved_task = None
         new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
         if special_criteria is not None and 'log_user_message' in special_criteria:
             setattr(self, 'log_user_message', special_criteria['log_user_message'])
@@ -357,6 +358,7 @@ class CodingAgent:
         self.automation = automation
         self.model_choice = model_choice
         self.processed_codes = set()
+        saved_task = None
         new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
         if special_criteria is not None:
@@ -372,8 +374,6 @@ class CodingAgent:
 
         self.human_llm_code_task = HumanLLMMonitor(**kw_common_args)
         self.human_llm_code_task.skip_rounds = skip_rounds
-        if saved_task in globals():
-            setattr(self.human_llm_code_task, 'saved_task', saved_task)
         self.human_llm_code_task.add_inference_check("Code Parsing", self.parse_ai_generated_code)
         self.human_llm_code_task.add_inference_check("Run Tests", self.run_tests_on_code)
         if hasattr(self, 'recommendations_usage'):
@@ -779,7 +779,6 @@ class CodingAgent:
             "user_message": user_message,
             "return_message_content_only": False,
             "stream_output": False,
-            "automation": self.automation,
             "model_choice": self.model_choice
         }
 
@@ -841,6 +840,7 @@ class ValidationAgent:
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, skip_rounds=0,
                  llmORchains_list=None, automation=None, model_choice=None, special_criteria=None):
         #super().__init__(llm)
+        saved_task = None
         self.additional_check_list = None
         self.name = self.__class__.__name__
 
@@ -923,6 +923,7 @@ class CapitalizationAgent:
                  skip_rounds=0, llmORchains_list=None, automation=None, model_choice=None, problem_prompts_subdir=None, special_criteria=None):
         self.additional_check_list = None
         self.name = self.__class__.__name__
+        saved_task = None
 
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
 
@@ -1359,7 +1360,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               automation=None, allow_custom_score_state_functions=False,
                               params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
                               agcoach_num_parallel_inferences=2, fixed_coach=False, return_array=False, agcoding_num_parallel_inferences=2,
-                              continue_each_loop=False, unique_id=None, saved_task=None):
+                              continue_each_loop=False, unique_id=None):
     scores = None
 
     if params_user_message is None and automation is None:
@@ -1368,8 +1369,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             'num': [2, 3, 2],
             'format': ["json", "Jinja2", "Markdown"]
         }
-
-    smart_print(unique_id, "orchestrate_agents", "XP_unique_id", optional=True)
+        smart_print(unique_id, "orchestrate_agents", "XP_unique_id", optional=True)
 
     time_end = time.time() + max_execution_time
 
@@ -1377,27 +1377,27 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                              problem_prompts_subdir=problem_prompts_subdir,
                                              premium_llm_by_default=agtask_premium_llm_by_default,
                                              skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list,
-                                             automation=automation, model_choice=(
+                                             automation=automation['taskreco'] if isinstance(automation, dict) else automation, model_choice=(
             model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(
                 model_choice) == dict else model_choice), criteria=params_user_message, temperature_max=temperature_max,
                                              num_parallel_inferences=agcoach_num_parallel_inferences, fixed_coach=fixed_coach, special_criteria=special_criteria)
 
     agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds,
-                               llmORchains_list=llmORchains_list, automation=automation, model_choice=(
+                               llmORchains_list=llmORchains_list, automation=automation['coder'] if isinstance(automation, dict) else automation, model_choice=(
             model_choice['coding' if 'coding' in model_choice else 'coder'] if type(
                 model_choice) == dict else model_choice), special_criteria=special_criteria, num_parallel_inferences=agcoding_num_parallel_inferences)
 
     agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                        skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list,
-                                       automation=automation, model_choice=(
+                                       automation=automation['critic'] if isinstance(automation, dict) else automation, model_choice=(
             model_choice['validation' if 'validation' in model_choice else 'critic'] if type(
                 model_choice) == dict else model_choice), special_criteria=special_criteria)
 
     agent_capitalize = CapitalizationAgent(default_llm_key, premium_llm_choice=premium_llm_key,
                                            skip_rounds=agcapitalize_skip_rounds,
                                            problem_prompts_subdir=problem_prompts_subdir,
-                                           llmORchains_list=llmORchains_list, automation=automation, model_choice=(
+                                           llmORchains_list=llmORchains_list, automation=automation['capitalizer'] if isinstance(automation, dict) else automation, model_choice=(
             model_choice['capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(
                 model_choice) == dict else model_choice), special_criteria=special_criteria)
 
@@ -1455,6 +1455,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                                                      manual_validation_to_capitalize,
                                                                      automation=automation,
                                                                      end_time=time_end)
+
+
         if validation == "success":
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
         else:
@@ -1525,15 +1527,16 @@ def goto_task(id_task: uuid.UUID, automatic: str = None):
     import subprocess
     # Retrieve the task from the database
     _, saved_task = HumanLLMMonitor.get_agent_data(data_key="saved_task", id_task=id_task)
-    saved_task = {
+    task = {
         'before_after': saved_task[0].metadata['before_after'],
         'agent_name': saved_task[0].metadata['agent_name'],
         'type_tache': saved_task[0].metadata['type_tache'],
         'content': saved_task[0].page_content,
-        'user_id': saved_task[0].metadata['user_id'],
         'step_id': saved_task[0].metadata['step_id'],
         'date': saved_task[0].metadata['date']
     }
+    if 'user_id' in saved_task[0].metadata:
+        task['user_id'] = saved_task[0].metadata['user_id']
 
     # Create a pickle directory if it does not exist
     if not os.path.exists('pickle'):
@@ -1541,11 +1544,9 @@ def goto_task(id_task: uuid.UUID, automatic: str = None):
 
     # Serializing variables to pickle file
     variables_to_pickle = {
-        'saved_task': saved_task,
+        'saved_task': task,
         'automatic': automatic,
-        'llmORchains_list': llmORchains_list,
         'unique_id': unique_id,
-        'envs': envs,
         'documents': documents
     }
 
@@ -1566,6 +1567,7 @@ def goto_task(id_task: uuid.UUID, automatic: str = None):
         if "WebSocket Remote URL via proxy: " in line:
             # Extract the link after the specific phrase
             link = line.split("WebSocket Remote URL via proxy: ")[1].strip()
+            print(f"Link: {link}")
             # Since the link continues on the same line, we can get it directly
             break
 
@@ -1586,7 +1588,7 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
                 automation=None, allow_custom_score_state_functions=False,
                 params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
                 agcoach_num_parallel_inferences=2, fixed_coach=False, unique_id=None, return_array=False, agcoding_num_parallel_inferences=2,
-                continue_each_loop=False, skip_rounds=0, functions_to_import=None, saved_task=None):
+                continue_each_loop=False, skip_rounds=0, functions_to_import=None):
 
     # Initialize unique_id
     if unique_id is None:
@@ -1599,6 +1601,40 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
     # Initialize HumanLLMMonitor databases
     HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
     HumanLLMMonitor.check_init_class_db(force=True)
+
+    # Definition of automation depending on the task given
+    if 'saved_task' in locals():
+        match saved_task['agent_name']:
+            case "TaskIdentificationAgent":
+                automation = {
+                    'taskreco': saved_task['before_after'],
+                    'coder': automation_global,
+                    'critic': automation_global,
+                    'capitalizer': automation_global
+                }
+            case "CodingAgent":
+                automation = {
+                    'taskreco': saved_task['before_after'],
+                    'coder': saved_task['before_after'],
+                    'critic': automation_global,
+                    'capitalizer': automation_global
+                }
+            case "ValidationAgent":
+                automation = {
+                    'taskreco': saved_task['before_after'],
+                    'coder': saved_task['before_after'],
+                    'critic': saved_task['before_after'],
+                    'capitalizer': automation_global
+                }
+            case "CapitalizationAgent":
+                automation = {
+                    'taskreco': saved_task['before_after'],
+                    'coder': saved_task['before_after'],
+                    'critic': saved_task['before_after'],
+                    'capitalizer': saved_task['before_after']
+                }
+            case _:
+                automation = automation
 
     if functions_to_import is not None:
         # Imports the functions with the regex pattern given from functions directory into the elastic database
@@ -1683,7 +1719,8 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
                                                     agcoding_num_parallel_inferences=agcoding_num_parallel_inferences,
                                                     automation=automation,
                                                     model_choice=model_choice,
-                                                    unique_id=unique_id)
+                                                    unique_id=unique_id,
+                                                    special_criteria=special_criteria)
         else:
             temp = planner.plan(question)
             if temp == "no code available":
@@ -1704,7 +1741,8 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
                                           agvalidation_skip_rounds=agvalidation_skip_rounds,  # Auto-test: 4
                                           agcapitalize_skip_rounds=agcapitalize_skip_rounds,
                                           agcoding_num_parallel_inferences=agcoding_num_parallel_inferences,
-                                          unique_id=unique_id)
+                                          unique_id=unique_id,
+                                          special_criteria=special_criteria)
         if automation: question = "e"
         else: question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ", agent_name='PlannerAgent')
 
@@ -1818,7 +1856,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
             else:
                 validated = get_success_value_in_text(afb) in ["yes", "y", True]
             if validated:
-                successful_codes.append((parsed_code, validation_agent_feedback, scores))
+                successful_codes.append((parsed_code, validation_agent_feedback.content, scores))
 
             if index < len(previous_errors):
                 previous_errors[index] = validation_agent_feedback
@@ -1835,7 +1873,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
             HumanLLMMonitor.add_agent_data(agent_coding.name, 'previous_scores', previous_scores, metadata=metadata)
 
             if validated:
-                successful_codes.append((parsed_code, validation_agent_feedback, scores))
+                successful_codes.append((parsed_code, validation_agent_feedback.content, scores))
                 HumanLLMMonitor.add_agent_data(agent_coding.name, 'successful_codes', successful_codes,
                                                metadata=metadata)
 
@@ -1881,7 +1919,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
         if current_skip_rounds <= 0:
             for i, (parsed_code, feedback, scores) in enumerate(successful_codes):
                 smart_print(
-                    f"\033Option {i + 1}:\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback.content}\n\033[91mScore: {scores}\033[0m\n",
+                    f"\033Option {i + 1}:\nCode:\n{parsed_code['program_code']}\nFeedback: {feedback}\n\033[91mScore: {scores}\033[0m\n",
                     None, "coding_and_validation_loop RESULT")
             if automation:
                 highest_score_index = get_highest_score_index([scores for _, _, scores in successful_codes],
@@ -1997,15 +2035,13 @@ if __name__ == "__main__":
             saved_task = variables_from_pickle.get('saved_task')
             automatic = variables_from_pickle.get('automatic')
             unique_id = variables_from_pickle.get('unique_id')
-            llmORchains_list = variables_from_pickle.get('llmORchains_list')
-            envs = variables_from_pickle.get('envs')
             documents = variables_from_pickle.get('documents')
 
         # Suppression du fichier pickle après utilisation pour éviter les conflits lors des prochains lancements
         os.remove('pickle/variables.pkl')
 
     # Initialize the WebSocket server with port autodetection and proxy
-    if unique_id not in globals():
+    if not ('unique_id' in globals()):
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
     print(f"port, secret, proxy: {args.port}, {args.secret}, {args.proxy}", flush=True)
     HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy, unique_id=unique_id)
@@ -2015,22 +2051,21 @@ if __name__ == "__main__":
 
     # Initialize the default and premium LLMs
     #from langchain_groq import ChatGroq
-    if llmORchains_list not in globals():
-        llmORchains_list = {
-            "default_llm": ChatOpenAI(
-                model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False,
-                temperature=0.),
-            "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"], cache=False, temperature=0.),
-            #"default_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.),
-            #"premium_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["code_gpt"], cache=False),#, temperature=0.),
-            "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
-                                                       reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=3),
-            "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
-                                                        reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=10)
-        }
+    llmORchains_list = {
+        "default_llm": ChatOpenAI(
+            model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False,
+            temperature=0.),
+        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"], cache=False, temperature=0.),
+        #"default_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.),
+        #"premium_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["code_gpt"], cache=False),#, temperature=0.),
+        "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
+                                                   reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=3),
+        "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
+                                                    reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=10)
+    }
 
     # Set the documents to test/validate as a list of environments
-    if documents not in globals():
+    if not ('documents' in globals()):
         documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
                     'title':"Complex QA and language models hybrid architectures, Survey",
                 'context':"This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
@@ -2040,18 +2075,20 @@ if __name__ == "__main__":
                 'context':"This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
                 'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
 
-    if envs not in globals():
-        envs = []
-        for doc in documents:
-            env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
-                                     target_file_path=doc['target_file_path'], id=doc['id'], llm=llmORchains_list["default_llm"]).get_environment()
-            envs.append(env)
+    envs = []
+    for doc in documents:
+        env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
+                                 target_file_path=doc['target_file_path'], id=doc['id'], llm=llmORchains_list["default_llm"]).get_environment()
+        envs.append(env)
 
-    problem_subdir = "IR_CPS_TechSynthesis" if saved_task not in globals() else saved_task['type_tache']
+    problem_subdir = "IR_CPS_TechSynthesis" if 'saved_task' not in globals() else saved_task['type_tache']
 
-    if saved_task not in globals():
-        saved_task = None
-    if automatic not in globals():
+    special_criteria = None
+    if 'saved_task' in globals():
+        special_criteria = {
+            "all#saved_task": saved_task
+        }
+    if not ('automatic' in globals()):
         automatic = None
 
     # Run the planner agent
@@ -2074,5 +2111,6 @@ if __name__ == "__main__":
                 agcoding_num_parallel_inferences=2,
                 unique_id=unique_id,
                 functions_to_import=".*",
-                saved_task=saved_task,
-                automation=automatic)  # Auto-test: 0"""
+                special_criteria=special_criteria,
+                automation=automatic,
+                model_choice={"coach": "default_llm","coder": "premium_llm","critic": "default_llm","capitalizer": "default_llm"})  # Auto-test: 0"""
