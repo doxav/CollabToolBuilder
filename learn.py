@@ -1517,64 +1517,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         return max(total_scores)
 
 
-def goto_task(id_task: uuid.UUID, automatic: str = None):
-    """
-    Retrieve the task from the database and start processing the task.
-    Parameters:
-        id_task (uuid): The identifier of the task to retrieve from the database.
-        automatic (str): If True, the function will run the loop in automatic mode.
-    """
-    import subprocess
-    # Retrieve the task from the database
-    _, saved_task = HumanLLMMonitor.get_agent_data(data_key="saved_task", id_task=id_task)
-    task = {
-        'before_after': saved_task[0].metadata['before_after'],
-        'agent_name': saved_task[0].metadata['agent_name'],
-        'type_tache': saved_task[0].metadata['type_tache'],
-        'content': saved_task[0].page_content,
-        'step_id': saved_task[0].metadata['step_id'],
-        'date': saved_task[0].metadata['date']
-    }
-    if 'user_id' in saved_task[0].metadata:
-        task['user_id'] = saved_task[0].metadata['user_id']
 
-    # Create a pickle directory if it does not exist
-    if not os.path.exists('pickle'):
-        os.makedirs('pickle')
-
-    # Serializing variables to pickle file
-    variables_to_pickle = {
-        'saved_task': task,
-        'automatic': automatic,
-        'unique_id': unique_id,
-        'documents': documents
-    }
-
-    # Save variables to pickle file
-    with open('pickle/variables.pkl', 'wb') as f:
-        pickle.dump(variables_to_pickle, f)
-
-    # Execute the bash command with unbuffered output and capture its output
-    process = subprocess.Popen(['python3', '-u', 'learn.py', '--proxy', '--secret'],
-                                   stdout=subprocess.PIPE,
-                                   stderr=subprocess.STDOUT,
-                                   text=True)
-    # Initialize the link variable
-    link = None
-
-    # Read the output line by line
-    for line in iter(process.stdout.readline, ''):
-        if "WebSocket Remote URL via proxy: " in line:
-            # Extract the link after the specific phrase
-            link = line.split("WebSocket Remote URL via proxy: ")[1].strip()
-            print(f"Link: {link}")
-            # Since the link continues on the same line, we can get it directly
-            break
-
-    if link is None:
-        print("The link was not found in the subprocess output.")
-
-    return link  # Return the retrieved link
 
 
 
@@ -1655,6 +1598,8 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
     successful_tasks = HumanLLMMonitor.get_learnt_tasks()
     successful_tasks_list = [task for task in successful_tasks]
     smart_print(json.dumps(successful_tasks_list), "orchestrate_agents", "successful_tasks_list")
+
+    HumanLLMMonitor.user_id = smart_input("User ID ?", "PlannerAgent", message_type="USER_ID")
 
     # Initialize WebSocket server if used
     if HumanLLMMonitor.use_websocket:

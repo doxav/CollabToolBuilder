@@ -29,6 +29,8 @@
     let selectedLLM = ""; // Track the selected LLM
     let annotationId = 0; // Track the annotation ID
     let annotationswithID = ""; // Track the annotations with ID
+    let unique_id_sent = false; // Track if the unique_id has been sent to the server
+    let init_task_list = false; // Track if the task list has been initialized
 
     // Function to get an unique identifier for this device
     function getUniqueIdentifier() {
@@ -51,6 +53,8 @@
 
     const uniqueId = getUniqueIdentifier();
     console.log("Identifiant Unique de cet appareil :", uniqueId);
+
+
 
     // Function to get URL parameter by name
     function getUrlParameter(name) {
@@ -207,7 +211,22 @@
         return jsonString.replace(unicodeRegex, "");
     }
 
+    // If
+
     function displayMessage(data) {
+        if(data.message_type === "USER_ID"){
+            // Send user_id on websocket connection
+            console.log("Sending user_id to the server");
+            // Wait a second before sending the user_id
+            setTimeout(function() {
+                socket.send(JSON.stringify({message: uniqueId}));
+                unique_id_sent = true;
+            }, 1000);
+            inputAwaited = false; // Reset input flag
+            hideInputField(); // Hide input area after sending message
+            return;
+        }
+
         if(data.agent_name == null){
             return;
         }
@@ -215,8 +234,12 @@
             console.log("Current agent is : ", currentAgent, " and data.agent_name is : ", data.agent_name);
             current_llm_in_use = "default_llm";
         }
-        if(data.agent_name === "TaskIdentificationAgent" && data.message.includes("BEFORE inference action MENU")){
-           updateTaskList();
+        if(data.agent_name === "TaskIdentificationAgent" && data.message.includes("BEFORE") ){
+            console.log("Let's update the Task List");
+            // Show task-selection
+            $("#task-selection").show();
+            updateTaskList("None");
+            init_task_list = true;
         }
         if (data.agent_name !== undefined) {
            if (currentAgent !== data.agent_name) {
@@ -2523,47 +2546,76 @@ function getColumnsToKeep(agent) {
         return marked.parse(message);
     }
 
+    // Listener for the task selection dropdown on click and not on change
+    $("#task-selection").on("click", function() {
+        updateTaskList("None");
+    });
+
+    // Listener for the task selection dropdown on change
+    $("#task-selection").on("change", function() {
+        let selectedTaskId = $(this).val();
+        console.log("Selected task:", selectedTaskId);
+        if (selectedTaskId) {
+            sendFunctionCall("TaskIdentificationAgent", "goto_task", selectedTaskId, function(response) {
+                const url = response
+                console.log("Link to goto", url);
+                window.open(url, "_blank");
+            });
+        }
+    });
+
+
     function updateTaskList(id){
-        if(id === null){
-            sendFunctionCall("TaskIdentificationAgent", "get_tasks", function (response) {
-                console.log("Task list:", response);
-                let taskListElement = document.getElementById("task-list");
-                taskListElement.innerHTML = "";
-                response.forEach(function(task, index) {
-                    let taskElement = document.createElement("li");
-                    taskElement.textContent = task;
-                    taskElement.addEventListener("click", function() {
-                        let taskName = taskElement.textContent;
-                        let requestData = {task: taskName};
-                        sendFunctionCall("TaskIdentificationAgent", "goto_task", requestData, function(response) {
-                            console.log("Task set:", response);
-                            alert(`Task set to: ${taskName}`);
-                        });
-                    });
-                    taskListElement.appendChild(taskElement);
+
+        if(id === "None"){
+            console.log("Getting task list");
+            sendFunctionCall("TaskIdentificationAgent", "get_tasks", {"id_last_task":"None"},function (response) {
+                let tasks = JSON.parse(response)
+                console.log("Task list:", tasks);
+                // Référence à l'élément <select>
+                const selectElement = document.getElementById("task-selection");
+
+                // Vider la liste actuelle
+                selectElement.innerHTML = "";
+
+
+                // Ajouter chaque tâche au <select>
+                tasks.forEach(task => {
+                    const option = document.createElement("option");
+                    option.value = task.id_task; // On peut utiliser l'ID comme valeur
+                    let username = task.user_id;
+                    if(task.user_id === uniqueId.toString().toUpperCase()){
+                        username = "You";
+                    }
+                    option.textContent = `${task.date.substring(0, 16)} - ${task.agent_name} - ${username}`; // Texte visible pour l'utilisateur
+                    selectElement.appendChild(option);
                 });
+
             });
         }else{
-            sendFunctionCall("TaskIdentificationAgent", "get_tasks",id, function (response) {
-                // If the response is not "None", add the new tasks received to the list
-                if(response !== "None"){
-                    console.log("Task list:", response);
-                    let taskListElement = document.getElementById("task-list");
-                    taskListElement.innerHTML = "";
-                    response.forEach(function(task, index) {
-                        let taskElement = document.createElement("li");
-                        taskElement.textContent = task;
-                        taskElement.addEventListener("click", function() {
-                            let taskName = taskElement.textContent;
-                            let requestData = {task: taskName};
-                            sendFunctionCall("TaskIdentificationAgent", "goto_task", requestData, function(response) {
-                                console.log("Task set:", response);
-                                alert(`Task set to: ${taskName}`);
-                            });
-                        });
-                        taskListElement.appendChild(taskElement);
-                    });
-                }
+            console.log("Getting task list");
+            sendFunctionCall("TaskIdentificationAgent", "get_tasks", {"id_last_task":id},function (response) {
+                let tasks = JSON.parse(response)
+                console.log("Task list:", tasks);
+                // Référence à l'élément <select>
+                const selectElement = document.getElementById("task-selection");
+
+                // Vider la liste actuelle
+                selectElement.innerHTML = "";
+
+
+                // Ajouter chaque tâche au <select>
+                tasks.forEach(task => {
+                    const option = document.createElement("option");
+                    option.value = task.id_task; // On peut utiliser l'ID comme valeur
+                    let username = task.user_id;
+                    if(task.user_id === uniqueId.toString().toUpperCase()){
+                        username = "You";
+                    }
+                    option.textContent = `${task.date.substring(0, 16)} - ${task.agent_name} - ${username}`; // Texte visible pour l'utilisateur
+                    selectElement.appendChild(option);
+                });
+
             });
         }
     }
