@@ -639,6 +639,8 @@ class HumanLLMMonitor:
             "agent_name": agent_name,
             "data_key": data_key
         })
+        print(f"Adding agent data: {tags}")
+        print(f"User ID: {user_id}")
         if function_name:
             tags["function_name"] = function_name
         if id_task:
@@ -730,7 +732,7 @@ class HumanLLMMonitor:
             end_index=end_index
         )
         # Check if there is a newer task (if id_last_task is not the last task of the list)
-        if id_last_task:
+        if id_last_task and id_last_task != "None":
             modif = False
             for i, task in enumerate(tasks):
                 if task.metadata["id_task"] == id_last_task and i + 1 < len(tasks):
@@ -740,6 +742,8 @@ class HumanLLMMonitor:
             if not modif:
                 return "None"
         ret = []
+
+
         for task in tasks:
             ret += [{
                 "id_task": task.metadata["id_task"],
@@ -747,18 +751,21 @@ class HumanLLMMonitor:
                 "type_tache": task.metadata["type_tache"],
                 "content": task.page_content,
                 "before_after": task.metadata["before_after"],
-                "user_id": task.metadata["user_id"],
+                #"user_id": task.metadata["user_id"],
                 "step_id": task.metadata["step_id"],
                 "date": task.metadata["date"]
             }]
-            if task.metadata['score']:
+            if "score" in task.metadata:
                 ret[-1]['score'] = task.metadata['score']
-            if task.metadate['inpu_contents']:
+            if "input_contents" in task.metadata:
                 ret[-1]['input_contents'] = task.metadata['input_contents']
+            if "user_id" in task.metadata:
+                ret[-1]['user_id'] = task.metadata['user_id']
         return json.dumps(ret)
 
     @classmethod
     def set_id(cls, user_id):
+        print(f"Setting user_id to {user_id}")
         cls.user_id = user_id
 
     @staticmethod
@@ -1187,6 +1194,12 @@ class HumanLLMMonitor:
     def set_default_llmORchain(self, llm_name, temperature=0.7):
         return self.set_llmORchain(llm_name, is_premium=False, temperature=temperature)
 
+    def set_userid(self, user_id):
+        HumanLLMMonitor.user_id = user_id
+        print(f"Setting user_id to {user_id}")
+
+
+
     def set_premium_llmORchain(self, llm_name, temperature=0.7):
         return self.set_llmORchain(llm_name, is_premium=True, temperature=temperature)
 
@@ -1525,7 +1538,7 @@ class HumanLLMMonitor:
         use_premium_llm = use_premium_llm if use_premium_llm is not None else self.premium_llm_by_default
         forced_llm_output = False  # TODO: try to set it to None
         HumanLLMMonitor.add_agent_data(self.agent_name, "saved_task", {'prompt': messages[0].content + messages[1].content},
-                                       before_after='before', user_id=self.user_id, step_id=self.step_id, type_tache="IR_CPS_TechSynthesis", id_task=True)
+                                       before_after='before', user_id=HumanLLMMonitor.user_id, step_id=self.step_id, type_tache="IR_CPS_TechSynthesis", id_task=True)
 
         while self.skip_rounds <= 0:
             # MENU
@@ -1990,7 +2003,7 @@ class HumanLLMMonitor:
 
             HumanLLMMonitor.add_agent_data(self.agent_name, "saved_task", {'llm_output': inference_result_msg.content,
                                                                            'user_message': self.current_inference_context['input_contents'][1].content},
-                                           before_after='after', user_id=self.user_id, step_id=self.step_id,
+                                           before_after='after', user_id=HumanLLMMonitor.user_id, step_id=self.step_id,
                                            type_tache="IR_CPS_TechSynthesis", id_task=True)
             menu = (
                 f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n{check_display}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")
