@@ -56,7 +56,7 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
         try:  # test if IN_NOTEBOOK
             from IPython import get_ipython
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = get_ipython().__class__.__name__ == 'ZMQInteractiveShell'
-            print("Smart_print: Notebook mode = " + str(IN_NOTEBOOK))
+            # print("Smart_print: Notebook mode = " + str(IN_NOTEBOOK))
         except:
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = False
     else:
@@ -91,18 +91,18 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
             try:
                 from utils.jupyter_agents_display import AgentDisplayManager
             except:
-                print("AgentDisplayManager cannot be imported/initialized")
-                print(message)
+                # print("AgentDisplayManager cannot be imported/initialized")
+             
                 return
         # create string with time of format HH:MM:SS
         time_str = datetime.now().strftime("%H:%M:%S")
         AgentDisplayManager.write_to_agent(agent_name, message, element_name=message_type + " " + time_str,
                                            append=append)
-    else:
-        if append:
-            print(message, end="", flush=True)
-        else:
-            print(message)
+    # else:
+    #     # if append:
+    #     #     # print(message, end="", flush=True)
+    #     # else:
+    #     #     print(message)
 
 def smart_input(message: str, agent_name=None, message_type=None, column_id=None, column_max=None, optional=False):
     # Determine if running in a notebook environment
@@ -110,7 +110,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
         try:  # test if IN_NOTEBOOK
             from IPython import get_ipython
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = get_ipython().__class__.__name__ == 'ZMQInteractiveShell'
-            print("Smart_print: Notebook mode =", IN_NOTEBOOK)
+           
         except:
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = False
     else:
@@ -158,7 +158,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
         async def receive_message(timeout=86400):
             async with websockets.connect(ws_url, ping_interval=30, ping_timeout=60) as websocket:
                 try:
-                    print("SMART INPUT Waiting for response from WebSocket")
+                    
                     while True:
                         max_retry = 10
                         response = None
@@ -167,29 +167,29 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
                                 response = await asyncio.wait_for(websocket.recv(), timeout=timeout)
                                 break
                             except asyncio.TimeoutError:
-                                print(f"Timeout waiting for response from WebSocket, retry {i+1}/{max_retry}")
+                             
                                 await asyncio.sleep(1)
                             except Exception as e:
-                                print(f"An error occurred: {e}, retry {i+1}/{max_retry}")
+                            
                                 await asyncio.sleep(1)
-                        print("SMART INPUT Received response from WebSocket")
+                        # print("SMART INPUT Received response from WebSocket")
                         try:
                             # Check that the response is not a NoneType
                             if response is None:
-                                print("Received None response from WebSocket")
+                                # print("Received None response from WebSocket")
                                 return None
                             json_data = json.loads(response)
                         except json.JSONDecodeError as e:
-                            print(f"Error decoding JSON: {e}")
+                            # print(f"Error decoding JSON: {e}")
                             return None
                         # Ignore messages from self
                         if 'sender_id' in json_data and json_data['sender_id'] == HumanLLMMonitor.websocket_server.server_id:
-                            print("Received message from self, ignoring")
+                            # print("Received message from self, ignoring")
                             continue
 
                         # Handle function results
                         if 'result' in json_data:
-                            print("Received function result, ignoring")
+                            # print("Received function result, ignoring")
                             json_data['sender_id'] = HumanLLMMonitor.websocket_server.server_id
                             response = json.dumps(json_data)
                             HumanLLMMonitor.websocket_server.send_notasync_message(response)
@@ -202,10 +202,10 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
                         answer = json_data['result']
                     else:
                         raise ValueError("No 'message' or 'result' in WebSocket response")
-                    print("SMART INPUT Answer: ", answer)
+                    # print("SMART INPUT Answer: ", answer)
                     return str(answer).upper()
                 except asyncio.TimeoutError:
-                    print("Timeout waiting for response from WebSocket")
+                    # print("Timeout waiting for response from WebSocket")
                     return None
 
         try:
@@ -224,8 +224,8 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
             try:
                 from utils.jupyter_agents_display import AgentDisplayManager
             except:
-                print("AgentDisplayManager cannot be imported/initialized")
-                print(message)
+                # # print("AgentDisplayManager cannot be imported/initialized")
+                # print(message)
                 return
         return AgentDisplayManager.get_input(agent_name, message)
     else:
@@ -288,7 +288,7 @@ def _visual_input(initial_string="", filetype="md", agent_name=None, column_id=N
             try:
                 edited_data = json.loads(edited_string)
             except json.JSONDecodeError as e:
-                print(f"Error decoding JSON: {e}")
+                # print(f"Error decoding JSON: {e}")
                 edited_data = initial_string  # Fallback to original data
             return edited_data
         else:
@@ -349,7 +349,7 @@ def _visual_input(initial_string="", filetype="md", agent_name=None, column_id=N
             try:
                 edited_data = json.loads(edited_string)
             except json.JSONDecodeError as e:
-                print(f"Error decoding JSON: {e}")
+                # print(f"Error decoding JSON: {e}")
                 edited_data = initial_string  # Fallback to original data
             return edited_data
         else:
@@ -439,13 +439,13 @@ class UnifiedVectorDB:
             try:
                 response = session.get(UnifiedVectorDB.es_url, auth=auth, timeout=5, verify=False)
                 response.raise_for_status()
-                print("Elasticsearch response:", response.text)
+                # print("Elasticsearch response:", response.text)
                 UnifiedVectorDB.db_connection_check_done = True
             except requests.exceptions.RequestException as e:
-                print(f"Error: {e}\nURL: {UnifiedVectorDB.es_url}\nCheck Elasticsearch and credentials. UnifiedVectorDB.es_user:{UnifiedVectorDB.es_user}, UnifiedVectorDB.es_password:{UnifiedVectorDB.es_password}")
+                # print(f"Error: {e}\nURL: {UnifiedVectorDB.es_url}\nCheck Elasticsearch and credentials. UnifiedVectorDB.es_user:{UnifiedVectorDB.es_user}, UnifiedVectorDB.es_password:{UnifiedVectorDB.es_password}")
                 exit(1)
         elif UnifiedVectorDB.db_type == 'chroma':
-            print("Chroma DB check is not yet implemented")
+            # print("Chroma DB check is not yet implemented")
             UnifiedVectorDB.db_connection_check_done = True
         else:
             raise ValueError(f"Unsupported DB type: {UnifiedVectorDB.db_type}")
@@ -519,8 +519,8 @@ class UnifiedVectorDB:
                     sign = '$eq' if isinstance(value, str) else '$in'
                     filter_chroma.append({key: {sign: value}})
                 filter_chroma = {('$or' if metadata_filter_OR else '$and'): filter_chroma}
-                if sort_order == 'asc' or sort_order == 'desc':  # incompatible with knn search, so we rewrite query just keeping filters and sort
-                    print("WARNING: sort not implemented for Chroma DB")
+               # incompatible with knn search, so we rewrite query just keeping filters and sort
+                    # print("WARNING: sort not implemented for Chroma DB")
             return self.db.query(query_text, k=k, filter=filter_chroma)
         elif UnifiedVectorDB.db_type == 'elasticsearch':
             if metadata_filter and custom_filter_es is None:
@@ -574,7 +574,7 @@ class UnifiedVectorDB:
         if UnifiedVectorDB.db_type == 'elasticsearch':
             # empty the index self.collection_name
             response = self.db.client.delete_by_query(index=self.collection_name, body={"query": {"match_all": {}}})
-            print(f"Deleted {response['deleted']} documents from index {self.collection_name}")
+            # print(f"Deleted {response['deleted']} documents from index {self.collection_name}")
             # sleep 2 seconds to let the index be updated
             time.sleep(2)
     # TODO: start by replacing UnifiedVectorDB by neo4j improving the ChatGPT generated code below, then validate the learn.py process works properly
@@ -819,7 +819,7 @@ class HumanLLMMonitor:
                 try:
                     content_data = json.loads(content_str)
                 except json.JSONDecodeError as e:
-                    print(f"Error decoding JSON: {e}")
+                    # print(f"Error decoding JSON: {e}")
                     continue
 
             if output_format.lower() == 'json':
@@ -837,10 +837,10 @@ class HumanLLMMonitor:
                     template = Template(template_str)
                     formatted_example = template.render(**content_data)
                 except Exception as e:
-                    print(f"Error rendering Jinja2 template: {e}")
+                    # print(f"Error rendering Jinja2 template: {e}")
                     continue
             else:
-                print(f"Unsupported format or missing template for '{output_format}'.")
+                # print(f"Unsupported format or missing template for '{output_format}'.")
                 continue
 
             formatted_examples.append(formatted_example)
@@ -948,7 +948,7 @@ class HumanLLMMonitor:
 
                 # Extract the JSON string
                 data_str = prompt[match.start() + len("few_shots:"):end]
-                print(f"Attempting to decode few_shots tag: {data_str}")  # Debug
+                # print(f"Attempting to decode few_shots tag: {data_str}")  # Debug
                 data = json.loads(data_str)
                 # Combine criteria
                 combined_criteria = HumanLLMMonitor.combine_criteria([data])
@@ -957,8 +957,8 @@ class HumanLLMMonitor:
                 # Replace the tag with the few shots string
                 prompt = prompt[:start] + few_shots_str + prompt[end:]
             except json.JSONDecodeError as e:
-                print(f"Error decoding 'few_shots' tag: {e}")
-                print(f"Faulty JSON: {data_str}")  # Debug
+                # print(f"Error decoding 'few_shots' tag: {e}")
+                # print(f"Faulty JSON: {data_str}")  # Debug
                 continue
 
         return prompt
@@ -1008,7 +1008,7 @@ class HumanLLMMonitor:
                             ).with_config(configurable={
                                 "llm_temperature": temperature})  # Replace with desired default temperature
                         except ValueError as e:
-                            print(f"Step {step} does not support temperature configuration: {e}", self.agent_name)
+                             print(f"Step  does not support temperature configuration:")
                         modified_steps.append(step)
                     else:
                         modified_steps.append(step)
@@ -1759,8 +1759,8 @@ class HumanLLMMonitor:
         if confirm == "H":
             if self.user_message_few_shots:
                 _visual_input(self.user_message_few_shots)
-            else:
-                print("No few_shots available.")
+            # else:
+            #     # print("No few_shots available.")
             return
 
         if confirm == "I":
@@ -1956,7 +1956,7 @@ class HumanLLMMonitor:
             # if score is not between 0 and 1, then set to None and print error
             if score < 0 or score > 1:
                 score = None
-                print(f"\033[31mInvalid score: {score}\033[0m")
+                # print(f"\033[31mInvalid score: {score}\033[0m")
             else:
                 break
         comments = smart_input("Comment on the result: ", self.agent_name)
@@ -2241,7 +2241,7 @@ class HumanLLMMonitor:
 
     def updateAnswer(self, answer, column_id=None):
         self.temp_inference_result_content = answer
-        if column_id: print("IMPORTANT: column_id not yet implemented - Updating current HumanLLMMonitor for agent")
+        # if column_id: print("IMPORTANT: column_id not yet implemented - Updating current HumanLLMMonitor for agent")
         return answer
 
     # staticmethod get my host ID
@@ -2407,9 +2407,9 @@ class HumanLLMMonitor:
                 func = default_llm_function if not func_calling else HumanLLMMonitor.call_llm_function_with_function_call
             if temperature or temperature == 0:
                 func = func.with_config(configurable={"llm_temperature": temperature})
-                print(f"Temperature set to {temperature}")
-            else:
-                print(f"No temperature value, not set")
+                # print(f"Temperature set to {temperature}")
+            # else:
+            #     print(f"No temperature value, not set")
 
             if stream_output:
                 if color_id is None or color_id <= 0:

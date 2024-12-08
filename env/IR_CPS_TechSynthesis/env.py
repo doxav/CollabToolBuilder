@@ -21,6 +21,7 @@ import traceback
 
 import json
 import requests
+import hashlib
 from datasets import load_dataset
 
 
@@ -318,12 +319,12 @@ class SynthesisManager:
             Section(**section)
             return True
         except TypeError as e:
-            print(e)
+            # print(e)
             return False
 
     @method_call_counter
     def chat(self, message: str):
-        print(f"SynthesisManager Chat message: {message}")
+     print(f"SynthesisManager Chat message:")
 
     @staticmethod
     @method_call_counter
@@ -398,7 +399,7 @@ class SynthesisManager:
             # URL for EPO scraping
             # encode query string
             url = 'https://worldwide.espacenet.com/patent/search?q=' + query.replace(' ', '%20')
-            print(url)
+            # print(url)
             driver.get(url)
 
             # Wait until the search results are loaded
@@ -1394,12 +1395,19 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
     
 class SWEBenchEnvironment(Environment):
     def __init__(self,
+                 synthesis_type: str = "",
+                 refined_goals: [str] = None,
+                 goal: str = "",
                  title: str = "",
                  openai_api_key: str = None,
                  target_repo_commit: str = None,
                  target_repo_id: str = None,
                  llm = None,
-                 id: str = None
+                 log_path='./logs',
+                 id: str = None,
+                 CPS_env_type="sweSynthesis",
+                 context: str = None,
+                                  
                  ):
         super().__init__()
         
@@ -1407,8 +1415,35 @@ class SWEBenchEnvironment(Environment):
         # dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take3", split='train')
         dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take50", split='train')
         self.dataset = dataset
+        self.files_having_bugs=[],
+        self.generated_patch_code="",
+        self.patch_applied=False,
+        self.unit_tests=[],
+        self.unit_test_passed=3,
+        self.unit_test_failed=0,
         
         
+    
+    
+    def get_properties_as_string(self):
+        properties = {
+            'files_having_bugs': self.files_having_bugs,
+            'generated_patch_code': self.generated_patch_code,
+            'patch_applied': self.patch_applied,
+            'unit_tests': self.unit_tests,
+            'unit_test_passed': self.unit_test_passed,
+            'unit_test_failed': self.unit_test_failed
+        }
+        # Generate string representation of each property and its value
+        result = "\n".join([f"{key}: {value}" for key, value in properties.items()])
+        return result
+    
+    
+    
+    
+    
+    
+    
         
     def get_row_by_instance_id(self,instance_id):
      for row in self.dataset:
@@ -1528,13 +1563,13 @@ class SWEBenchEnvironment(Environment):
                 file_content = file.read()
                 parsed_data = ast.parse(file_content)
         except Exception as e:  # Catch all types of exceptions
-            print(f"Error in file {file_path}: {e}")
+            # print(f"Error in file {file_path}: {e}")
             return [], [], ""
      else:
         try:
             parsed_data = ast.parse(file_content)
         except Exception as e:  # Catch all types of exceptions
-            print(f"Error in file {file_path}: {e}")
+            # print(f"Error in file {file_path}: {e}")
             return [], [], ""
 
      class_info = []
@@ -1583,4 +1618,8 @@ class SWEBenchEnvironment(Environment):
                     }
                 )
 
-     return class_info, function_names, file_content.splitlines()       
+     return class_info, function_names, file_content.splitlines()    
+    
+    def get_state(self,unique_id=None, extended_comparison=False):
+        return self.get_properties_as_string()
+        

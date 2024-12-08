@@ -1,0 +1,9 @@
+
+    
+    - Current status of examples on which the task will be tested on: files_having_bugs: ([],)
+generated_patch_code: ('',)
+patch_applied: (False,)
+unit_tests: ([],)
+unit_test_passed: (3,)
+unit_test_failed: (0,)
+    

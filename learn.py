@@ -9,6 +9,7 @@ import time
 from zipfile import error
 
 from config import *
+import sys
 
 import openai
 from typing import Dict
@@ -194,6 +195,10 @@ class EnvironmentManager:
             from env.IR_CPS_TechSynthesis.env import VoyagerEnvIR_CPS_TechSynthesis
             # pass to VoyagerEnvIR_CPS_TechSynthesis all the args from the EnvironmentManager
             self.env = VoyagerEnvIR_CPS_TechSynthesis(**kwargs)
+        elif env_type == "sweSynthesis":
+            from env.IR_CPS_TechSynthesis.env import  SWEBenchEnvironment
+            # passing all the parameteres   all the args from the EnvironmentManager
+            self.env = SWEBenchEnvironment(**kwargs)    
         else:
             self.env = Environment()
         self.env.reset()
@@ -229,10 +234,10 @@ def apply_special_criteria(agent, special_criteria, available_locals=None):
                 if agent_name != class_name and agent_name not in ['all', '']: continue
             if hasattr(agent, key):
                 setattr(agent, key, value)
-                print(f"Special criteria applied to {agent}'s class property: {key} = {value}")
+              
             elif key in available_locals:
                 new_params[key] = value
-                print(f"Special criteria applicable to {agent}'s local variables: {key} = {value}")
+             
 
     return new_params  # Return only new params
 
@@ -258,7 +263,7 @@ class TaskIdentificationAgent():
 
         HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
-        print(f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
+
         kw_common_args.update(new_params)
 
         #self.criteria = criteria, self.params_user_message = params_user_message, self.temperature_min = temperature_min, self.temperature_max = temperature_max
@@ -293,6 +298,19 @@ class TaskIdentificationAgent():
         if hasattr(self, 'log_user_message') and self.log_user_message:
             with open(self.log_user_message, "a") as f:
                 f.write("Coach -- identify_best_task:<<\n" + user_message + "\n>>\n\n")
+                
+        original_stdout = sys.stdout
+        sys.stdout = open('system_debug.txt', 'w') 
+        print(self.problem_prompts_subdir + 'identify_best_task')
+        sys.stdout=original_stdout 
+        
+        original_stdout = sys.stdout
+        sys.stdout = open('user_message.txt', 'w') 
+        print(user_message)
+        sys.stdout=original_stdout  
+        
+        
+        
 
         task = self.human_llm_identify_best_task.CallHumanLLM(
             system_prompt_template=self.problem_prompts_subdir + 'identify_best_task',
@@ -302,6 +320,10 @@ class TaskIdentificationAgent():
             model_choice=self.model_choice,
             stream_output=True
         )
+        
+
+       
+       
         return task
 
     def expand_criteria_aligned(self, criteria):
@@ -365,7 +387,7 @@ class CodingAgent():
 
         HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
-        print(f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
+      
         kw_common_args.update(new_params)
 
         self.human_llm_code_task = HumanLLMMonitor(**kw_common_args)
@@ -589,7 +611,7 @@ class CodingAgent():
                             # if in websocket, then get from self.human_llm_code_task.premium_llm
                             if HumanLLMMonitor.use_websocket:
                                 edited_code = self.human_llm_code_task.temp_inference_result_content
-                                print(f"EDITED CODE: {edited_code}")
+                              
                             else:
                                 edited_code = _visual_input(parsed_code["program_code"], filetype="py", message_type="fix_error", agent_name=self.name, column_id=output_id)
                         else:
@@ -838,7 +860,7 @@ class ValidationAgent():
             setattr(self, 'log_user_message', special_criteria['log_user_message'])
         HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
-        print(f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
+      
         kw_common_args.update(new_params)
 
         self.human_llm_validate_code = HumanLLMMonitor(**kw_common_args)
@@ -921,7 +943,7 @@ class CapitalizationAgent:
             setattr(self, 'log_user_message', special_criteria['log_user_message'])
         HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
-        print(f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
+
         kw_common_args.update(new_params)
 
         self.learnt_tasks_repository: Dict[str, str] = {}
@@ -1299,7 +1321,7 @@ def validate_function_code(code, function_name, local_scope=None, compile_test_o
             raise ValueError(f"Function {function_name} is not defined or not callable.")
         return func
     except Exception as e:
-        print(f"Error setting {function_name} function: {e}")
+
         return None
 
 
@@ -1370,14 +1392,17 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                              skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list,
                                              optuna=optuna_opti, model_choice=(
             model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(
-                model_choice) == dict else model_choice), criteria=params_user_message, temperature_max=temperature_max,
-                                             num_parallel_inferences=agcoach_num_parallel_inferences, fixed_coach=fixed_coach, special_criteria=special_criteria)
+            model_choice) == dict else model_choice), criteria=params_user_message,
+            temperature_max=temperature_max,
+            num_parallel_inferences=agcoach_num_parallel_inferences, fixed_coach=fixed_coach, 
+            special_criteria=special_criteria)
 
     agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds,
                                llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(
             model_choice['coding' if 'coding' in model_choice else 'coder'] if type(
-                model_choice) == dict else model_choice), special_criteria=special_criteria, num_parallel_inferences=agcoding_num_parallel_inferences)
+                model_choice) == dict else model_choice), special_criteria=special_criteria,
+                               num_parallel_inferences=agcoding_num_parallel_inferences)
 
     agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                        skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list,
@@ -1400,6 +1425,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     while continue_identifying_tasks and time.time() < time_end:
         HumanLLMMonitor.step_id = str(uuid.uuid4())
         task = agent_taskreco.identify_best_task()
+         
+       
 
         # Handle multiple-tasks case
         if len(task) > 1:
@@ -1490,15 +1517,15 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                     10 * scores['best_score_without_validation'] +
                     (20 * (1 + validated_score_avg) if scores['validated_scores'] else 0)
             )
-            if total_score_weighted_with_stats > 0:
-                print(f"total_score_weighted_with_stats: {total_score_weighted_with_stats}; scores['percentage_no_runtime_error']: {scores['percentage_no_runtime_error']}; scores['best_score_without_validation']: {scores['best_score_without_validation']}; validated_score_avg: {validated_score_avg}")
+
+               
             # add total_score_weighted_with_stats to total_scores
             total_scores.append(total_score_weighted_with_stats)
-        else:
+        
             total_scores.append(0)
 
     # print status of: continue_identifying_tasks and time.time() < time_end
-    print(f"continue_identifying_tasks: {continue_identifying_tasks}, time.time() < time_end: {time.time() < time_end}, time.time(): {time.time()}, time_end: {time_end}")
+
 
     if return_array:
         return total_scores
@@ -1532,7 +1559,9 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
     if functions_to_import is not None:
         # Imports the functions with the regex pattern given from functions directory into the elastic database
         functions = import_functions_from_directory(functions_to_import)
+   
         for function in functions.items():
+            
             serialized_entry = json.dumps({
                 "time": datetime.now().isoformat(),
                 "class_name": function[0],
@@ -1585,7 +1614,7 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
     question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ", agent_name='PlannerAgent').capitalize()
     smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
     while question not in ['q', 'Q', 'quit', 'Quit', 'QUIT', 'e', 'E', 'exit', 'Exit', 'EXIT']:
-        if question in ['LEARN', 'learn', 'Learn']:
+        if question in ['LEARN', 'learn', 'Learn','SWE','LearnSwe','learnSwe']:
             # User wants to use the learning loop
             run_4agents_learning_loop(default_llm_key=default_llm_key,
                                       premium_llm_key=premium_llm_key,
@@ -1940,19 +1969,22 @@ if __name__ == "__main__":
             'context':"This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
             'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
 
-    envs = []
-    for doc in documents:
-        env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
-                                 target_file_path=doc['target_file_path'], id=doc['id'], llm=llmORchains_list["default_llm"]).get_environment()
-        envs.append(env)
-
+    # envs = []
+    # for doc in documents:
+    #     env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
+    #                              target_file_path=doc['target_file_path'], id=doc['id'], llm=llmORchains_list["default_llm"]).get_environment()
+    #     envs.append(env)
+   
     # Run the planner agent
+    
+    env = EnvironmentManager(env_type="sweSynthesis", llm=llmORchains_list["default_llm"]).get_environment()
+    envs = [env]
     run_planner(default_llm_key="default_llm",
                 premium_llm_key="premium_llm",
                 llmORchains_list=llmORchains_list,
                 test_environments=envs,
                 manual_validation_to_capitalize=False,
-                problem_prompts_subdir="IR_CPS_TechSynthesis",
+                problem_prompts_subdir="SWE_Synthesis",   # I have   changed the code for Redirecting to SWE_prompts_folder/
                 max_coding_attempts=4,
                 include_code=False,
                 selected_successful_functions=[],
