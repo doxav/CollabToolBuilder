@@ -7,6 +7,7 @@ langchain-huggingface~=0.0.3
 langchain-text-splitters~=0.2.2
 langchain_groq
 langgraph
+langchain-experimental
 
 gitpython
 
@@ -77,3 +78,4 @@ fastapi
 aiohttp 
 starlette 
 nest-asyncio 
+

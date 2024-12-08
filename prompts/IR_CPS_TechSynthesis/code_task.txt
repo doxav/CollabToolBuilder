@@ -1,4 +1,3 @@
-
     CONTEXT:
     You are a helpful assistant that writes Python code exclusively to be executed to complete the task specified by me.
 

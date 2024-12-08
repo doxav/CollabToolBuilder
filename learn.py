@@ -37,6 +37,18 @@ from langchain_openai import ChatOpenAI
 
 import json
 import difflib
+from datasets import load_dataset
+
+dataset_repo = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take50", split='train')
+
+def get_row_by_instance_id(instance_id):
+     for row in dataset_repo:
+        if row['instance_id'] == instance_id:
+            return row
+     return None
+instance_id= "astropy__astropy-14365"
+repo=get_row_by_instance_id(instance_id)
+
 
 #set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
 

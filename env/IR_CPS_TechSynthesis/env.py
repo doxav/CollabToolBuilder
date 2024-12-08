@@ -9,6 +9,14 @@ import re
 from typing import List, SupportsFloat, Any, Tuple, Dict
 from dataclasses import asdict
 from langchain_core.messages import SystemMessage, HumanMessage
+import json
+import inspect, os
+from typing import Any, Dict, Callable, List
+import git
+from langchain_community.tools import ShellTool, tool
+from pydantic import BaseModel
+
+shell = ShellTool()
 
 from config import *
 #from attr import dataclass, field
@@ -1402,24 +1410,23 @@ class SWEBenchEnvironment(Environment):
                  id: str = None,
                  CPS_env_type="sweSynthesis",
                  context: str = None,
-                                  
+                 directory_path="../../swe_repo", 
+                 problem_id: str = None,                 
                  ):
         super().__init__()
         
 
-        # dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take3", split='train')
-        dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take50", split='train')
-        self.dataset = dataset
+        # dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take3", split='train'
         self.files_having_bugs=[],
         self.generated_patch_code="",
         self.patch_applied=False,
         self.unit_tests=[],
         self.unit_test_passed=3,
         self.unit_test_failed=0,
-        
-        
-    
-    
+        # os.chdir('swe_repo')
+        self.directory_path=str(directory_path),
+        self.synthesis_manager = SweSynthesisManager(directory_path=self.directory_path) # Initialize your Synthesis Manager
+           
     def get_properties_as_string(self):
         properties = {
             'files_having_bugs': self.files_having_bugs,
@@ -1433,22 +1440,13 @@ class SWEBenchEnvironment(Environment):
         result = "\n".join([f"{key}: {value}" for key, value in properties.items()])
         return result
     
-    
-    
-    
-    
-    
-    
-        
+          
     def get_row_by_instance_id(self,instance_id):
      for row in self.dataset:
         if row['instance_id'] == instance_id:
             return row
      return None
- 
- 
- 
- 
+    
         
     def clone_repo(self,instance_id,target_folder=None):
      try:
@@ -1474,11 +1472,7 @@ class SWEBenchEnvironment(Environment):
         print(f"An error occurred while running git command: {e}")
      except Exception as e:
         print(f"An unexpected error occurred: {e}")  
-    
-    
-    
-    
-        
+            
     def checkout_commit(repo_path, commit_id):
      """Checkout the specified commit in the given local git repository.
      :param repo_path: Path to the local git repository
@@ -1614,7 +1608,230 @@ class SWEBenchEnvironment(Environment):
                 )
 
      return class_info, function_names, file_content.splitlines()    
+
     
-    def get_state(self,unique_id=None, extended_comparison=False):
+    def get_state(self,unique_id=None, extended_comparison=False, extended=False):
         return self.get_properties_as_string()
         
+
+
+class SweSynthesisManager:
+    def __init__(self, target_file_path: str = None,directory_path: str = None):   
+        if target_file_path:
+            self.target_file_path = target_file_path            
+        self.directory_path = directory_path        
+    
+    @tool
+    def ls(self) -> str:
+     """
+     This function lists the files in the current directory.
+     :function: ls
+     :return: a string containing the path of current directory and the files present in the current directory
+     """
+     ls_out = shell.run({"commands": [f"cd test-repos{self.directory_path}", 'ls']})
+     return f"""
+     Current Directory: {self.directory_path}
+     Files: 
+     {ls_out}
+     """
+
+
+
+
+
+    @tool
+    def goto_directory(self,path: str) -> str:
+     """
+     This function changes the current directory to the specified directory. This function must be used to goto a directory not to open a file.
+     :function: goto_dir
+     :param str path: path of the new directory you want to change relative to the current directory e.g 'matplotlib/doc'
+     :return: output of command 'fail' or 'success'
+     """
+
+     if '..' in path:
+        return 'use goto_previous_dir tool instead to go to previous directory'
+     out = shell.run({"commands": [f"cd test-repos{self.directory_path}", f'cd {path}']})
+     if out == "":
+        self.directory_path = f"{self.directory_path}{path}/"
+        return 'successfully entered ' + self.directory_path
+     else:
+        return out
+    
+    
+    
+
+    @tool
+    def goto_previous_dir(self) -> str:
+     """
+     This function takes the user to the previous directory.
+     :function: goto_previous_dir
+     :return: output 
+     """
+     if self.directory_path == '/':
+         return "Already in top most directory. Can't go back anymore"
+     else:
+        paths = self.directory_path.split('/')[1:-1]
+        paths.pop()
+        self.directory_path = '/'
+        for dir in paths:
+           self.directory_path += dir + '/'
+        return f"Current Directory: {self.directory_path}"
+
+    @tool
+    def get_current_dir(self) -> str:
+     """
+     This function returns the path of the currently opened directory.
+     :function: get_current_dir
+     :return: the current directory
+     """
+     return self.directory_path
+
+    def get_abs_current_dir(self) -> str:
+      return os.path.join(self.abs_project_dir, 'test-repos', self.directory_path[1:-1])
+
+    @tool
+    def number_of_lines(self,path: str) -> str:
+     """
+     This function takes a file path as input and returns the number of lines in the file.
+    :function: number_of_lines
+     :param path: The relative path to the file (e.g., 'lib/matplotlib/axis.py').
+     
+     :return: The number of lines in the file.
+     """
+
+     abs_file_path = os.path.join(self,self.get_abs_current_dir(), path)
+     if os.path.exists(abs_file_path):
+        with open(abs_file_path, 'r') as file:
+            return f"Number of lines in {self.directory_path+path}: {sum(1 for line in file)}"
+     else:
+        return f"File {self.directory_path+path} not found"
+
+    @tool
+    def open_file(self,path: str, line_number: int = 1, max_lines: int = 100) -> str:
+     """   
+     This function takes a file path, a line number, and a maximum number of lines as input and returns the contents of the file starting from the specified line number, limited to the maximum number of lines.
+     :function: open_file
+    :param path: The relative path to the file (e.g., 'lib/matplotlib/axis.py').
+     :param line_number: The line number from which to start reading the file. Defaults to 1.
+    :param max_lines: The maximum number of lines to return from the starting line. Defaults to 100.
+     :return: A string containing the file contents from the specified starting line, limited to max_lines.
+     """
+
+     if line_number < 1:
+        return "Error: line number cannot be zero or negative"
+     if max_lines < 1:
+        return "Error: max_lines cannot be zero or negative"
+
+     abs_file_path = os.path.join(self.get_abs_current_dir(), path)
+     if os.path.exists(abs_file_path):
+        with open(abs_file_path, 'r') as file:
+            with open(abs_file_path, 'r') as temp_file:
+                num_lines = sum(1 for line in temp_file)
+            if line_number > num_lines:
+                return f"Can't access {line_number} line. This file only contains {num_lines} lines"
+            
+            out = f"Showing contents of File: {self.directory_path+path} starting from {line_number}\n\n"
+            for n, line in enumerate(file, 1):
+                if n >= line_number:
+                    out += f"{n}: {line}\n"
+                    if n == line_number + max_lines - 1:
+                        break
+            return out
+     else:
+        return path + " doesn't exist"
+
+    @tool
+    def find_files(self,file_name: str) -> str:
+     """
+     Searches the current directory and its subdirectories for the files that have name containing the specified file_name.
+     :function: find_files
+     :param file_name: The file_name to search for in file names.
+     :return: paths of the files that contain the specified file_name in their names.
+     """
+     matched_files = []
+     
+     # Walk through the current directory and all subdirectories
+     for root, dirs, files in os.walk("test-repos" + self.directory_path):
+         for file in files:
+             if file_name in file:
+                 matched_files.append(os.path.join(self.directory_path, file))
+     
+     return "Files found:\n" + "\n".join(matched_files)
+
+    @tool
+    def search_file(self,path: str, search_term: str) -> str:
+     """
+     This function takes a file path and a search term as input and returns the lines in the file that contain the search term. 
+     :param str path: The relative path to the file (e.g., 'lib/matplotlib/axis.py').
+     :param str search_term: The term to search for in the file.
+     :return: A string containing the lines in the file that contain the search term.
+     """
+ 
+     abs_file_path = os.path.join(self.get_abs_current_dir(), path)
+     if os.path.exists(abs_file_path):
+         with open(abs_file_path, 'r') as file:
+             out = f"Searching for '{search_term}' in {self.directory_path+path}\n\n"
+             for n, line in enumerate(file, 1):
+                 if search_term in line:
+                     out += f"{n}: {line}\n"
+             return out
+     else:
+        return f"File {self.directory_path+path} not found"
+    
+
+    @tool
+    def search_dir(self,path: str, search_term: str) -> str:
+     """
+     Searches for files in the specified directory that contain the search term. It returns the file names and line numbers where the search term is found.
+ 
+     :param path: The relative path to the directory (e.g., 'lib/matplotlib').
+     :param search_term: The term to search for in the files in the directory.
+     :return: A string containing the files in the directory that contain the search term.
+     """
+     abs_dir_path = os.path.join(self.get_abs_current_dir(), path)
+     
+     if os.path.exists(abs_dir_path):
+         matched = ""
+         for root, dirs, files in os.walk(abs_dir_path):
+             for file in files:
+                 file_path = os.path.join(root, file)
+                 try:
+                     with open(file_path, 'r', encoding='utf-8') as file_a:
+                         for n, line in enumerate(file_a, 1):
+                             if search_term in line:
+                                 matched += f"File: {file_path}, Line: {n}\n"
+                                 break
+                 except (UnicodeDecodeError, IOError):  # Handle decoding errors and file I/O errors
+                     continue
+         
+         if matched:
+             return "Files found:\n" + matched
+         else:
+             return "No files containing the search term were found."
+     else:
+        return f"Directory {abs_dir_path} not found."
+
+    @tool
+    def get_files_content(self,paths: List[str], line_numbers: List[int]) -> str:
+     """
+     This function takes a list of file paths and a list of line numbers as input and returns the contents of the files starting from the specified line numbers.
+     :param paths: A list of relative paths to the files (e.g., ['lib/matplotlib/axis.py', 'lib/matplotlib/figure.py']).
+     :param line_numbers: A list of line numbers from which to start reading the files.
+     :return: A string containing the contents of the files from the specified starting line numbers.
+     """
+     out = ""
+     for path, line_number in zip(paths, line_numbers):
+         out += self.open_file.invoke({'path': path, "directory.cwd":self.directory_path , 'line_number': line_number, 'max_lines': 50}) + '\n\n'
+     return out
+
+
+    def getSearchTools(self):
+     return [self.ls, self.goto_directory, self.goto_previous_dir, self.get_current_dir, self.number_of_lines, self.open_file, self.find_files, self.search_file, self.search_dir]
+
+    def getContentViewingTools(self):
+     return [self.get_files_content]
+
+
+        
+    
+            
