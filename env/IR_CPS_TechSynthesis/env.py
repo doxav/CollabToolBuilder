@@ -808,8 +808,6 @@ class SynthesisManager:
             print(f"Error reading {pdf_path}: {e}")
         return text
 
-
-
     @staticmethod
     @method_call_counter
     def search_fiche_anomalie(query, directory_path, output_format='json', max_results=20):
@@ -839,9 +837,6 @@ class SynthesisManager:
             return json.dumps(results, indent=2)
         else:
             return '\n'.join(['Filename: {}\nContent: {}\n'.format(result['filename'], result['content']) for result in results])
-
-
-
 
     # OK: based on search_google
     @staticmethod

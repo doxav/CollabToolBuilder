@@ -43,8 +43,8 @@ if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_UR
 
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
-# UnifiedVectorDB.es_user = elastic_user
-# UnifiedVectorDB.es_password = elastic_password
+UnifiedVectorDB.es_user = elastic_user
+UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
 
 embedding_function = "intfloat/e5-base-v2"  # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
@@ -261,7 +261,7 @@ class TaskIdentificationAgent():
         kw_common_args.update(new_params)
 
         #self.criteria = criteria, self.params_user_message = params_user_message, self.temperature_min = temperature_min, self.temperature_max = temperature_max
-        self.human_llm_identify_best_task = HumanLLMMonitor(**kw_common_args)#,output_schema="identify_best_task.schema.py")
+        self.human_llm_identify_best_task: HumanLLMMonitor = HumanLLMMonitor(**kw_common_args)#,output_schema="identify_best_task.schema.py")
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
@@ -527,8 +527,7 @@ class CodingAgent():
 
         if isinstance(parsed_code, dict) and parsed_code["program_code"] not in self.processed_codes:
             self.processed_codes.add(parsed_code["program_code"])
-        elif skip_already_processed or not isinstance(parsed_code,
-                                                      dict):  # This logic speedup because the same code should have the same score BUT only on the same problem & state
+        elif skip_already_processed or not isinstance(parsed_code, dict):  # This logic speedup because the same code should have the same score BUT only on the same problem & state
             return None
 
         #smart_print(f"************ Code parsed result ************\n{parsed_code}\n************************".replace("\\n", "\n"), self.name, "run_tests_on_code RESULT")
@@ -631,15 +630,14 @@ class CodingAgent():
                             if (exec_result, diff_text) not in error_patches:
                                 error_patches.append((exec_result, diff_text))
                                 # Store updated error_patches
-                                HumanLLMMonitor.add_agent_data(self.name, 'error_patches', error_patches,
-                                                               metadata=metadata)
+                                HumanLLMMonitor.add_agent_data(self.name, 'error_patches', error_patches, metadata=metadata)
 
             # Append the results for each environment
             no_runtime_errors.append(no_runtime_error)
             exec_results.append(exec_result)
+
         # Calculate total time taken  # Added line
         total_execution_time = time.time() - start_time
-
         # Return combined results
         result = (parsed_code, all(no_runtime_errors), exec_results, [env.get_score() for env in self.envs],
                   [env.get_state(extended=False) for env in self.envs], total_execution_time)
@@ -660,6 +658,8 @@ class CodingAgent():
             path_folder = "primitives/generate_primitives"
         folder_path = os.path.join(os.path.dirname(__file__), path_folder)
         # Utiliser os.listdir pour ne pas parcourir les sous-répertoires
+
+
         for file in os.listdir(folder_path):
             if file.endswith(".py"):
                 smart_print(f"File load: {file}", "CodingAgent", "Files loaded", optional=True)
@@ -1363,7 +1363,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
 
     time_end = time.time() + max_execution_time
 
-    agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
+    agent_taskreco: TaskIdentificationAgent = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                              problem_prompts_subdir=problem_prompts_subdir,
                                              premium_llm_by_default=agtask_premium_llm_by_default,
                                              skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list,
@@ -1668,7 +1668,7 @@ def get_highest_score_index(score_array, mode='total'):
     return highest_index
 
 
-def coding_and_validation_loop(agent_coding, agent_validation, task_description, max_attempts,
+def coding_and_validation_loop(agent_coding: CodingAgent, agent_validation, task_description, max_attempts,
                                extra_manual_validation_to_capitalize=True, continue_even_if_successful=True,
                                optuna=None, end_time=None):
     metadata = {'step_id': HumanLLMMonitor.step_id}
