@@ -5,6 +5,10 @@ langchain_openai~=0.1.7
 langchain-core~=0.2.36
 langchain-huggingface~=0.0.3
 langchain-text-splitters~=0.2.2
+langchain_groq
+langgraph
+
+gitpython
 
 # OpenAI and tokenization
 openai~=1.43.0

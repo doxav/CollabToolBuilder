@@ -21,6 +21,19 @@ import traceback
 
 import json
 import requests
+import hashlib
+from datasets import load_dataset
+
+
+import argparse
+import ast
+import json
+import os
+import subprocess
+import uuid
+
+import pandas as pd
+from tqdm import tqdm
 
 from learn import Environment
 
@@ -306,12 +319,12 @@ class SynthesisManager:
             Section(**section)
             return True
         except TypeError as e:
-            print(e)
+            # print(e)
             return False
 
     @method_call_counter
     def chat(self, message: str):
-        print(f"SynthesisManager Chat message: {message}")
+     print(f"SynthesisManager Chat message:")
 
     @staticmethod
     @method_call_counter
@@ -386,7 +399,7 @@ class SynthesisManager:
             # URL for EPO scraping
             # encode query string
             url = 'https://worldwide.espacenet.com/patent/search?q=' + query.replace(' ', '%20')
-            print(url)
+            # print(url)
             driver.get(url)
 
             # Wait until the search results are loaded
@@ -1373,3 +1386,235 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
 
         document_state += ">>>"
         return document_state
+    
+    
+class SWEBenchEnvironment(Environment):
+    def __init__(self,
+                 synthesis_type: str = "",
+                 refined_goals: [str] = None,
+                 goal: str = "",
+                 title: str = "",
+                 openai_api_key: str = None,
+                 target_repo_commit: str = None,
+                 target_repo_id: str = None,
+                 llm = None,
+                 log_path='./logs',
+                 id: str = None,
+                 CPS_env_type="sweSynthesis",
+                 context: str = None,
+                                  
+                 ):
+        super().__init__()
+        
+
+        # dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take3", split='train')
+        dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take50", split='train')
+        self.dataset = dataset
+        self.files_having_bugs=[],
+        self.generated_patch_code="",
+        self.patch_applied=False,
+        self.unit_tests=[],
+        self.unit_test_passed=3,
+        self.unit_test_failed=0,
+        
+        
+    
+    
+    def get_properties_as_string(self):
+        properties = {
+            'files_having_bugs': self.files_having_bugs,
+            'generated_patch_code': self.generated_patch_code,
+            'patch_applied': self.patch_applied,
+            'unit_tests': self.unit_tests,
+            'unit_test_passed': self.unit_test_passed,
+            'unit_test_failed': self.unit_test_failed
+        }
+        # Generate string representation of each property and its value
+        result = "\n".join([f"{key}: {value}" for key, value in properties.items()])
+        return result
+    
+    
+    
+    
+    
+    
+    
+        
+    def get_row_by_instance_id(self,instance_id):
+     for row in self.dataset:
+        if row['instance_id'] == instance_id:
+            return row
+     return None
+ 
+ 
+ 
+ 
+        
+    def clone_repo(self,instance_id,target_folder=None):
+     try:
+        repo=self.get_row_by_instance_id(instance_id)
+         
+        print(
+            f"Cloning repository from https://github.com/{repo['repo']}.git to Repositories Folder"
+        )
+        current_dir = os.path.dirname(os.path.realpath(__file__))
+        if(target_folder is None):
+         target_folder = os.path.join(current_dir, '..', '..','swe_repo')
+        os.chdir(target_folder)
+        subprocess.run(
+            [
+                "git",
+                "clone",
+                f"https://github.com/{repo['repo']}.git",
+            ],
+            check=True,
+        )
+        print("Repository cloned successfully.")
+     except subprocess.CalledProcessError as e:
+        print(f"An error occurred while running git command: {e}")
+     except Exception as e:
+        print(f"An unexpected error occurred: {e}")  
+    
+    
+    
+    
+        
+    def checkout_commit(repo_path, commit_id):
+     """Checkout the specified commit in the given local git repository.
+     :param repo_path: Path to the local git repository
+     :param commit_id: Commit ID to checkout
+     :return: None
+     """
+     try:
+        # Change directory to the provided repository path and checkout the specified commit
+        print(f"Checking out commit {commit_id} in repository at {repo_path}...")
+        subprocess.run(["git", "-C", repo_path, "checkout", commit_id], check=True)
+        print("Commit checked out successfully.")
+     except subprocess.CalledProcessError as e:
+        print(f"An error occurred while running git command: {e}")
+     except Exception as e:
+        print(f"An unexpected error occurred: {e}")      
+    
+    
+    def get_project_structure_from_scratch(self,repo_name, commit_id, instance_id):
+        
+     self.clone_repo(instance_id)
+     self.checkout_commit("../../swe_repo/{repo_name}", commit_id)
+     structure = self.create_structure(f"{repo_playground}/{repo_to_top_folder[repo_name]}")
+ 
+ 
+ 
+     d = {
+        "repo": repo_name,
+        "base_commit": commit_id,
+        "structure": structure,
+        "instance_id": instance_id,
+     }
+     return d
+        
+    
+    def create_structure(self,directory_path):
+     """Create the structure of the repository directory by parsing Python files.
+         :param directory_path: Path to the repository directory.
+         :return: A dictionary representing the structure.
+     """
+     structure = {}
+
+     for root, _, files in os.walk(directory_path):
+        repo_name = os.path.basename(directory_path)
+        relative_root = os.path.relpath(root, directory_path)
+        if relative_root == ".":
+            relative_root = repo_name
+        curr_struct = structure
+        for part in relative_root.split(os.sep):
+            if part not in curr_struct:
+                curr_struct[part] = {}
+            curr_struct = curr_struct[part]
+        for file_name in files:
+            if file_name.endswith(".py"):
+                file_path = os.path.join(root, file_name)
+                class_info, function_names, file_lines = self.parse_python_file(file_path)
+                curr_struct[file_name] = {
+                    "classes": class_info,
+                    "functions": function_names,
+                    "text": file_lines,
+                }
+            else:
+                curr_struct[file_name] = {}
+
+    
+    
+     return structure   
+ 
+    
+    def parse_python_file(self,file_path, file_content=None):
+     """Parse a Python file to extract class and function definitions with their line numbers.
+     :param file_path: Path to the Python file.
+     :return: Class names, function names, and file contents
+     """
+     if file_content is None:
+        try:
+            with open(file_path, "r") as file:
+                file_content = file.read()
+                parsed_data = ast.parse(file_content)
+        except Exception as e:  # Catch all types of exceptions
+            # print(f"Error in file {file_path}: {e}")
+            return [], [], ""
+     else:
+        try:
+            parsed_data = ast.parse(file_content)
+        except Exception as e:  # Catch all types of exceptions
+            # print(f"Error in file {file_path}: {e}")
+            return [], [], ""
+
+     class_info = []
+     function_names = []
+     class_methods = set()
+
+     for node in ast.walk(parsed_data):
+        if isinstance(node, ast.ClassDef):
+            methods = []
+            for n in node.body:
+                if isinstance(n, ast.FunctionDef):
+                    methods.append(
+                        {
+                            "name": n.name,
+                            "start_line": n.lineno,
+                            "end_line": n.end_lineno,
+                            "text": file_content.splitlines()[
+                                n.lineno - 1 : n.end_lineno
+                            ],
+                        }
+                    )
+                    class_methods.add(n.name)
+            class_info.append(
+                {
+                    "name": node.name,
+                    "start_line": node.lineno,
+                    "end_line": node.end_lineno,
+                    "text": file_content.splitlines()[
+                        node.lineno - 1 : node.end_lineno
+                    ],
+                    "methods": methods,
+                }
+            )
+        elif isinstance(node, ast.FunctionDef) and not isinstance(
+            node, ast.AsyncFunctionDef
+        ):
+            if node.name not in class_methods:
+                function_names.append(
+                    {
+                        "name": node.name,
+                        "start_line": node.lineno,
+                        "end_line": node.end_lineno,
+                        "text": file_content.splitlines()[
+                            node.lineno - 1 : node.end_lineno
+                        ],
+                    }
+                )
+
+     return class_info, function_names, file_content.splitlines()    
+    
+    def get_state(self,unique_id=None, extended_comparison=False):
+        return self.get_properties_as_string()
+        

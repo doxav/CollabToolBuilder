@@ -1463,6 +1463,7 @@ z-index: -1;
             </select>
             <select id="filter-agent-type">
                 <option value="all">All Agent Types</option>
+                <option value="all">SWE Agent</option>
             </select>
             <input type="text" id="search-filter" placeholder="Search...">
             <select id="annotation-type">
@@ -1511,6 +1512,13 @@ z-index: -1;
                 <option value="10_majority_chain">10_majority_chain</option>
             </select><br><br><br>
 
+
+            <label for="mode">Problem Solving Mode:</label><br><br>
+            <select id="mode">
+                <option value="research">Research Paper Solving</option>
+                <option value="swe">SWE Bench solving</option>
+            </select><br><br><br>
+
             <label for="temperature">Temperature:</label><br><br>
             <input type="range" id="temperature" min="0" max="1" step="0.01" value="0.7"><br>
             <span id="value-temp">0.7</span><br><br><br>
@@ -1532,6 +1540,7 @@ z-index: -1;
             <!--<option value="SESSION_2">SESSION 2 FOCUS TEXT FEEDBACK</option>-->
             <option value="ALL">ALL (no BUTTON FILTER)</option>
             <option value="ALL_SEND">ALL + force display of input/send</option>
+            <option value="ALL_SEND">SWE Problem Solver</option>
         </select>
         </div>
         <div id="your-goal-header" style="font-weight: bold;">[ HIDE/SHOW ]</div>
@@ -2869,10 +2878,11 @@ $(document).on('click', '.collapsible-header', function() {
         let settings = {
             defaultLLM: $("#default-llm").val(),
             premiumLLM: $("#premium-llm").val(),
-            temperature: $("#temperature").val()
+            temperature: $("#temperature").val(),
+            mode: $("#mode").val()
         };
-        sendFunctionCall(currentAgent,"set_default_llmORchain", [settings["defaultLLM"], settings["temperature"]]);
-        sendFunctionCall(currentAgent,"set_premium_llmORchain", [settings["premiumLLM"], settings["temperature"]]);
+        sendFunctionCall(currentAgent,"set_default_llmORchain", [settings["defaultLLM"], settings["temperature"], settings["mode"]]);
+        sendFunctionCall(currentAgent,"set_premium_llmORchain", [settings["premiumLLM"], settings["temperature"], settings["mode"]]);
         console.log("Settings applied:", settings);
         let actionDescription = `User applied settings: default LLM=${settings.defaultLLM}, premium LLM=${settings.premiumLLM}, temperature=${settings.temperature}`;
         addHistoryEntry(actionDescription);
