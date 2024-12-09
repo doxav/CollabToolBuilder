@@ -1516,69 +1516,6 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     else:
         return max(total_scores)
 
-
-def goto_task(id_task: uuid.UUID, automatic: str = None):
-    """
-    Retrieve the task from the database and start processing the task.
-    Parameters:
-        id_task (uuid): The identifier of the task to retrieve from the database.
-        automatic (str): If True, the function will run the loop in automatic mode.
-    """
-    import subprocess
-    # Retrieve the task from the database
-    _, saved_task = HumanLLMMonitor.get_agent_data(data_key="saved_task", id_task=id_task)
-    task = {
-        'before_after': saved_task[0].metadata['before_after'],
-        'agent_name': saved_task[0].metadata['agent_name'],
-        'type_tache': saved_task[0].metadata['type_tache'],
-        'content': saved_task[0].page_content,
-        'step_id': saved_task[0].metadata['step_id'],
-        'date': saved_task[0].metadata['date']
-    }
-    if 'user_id' in saved_task[0].metadata:
-        task['user_id'] = saved_task[0].metadata['user_id']
-
-    # Create a pickle directory if it does not exist
-    if not os.path.exists('pickle'):
-        os.makedirs('pickle')
-
-    # Serializing variables to pickle file
-    variables_to_pickle = {
-        'saved_task': task,
-        'automatic': automatic,
-        'unique_id': unique_id,
-        'documents': documents
-    }
-
-    # Save variables to pickle file
-    with open('pickle/variables.pkl', 'wb') as f:
-        pickle.dump(variables_to_pickle, f)
-
-    # Execute the bash command with unbuffered output and capture its output
-    process = subprocess.Popen(['python3', '-u', 'learn.py', '--proxy', '--secret'],
-                                   stdout=subprocess.PIPE,
-                                   stderr=subprocess.STDOUT,
-                                   text=True)
-    # Initialize the link variable
-    link = None
-
-    # Read the output line by line
-    for line in iter(process.stdout.readline, ''):
-        if "WebSocket Remote URL via proxy: " in line:
-            # Extract the link after the specific phrase
-            link = line.split("WebSocket Remote URL via proxy: ")[1].strip()
-            print(f"Link: {link}")
-            # Since the link continues on the same line, we can get it directly
-            break
-
-    if link is None:
-        print("The link was not found in the subprocess output.")
-
-    return link  # Return the retrieved link
-
-
-
-
 def run_planner(default_llm_key, premium_llm_key, test_environments=None,
                 manual_validation_to_capitalize=True, problem_prompts_subdir=None,
                 max_coding_attempts=4, include_code=None, selected_successful_functions=None,
@@ -2066,15 +2003,14 @@ if __name__ == "__main__":
     }
 
     # Set the documents to test/validate as a list of environments
-    if not ('documents' in globals()):
-        documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
-                    'title':"Complex QA and language models hybrid architectures, Survey",
-                'context':"This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
-                'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"},
-                { 'id':"42252c6c-12f3-4edf-9045-8acd69bc3356",
-                    'title':"Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
-                'context':"This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
-                'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
+    documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
+                'title':"Complex QA and language models hybrid architectures, Survey",
+            'context':"This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
+            'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"},
+            { 'id':"42252c6c-12f3-4edf-9045-8acd69bc3356",
+                'title':"Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
+            'context':"This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
+            'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
 
     envs = []
     for doc in documents:
