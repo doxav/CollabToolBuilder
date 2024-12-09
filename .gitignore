@@ -16,3 +16,5 @@ mvenv/
 .venv/
 
 .venv/*
+
+websocketdata*

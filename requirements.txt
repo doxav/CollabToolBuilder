@@ -79,3 +79,7 @@ aiohttp
 starlette 
 nest-asyncio 
 
+
+datasets
+python-git
+langchain_experimental

@@ -12,7 +12,6 @@ from langchain_core.messages import SystemMessage, HumanMessage
 import json
 import inspect, os
 from typing import Any, Dict, Callable, List
-import git
 from langchain_community.tools import ShellTool, tool
 from pydantic import BaseModel
 
