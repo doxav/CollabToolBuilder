@@ -15,7 +15,7 @@ from typing import Any, Dict, Callable, List
 import git
 from langchain_community.tools import ShellTool, tool
 from pydantic import BaseModel
-
+import io
 shell = ShellTool()
 
 from config import *
@@ -31,7 +31,7 @@ import json
 import requests
 import hashlib
 from datasets import load_dataset
-
+import contextlib
 
 import argparse
 import ast
@@ -1418,6 +1418,7 @@ class SWEBenchEnvironment(Environment):
 
         # dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take3", split='train'
         self.files_having_bugs=[],
+        self.id = str(uuid.uuid4()) if id is None else id
         self.generated_patch_code="",
         self.patch_applied=False,
         self.unit_tests=[],
@@ -1612,6 +1613,40 @@ class SWEBenchEnvironment(Environment):
     
     def get_state(self,unique_id=None, extended_comparison=False, extended=False):
         return self.get_properties_as_string()
+    
+    
+    def step(self, action_code, context={}):
+        # Memorize current directory and switch to temporary directory
+        # current_dir = os.getcwd()
+        # os.chdir(self.current_temp_dir)
+
+        # Ensure `result` is set in the code
+        if not re.search(r'\bresult\s*=', action_code.strip().splitlines()[-1]):
+            helper = "\nresult = locals().get('_', True)"
+        else:
+            helper = ""
+
+        # Setup for capturing stdout and stderr
+        stdout, stderr = io.StringIO(), io.StringIO()
+
+        try:
+            # Execute code with redirected stdout and stderr
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                exec(action_code + helper, context)
+            # Safely evaluate and retrieve result
+            exec_result = ast.literal_eval(repr(context.get('result', True)))
+            no_runtime_error = True
+        except Exception as e:
+            # Format traceback and include captured output for clarity
+            error_traceback = ''.join(traceback.format_exception(None, e, e.__traceback__))
+            exec_result = f"Execution failed. Error: {e}\nTraceback:\n{error_traceback}\nStdout:\n{stdout.getvalue()}\nStderr:\n{stderr.getvalue()}"
+            no_runtime_error = False
+        finally:
+            # Restore original directory
+            # os.chdir(current_dir)
+            print("working upto here")
+
+        return no_runtime_error, exec_result
         
 
 
