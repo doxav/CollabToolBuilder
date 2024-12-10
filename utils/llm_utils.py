@@ -802,25 +802,34 @@ class HumanLLMMonitor:
             pickle.dump(variables_to_pickle, f)
 
         # Execute the bash command with unbuffered output and capture its output
-        process = subprocess.Popen(['python3', '-u', 'learn.py', '--proxy', '--secret'],
+        process = subprocess.Popen(['bash', '-c', 'python3 -u learn.py --proxy --secret > output.log 2>&1'],
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT,
                                    text=True)
         # Initialize the link variable
         link = None
+        with open("output.log", "r") as logfile:
+            # On se place à la fin du fichier pour commencer à lire les nouvelles lignes
+            logfile.seek(0, 2)  # 2 signifie "depuis la fin du fichier"
 
-        # Read the output line by line
-        for line in iter(process.stdout.readline, ''):
-            if "WebSocket Remote URL via proxy: " in line:
-                # Extract the link after the specific phrase
-                link = line.split("WebSocket Remote URL via proxy: ")[1].strip()
-                print(f"Link: {link}")
-                # Since the link continues on the same line, we can get it directly
-                break
+            # Boucle jusqu'à ce qu'on trouve le lien ou qu'on rompe manuellement
+            while True:
+                line = logfile.readline()
+                if not line:
+                    # Pas de nouvelle ligne, on attend un peu avant de réessayer
+                    time.sleep(0.5)
+                    continue
 
+                if "WebSocket Remote URL via proxy: " in line:
+                    link = line.split("WebSocket Remote URL via proxy: ")[1].strip()
+                    print(f"Link: {link}")
+                    break
+
+        # Ici, link contiendra le lien s'il a été trouvé
         if link is None:
-            print("The link was not found in the subprocess output.")
-        return link  # Return the retrieved link
+            print("The link was not found in the output file.")
+
+        return link
 
     @classmethod
     def set_id(cls, user_id):

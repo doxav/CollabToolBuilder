@@ -2588,7 +2588,7 @@ function getColumnsToKeep(agent) {
                     if(task.user_id === uniqueId.toString().toUpperCase()){
                         username = "You";
                     }
-                    option.textContent = `${task.date.substring(0, 16)} - ${task.agent_name} - ${username}`; // Texte visible pour l'utilisateur
+                    option.textContent = `${task.date.substring(0, 16)} - ${task.agent_name} - ${task.before_after.charAt(0).toUpperCase() + task.before_after.slice(1)} - ${username}`; // Texte visible pour l'utilisateur
                     selectElement.appendChild(option);
                 });
 
