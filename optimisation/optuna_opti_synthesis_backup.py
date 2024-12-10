@@ -357,16 +357,16 @@ def objective(trial, name_xp : str):
     performance = 0
     if not skip_learning_to_test_backup:
         performance = launch_run(default_llm_key="default_llm",
-                                premium_llm_key="premium_llm",
-                                problem_prompts_subdir="IR_CPS_TechSynthesis",
-                                max_execution_time=time_xp_auto,
-                                max_coding_attempts=10,
-                                # special_criteria={"CodingAgent#max_autofix": 2},
-                                model_choice={"coach": "default_llm","coder": "premium_llm","critic": "default_llm","capitalizer": "default_llm"},
-                                optuna_opti="coach",
-                                name_exp=name_experiment,
-                                arrayn_ret=True,
-                                continue_each_loop=True)
+                                 premium_llm_key="premium_llm",
+                                 problem_prompts_subdir="IR_CPS_TechSynthesis",
+                                 max_execution_time=time_xp_auto,
+                                 max_coding_attempts=10,
+                                 # special_criteria={"CodingAgent#max_autofix": 2},
+                                 model_choice={"coach": "default_llm","coder": "premium_llm","critic": "default_llm","capitalizer": "default_llm"},
+                                 automation="coach",
+                                 name_exp=name_experiment,
+                                 arrayn_ret=True,
+                                 continue_each_loop=True)
 
         with open(f'Optuna_results/{name_xp}.txt', 'a') as f:
             f.write(f"Time_human_xp: {time_human_xp}\n")

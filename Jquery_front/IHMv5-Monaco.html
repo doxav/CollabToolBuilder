@@ -214,7 +214,7 @@
     // If
 
     function displayMessage(data) {
-        if(data.agent_name === "PlannerAgent" && data.message_type === "USER_ID"){
+        if(data.message_type === "USER_ID"){
             // Send user_id on websocket connection
             console.log("Sending user_id to the server");
             // Wait a second before sending the user_id
@@ -2556,10 +2556,11 @@ function getColumnsToKeep(agent) {
         let selectedTaskId = $(this).val();
         console.log("Selected task:", selectedTaskId);
         if (selectedTaskId) {
-            sendFunctionCall("TaskIdentificationAgent", "goto_task", selectedTaskId, function(response) {
+            sendFunctionCall("TaskIdentificationAgent", "goto_task", [selectedTaskId, "None"], function(response) {
                 const url = response
                 console.log("Link to goto", url);
-                window.open(url, "_blank");
+                // Open the URL in a new tab
+                window.open(url, '_blank');
             });
         }
     });
@@ -2578,12 +2579,6 @@ function getColumnsToKeep(agent) {
                 // Vider la liste actuelle
                 selectElement.innerHTML = "";
 
-                // Ajouter une première option "Choose a task"
-                const defaultOption = document.createElement("option");
-                defaultOption.value = "";
-                defaultOption.textContent = "Choose a task";
-                selectElement.appendChild(defaultOption);
-
 
                 // Ajouter chaque tâche au <select>
                 tasks.forEach(task => {
@@ -2593,7 +2588,7 @@ function getColumnsToKeep(agent) {
                     if(task.user_id === uniqueId.toString().toUpperCase()){
                         username = "You";
                     }
-                    option.textContent = `${task.date.substring(0, 16)} - ${task.agent_name} - ${username}`; // Texte visible pour l'utilisateur
+                    option.textContent = `${task.date.substring(0, 16)} - ${task.agent_name} - ${task.before_after.charAt(0).toUpperCase() + task.before_after.slice(1)} - ${username}`; // Texte visible pour l'utilisateur
                     selectElement.appendChild(option);
                 });
 
