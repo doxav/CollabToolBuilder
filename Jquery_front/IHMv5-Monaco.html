@@ -2556,10 +2556,11 @@ function getColumnsToKeep(agent) {
         let selectedTaskId = $(this).val();
         console.log("Selected task:", selectedTaskId);
         if (selectedTaskId) {
-            sendFunctionCall("TaskIdentificationAgent", "goto_task", selectedTaskId, function(response) {
+            sendFunctionCall("TaskIdentificationAgent", "goto_task", [selectedTaskId, "None"], function(response) {
                 const url = response
                 console.log("Link to goto", url);
-                window.open(url, "_blank");
+                // Open the URL in a new tab
+                window.open(url, '_blank');
             });
         }
     });

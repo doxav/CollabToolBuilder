@@ -82,6 +82,8 @@ class WebsocketServer:
                         monitor = self.monitors[agent_name]
                         print(f"Executing function '{function_name}' for monitor '{agent_name}' with params: {params}")
                         result = monitor.execute_function(function_name, params)
+                        print(f"Function '{function_name}' executed successfully")
+                        print(f"Result: {result}")
                         message = json.dumps({
                             "status": "success",
                             "message": None,

@@ -765,7 +765,7 @@ class HumanLLMMonitor:
         return json.dumps(ret)
 
     @classmethod
-    def goto_task(id_task: uuid.UUID, automatic: str = None):
+    def goto_task(cls, id_task: str, automatic: str = None):
         """
         Retrieve the task from the database and start processing the task.
         Parameters:
