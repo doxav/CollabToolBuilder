@@ -8,7 +8,6 @@ import ast
 import types
 import time
 from zipfile import error
-
 from config import *
 
 import openai
@@ -36,6 +35,10 @@ from langchain_openai import ChatOpenAI
 
 import json
 import difflib
+import torch
+import gc
+from transformers import PreTrainedModel
+from torch.nn.modules.sparse import Embedding
 
 #set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
 
@@ -252,10 +255,8 @@ class TaskIdentificationAgent:
         self.envs = envs
         self.automation = automation
         self.model_choice = model_choice
-        saved_task = None
+        saved_task, auto_n_rounds, recommend_critics, log_user_message = None, None, None, None # Params for special_criteria application
         new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
-        if special_criteria is not None and 'log_user_message' in special_criteria:
-            setattr(self, 'log_user_message', special_criteria['log_user_message'])
 
         HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
@@ -358,13 +359,9 @@ class CodingAgent:
         self.automation = automation
         self.model_choice = model_choice
         self.processed_codes = set()
-        saved_task = None
+        saved_task, auto_n_rounds, recommend_critics = None, None, None
         new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
-        if special_criteria is not None:
-            for key, value in special_criteria.items():
-                if not hasattr(self, key):
-                    setattr(self, key, value)
         self.last_user_message = None
 
         HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
@@ -840,7 +837,7 @@ class ValidationAgent:
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, skip_rounds=0,
                  llmORchains_list=None, automation=None, model_choice=None, special_criteria=None):
         #super().__init__(llm)
-        saved_task = None
+        saved_task, temperature_max, num_parallel_inferences, recommend_critiques, auto_n_rounds = None, None, None, None, None
         self.additional_check_list = None
         self.name = self.__class__.__name__
 
@@ -923,7 +920,7 @@ class CapitalizationAgent:
                  skip_rounds=0, llmORchains_list=None, automation=None, model_choice=None, problem_prompts_subdir=None, special_criteria=None):
         self.additional_check_list = None
         self.name = self.__class__.__name__
-        saved_task = None
+        saved_task, replace_if_exists_function, auto_n_rounds, num_parallel_inferences, temperature_max, recommend_critics = None, None, None, None, None, None
 
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
 
@@ -1407,9 +1404,11 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     continue_identifying_tasks = True
     total_scores = []
 
+
     # Global learn loop
     while continue_identifying_tasks and time.time() < time_end:
         HumanLLMMonitor.step_id = str(uuid.uuid4())
+        display_vram_info()
         task = agent_taskreco.identify_best_task()
 
         # Handle multiple-tasks case
@@ -1425,7 +1424,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                 # get input from user with the index of the task to select, manage exceptions
                 while True:
                     try:
-                        id = 1 if automation else int(smart_input("Enter the index of the task to select: ", "orchestrate_agents",
+                        id = 1 if agent_taskreco.human_llm_identify_best_task.automation else int(smart_input("Enter the index of the task to select: ", "orchestrate_agents",
                                                                    "TASK SELECTION").strip())
                         if id in range(len(task)):
                             task = task[id]
@@ -1455,18 +1454,18 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         parsed_code, validation, scores = coding_and_validation_loop(agent_coding, agent_validation, task_description,
                                                                      max_coding_attempts,
                                                                      manual_validation_to_capitalize,
-                                                                     automation=automation,
+                                                                     automation=agent_coding.human_llm_code_task.automation,
                                                                      end_time=time_end)
 
 
         if validation == "success":
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
         else:
-            if automation or smart_input(
+            if agent_capitalize.human_llm_generate_function_description.automation or smart_input(
                     "Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ", "orchestrate_agents", message_type="VALIDATION_INFO").strip().upper() in [
                 "Y", "YES"]:
                 agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
-        if automation:
+        if automation_global:
             continue_identifying_tasks = continue_each_loop
         else:
             answer = smart_input(
@@ -1961,6 +1960,59 @@ def create_Nmajority_chain(num_models=3, map_model_name=None, reduce_model_name=
 
     return chain
 
+def display_vram_info():
+    import sys
+    import builtins  # Import built-in functions explicitly
+
+    tracked_ids = set()
+    types_count, types_size = {}, {}
+    id_builtin = builtins.id
+
+    def tensor_memory_size(tensor):
+        if tensor.is_cuda:  # Only consider tensors on GPU
+            return tensor.element_size() * tensor.nelement()
+        return 0  # Ignore CPU memory here if focus is GPU VRAM
+
+    # Inspect all objects in memory
+    for obj in gc.get_objects():
+        try:
+            # Only process actionable objects (models, tensors)
+            if isinstance(obj, (PreTrainedModel,
+                                Embedding)) or "Embedding" in obj.__class__.__name__:  # torch.nn.Module, torch.Tensor,
+                obj_id = id_builtin(obj)  # Use built-in id
+                if obj_id in tracked_ids:  # Avoid duplicates
+                    continue
+                tracked_ids.add(obj_id)
+                obj_type = obj.__class__
+                # Count the type
+                types_count[obj_type] = types_count.get(obj_type, 0) + 1
+
+                # Estimate memory
+                if isinstance(obj, torch.Tensor):
+                    size_in_bytes = tensor_memory_size(obj)
+                elif isinstance(obj, torch.nn.Module):
+                    size_in_bytes = sum(
+                        p.numel() * p.element_size()
+                        for p in obj.parameters()
+                        if p.requires_grad
+                    )
+                else:  # Fallback for other objects
+                    size_in_bytes = 0
+
+                types_size[obj_type] = types_size.get(obj_type, 0) + size_in_bytes
+
+        except Exception as e:
+            # Handle potential errors gracefully
+            print(f"Error processing object of type {type(obj)}: {e}")
+
+    # Convert sizes to MB for readability
+    types_size_mb = {k: v / (1024 ** 2) for k, v in types_size.items()}
+    types_size_mb = dict(sorted(types_size_mb.items(), key=lambda item: item[1], reverse=True))
+    print("\nMemory usage by type (MB):")
+    for obj_type, size_mb in types_size_mb.items():
+        if size_mb > 5:  # Only display types using more than 5 MB
+            print(f"{obj_type}: {size_mb:.2f} MB for {types_count[obj_type]} objects")
+
 
 if __name__ == "__main__":
     import argparse
@@ -1978,7 +2030,8 @@ if __name__ == "__main__":
             saved_task = variables_from_pickle.get('saved_task')
             automatic = variables_from_pickle.get('automatic')
             unique_id = variables_from_pickle.get('unique_id')
-            documents = variables_from_pickle.get('documents')
+            special_criteria = variables_from_pickle.get('special_criteria')
+
 
         # Suppression du fichier pickle après utilisation pour éviter les conflits lors des prochains lancements
         os.remove('pickle/variables.pkl')
@@ -2024,11 +2077,10 @@ if __name__ == "__main__":
 
     problem_subdir = "IR_CPS_TechSynthesis" if 'saved_task' not in globals() else saved_task['type_tache']
 
-    special_criteria = None
     if 'saved_task' in globals():
-        special_criteria = {
-            "all#saved_task": saved_task
-        }
+        special_criteria["all#saved_task"] =  saved_task
+    else:
+        special_criteria = None
     if not ('automatic' in globals()):
         automatic = None
 
