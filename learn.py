@@ -1529,7 +1529,8 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
 
     # Initialize unique_id
     if unique_id is None:
-        unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+        #unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+        unique_id = "XP_Collab"
 
     if unique_id is not False:
         if UnifiedVectorDB.unique_collection_id is None:
@@ -1981,7 +1982,9 @@ if __name__ == "__main__":
 
     # Initialize the WebSocket server with port autodetection and proxy
     if not ('unique_id' in globals()):
-        unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+        #unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+        unique_id = "XP_Collab"
+    unique_id = "XP_Collab"
     HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy, unique_id=unique_id)
 
     # Allow some time for the WebSocket server to start

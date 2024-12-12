@@ -750,7 +750,7 @@ class HumanLLMMonitor:
                 "id_task": task.metadata["id_task"],
                 "agent_name": task.metadata["agent_name"],
                 "type_tache": task.metadata["type_tache"],
-                "content": task.page_content,
+                #"content": task.page_content,
                 "before_after": task.metadata["before_after"],
                 #"user_id": task.metadata["user_id"],
                 "step_id": task.metadata["step_id"],
@@ -1094,19 +1094,20 @@ class HumanLLMMonitor:
     @staticmethod
     def set_common_vectordb_embedding_function(embedding_function):
         # if embedding_function is a string, then create the corresponding embedding function
-        if isinstance(embedding_function, str):
-            if embedding_function in ["OpenAIEmbeddings", "text-embedding-ada-002"]:
-                HumanLLMMonitor.common_vectordb_embedding_function = OpenAIEmbeddings(model=embedding_function,
-                                                                                      deployment=UnifiedVectorDB.OpenAI_embedding_function_name)
-            elif embedding_function == "HuggingFaceEmbeddings":
-                HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
-                    model_name="intfloat/e5-base-v2", encode_kwargs={"normalize_embeddings": True})
+        if HumanLLMMonitor.common_vectordb_embedding_function is None:
+            if isinstance(embedding_function, str):
+                if embedding_function in ["OpenAIEmbeddings", "text-embedding-ada-002"]:
+                    HumanLLMMonitor.common_vectordb_embedding_function = OpenAIEmbeddings(model=embedding_function,
+                                                                                          deployment=UnifiedVectorDB.OpenAI_embedding_function_name)
+                elif embedding_function == "HuggingFaceEmbeddings":
+                    HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
+                        model_name="intfloat/e5-base-v2", encode_kwargs={"normalize_embeddings": True})
+                else:
+                    HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
+                        model_name=embedding_function, encode_kwargs={"normalize_embeddings": True},
+                        model_kwargs={"trust_remote_code": True})
             else:
-                HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
-                    model_name=embedding_function, encode_kwargs={"normalize_embeddings": True},
-                    model_kwargs={"trust_remote_code": True})
-        else:
-            HumanLLMMonitor.common_vectordb_embedding_function = embedding_function
+                HumanLLMMonitor.common_vectordb_embedding_function = embedding_function
 
     @staticmethod
     def get_few_shots_tag_args(prompt):

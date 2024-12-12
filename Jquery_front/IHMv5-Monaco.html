@@ -2553,16 +2553,158 @@ function getColumnsToKeep(agent) {
 
     // Listener for the task selection dropdown on change
     $("#task-selection").on("change", function() {
-        let selectedTaskId = $(this).val();
-        console.log("Selected task:", selectedTaskId);
-        if (selectedTaskId) {
-            sendFunctionCall("TaskIdentificationAgent", "goto_task", [selectedTaskId, "None"], function(response) {
-                const url = response
-                console.log("Link to goto", url);
-                // Open the URL in a new tab
-                window.open(url, '_blank');
+          const modal = document.createElement('div');
+            modal.id = 'task-modal';
+            modal.style.position = 'fixed';
+            modal.style.top = '50%';
+            modal.style.left = '50%';
+            modal.style.transform = 'translate(-50%, -50%)';
+            modal.style.backgroundColor = 'white';
+            modal.style.padding = '20px';
+            modal.style.borderRadius = '10px';
+            modal.style.boxShadow = '0px 4px 6px rgba(0, 0, 0, 0.1)';
+            modal.style.zIndex = '1000';
+            modal.style.width = '80%';
+
+            modal.innerHTML = `
+                <h3 style="text-align: center;">Task Configuration</h3>
+                <p style="text-align: center; margin-bottom: 20px;">You are configuring settings for the selected task. Customize the automatic mode for each agent below.</p>
+                <h3 style="text-align: center;">Automatic Configuration</h3>
+                <div style="display: flex; justify-content: space-between; gap: 20px;">
+                    ${['TaskIdentificationAgent', 'CodingAgent', 'ValidationAgent', 'CapitalizationAgent'].map((agent, index) => {
+                        const agentId = index + 1;
+                        const isCodingAgent = agent === 'CodingAgent';
+                        return `
+                        <div style="flex: 1; border: 1px solid #ccc; border-radius: 10px; padding: 10px; text-align: center;">
+                            <label style="font-weight: bold;">${agent}</label>
+                            <div>
+                                <label><input type="checkbox" id="checkbox-agent${agentId}"> Automatic mode</label>
+                            </div>
+                            <div style="display: inline-flex; align-items: center; gap: 10px;">
+                                <label>Skip rounds:</label>
+                                <input type="number" id="int-input-agent${agentId}" value="0" placeholder="Enter value" style="width: 50px;" disabled>
+                                <label><input type="checkbox" id="full-auto-agent${agentId}" disabled> Full auto</label>
+                            </div>
+                            <div>
+                                <label><input type="checkbox" id="recommendations-agent${agentId}" disabled> Automatic application of recommendations</label>
+                            </div>
+                            ${
+                                isCodingAgent
+                                    ? `
+                            <div>
+                                <label>Max autofix:</label>
+                                <select id="max-autofix-agent${agentId}" disabled>
+                                    <option value="0">0</option>
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                </select>
+                            </div>
+                            `
+                                    : ''
+                            }
+                            <div>
+                                <label>LLM:</label>
+                                <select id="selectlist-agent${agentId}" disabled>
+                                    <option value="default_llm">Default LLM</option>
+                                    <option value="premium_llm">Premium LLM</option>
+                                    <option value="3_majority_chain">3_majority_chain</option>
+                                    <option value="10_majority_chain">10_majority_chain</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label>Number of inferences:</label>
+                                <select id="select-value-agent${agentId}" disabled>
+                                    <option value="1" selected>1</option>
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                    <option value="4">4</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label>LLM Temperature: <span id="slider-value-agent${agentId}">0.5</span></label>
+                                <input type="range" id="slider-agent${agentId}" min="0" max="1" step="0.1" value="0.5" disabled>
+                            </div>
+                        </div>
+                        `;
+                    }).join('')}
+                </div>
+                <div style="margin-top: 20px; text-align: right;">
+                    <button id="goto-task-button">Go to Task</button>
+                    <button id="cancel-button">Cancel</button>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            const overlay = document.createElement('div');
+            overlay.id = 'modal-overlay';
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+            overlay.style.zIndex = '999';
+
+            document.body.appendChild(overlay);
+
+            overlay.addEventListener('click', function () {
+                modal.remove();
+                overlay.remove();
             });
-        }
+
+            ['1', '2', '3', '4'].forEach((agent) => {
+                const checkbox = document.getElementById(`checkbox-agent${agent}`);
+                const input = document.getElementById(`int-input-agent${agent}`);
+                const fullAuto = document.getElementById(`full-auto-agent${agent}`);
+                const recommendations = document.getElementById(`recommendations-agent${agent}`);
+                const select = document.getElementById(`selectlist-agent${agent}`);
+                const selectValue = document.getElementById(`select-value-agent${agent}`);
+                const slider = document.getElementById(`slider-agent${agent}`);
+                const sliderValue = document.getElementById(`slider-value-agent${agent}`);
+                const autofix = agent === '2' ? document.getElementById(`max-autofix-agent${agent}`) : null;
+
+                checkbox.addEventListener('change', function () {
+                    const isChecked = this.checked;
+                    input.disabled = !isChecked;
+                    fullAuto.disabled = !isChecked;
+                    select.disabled = !isChecked;
+                    selectValue.disabled = !isChecked;
+                    slider.disabled = !isChecked;
+                    if (!isChecked) {
+                        recommendations.disabled = true;
+                        recommendations.checked = false;
+                    }
+                    if (autofix) autofix.disabled = !isChecked || input.value <= 0;
+                });
+
+                input.addEventListener('input', function () {
+                    const hasValue = parseInt(this.value, 10) > 0;
+                    recommendations.disabled = !hasValue;
+                    if (autofix) autofix.disabled = !hasValue;
+                });
+
+                fullAuto.addEventListener('change', function () {
+                    input.value = this.checked ? 999 : 0;
+                    const hasValue = parseInt(input.value, 10) > 0;
+                    recommendations.disabled = !hasValue;
+                    if (autofix) autofix.disabled = !hasValue;
+                });
+
+                slider.addEventListener('input', function () {
+                    sliderValue.textContent = slider.value;
+                });
+            });
+
+            document.getElementById('goto-task-button').addEventListener('click', function () {
+                modal.remove();
+                overlay.remove();
+            });
+
+            document.getElementById('cancel-button').addEventListener('click', function () {
+                modal.remove();
+                overlay.remove();
+            });
     });
 
 
