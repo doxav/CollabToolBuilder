@@ -1,3 +1,54 @@
+import os
+# Check the docker environment variables to see if LLM_MODE is set (to launch on a cluster/macstudio using ollama)
+IN_MACSTU = os.environ.get('LLM_MODE')
+if IN_MACSTU in ["macstudio", "gpu"]:
+    os.environ['OPENAI_BASE_URL'] = 'http://localhost:11434/v1'
+    OPENAI_API_KEY = "ollama"
+    if IN_MACSTU == "macstudio":
+        MODELS_CONFIG_LIST = {
+                "basic_gpt":"codestral_latest_20k:latest",
+                "smart_gpt":"codestral_latest_20k:latest",
+                "code_gpt":"codestral_latest_20k:latest",
+        }
+    else :
+        MODELS_CONFIG_LIST = {
+                "basic_gpt":"codestral:latest-20k",
+                "smart_gpt":"codestral:latest-20k",
+                "code_gpt":"codestral:latest-20k",
+        }
+
+else:
+    OPENAI_API_KEY = "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"
+    MODELS_CONFIG_LIST = {
+            "code_gpt": "gpt-4o-mini-2024-07-18", #"llama-3.1-70b-versatile", # "mixtral-8x7b-32768", # "eramax/nxcode-cq-7b-orpo:q6", #mistral-nemo:12b-instruct-2407-q4_K_M", #"llama3:latest",
+    "smart_gpt": "gpt-4o-mini-2024-07-18", #"llama-3.1-70b-versatile", # "mixtral-8x7b-32768", # "gpt-4o-mini", # "eramax/nxcode-cq-7b-orpo:q6", #mistral-nemo:12b-instruct-2407-q4_K_M", #"llama3:latest",
+    "basic_gpt": "gpt-4o-mini-2024-07-18", #"llama-3.1-70b-versatile", # "mixtral-8x7b-32768", # "gpt-4o-mini" # "eramax/nxcode-cq-7b-orpo:q6" #mistral-nemo:12b-instruct-2407-q4_K_M", #"llama3:latest",
+    }
+
+openai_api_key = OPENAI_API_KEY
+os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
+
+# Elastic search and Kibana information
+elastic_url_port = 'https://f1b92ef6a1e743708a990785e5a6b782.us-central1.gcp.cloud.es.io:443' # Default port is 9200
+kibana_url_port = 'Your_kibana_url_here' # Default port is 5601
+
+# If there is a user and password needed for the elastic search, add them here
+elastic_user="admin"
+elastic_password="hello123"
+PickleCacheActivated = False
+
+# Neo4j database information
+NEO4J_URI = 'URI_of_your_neo4j_database'
+NEO4J_USER = 'neo4j_user'
+NEO4J_PASSWORD = 'neo4j_password'
+
+# List of models to use in the application, you can add your own models here, no limitation, for example:
+MODELS_CONFIG_LIST = {
+    "code_gpt": "gpt-4o-mini-2024-07-18", #"llama-3.1-70b-versatile", # "mixtral-8x7b-32768", # "eramax/nxcode-cq-7b-orpo:q6", #mistral-nemo:12b-instruct-2407-q4_K_M", #"llama3:latest",
+    "smart_gpt": "gpt-4o-mini-2024-07-18", #"llama-3.1-70b-versatile", # "mixtral-8x7b-32768", # "gpt-4o-mini", # "eramax/nxcode-cq-7b-orpo:q6", #mistral-nemo:12b-instruct-2407-q4_K_M", #"llama3:latest",
+    "basic_gpt": "gpt-4o-mini-2024-07-18", #"llama-3.1-70b-versatile", # "mixtral-8x7b-32768", # "gpt-4o-mini" # "eramax/nxcode-cq-7b-orpo:q6" #mistral-nemo:12b-instruct-2407-q4_K_M", #"llama3:latest",
+}
+
 def create_patch_workflow(bot):
     """
     Creates a patch generation workflow for analyzing issues in a GitHub repository, identifying relevant files and lines 
@@ -153,3 +204,112 @@ def create_patch_workflow(bot):
 
 
  
+from langgraph.graph import StateGraph, END, MessagesState, add_messages
+from typing import TypedDict, Annotated, Any
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import PromptTemplate
+from langchain_core.messages import AnyMessage, ToolMessage
+from langgraph.prebuilt import ToolNode
+import re
+def find_buggy_code_agentic_workflow(bot):
+    from langgraph.graph import StateGraph, END, MessagesState, add_messages
+    from typing import TypedDict, Annotated, Any
+    from langchain_openai import ChatOpenAI
+    from langchain_core.prompts import PromptTemplate
+    from langchain_core.messages import AnyMessage, ToolMessage
+    from langgraph.prebuilt import ToolNode
+    import re
+
+    class BuggyCodeState(TypedDict):
+        messages: Annotated[list[AnyMessage], add_messages]
+        repo: str
+        cwd: str
+        results: list
+
+    OPENAI_API_KEY = "your_openai_api_key"
+    model = "gpt-4o-mini"
+
+    llm = ChatOpenAI(
+        model=model,
+        temperature=0,
+        max_tokens=None,
+        api_key=OPENAI_API_KEY,
+    )
+
+    llm = llm.bind_tools(bot.getSearchTools())
+
+    search_buggy_code_prompt = PromptTemplate.from_template("""
+    You are tasked with identifying buggy code in the repository located at {repo}. 
+    You are currently in the {cwd} directory. 
+    Your job is to analyze the files and pinpoint lines of code that may contain bugs. 
+    Provide the output in the following format:
+    File: <file_path> Line: <line_number> Content: <line_content> Error: <error_description>
+    """)
+
+    def search_buggy_code(state: BuggyCodeState):
+        messages = state['messages']
+        response = llm.invoke(messages)
+        return {
+            **state,
+            "messages": [response],
+            "results": parse_buggy_code_response(response.content)
+        }
+
+    def parse_buggy_code_response(response_content: str):
+        results = []
+        for line in response_content.splitlines():
+            match = re.match(r'File: (.+) Line: (\d+) Content: (.+) Error: (.+)', line)
+            if match:
+                results.append({
+                    "file_path": match.group(1),
+                    "line_number": int(match.group(2)),
+                    "line_content": match.group(3),
+                    "error_description": match.group(4)
+                })
+        return results
+
+    workflow = StateGraph(BuggyCodeState)
+
+    workflow.add_node("search_buggy_code", search_buggy_code)
+
+    workflow.set_entry_point('search_buggy_code')
+
+    app = workflow.compile()
+    bot.directory_path = "/path/to/your/repo"  # Set the correct path to your repository
+    initial_state = {
+        "messages": [ToolMessage(content=search_buggy_code_prompt.format(repo="your_repo_name", cwd=bot.directory_path))],
+        "repo": "your_repo_name",
+        "cwd": bot.directory_path,
+        "results": []
+    }
+    
+    return app.run(initial_state)
+
+class BuggyCodeState(TypedDict):
+        messages: Annotated[list[AnyMessage], add_messages]
+        repo: str
+        cwd: str
+        results: list
+
+def search_buggy_code(state: BuggyCodeState):
+        messages = state['messages']
+        response = llm.invoke(messages)
+        return {
+            **state,
+            "messages": [response],
+            "results": parse_buggy_code_response(response.content)
+        }
+
+def parse_buggy_code_response(response_content: str):
+        results = []
+        for line in response_content.splitlines():
+            match = re.match(r'File: (.+) Line: (\d+) Content: (.+) Error: (.+)', line)
+            if match:
+                results.append({
+                    "file_path": match.group(1),
+                    "line_number": int(match.group(2)),
+                    "line_content": match.group(3),
+                    "error_description": match.group(4)
+                })
+        return results
+find_buggy_code_agentic_workflow(bot)

@@ -6,13 +6,14 @@ You define the best next task to generate a function that will help in solving a
 The GitHub issue will be provided, and the LLM is expected to analyze the current stage of the problem and propose the most relevant next step. Each task you propose will be prompted to a language model, which will attempt to convert it into Python functions. If the function is successful and shows technical synthesis above a pre-defined threshold, this learned task is made available for the next learning iteration.  
 
 The problem is divided into **four key steps**, with each step having its own distinct function:  
-1. **Find Buggy Code**: This function will create a **Langraph agentic workflow** that inspects project files to identify the faulty code causing the issue. The output is a workflow to detect the buggy code and will return relevant details like file path, line number, and line content.  
+1. **Find Buggy Code**: This function will use **OS tools** and will create a **Langraph agentic workflow** that inspects project files to identify the faulty code causing the issue. The output is a workflow to detect the buggy code and will return relevant details like file path, line number, and line content . The inspection of files will be done via the functions provided by the bot object in parameter for any thing necessary.  
 2. **Generate Solution Code**: This function will use the insights from the "Find Buggy Code" step to generate the solution code. It will rely on the LLM to produce the necessary modifications to fix the identified buggy code.  
 3. **Apply Solution Code**: This function will use **OS tools** to apply the generated solution code to the relevant project files. The function will directly modify the source files and return an **Agentic workflow** representing this application process.  
 4. **Validate Solution**: This function will run **pytest** on the modified files to ensure the applied solution resolves the bug. It will generate an **Agentic workflow** that orchestrates the pytest execution and checks if the bug is resolved.  
 
 **USER INPUT & STATE OF THE ENVIRONMENT:**  
 I will provide you:  
+- A bot object that has all the file manipulation tools that you will give acces to agent you will create.
 - **Learned tasks** (with information gain between 0 and 1 on plan's titles and contents)  
 - **Failed tasks** that are too hard to code  
 - **Current status** of examples of SWE synthesis  

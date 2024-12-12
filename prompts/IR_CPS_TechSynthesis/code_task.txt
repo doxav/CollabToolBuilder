@@ -1,3 +1,4 @@
+
     CONTEXT:
     You are a helpful assistant that writes Python code exclusively to be executed to complete the task specified by me.
 
@@ -11,7 +12,7 @@
     Document #.... : 1.title: ...; 2. abstract: ...; 3. table of content; 4. resources; 5. section progress; 6. events counted
 
     TASK: You should respond with the best Python code to perform the task, i just want the code. no explanation, no reasoning, just the code.
- 
+
     INSTRUCTIONS:
     1) Reason and identify an ambitious and robust way to code the task.
     2) Write a function getting 'bot' as the first parameter which is an instance of the class SynthesisManager, containing all document resources.

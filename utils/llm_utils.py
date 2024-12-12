@@ -963,7 +963,7 @@ class HumanLLMMonitor:
 
         return prompt
 
-    def set_llmORchain(self, llm_name, is_premium=False, temperature=0.7):
+    def set_llmORchain(self, llm_name, is_premium=False, temperature=0.1):
         if llm_name in self.llmORchains_list:
             if is_premium:
                 self.premium_llm_name = llm_name
@@ -1071,10 +1071,10 @@ class HumanLLMMonitor:
                 self.agent_name, optional=True)
             return False
 
-    def set_default_llmORchain(self, llm_name, temperature=0.7):
+    def set_default_llmORchain(self, llm_name, temperature=0.1):
         return self.set_llmORchain(llm_name, is_premium=False, temperature=temperature)
 
-    def set_premium_llmORchain(self, llm_name, temperature=0.7):
+    def set_premium_llmORchain(self, llm_name, temperature=0.1):
         return self.set_llmORchain(llm_name, is_premium=True, temperature=temperature)
 
     def set_output_schema(self, output_schema, package_path="."):
@@ -1109,7 +1109,7 @@ class HumanLLMMonitor:
                  default_llmORchain=None,
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1,
                  llmORchains_list=None,
-                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, optuna=False, envs=None,
+                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.1, temperature_max=None, optuna=False, envs=None,
                  fixed_coach=False, prompt_critic=None):
         # Instance properties to track time
         self.selected_outputs = []

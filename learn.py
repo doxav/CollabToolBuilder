@@ -702,6 +702,14 @@ class CodingAgent():
                 file_path = os.path.join(folder_path, file)
                 with open(file_path, "r") as f:
                     primitives.append(f.read())
+        with open('primitives_checking.txt', 'w') as file:
+          sys.stdout = file  # Redirect standard output to the file
+          print(primitives)
+
+    
+# Reset sys.stdout to the console
+        sys.stdout = sys.__stdout__
+                    
         return primitives
 
     def code_task_and_run_test(self, refined_task):
@@ -1197,7 +1205,7 @@ class PlannerAgent:
         selected_code = self.call_llm_with_similar_method(
             prompt,
             use_premium_llm=False,
-            temperature=0.5  # You can adjust the temperature as needed
+            temperature=0.2  # You can adjust the temperature as needed
         )
 
         if selected_code:
@@ -1292,7 +1300,7 @@ class PlannerAgent:
             smart_print(f"Error during code parsing: {error_message}", agent_name=self.name)
             return None
 
-    def call_llm_with_similar_method(self, prompt, use_premium_llm=False, temperature=0.5):
+    def call_llm_with_similar_method(self, prompt, use_premium_llm=False, temperature=0.2):
         """
         Calls the LLM inspired by the CallHumanLLM method, without using concurrent.futures or multiple inferences.
         """
@@ -1384,7 +1392,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               optuna_opti=None, allow_custom_score_state_functions=False,
                               params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
                               agcoach_num_parallel_inferences=2, fixed_coach=False, return_array=False, agcoding_num_parallel_inferences=2,
-                              continue_each_loop=False):
+                              continue_each_loop=False,unique_id=None):
     scores = None
 
     if params_user_message is None and optuna_opti is None:
@@ -1395,7 +1403,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         }
 
     smart_print(str(max_execution_time), "orchestrate_agents", "time_end")
-    smart_print(unique_id, "orchestrate_agents", "XP_unique_id", optional=True)
+    # smart_print(unique_id, "orchestrate_agents", "XP_unique_id", optional=True)
 
     time_end = time.time() + max_execution_time
 
