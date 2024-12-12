@@ -48,8 +48,7 @@ UnifiedVectorDB.es_user = elastic_user
 UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
 
-embedding_function = "text-embedding-ada-002" #"Alibaba-NLP/gte-base-en-v1.5" UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
-reset_db_indices = False  # Set to True after changing embeddings
+embedding_function = "text-embedding-ada-002" if embedding_function is None else embedding_function #"Alibaba-NLP/gte-base-en-v1.5" UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to Truereset_db_indices = False  # Set to True after changing embeddings
 
 HumanLLMMonitor.use_websocket = True
 
@@ -1373,6 +1372,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
 
     time_end = time.time() + max_execution_time
 
+
+    # Pour chaque agent, tester si saved_task['agent_name'] est égal a eux, si non => automation = 'skip_once', si oui => automation = saved_task['before_after']
     agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                              problem_prompts_subdir=problem_prompts_subdir,
                                              premium_llm_by_default=agtask_premium_llm_by_default,
@@ -1540,7 +1541,9 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
     HumanLLMMonitor.check_init_class_db(force=True)
 
     # Definition of automation depending on the task given
-    if 'saved_task' in locals():
+    # Modifier afin de ne déterminer que pour l'agent concerné, le reste aura automatiquement 'skip_once' comme valeur d'automation.
+    # skip_once permettra de skip l'inférence de l'agent 1 fois, puis de prendre la valeur de automatic.
+    if 'saved_task' in globals():
         match saved_task['agent_name']:
             case "TaskIdentificationAgent":
                 automation = {
@@ -1551,23 +1554,23 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
                 }
             case "CodingAgent":
                 automation = {
-                    'taskreco': saved_task['before_after'],
+                    'taskreco': 'skip_once',
                     'coder': saved_task['before_after'],
                     'critic': automation_global,
                     'capitalizer': automation_global
                 }
             case "ValidationAgent":
                 automation = {
-                    'taskreco': saved_task['before_after'],
-                    'coder': saved_task['before_after'],
+                    'taskreco': 'skip_once',
+                    'coder': 'skip_once',
                     'critic': saved_task['before_after'],
                     'capitalizer': automation_global
                 }
             case "CapitalizationAgent":
                 automation = {
-                    'taskreco': saved_task['before_after'],
-                    'coder': saved_task['before_after'],
-                    'critic': saved_task['before_after'],
+                    'taskreco': 'skip_once',
+                    'coder': 'skip_once',
+                    'critic': 'skip_once',
                     'capitalizer': saved_task['before_after']
                 }
             case _:

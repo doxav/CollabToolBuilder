@@ -801,22 +801,25 @@ class HumanLLMMonitor:
         with open('pickle/variables.pkl', 'wb') as f:
             pickle.dump(variables_to_pickle, f)
 
+        with open(f'output_{id_task}_{HumanLLMMonitor.user_id}.log', 'w') as f:
+            f.write("")
+
         # Execute the bash command with unbuffered output and capture its output
-        process = subprocess.Popen(['bash', '-c', 'python3 -u learn.py --proxy --secret > output.log 2>&1'],
+        process = subprocess.Popen(['bash', '-c', f'python3 -u learn.py --proxy --secret > output_{id_task}_{HumanLLMMonitor.user_id}.log 2>&1'],
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT,
                                    text=True)
         # Initialize the link variable
         link = None
-        with open("output.log", "r") as logfile:
-            # On se place à la fin du fichier pour commencer à lire les nouvelles lignes
-            logfile.seek(0, 2)  # 2 signifie "depuis la fin du fichier"
+        with open(f"output_{id_task}_{HumanLLMMonitor.user_id}.log", "r") as logfile:
+            # Move to end of file
+            logfile.seek(0, 2)  # 2 means "from the end of the file"
 
-            # Boucle jusqu'à ce qu'on trouve le lien ou qu'on rompe manuellement
+            # Wait for the link to be found in the output file
             while True:
                 line = logfile.readline()
                 if not line:
-                    # Pas de nouvelle ligne, on attend un peu avant de réessayer
+                    # If no new line is found, wait for 0.5 seconds
                     time.sleep(0.5)
                     continue
 
@@ -825,7 +828,7 @@ class HumanLLMMonitor:
                     print(f"Link: {link}")
                     break
 
-        # Ici, link contiendra le lien s'il a été trouvé
+        # Return the link if found
         if link is None:
             print("The link was not found in the output file.")
 
@@ -1094,19 +1097,20 @@ class HumanLLMMonitor:
     @staticmethod
     def set_common_vectordb_embedding_function(embedding_function):
         # if embedding_function is a string, then create the corresponding embedding function
-        if isinstance(embedding_function, str):
-            if embedding_function in ["OpenAIEmbeddings", "text-embedding-ada-002"]:
-                HumanLLMMonitor.common_vectordb_embedding_function = OpenAIEmbeddings(model=embedding_function,
-                                                                                      deployment=UnifiedVectorDB.OpenAI_embedding_function_name)
-            elif embedding_function == "HuggingFaceEmbeddings":
-                HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
-                    model_name="intfloat/e5-base-v2", encode_kwargs={"normalize_embeddings": True})
+        if HumanLLMMonitor.common_vectordb_embedding_function is None:
+            if isinstance(embedding_function, str):
+                if embedding_function in ["OpenAIEmbeddings", "text-embedding-ada-002"]:
+                    HumanLLMMonitor.common_vectordb_embedding_function = OpenAIEmbeddings(model=embedding_function,
+                                                                                          deployment=UnifiedVectorDB.OpenAI_embedding_function_name)
+                elif embedding_function == "HuggingFaceEmbeddings":
+                    HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
+                        model_name="intfloat/e5-base-v2", encode_kwargs={"normalize_embeddings": True})
+                else:
+                    HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
+                        model_name=embedding_function, encode_kwargs={"normalize_embeddings": True},
+                        model_kwargs={"trust_remote_code": True})
             else:
-                HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
-                    model_name=embedding_function, encode_kwargs={"normalize_embeddings": True},
-                    model_kwargs={"trust_remote_code": True})
-        else:
-            HumanLLMMonitor.common_vectordb_embedding_function = embedding_function
+                HumanLLMMonitor.common_vectordb_embedding_function = embedding_function
 
     @staticmethod
     def get_few_shots_tag_args(prompt):
@@ -2770,7 +2774,7 @@ class HumanLLMMonitor:
             default_llm_function = self.default_llm if use_default_llm else self.premium_llm
         if premium_llm_function is None:
             premium_llm_function = self.premium_llm if self.premium_llm else None
-        if self.automation == 'before' and (hasattr(self, "saved_task") and self.saved_task['agent_name'] == self.agent_name):
+        if self.automation == 'before' and (hasattr(self, "saved_task")): # Plus besoin de tester l'agent_name
             self.system_prompt = json.loads(self.saved_task['content'])['prompt']
             self.automation = automation_global
             original_input_messages = [
@@ -2800,13 +2804,13 @@ class HumanLLMMonitor:
 
             start_time = datetime.now()
             # Pre-inference human intervention
-            if self.automation in ['before', 'after']:
+            if self.automation in ['before', 'after']: # Tester sur 'skip_once' en plus
                 input_comments, skip_inference, use_premium_llm, llm_outputs = None, False, False, []
                 llm_input_messages = original_input_messages
                 self.llm_input_messages = original_input_messages
                 print(f"****{self.automation} for {self.agent_name} using saved task for automation****")
                 self.last_inference_check_results = [None]
-                if self.automation == 'after' and hasattr(self, "saved_task") and self.saved_task['agent_name'] == self.agent_name:
+                if self.automation == 'after' and hasattr(self, "saved_task"): # Plus besoin de tester sur agent_name
                     llm_outputs = [AIMessage(content=json.loads(self.saved_task['content'])['llm_output'])]
                     self.automation = automation_global
                     print(f"****llm_output : {llm_outputs}****")
@@ -2918,7 +2922,8 @@ class HumanLLMMonitor:
                 else:
                     # Sortir de la boucle
                     break
-            elif self.automation in ['before', 'after'] and hasattr(self, "saved_task") and self.saved_task['agent_name'] != self.agent_name:
+            # Modifier afin de tester sur 'skip_once', et dans ce cas pas besoin de tester l'agent_name
+            elif self.automation == 'skip_once' and hasattr(self, "saved_task"):
                 self.automation = automation_global
                 input_content = ""
                 if 'input_contents' in json.loads(self.saved_task['content']):
