@@ -764,6 +764,10 @@ class HumanLLMMonitor:
                 ret[-1]['user_id'] = task.metadata['user_id']
             if "function_name" in task.metadata:
                 ret[-1]['function_name'] = task.metadata['function_name']
+
+        # Trier la liste par la clé 'date', du plus récent au plus ancien
+        ret = sorted(ret, key=lambda x: x['date'], reverse=True)
+
         return json.dumps(ret)
 
     @classmethod
