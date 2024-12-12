@@ -33,8 +33,6 @@ CURRENT STATE OF THE ENVIRONMENT:
 response = llm(prompt)
 # print(response)
 
-    10) Your only allowed research on Internet are Arxiv
-
     You should then respond with:
     - Reasoning: how to best implement the task with maximum efficiency
     - Code: fully executable Python code adhering to the task constraints
