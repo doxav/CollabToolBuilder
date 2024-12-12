@@ -762,6 +762,8 @@ class HumanLLMMonitor:
                 ret[-1]['input_contents'] = task.metadata['input_contents']
             if "user_id" in task.metadata:
                 ret[-1]['user_id'] = task.metadata['user_id']
+            if "function_name" is task.metadata:
+                ret[-1]["function_name"] = task.metadata['function_name']
         return json.dumps(ret)
 
     @classmethod
@@ -801,17 +803,20 @@ class HumanLLMMonitor:
         with open('pickle/variables.pkl', 'wb') as f:
             pickle.dump(variables_to_pickle, f)
 
-        with open(f'output_{id_task}_{HumanLLMMonitor.user_id}.log', 'w') as f:
+        if not os.path.exists('goto_output'):
+            os.makedirs('goto_output')
+
+        with open(f'./goto_output/output_{id_task}_{HumanLLMMonitor.user_id}.log', 'w') as f:
             f.write("")
 
         # Execute the bash command with unbuffered output and capture its output
-        process = subprocess.Popen(['bash', '-c', f'python3 -u learn.py --proxy --secret > output_{id_task}_{HumanLLMMonitor.user_id}.log 2>&1'],
+        process = subprocess.Popen(['bash', '-c', f'python3 -u learn.py --proxy --secret > ./goto_output/output_{id_task}_{HumanLLMMonitor.user_id}.log 2>&1'],
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT,
                                    text=True)
         # Initialize the link variable
         link = None
-        with open(f"output_{id_task}_{HumanLLMMonitor.user_id}.log", "r") as logfile:
+        with open(f"./goto_output/output_{id_task}_{HumanLLMMonitor.user_id}.log", "r") as logfile:
             # Move to end of file
             logfile.seek(0, 2)  # 2 means "from the end of the file"
 
@@ -2804,7 +2809,7 @@ class HumanLLMMonitor:
 
             start_time = datetime.now()
             # Pre-inference human intervention
-            if self.automation in ['before', 'after']: # Tester sur 'skip_once' en plus
+            if self.automation in ['before', 'after', 'skip_once']: # Tester sur 'skip_once' en plus
                 input_comments, skip_inference, use_premium_llm, llm_outputs = None, False, False, []
                 llm_input_messages = original_input_messages
                 self.llm_input_messages = original_input_messages
