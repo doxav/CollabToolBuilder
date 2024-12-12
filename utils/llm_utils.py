@@ -750,7 +750,7 @@ class HumanLLMMonitor:
                 "id_task": task.metadata["id_task"],
                 "agent_name": task.metadata["agent_name"],
                 "type_tache": task.metadata["type_tache"],
-                "content": task.page_content,
+                #"content": task.page_content,
                 "before_after": task.metadata["before_after"],
                 #"user_id": task.metadata["user_id"],
                 "step_id": task.metadata["step_id"],
