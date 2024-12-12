@@ -762,6 +762,8 @@ class HumanLLMMonitor:
                 ret[-1]['input_contents'] = task.metadata['input_contents']
             if "user_id" in task.metadata:
                 ret[-1]['user_id'] = task.metadata['user_id']
+            if "function_name" in task.metadata:
+                ret[-1]['function_name'] = task.metadata['function_name']
         return json.dumps(ret)
 
     @classmethod
