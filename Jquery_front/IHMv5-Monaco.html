@@ -2718,6 +2718,8 @@ function getColumnsToKeep(agent) {
             });
 
             document.getElementById('goto-task-button').addEventListener('click', function () {
+                let is_automatic = false
+                console.log("Gototask button clicked !")
                 const specialCriteria = {};
                 ['1', '2', '3', '4'].forEach((agent, index) => {
                     const agentName = ['TaskIdentificationAgent', 'CodingAgent', 'ValidationAgent', 'CapitalizationAgent'][index];
@@ -2734,6 +2736,10 @@ function getColumnsToKeep(agent) {
                     // Placeholder for replace_if_exists_function, you can add specific logic as needed
                     const replaceIfExistsFunction = false;
 
+                    if(parseInt(autoNRounds, 10)>0){
+                        is_automatic = true
+                    }
+
                     specialCriteria[`${agentName}#auto_n_rounds`] = parseInt(autoNRounds, 10);
                     specialCriteria[`${agentName}#default_llm_choice`] = defaultLLMChoice;
                     specialCriteria[`${agentName}#recommend_critics`] = recommendCritics;
@@ -2742,8 +2748,9 @@ function getColumnsToKeep(agent) {
                     specialCriteria[`${agentName}#temperature_max`] = parseFloat(temperatureMax);
                     specialCriteria[`${agentName}#replace_if_exists_function`] = replaceIfExistsFunction;
                 });
+                console.log("Criteria : "+ specialCriteria)
                 let automatic = "None"
-                if(parseInt(autoNRounds, 10)>0){
+                if(is_automatic){
                     automatic = "True"
                 }
                 sendFunctionCall(currentAgent,"goto_task",[selectedTaskId, automatic, specialCriteria], function(response) {
