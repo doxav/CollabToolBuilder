@@ -47,7 +47,6 @@ if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_UR
 ON_INPUT = False
 
 AGENT = ''
-automation_global = [None]
 
 import asyncio
 import websockets
@@ -762,18 +761,22 @@ class HumanLLMMonitor:
                 ret[-1]['input_contents'] = task.metadata['input_contents']
             if "user_id" in task.metadata:
                 ret[-1]['user_id'] = task.metadata['user_id']
-            if "function_name" is task.metadata:
-                ret[-1]["function_name"] = task.metadata['function_name']
+            if "function_name" in task.metadata:
+                ret[-1]['function_name'] = task.metadata['function_name']
+
+        # Trier la liste par la clé 'date', du plus récent au plus ancien
+        ret = sorted(ret, key=lambda x: x['date'], reverse=True)
+
         return json.dumps(ret)
 
     @classmethod
-    def goto_task(cls, id_task: str, automatic: str = None, special_criteria : str =  None):
+    def goto_task(cls, id_task: str, automatic: str = None, special_criteria : dict =  None):
         """
         Retrieve the task from the database and start processing the task.
         Parameters:
             id_task (str): The identifier of the task to retrieve from the database.
             automatic (str): If True, the function will run the loop in automatic mode.
-            special_criteria (str): The special criteria to use for the task.
+            special_criteria (dict): The special criteria to use for the task.
         """
         import subprocess
         # Retrieve the task from the database
@@ -796,7 +799,7 @@ class HumanLLMMonitor:
         # Serializing variables to pickle file
         variables_to_pickle = {
             'saved_task': task,
-            'automatic': automatic,
+            'automatic': bool(automatic),
             'unique_id': UnifiedVectorDB.unique_collection_id,
             'special_criteria': special_criteria
         }
@@ -1315,7 +1318,7 @@ class HumanLLMMonitor:
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1,
                  llmORchains_list=None,
                  synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, envs=None,
-                 fixed_coach=False, prompt_critic=None, saved_task=None, automation=None):
+                 fixed_coach=False, prompt_critic=None, saved_task=None, automation=None, auto_n_rounds=None, recommend_critics=None):
         # Instance properties to track time
         self.selected_outputs = []
         self.menu_start_time = None
@@ -1361,6 +1364,8 @@ class HumanLLMMonitor:
         self.automation = automation
         self.outputs = None
         self.saved_task = saved_task
+        self.auto_n_rounds = auto_n_rounds
+        self.recommend_critics = recommend_critics
 
     # Clears the selected answers before processing new outputs.
     # This should be called at the beginning of a new inference process.
@@ -1669,7 +1674,8 @@ class HumanLLMMonitor:
                 self.synthesize_mode = False
                 # Default actions for all agents while running with optuna
                 action = ""
-
+            elif self.automation:
+                action = ""
             else:  # Default case
                 action = smart_input(
                     f"\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
@@ -2106,7 +2112,7 @@ class HumanLLMMonitor:
                     temp, _ = self.get_agent_data(self.agent_name, "llm_suggestions")
                     if temp:
                         comments = temp[0]['llm_suggestions']
-                if hasattr(self, 'recommend_critics'):
+                if (hasattr(self, 'recommend_critics') and self.recommend_critics) and self.outputs[output_id - 1] is None:
                     inference_result_msg.content = self.criticAnswer(comments, inference_result_msg.content, text_has_annotations=False)
                     self.outputs[output_id - 1] = inference_result_msg.content
                 action = ""
@@ -2781,9 +2787,13 @@ class HumanLLMMonitor:
             default_llm_function = self.default_llm if use_default_llm else self.premium_llm
         if premium_llm_function is None:
             premium_llm_function = self.premium_llm if self.premium_llm else None
+        print(f"****agent : {self.agent_name}, automation : {self.automation}****")
         if self.automation == 'before' and (hasattr(self, "saved_task")):
             self.system_prompt = json.loads(self.saved_task['content'])['prompt']
-            self.automation = automation_global
+            if self.auto_n_rounds > 0:
+                self.automation = "full_auto"
+            else:
+                self.automation = None
             original_input_messages = [
                 SystemMessage(content=self.system_prompt),
                 HumanMessage(content=user_message)]
@@ -2818,7 +2828,10 @@ class HumanLLMMonitor:
                 self.last_inference_check_results = [None]
                 if self.automation == 'after' and hasattr(self, "saved_task"): # Plus besoin de tester sur agent_name
                     llm_outputs = [AIMessage(content=json.loads(self.saved_task['content'])['llm_output'])]
-                    self.automation = automation_global
+                    if self.auto_n_rounds > 0:
+                        self.automation = "full_auto"
+                    else:
+                        self.automation = None
                     print(f"****llm_output : {llm_outputs}****")
             else:
                 llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(
@@ -2930,16 +2943,19 @@ class HumanLLMMonitor:
                     break
             # Modifier afin de tester sur 'skip_once', et dans ce cas pas besoin de tester l'agent_name
             elif self.automation == 'skip_once' and hasattr(self, "saved_task"):
-                self.automation = automation_global
+                if self.auto_n_rounds > 0:
+                    self.automation = "full_auto"
+                else:
+                    self.automation = None
                 input_content = ""
                 if 'input_contents' in json.loads(self.saved_task['content']):
                     input_content = json.loads(self.saved_task['content'])['input_contents']
                 output_messages = [AIMessage(content=input_content)]
                 break
-            if hasattr(self, 'auto_n_rounds'):
-                if self.auto_n_rounds > 0 : self.auto_n_rounds -= 1
-                if not self.auto_n_rounds: self.automation = None
 
+        if self.auto_n_rounds:
+            if self.auto_n_rounds > 0: self.auto_n_rounds -= 1
+            if not self.auto_n_rounds: self.automation = None
         # Get the calling function's name using inspect
         caller_function_name = inspect.stack()[1].function
 
