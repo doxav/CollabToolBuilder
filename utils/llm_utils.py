@@ -414,169 +414,144 @@ class FewShotsParams:
     summary_char_limit: int = 500
 
 class UnifiedVectorDB:
-    db_type = 'elasticsearch'  # can be 'elasticsearch' or 'chroma'
-    es_url = 'http://127.0.0.1:9200'
-    es_user = None
-    es_password = None
-    OpenAI_embedding_function_name = "text-embedding-ada-002"
-    db_connection_check_done = False
-    unique_collection_id = None
-
-    @classmethod
-    def set_unique_collection_id(cls, unique_id):
-        cls.unique_collection_id = unique_id
-
-    @staticmethod
-    def check_db():
-        if UnifiedVectorDB.db_connection_check_done is True:
-            return
-        if UnifiedVectorDB.db_type == 'elasticsearch':
-            session = requests.Session()
-            retry = Retry(total=5, backoff_factor=1)
-            adapter = HTTPAdapter(max_retries=retry)
-            session.mount("https://", adapter)
-            auth = HTTPBasicAuth(UnifiedVectorDB.es_user,
-                                 UnifiedVectorDB.es_password) if UnifiedVectorDB.es_user else None
-            try:
-                response = session.get(UnifiedVectorDB.es_url, auth=auth, timeout=5, verify=False)
-                response.raise_for_status()
-                print("Elasticsearch response:", response.text)
-                UnifiedVectorDB.db_connection_check_done = True
-            except requests.exceptions.RequestException as e:
-                print(f"Error: {e}\nURL: {UnifiedVectorDB.es_url}\nCheck Elasticsearch and credentials. UnifiedVectorDB.es_user:{UnifiedVectorDB.es_user}, UnifiedVectorDB.es_password:{UnifiedVectorDB.es_password}")
-                exit(1)
-        elif UnifiedVectorDB.db_type == 'chroma':
-            print("Chroma DB check is not yet implemented")
-            UnifiedVectorDB.db_connection_check_done = True
-        else:
-            raise ValueError(f"Unsupported DB type: {UnifiedVectorDB.db_type}")
-
-    def __init__(self, collection_name, embedding_function, persist_directory, reset_db_indices=False):
-        UnifiedVectorDB.check_db()
-        self.collection_name = collection_name.lower()
-        if UnifiedVectorDB.unique_collection_id is not None:
-            self.collection_name += f"_{UnifiedVectorDB.unique_collection_id}"
-            self.collection_name = self.collection_name.lower()
-        self.embedding_function = embedding_function
+    def __init__(self, collection_name, db_type='elasticsearch', es_url='http://127.0.0.1:9200', es_user=None, es_password=None,
+                 embedding_function_name="text-embedding-ada-002", unique_collection_id=None, persist_directory=None, reset_db_indices=False):
+        self.db_type = db_type
+        self.es_url = es_url
+        self.es_user = es_user
+        self.es_password = es_password
+        self.embedding_function_name = embedding_function_name
+        self.unique_collection_id = unique_collection_id
         self.persist_directory = persist_directory
+        self.reset_db_indices = reset_db_indices
+        self.db_connection_check_done = False
 
-        if UnifiedVectorDB.db_type == 'chroma':
-            self.db = Chroma(
-                collection_name=collection_name,
-                embedding_function=embedding_function,
-                persist_directory=persist_directory
-            )
-            self._collection = self.db._collection
-        elif UnifiedVectorDB.db_type == 'elasticsearch':
-            elastic_client = Elasticsearch(UnifiedVectorDB.es_url,
-                                           http_auth=(UnifiedVectorDB.es_user,
-                                                      UnifiedVectorDB.es_password) if (UnifiedVectorDB.es_user not in [False, "", None]) else None,
-                                           verify_certs=False, ssl_show_warn=False)
-            self.db = ElasticsearchStore(
-                index_name=self.collection_name,
-                embedding=embedding_function,
-                es_connection=elastic_client,
-                distance_strategy="COSINE"
-            )
-            self._collection = self.db
-            embedding_test = embedding_function.embed_query("test")
-            embedding_size = len(embedding_test)
-            if reset_db_indices:
-                self.db.client.indices.delete(index=self.collection_name, ignore=[400,
-                                                                                  404])  # TODO: set it as a parameter to reset when changing embeddings
-            self.db._create_index_if_not_exists(index_name=self.collection_name, dims_length=embedding_size)
+        # Initialize collection name
+        self.collection_name = collection_name.lower()
+        if self.unique_collection_id is not None:
+            self.collection_name += f"_{self.unique_collection_id}"
+
+        self._initialize_db()
+
+    def _initialize_db(self):
+        if self.db_type == 'elasticsearch':
+            self._init_elasticsearch()
+        elif self.db_type == 'chroma':
+            self._init_chroma()
         else:
-            raise ValueError(f"Unsupported DB type: {UnifiedVectorDB.db_type}")
+            raise ValueError(f"Unsupported DB type: {self.db_type}")
+
+    def _init_elasticsearch(self):
+        # Initialize Elasticsearch connection
+        self.session = requests.Session()
+        retry = Retry(total=5, backoff_factor=1)
+        adapter = HTTPAdapter(max_retries=retry)
+        self.session.mount("https://", adapter)
+        self.auth = HTTPBasicAuth(self.es_user, self.es_password) if self.es_user else None
+        self.client = Elasticsearch(self.es_url, http_auth=self.auth, verify_certs=False, ssl_show_warn=False)
+
+        # Reset indices if required
+        if self.reset_db_indices:
+            self.client.indices.delete(index=self.collection_name, ignore=[400, 404])
+            print(f"Indices for {self.collection_name} have been reset.")
+
+    def _init_chroma(self):
+        # Initialize Chroma connection
+        self.db = Chroma(
+            collection_name=self.collection_name,
+            embedding_function=self.embedding_function_name,
+            persist_directory=self.persist_directory
+        )
+
+    def check_db(self):
+        if self.db_connection_check_done:
+            return
+        if self.db_type == 'elasticsearch':
+            self._check_elasticsearch()
+        elif self.db_type == 'chroma':
+            print("Chroma DB check is not yet implemented")
+            self.db_connection_check_done = True
+
+    def _check_elasticsearch(self):
+        try:
+            response = self.session.get(self.es_url, auth=self.auth, timeout=5, verify=False)
+            response.raise_for_status()
+            print("Elasticsearch response:", response.text)
+            self.db_connection_check_done = True
+        except requests.exceptions.RequestException as e:
+            print(f"Error: {e}\nURL: {self.es_url}\nCheck Elasticsearch and credentials.")
+            exit(1)
 
     def add_texts(self, texts, ids=None, metadatas=None):
-        if UnifiedVectorDB.db_type == 'chroma':
-            # Avec Chroma, on suppose que la méthode add_texts existe déjà.
+        if self.db_type == 'chroma':
             return self.db.add_texts(texts=texts, ids=ids, metadatas=metadatas)
-        elif UnifiedVectorDB.db_type == 'elasticsearch':
-            return self.db.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+        elif self.db_type == 'elasticsearch':
+            return self.client.index(index=self.collection_name, body={"texts": texts, "metadatas": metadatas})
+
+    def query(self, query_text="", k=1, metadata_filter=None, metadata_filter_OR=False, custom_filter=None, sort_order=None):
+        if self.db_type == 'chroma':
+            return self._query_chroma(query_text, k, metadata_filter, metadata_filter_OR, sort_order)
+        elif self.db_type == 'elasticsearch':
+            return self._query_elasticsearch(query_text, k, metadata_filter, metadata_filter_OR, custom_filter, sort_order)
+
+    def _query_chroma(self, query_text, k, metadata_filter, metadata_filter_OR, sort_order):
+        # Implement Chroma query logic
+        filter_chroma = {('$or' if metadata_filter_OR else '$and'): [
+            {key: {'$eq' if isinstance(value, str) else '$in': value}} for key, value in metadata_filter.items()
+        ]}
+        return self.db.query(query_text, k=k, filter=filter_chroma)
+
+    def _query_elasticsearch(self, query_text, k, metadata_filter, metadata_filter_OR, custom_filter, sort_order):
+        # Implement Elasticsearch query logic
+        custom_filter_es = [{"match": {f"metadata.{key}": value}} for key, value in metadata_filter.items()]
+        if metadata_filter_OR:
+            custom_filter_es = {"bool": {"should": custom_filter_es}}
+        
+        # Incorporate custom_filter if provided
+        if custom_filter:
+            custom_filter_es.append(custom_filter)
+        
+        # Incorporate query_text into the search
+        query_body = {
+            "query": {
+                "bool": {
+                    "must": custom_filter_es,
+                    "should": [{"match": {"text": query_text}}] if query_text else []
+                }
+            },
+            "sort": [{"metadata.time": {"order": sort_order}}]
+        }
+        return self.client.search(index=self.collection_name, body=query_body, size=k)
 
     def delete(self, ids):
-        if UnifiedVectorDB.db_type == 'chroma':
+        if self.db_type == 'chroma':
             return self.db.delete(ids=ids)
-        elif UnifiedVectorDB.db_type == 'elasticsearch':
-            return self.db.delete(ids=ids)
+        elif self.db_type == 'elasticsearch':
+            return self.client.delete_by_query(index=self.collection_name, body={"query": {"ids": {"values": ids}}})
 
     def similarity_search_with_score(self, query, k=1):
-        if UnifiedVectorDB.db_type == 'chroma':
+        if self.db_type == 'chroma':
             return self.db.similarity_search_with_score(query, k=k)
-        elif UnifiedVectorDB.db_type == 'elasticsearch':
-            return self.db.similarity_search_with_score(query, k=(k if k <= 50 else 50))  # k seems to crash when > 50
-    # query( query_embeddings, query_texts, n_results, where, where_document, include)
-    def query(self, query_text="", k=1, metadata_filter=None, metadata_filter_OR=False, custom_filter_chrome=None,
-              custom_filter_es=None, sort_order=None):
-        if UnifiedVectorDB.db_type == 'chroma':
-            if metadata_filter and custom_filter_chrome is None:
-                # filter on AND conditions: "filter":{'$and': [{'user_id': {'$eq': user_id}}, {'category_id': {'$eq': cat_id}}]}})
-                # filter on list of values: "filter":{'user_id': {'$in': [user_id_1, user_id_2]}}})
-                # filter on OR conditions: "filter":{'$or': [{'user_id': {'$eq': user_id}}, {'category_id': {'$eq': cat_id}}]}})
-                filter_chroma = []
-                for key, value in metadata_filter.items():
-                    # set sign to $eq if value is a string, else to $in
-                    sign = '$eq' if isinstance(value, str) else '$in'
-                    filter_chroma.append({key: {sign: value}})
-                filter_chroma = {('$or' if metadata_filter_OR else '$and'): filter_chroma}
-                if sort_order == 'asc' or sort_order == 'desc':  # incompatible with knn search, so we rewrite query just keeping filters and sort
-                    print("WARNING: sort not implemented for Chroma DB")
-            return self.db.query(query_text, k=k, filter=filter_chroma)
-        elif UnifiedVectorDB.db_type == 'elasticsearch':
-            if metadata_filter and custom_filter_es is None:
-                custom_filter_es = []
-                for key, value in metadata_filter.items():
-                    if key == '_id':
-                        # Use the 'ids' query for filtering on '_id'
-                        if isinstance(value, list):
-                            custom_filter_es.append({"ids": {"values": value}})
-                        else:
-                            custom_filter_es.append({"ids": {"values": [value]}})
-                    elif isinstance(value, dict) and any(k in value for k in ['gte', 'lte', 'gt', 'lt']):
-                        # Handle range queries (e.g., date ranges)
-                        custom_filter_es.append({"range": {f"{key}": value}})
-                    elif isinstance(value, list):
-                        # Use 'terms' query for multiple values
-                        custom_filter_es.append({"terms": {f"metadata.{key}": value}})
-                    else:
-                        # Use 'match' query for single value
-                        custom_filter_es.append({"match": {f"metadata.{key}": value}})
-                if metadata_filter_OR:
-                    custom_filter_es = {"bool": {"should": custom_filter_es}}
-            if sort_order == 'asc' or sort_order == 'desc':  # incompatible with knn search, so we rewrite query just keeping filters and sort
-                def custom_query(query_body: dict, query: str):
-                    return {"query": {"bool": {"must": custom_filter_es}},
-                            "sort": [{"metadata.time": {"order": sort_order}}]}  # removed: , "size": k
-
-                return self.db.similarity_search(query_text, k=(k if k <= 50 else 50),
-                                                 custom_query=custom_query)  # k seems to crash when > 50
-            else:
-                return self.db.similarity_search(query_text, k=(k if k <= 50 else 50), filter=custom_filter_es)  # k seems to crash when > 50
-            # filter on AND conditions: filter=[{"match":{"metadata.function_name":function_name}}, {"match":{"metadata.agent_name":agent_name}}]
+        elif self.db_type == 'elasticsearch':
+            return self.client.search(index=self.collection_name, body={"query": {"match": {"text": query}}}, size=k)
 
     def count(self):
-        if UnifiedVectorDB.db_type == 'chroma':
+        if self.db_type == 'chroma':
             return self.db._collection.count()
-        elif UnifiedVectorDB.db_type == 'elasticsearch':
-            response = self.db.client.count(index=self.collection_name, body={"query": {"match_all": {}}})
+        elif self.db_type == 'elasticsearch':
+            response = self.client.count(index=self.collection_name, body={"query": {"match_all": {}}})
             return response['count']
 
     def persist(self):
-        if UnifiedVectorDB.db_type == 'chroma':
+        if self.db_type == 'chroma':
             self.db.persist()
-        elif UnifiedVectorDB.db_type == 'elasticsearch':
-            # No specific handler for ElasticsearchStore
-            pass
 
     def clear(self):
-        if UnifiedVectorDB.db_type == 'chroma':
+        if self.db_type == 'chroma':
             self.db._collection.clear()
-        if UnifiedVectorDB.db_type == 'elasticsearch':
-            # empty the index self.collection_name
-            response = self.db.client.delete_by_query(index=self.collection_name, body={"query": {"match_all": {}}})
+        elif self.db_type == 'elasticsearch':
+            response = self.client.delete_by_query(index=self.collection_name, body={"query": {"match_all": {}}})
             print(f"Deleted {response['deleted']} documents from index {self.collection_name}")
-            # sleep 2 seconds to let the index be updated
             time.sleep(2)
     # TODO: start by replacing UnifiedVectorDB by neo4j improving the ChatGPT generated code below, then validate the learn.py process works properly
 
@@ -620,42 +595,32 @@ class HumanLLMMonitor:
     @classmethod
     def add_agent_data(cls, agent_name, data_key, data_value, function_name=None, id_task=False,
                        before_after=None, user_id=None, step_id=None, type_tache=None, score=None, metadata=None):
-        """Stores agent-specific data with additional metadata.
-        Elasticsearch generates an 'id' automatically and includes it in the metadata.
-        """
-        if isinstance(data_value, list) and len(data_value) > 0:
-            if isinstance(data_value[0], AIMessage):
-                data_value = data_value[0].content
-        if isinstance(data_value, dict):
-            serialized_data = json.dumps(data_value)
+        """Stores agent-specific data with additional metadata."""
+        
+        # Serialize data_value efficiently
+        if isinstance(data_value, list) and data_value and isinstance(data_value[0], AIMessage):
+            serialized_data = data_value[0].content
         else:
-            serialized_data = json.dumps({data_key: data_value})
+            serialized_data = json.dumps(data_value if isinstance(data_value, dict) else {data_key: data_value})
 
-        # Generate UUID for id_task
-        id_task = str(uuid.uuid4()) if id_task else False
+        # Generate UUID for id_task if needed
+        id_task = str(uuid.uuid4()) if id_task else None
 
-        tags = metadata or {}
-        tags.update({
+        # Prepare metadata tags
+        tags = {
             "agent_name": agent_name,
-            "data_key": data_key
-        })
-        print(f"Adding agent data: {tags}")
-        print(f"User ID: {user_id}")
-        if function_name:
-            tags["function_name"] = function_name
-        if id_task:
-            tags["id_task"] = id_task
-        if before_after:
-            tags["before_after"] = before_after
-        if user_id:
-            tags["user_id"] = user_id
-        if step_id:
-            tags["step_id"] = step_id
-        if type_tache:
-            tags["type_tache"] = type_tache
-        if score is not None:
-            tags["score"] = score
-        tags["date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+            "data_key": data_key,
+            "function_name": function_name,
+            "id_task": id_task,
+            "before_after": before_after,
+            "user_id": user_id,
+            "step_id": step_id,
+            "type_tache": type_tache,
+            "score": score,
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+        }
+        
+        tags = {k: v for k, v in tags.items() if v is not None}
 
         cls.common_vectordb.add_texts(texts=[serialized_data], metadatas=[tags])
 
@@ -666,48 +631,44 @@ class HumanLLMMonitor:
         """Retrieves agent-specific data based on the agent name, data key, and additional metadata.
         Supports pagination by specifying start and end indices.
         """
-        metadata = {}
-        if agent_name is not None:
-            metadata["agent_name"] = agent_name
-        if data_key is not None:
-            metadata["data_key"] = data_key
-        if function_name is not None:
-            metadata["function_name"] = function_name
-        if id_task is not None:
-            metadata["id_task"] = id_task
-        if before_after is not None:
-            metadata["before_after"] = before_after
-        if user_id is not None:
-            metadata["user_id"] = user_id
-        if step_id is not None:
-            metadata["step_id"] = step_id
-        if type_tache is not None:
-            metadata["type_tache"] = type_tache
-        if score is not None:
-            metadata["score"] = score
+        # Construct metadata dictionary using dictionary comprehension
+        metadata = {key: value for key, value in {
+            "agent_name": agent_name,
+            "data_key": data_key,
+            "function_name": function_name,
+            "id_task": id_task,
+            "before_after": before_after,
+            "user_id": user_id,
+            "step_id": step_id,
+            "type_tache": type_tache,
+            "score": score
+        }.items() if value is not None}
+
+        # Update metadata with additional filters if provided
         if metadata_filter:
             metadata.update(metadata_filter)
 
-        # Fetch results with a large 'k' to ensure we have enough data
+        # Determine the maximum number of results to fetch
         max_k = end_index if end_index is not None else k
+
+        # Query the vector database
         results = cls.common_vectordb.query(
             query_text='*', metadata_filter=metadata, sort_order=sort_order, k=max_k)
 
         # Apply pagination
         paginated_results = results[start_index:end_index] if end_index is not None else results[start_index:]
 
+        # Process paginated results
         ret = []
         for item in paginated_results:
             temp = json.loads(item.page_content)
             if isinstance(temp, dict):
-                tmp = {}
-                for key in temp:
-                    if temp[key]:
-                        tmp[key] = temp[key]
-                ret.append(tmp)
+                # Filter out keys with falsy values
+                ret.append({key: value for key, value in temp.items() if value})
             else:
-                ret += temp[data_key]
-        # Ret contains only text field of the data, results contains all the metadata
+                ret.extend(temp.get(data_key, []))
+
+        # Return the processed data and the original results
         return ret, results
 
     @classmethod
@@ -921,15 +882,13 @@ class HumanLLMMonitor:
 
     @classmethod
     def get_multiple_few_shots(cls, few_shots_params) -> str:
+        """Retrieve and format multiple few-shot examples based on provided parameters."""
         if not few_shots_params:
             return ""
 
-
-        all_formatted_examples = []
-
-        for params in few_shots_params:
-            # Ensure default values
-            criteria_defaults = {
+        def get_default_params():
+            """Return default parameters for few-shot examples."""
+            return {
                 'sources': 'learnt',
                 'num': 5,
                 'query_text': '*',
@@ -939,21 +898,20 @@ class HumanLLMMonitor:
                 'format': 'Json',
                 'template': None
             }
-            for key, default in criteria_defaults.items():
-                params.setdefault(key, default)
 
-            if "separators" in params:
-                separators = params["separators"]
-            else:
-                separators = {
-                    "global_prefix" : f"\n{params['sources']} tasks : <<",
-                    "global_suffix" : ">>\n",
-                    "item_prefix" : "\n|",
-                    "item_suffix" : "|"
-                }
+        def get_separators(params):
+            """Return separators for formatting examples."""
+            return params.get("separators", {
+                "global_prefix": f"\n{params['sources']} tasks : <<",
+                "global_suffix": ">>\n",
+                "item_prefix": "\n|",
+                "item_suffix": "|"
+            })
 
+        def fetch_examples(params):
+            """Fetch examples based on the source type."""
             if params['sources'] == "learnt":
-                examples = cls.get_learnt_tasks(
+                return cls.get_learnt_tasks(
                     query_text=params['query_text'],
                     k=params['num'],
                     metadata_filter=params['metadata_filter'],
@@ -961,7 +919,7 @@ class HumanLLMMonitor:
                     similarity_search=params['similarity_search']
                 )
             elif params['sources'] == "failed":
-                examples = cls.get_failed_tasks(
+                return cls.get_failed_tasks(
                     query_text=params['query_text'],
                     k=params['num'],
                     metadata_filter=params['metadata_filter'],
@@ -969,30 +927,39 @@ class HumanLLMMonitor:
                     similarity_search=params['similarity_search']
                 )
             else:
-                examples = HumanLLMMonitor.common_vectordb.query(
+                params['sources'] = "examples"
+                return HumanLLMMonitor.common_vectordb.query(
                     query_text=params['query_text'],
                     k=params['num'],
                     metadata_filter=params['metadata_filter'],
                     sort_order=params['sort_order']
                 )
-                params['sources'] = "examples"
+
+        all_formatted_examples = []
+
+        for params in few_shots_params:
+            # Ensure default values
+            criteria_defaults = get_default_params()
+            params = {key: params.get(key, default) for key, default in criteria_defaults.items()}
+
+            separators = get_separators(params)
+            examples = fetch_examples(params)
 
             # Process examples to retrieve all metadata
-            processed_examples = []
-            for example in examples:
-                example_data = {
+            processed_examples = [
+                {
                     'content': getattr(example, 'page_content', str(example)),
                     'metadata': getattr(example, 'metadata', {})
                 }
-                processed_examples.append(example_data)
-            examples = processed_examples
+                for example in examples
+            ]
 
             format_criteria = {
                 'format': params['format'],
                 'template': params['template']
             }
 
-            formatted_examples = cls.format_examples(examples, format_criteria, separators)
+            formatted_examples = cls.format_examples(processed_examples, format_criteria, separators)
             all_formatted_examples.append(formatted_examples)
 
         return "\n".join(all_formatted_examples)
@@ -2570,10 +2537,11 @@ class HumanLLMMonitor:
         return output
 
     def _log_entry(self, function_name, input_contents, output_contents, input_modified=False,
-                   skipped_inference=False, input_comments=None, output_comments=None, output_llm_raw=None,
-                   output_modified=False, inference_time=None, user_score=None, message_tokens=None, score=None,
-                   use_premium_llm=False,
-                   call_duration=None, skip_rounds=None, synthesize_mode=False, pipeline_mode=False):
+               skipped_inference=False, input_comments=None, output_comments=None, output_llm_raw=None,
+               output_modified=False, inference_time=None, user_score=None, message_tokens=None, score=None,
+               use_premium_llm=False, call_duration=None, skip_rounds=None, synthesize_mode=False, pipeline_mode=False):
+        """Log an entry into the vector database with associated metadata."""
+        
         entry = {
             "input_contents": input_contents,
             "output_contents": output_contents,
@@ -2593,15 +2561,11 @@ class HumanLLMMonitor:
             "pipeline_mode": pipeline_mode,
             "user_score": user_score
         }
-        #print(f"Human modifications ? input_modified:{input_modified}, output_modified:{output_modified}\nlog entry: {entry}")
 
         # Serialize the entry as a JSON string
         serialized_entry = json.dumps(entry, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
 
-        import socket
-        import uuid
-
-        # Log entry into the common vector database with tags
+        # Construct tags using dictionary comprehension
         tags = {
             "time": datetime.now().isoformat(),
             "host": HumanLLMMonitor.get_host_id(),
@@ -2617,20 +2581,15 @@ class HumanLLMMonitor:
             "use_premium_llm": use_premium_llm,
             "commented": (input_comments is not None or output_comments is not None),
             "scored": (score is not None),
+            **{f"b{key}_time": self.before_inference_option_times[key] for key in self.before_inference_option_times if self.before_inference_option_counts[key] > 0},
+            **{f"b{key}_count": self.before_inference_option_counts[key] for key in self.before_inference_option_times if self.before_inference_option_counts[key] > 0},
+            **{f"a{key}_time": self.after_inference_option_times[key] for key in self.after_inference_option_times if self.after_inference_option_counts[key] > 0},
+            **{f"a{key}_count": self.after_inference_option_counts[key] for key in self.after_inference_option_times if self.after_inference_option_counts[key] > 0}
         }
-        # add to tags every key of self.before_inference_option_times with count and time, if count > 0
-        for key in self.before_inference_option_times:
-            if self.before_inference_option_counts[key] > 0:
-                tags[f"b{key}_time"] = self.before_inference_option_times[key]
-                tags[f"b{key}_count"] = self.before_inference_option_counts[key]
-        # add to tags every key of self.after_inference_option_times with count and time, if count > 0
-        for key in self.after_inference_option_times:
-            if self.after_inference_option_counts[key] > 0:
-                tags[f"a{key}_time"] = self.after_inference_option_times[key]
-                tags[f"a{key}_count"] = self.after_inference_option_counts[key]
 
         HumanLLMMonitor._check_and_init_vector_db()
 
+        # Add the serialized entry and tags to the vector database
         HumanLLMMonitor.common_vectordb.add_texts(
             texts=[serialized_entry],
             metadatas=[tags]
