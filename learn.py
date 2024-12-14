@@ -8,13 +8,12 @@ import ast
 import types
 import time
 from zipfile import error
-
 from config import *
 
 import openai
 from typing import Dict
 
-from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, smart_print, smart_input, automation_global
+from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, smart_print, smart_input
 
 import os
 import io
@@ -36,6 +35,10 @@ from langchain_openai import ChatOpenAI
 
 import json
 import difflib
+import torch
+import gc
+from transformers import PreTrainedModel
+from torch.nn.modules.sparse import Embedding
 
 #set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
 
@@ -48,10 +51,11 @@ UnifiedVectorDB.es_user = elastic_user
 UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
 
-embedding_function = "intfloat/e5-base-v2"  # UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
+embedding_function = "text-embedding-ada-002" if embedding_function is None else embedding_function  #"Alibaba-NLP/gte-base-en-v1.5" UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
 reset_db_indices = False  # Set to True after changing embeddings
 
 HumanLLMMonitor.use_websocket = True
+
 
 class Environment:
     def __init__(self, temp_root_dir: str = None, data_dir: str = "data"):
@@ -201,6 +205,7 @@ class EnvironmentManager:
     def get_environment(self):
         return self.env
 
+
 def apply_special_criteria(agent, special_criteria, available_locals=None):
     """
     Apply special criteria to the attributes and parameters of an agent.
@@ -233,8 +238,9 @@ def apply_special_criteria(agent, special_criteria, available_locals=None):
             elif key in available_locals:
                 new_params[key] = value
                 print(f"Special criteria applicable to {agent}'s local variables: {key} = {value}")
-
+    print(new_params)
     return new_params  # Return only new params
+
 
 # Agent 1: Task Identification
 class TaskIdentificationAgent:
@@ -252,28 +258,32 @@ class TaskIdentificationAgent:
         self.envs = envs
         self.automation = automation
         self.model_choice = model_choice
-        saved_task = None
-        new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
-        if special_criteria is not None and 'log_user_message' in special_criteria:
-            setattr(self, 'log_user_message', special_criteria['log_user_message'])
+        saved_task, auto_n_rounds, recommend_critics, log_user_message = None, None, None, None  # Params for special_criteria application
+        new_params = apply_special_criteria(self, special_criteria,
+                                            locals())  #for key, value in new_params.items(): locals()[key] = value
 
-        HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
+        HumanLLMMonitor_args, local_vars = (
+                    set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
+        print(f"Human_args: {HumanLLMMonitor_args}, local_vars: {local_vars}")
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
-        print(f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
+        print(
+            f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
         kw_common_args.update(new_params)
 
         #self.criteria = criteria, self.params_user_message = params_user_message, self.temperature_min = temperature_min, self.temperature_max = temperature_max
-        self.human_llm_identify_best_task = HumanLLMMonitor(**kw_common_args)#,output_schema="identify_best_task.schema.py")
+        self.human_llm_identify_best_task = HumanLLMMonitor(
+            **kw_common_args)  #,output_schema="identify_best_task.schema.py")
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
                 self.human_llm_identify_best_task.add_inference_check(key, value)
         if hasattr(self, 'recommendations_usage'):
             if self.recommendations_usage:
-                self.human_llm_identify_best_task.add_inference_check("Recommendations", self.human_llm_identify_best_task.generate_best_improvement_suggestions)
+                self.human_llm_identify_best_task.add_inference_check("Recommendations",
+                                                                      self.human_llm_identify_best_task.generate_best_improvement_suggestions)
         else:
             self.human_llm_identify_best_task.add_inference_check("Recommend critiques",
-                                                              self.human_llm_identify_best_task.generate_best_improvement_suggestions)
+                                                                  self.human_llm_identify_best_task.generate_best_improvement_suggestions)
 
     def identify_best_task(self):
         # Prepare data
@@ -353,23 +363,22 @@ class CodingAgent:
         self.additional_check_list = None
         self.name = self.__class__.__name__
         self.max_autofix = None
-        self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
+        self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
         self.envs = envs
         self.automation = automation
         self.model_choice = model_choice
         self.processed_codes = set()
-        saved_task = None
-        new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
-        self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
-        if special_criteria is not None:
-            for key, value in special_criteria.items():
-                if not hasattr(self, key):
-                    setattr(self, key, value)
+        saved_task, auto_n_rounds, recommend_critics = None, None, None
+        new_params = apply_special_criteria(self, special_criteria,
+                                            locals())  #for key, value in new_params.items(): locals()[key] = value
+        self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
         self.last_user_message = None
 
-        HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
+        HumanLLMMonitor_args, local_vars = (
+                    set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
-        print(f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
+        print(
+            f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
         kw_common_args.update(new_params)
 
         self.human_llm_code_task = HumanLLMMonitor(**kw_common_args)
@@ -378,9 +387,11 @@ class CodingAgent:
         self.human_llm_code_task.add_inference_check("Run Tests", self.run_tests_on_code)
         if hasattr(self, 'recommendations_usage'):
             if self.recommendations_usage:
-                self.human_llm_code_task.add_inference_check("Recommend critiques", self.human_llm_code_task.generate_best_improvement_suggestions)
+                self.human_llm_code_task.add_inference_check("Recommend critiques",
+                                                             self.human_llm_code_task.generate_best_improvement_suggestions)
         else:
-            self.human_llm_code_task.add_inference_check("Recommend critiques", self.human_llm_code_task.generate_best_improvement_suggestions)
+            self.human_llm_code_task.add_inference_check("Recommend critiques",
+                                                         self.human_llm_code_task.generate_best_improvement_suggestions)
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
                 self.human_llm_code_task.add_inference_check(key, value)
@@ -417,7 +428,7 @@ class CodingAgent:
                     imports = []
                     classes = []
                     runnable_code = ""
-                    
+
                     function_calls = set()  # To track all functions that are being called
                     function_defs = {}  # To track all function definitions
                     last_function = None  # To store the last defined function
@@ -480,7 +491,8 @@ class CodingAgent:
 
                     # Check if required_bot_arg is present in the main function's parameters
                     if required_bot_arg:
-                        assert required_bot_arg in main_function["params"], f"Main function {main_function['name']} must take an argument named '{required_bot_arg}'"
+                        assert required_bot_arg in main_function[
+                            "params"], f"Main function {main_function['name']} must take an argument named '{required_bot_arg}'"
 
                     # Assemble the final program code
                     program_code = "\n".join(imports) + "\n"
@@ -522,10 +534,12 @@ class CodingAgent:
                 time.sleep(0.1)
 
         self.parsed_code = f"Error parsing action response (before program execution): {error}"
-        smart_print(f"CODE PARSING ERROR!!!\n{error}", self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+        smart_print(f"CODE PARSING ERROR!!!\n{error}", self.name, "code_task_and_run_test SystemMessage",
+                    optional=False, column_id=output_id)
         return False, self.parsed_code
 
-    def run_tests_on_code(self, message, parsed_code=None, skip_already_processed=False, output_id=None, restore_state=True, custom_agent=None):
+    def run_tests_on_code(self, message, parsed_code=None, skip_already_processed=False, output_id=None,
+                          restore_state=True, custom_agent=None):
         # Retrieve error_patches from HumanLLMMonitor
         metadata = {'step_id': HumanLLMMonitor.step_id}
         error_patches, _ = HumanLLMMonitor.get_agent_data(self.name, 'error_patches', metadata_filter=metadata)
@@ -561,7 +575,9 @@ class CodingAgent:
             env.backup_state()
             # If it's the first environment and the user chose not to fix, exit the loop
             if idx > 0 and decision_lower in ("no", "n", ""):
-                smart_print(f"SKIPPING TEST: code error on first env, skipping test {idx}", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                smart_print(f"SKIPPING TEST: code error on first env, skipping test {idx}",
+                            custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage",
+                            optional=False, column_id=output_id)
             else:
                 # Determine tests to run or set default runnable code
                 matching_tests = [test for doc_id, test in parsed_code["tests"] if doc_id == env.id] if parsed_code[
@@ -572,13 +588,17 @@ class CodingAgent:
                 else:
                     # Concatenate common code with program and tests or runnable code
                     code_to_run = common_code + parsed_code["program_code"] + "\n" + "\n".join(matching_tests)
-                    smart_print("TESTING GENERATED CODE.....", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                    smart_print("TESTING GENERATED CODE.....", custom_agent if custom_agent else self.name,
+                                "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
                     no_runtime_error, exec_result = env.step(code_to_run)
                     if no_runtime_error:
-                        smart_print("TEST SUCCESSFUL", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
-                        smart_print(env.get_state(extended=True), custom_agent if custom_agent else self.name, "CODE_RESULT", optional=False, column_id=output_id)
+                        smart_print("TEST SUCCESSFUL", custom_agent if custom_agent else self.name,
+                                    "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                        smart_print(env.get_state(extended=True), custom_agent if custom_agent else self.name,
+                                    "CODE_RESULT", optional=False, column_id=output_id)
                     while not no_runtime_error and current_skip_rounds <= 0:
-                        smart_print("\033[31mCODE ERROR\033[0m: " + exec_result, custom_agent if custom_agent else self.name,
+                        smart_print("\033[31mCODE ERROR\033[0m: " + exec_result,
+                                    custom_agent if custom_agent else self.name,
                                     "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
                         if self.automation and max_autofix is not None:
                             decision = "a" if max_autofix > 1 else "no"
@@ -589,7 +609,9 @@ class CodingAgent:
                         else:
                             if output_id == None:
                                 output_id = 0
-                            smart_print(parsed_code["program_code"], custom_agent if custom_agent else self.name, f"Inference streaming output {output_id}", append=True, column_id=output_id, column_max=self.human_llm_code_task.num_parallel_inferences)
+                            smart_print(parsed_code["program_code"], custom_agent if custom_agent else self.name,
+                                        f"Inference streaming output {output_id}", append=True, column_id=output_id,
+                                        column_max=self.human_llm_code_task.num_parallel_inferences)
                             decision = smart_input(
                                 f"ANSWER {output_id} Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ",
                                 custom_agent if custom_agent else self.name, "fix_error", column_id=output_id).strip()
@@ -602,11 +624,14 @@ class CodingAgent:
                                 edited_code = self.human_llm_code_task.temp_inference_result_content
                                 print(f"EDITED CODE: {edited_code}")
                             else:
-                                edited_code = _visual_input(parsed_code["program_code"], filetype="py", message_type="fix_error", agent_name=self.name, column_id=output_id)
+                                edited_code = _visual_input(parsed_code["program_code"], filetype="py",
+                                                            message_type="fix_error", agent_name=self.name,
+                                                            column_id=output_id)
                         else:
                             if decision_lower == "a":
                                 # Do not use HumanLLMMonitor because no template is available for this specific case
-                                smart_print("TRYING TO AUTOFIX ERROR", custom_agent if custom_agent else self.name, "fix_error", optional=True, column_id=output_id)
+                                smart_print("TRYING TO AUTOFIX ERROR", custom_agent if custom_agent else self.name,
+                                            "fix_error", optional=True, column_id=output_id)
                                 instructions = ""
                             else:
                                 # User provided custom instructions
@@ -616,27 +641,39 @@ class CodingAgent:
                             {instructions}
                             Reply with the full Python code fixed and ready to be executed without the triple quotes and python tags. You add comments in the code to explain your fix.
                             """
-                            smart_print("ANALYZING ERROR.....", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                            smart_print("ANALYZING ERROR.....", custom_agent if custom_agent else self.name,
+                                        "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
                             help_for_fixing_system_prompt = f"""You help an LLM to fix code errors which has no access to documentation or internet by extracting key code information from the INFORMATION/DOCUMENTATION provided given CODE TO FIX and ERROR MESSAGE."""
                             error_with_info_to_help_prompt = f"ERROR MESSAGE:<<\n{exec_result}\n>>\n\nCODE TO FIX:<<\n{parsed_code['program_code']}\n>>\n\INFORMATION/DOCUMENTATION:<<\n{self.last_user_message}\n>>"
-                            help_code_returned = self.human_llm_code_task.premium_llm.invoke([SystemMessage(content=help_for_fixing_system_prompt),HumanMessage(content=error_with_info_to_help_prompt)])
-                            smart_print("ANALYSIS RECIEVED, GENERATING A FIX", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
-                            fix_description_prompt = f"ERROR MESSAGE:<<\n{exec_result}\n>>\n\nCODE TO FIX:<<\n{parsed_code['program_code']}\n>>\n\nHELPFUL INFORMATION:<<\n{getattr(help_code_returned,'content',help_code_returned)}\n>>"
-                            edited_code_returned = self.human_llm_code_task.premium_llm.invoke([SystemMessage(content=fix_system_prompt),HumanMessage(content=fix_description_prompt)])
-                            edited_code = str(getattr(edited_code_returned,'content',edited_code_returned))
+                            help_code_returned = self.human_llm_code_task.premium_llm.invoke(
+                                [SystemMessage(content=help_for_fixing_system_prompt),
+                                 HumanMessage(content=error_with_info_to_help_prompt)])
+                            smart_print("ANALYSIS RECIEVED, GENERATING A FIX",
+                                        custom_agent if custom_agent else self.name,
+                                        "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                            fix_description_prompt = f"ERROR MESSAGE:<<\n{exec_result}\n>>\n\nCODE TO FIX:<<\n{parsed_code['program_code']}\n>>\n\nHELPFUL INFORMATION:<<\n{getattr(help_code_returned, 'content', help_code_returned)}\n>>"
+                            edited_code_returned = self.human_llm_code_task.premium_llm.invoke(
+                                [SystemMessage(content=fix_system_prompt),
+                                 HumanMessage(content=fix_description_prompt)])
+                            edited_code = str(getattr(edited_code_returned, 'content', edited_code_returned))
 
                         # Before updating parsed_code, save the previous code
                         prev_code = parsed_code["program_code"]
                         # Run the edited code
                         code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
-                        smart_print("TESTING UPDATED CODE.....", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                        smart_print("TESTING UPDATED CODE.....", custom_agent if custom_agent else self.name,
+                                    "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
                         no_runtime_error, exec_result = env.step(code_to_run)
                         # Update parsed_code if re-run is successful
                         parsed_code["program_code"] = edited_code
-                        smart_print(f"# UPDATED **{'SUCCESFUL' if no_runtime_error else 'FAILED'}** CODE:\n{edited_code}", custom_agent if custom_agent else self.name, "UPDATED_CODE", optional=False, column_id=output_id)
+                        smart_print(
+                            f"# UPDATED **{'SUCCESFUL' if no_runtime_error else 'FAILED'}** CODE:\n{edited_code}",
+                            custom_agent if custom_agent else self.name, "UPDATED_CODE", optional=False,
+                            column_id=output_id)
                         # If no runtime error, store the error and diff
                         if no_runtime_error:
-                            smart_print(env.get_state(extended=True), custom_agent if custom_agent else self.name, "CODE_RESULT", optional=False, column_id=output_id)
+                            smart_print(env.get_state(extended=True), custom_agent if custom_agent else self.name,
+                                        "CODE_RESULT", optional=False, column_id=output_id)
                             diff = difflib.unified_diff(prev_code.splitlines(), edited_code.splitlines(), lineterm='')
                             diff_text = '\n'.join(diff)
                             # Avoid duplicates: check if the error and diff combination already exists
@@ -763,7 +800,8 @@ class CodingAgent:
         }
 
         # Load and format the user message from a file template
-        user_message = HumanLLMMonitor.load_prompt("coding_agent_user_message_template", template_data=template_data, directory='prompts')
+        user_message = HumanLLMMonitor.load_prompt("coding_agent_user_message_template", template_data=template_data,
+                                                   directory='prompts')
 
         if hasattr(self, 'log_user_message') and self.log_user_message:
             with open(self.log_user_message, "a") as f:
@@ -840,16 +878,19 @@ class ValidationAgent:
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, skip_rounds=0,
                  llmORchains_list=None, automation=None, model_choice=None, special_criteria=None):
         #super().__init__(llm)
-        saved_task = None
+        saved_task, temperature_max, num_parallel_inferences, recommend_critiques, auto_n_rounds = None, None, None, None, None
         self.additional_check_list = None
         self.name = self.__class__.__name__
 
-        new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
+        new_params = apply_special_criteria(self, special_criteria,
+                                            locals())  #for key, value in new_params.items(): locals()[key] = value
         if special_criteria is not None and 'log_user_message' in special_criteria:
             setattr(self, 'log_user_message', special_criteria['log_user_message'])
-        HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
+        HumanLLMMonitor_args, local_vars = (
+                    set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
-        print(f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
+        print(
+            f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
         kw_common_args.update(new_params)
 
         self.human_llm_validate_code = HumanLLMMonitor(**kw_common_args)
@@ -920,19 +961,27 @@ New environment status of examples on which the task has been tested on: <<{envs
 class CapitalizationAgent:
     def __init__(self, default_llm_choice, premium_llm_choice=None, db_collection_success="successful_tasks",
                  db_collection_failed="failed_tasks", db_embedding_function=None, db_perist_directory=None,
-                 skip_rounds=0, llmORchains_list=None, automation=None, model_choice=None, problem_prompts_subdir=None, special_criteria=None):
+                 skip_rounds=0, llmORchains_list=None, automation=None, model_choice=None, problem_prompts_subdir=None,
+                 special_criteria=None):
         self.additional_check_list = None
         self.name = self.__class__.__name__
-        saved_task = None
+        saved_task, auto_n_rounds, num_parallel_inferences, temperature_max, recommend_critics = None, None, None, None, None
 
-        self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir+"/"
+        self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
 
-        new_params = apply_special_criteria(self, special_criteria, locals()) #for key, value in new_params.items(): locals()[key] = value
+        if special_criteria is not None and 'CapitalizationAgent#replace_if_exists_function' in special_criteria:
+            self.replace_if_exists_function = special_criteria['CapitalizationAgent#replace_if_exists_function']
+            del special_criteria['CapitalizationAgent#replace_if_exists_function']
+
+        new_params = apply_special_criteria(self, special_criteria,
+                                            locals())  #for key, value in new_params.items(): locals()[key] = value
         if special_criteria is not None and 'log_user_message' in special_criteria:
             setattr(self, 'log_user_message', special_criteria['log_user_message'])
-        HumanLLMMonitor_args, local_vars = (set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
+        HumanLLMMonitor_args, local_vars = (
+                    set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
-        print(f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
+        print(
+            f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
         kw_common_args.update(new_params)
 
         self.learnt_tasks_repository: Dict[str, str] = {}
@@ -948,9 +997,23 @@ class CapitalizationAgent:
     def capitalize_successful_tasks(self, task_description: str, parsed_code: str) -> None:
         import socket, uuid, datetime
 
+        function_name = parsed_code.get("main_function_name",
+                                        parsed_code.get("main_function", {}).get("name", "unknown"))
+        db_function_names = self.human_llm_generate_function_description.get_learnt_tasks(k=100)
+        tmp = [json.loads(item) for item in db_function_names]
+        db_function_names = [item["class_name"] for item in tmp]
+
+        if function_name in db_function_names:
+            if self.replace_if_exists_function:
+                if self.automation:
+                    function_name += f"_auto_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+                else :
+                    function_name = smart_input("This function already exists, please provide a new function name: ",
+                                            message_type="VALIDATION_INFO", agent_name=self.name)
+            else :
+                function_name += datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         if self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/":
-            function_name = parsed_code.get("main_function_name",
-                                            parsed_code.get("main_function", {}).get("name", "unknown"))
+
             pipeline_file_path = os.path.join("pipelines/pipelines", function_name + ".py")
             tool_description = str(self.generate_tool_description(function_name, parsed_code["program_code"]))
             self.learnt_tasks_repository[function_name] = [tool_description, parsed_code["program_code"]]
@@ -960,8 +1023,6 @@ class CapitalizationAgent:
                                                                                                                 "\n"),
                 self.name, "capitalize_successful_tasks SUCCESS", optional=True)
         else:
-            function_name = parsed_code.get("main_function_name",
-                                            parsed_code.get("main_function", {}).get("name", "unknown"))
             # save function program_code in a file under the functions directory and add to the function signature the generated dosctring
             function_file_path = os.path.join("functions", function_name + ".py")
             tool_description = str(self.generate_tool_description(function_name, parsed_code["program_code"]))
@@ -994,7 +1055,9 @@ class CapitalizationAgent:
                     id = datetime.datetime.now().strftime("%Y%m%d%H%M%S") + "_" + str(random.randint(0, 1000))
                     function_file_path = os.path.join("functions", self.name + f"_{id}.py")
                 else:
-                    function_file_path = os.path.join("functions", smart_input("This function already exists, please provide a new function name: ", message_type="VALIDATION_INFO") + ".py")
+                    function_file_path = os.path.join("functions", smart_input(
+                        "This function already exists, please provide a new function name: ",
+                        message_type="VALIDATION_INFO") + ".py")
 
         if self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/":
             new_path = pipeline_file_path
@@ -1023,7 +1086,7 @@ class CapitalizationAgent:
         serialized_entry = json.dumps({
             "time": datetime.datetime.now().isoformat(),
             ("class_name" if (
-                        self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/") else "main_function_name"): function_name,
+                    self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/") else "main_function_name"): function_name,
             "program_code": parsed_code["program_code"],
             "tool_description": tool_description,
             "task_description": task_description,
@@ -1042,12 +1105,13 @@ class CapitalizationAgent:
             task_name = parsed_code.get(name_key,
                                         "replace this text with a descriptive name of the class" if is_anomaly else "replace this text with a descriptive name of the function")
         else:
-            if False or not self.automation: # TODO: temporary disabled, find the logic to fix this or if not required
+            if False or not self.automation:  # TODO: temporary disabled, find the logic to fix this or if not required
                 task_name = smart_input(
-                    f"CONFIG Please provide a name for the {'pipeline' if is_anomaly else 'function'}: {task_description}", "CapitalizationAgent",message_type="Capitalization_info").strip()
+                    f"CONFIG Please provide a name for the {'pipeline' if is_anomaly else 'function'}: {task_description}",
+                    "CapitalizationAgent", message_type="Capitalization_info").strip()
             else:
                 task_name = f"{task_description[:500]}"
-        if False and not self.automation or is_anomaly: # TODO: temporary disabled, find the logic to fix this or if not required
+        if False and not self.automation or is_anomaly:  # TODO: temporary disabled, find the logic to fix this or if not required
             task_name = _visual_input(task_name)
             task_description_refined = _visual_input(task_description)
         else:
@@ -1084,7 +1148,7 @@ class CapitalizationAgent:
             id += 1
             task_data = json.loads(result.page_content)
             name_key = "class_name" if (
-                        self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/") else "main_function_name"
+                    self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/") else "main_function_name"
             if name_key not in task_data:
                 task_data[name_key] = ""
 
@@ -1126,13 +1190,14 @@ class CapitalizationAgent:
             return_message_content_only=True, model_choice=self.model_choice)
         return tool_description
 
+
 #        smart_print(f"Error: Could not find a valid definition for {function_name}. Please set it:", "orchestrate_agents", "orchestrate_agents ERROR")
 #        function_code = _visual_input(current_function_code, filetype="py")
 
 class PlannerAgent:
     def __init__(self, default_llm_choice, envs, premium_llm_choice=None, problem_prompts_subdir=None,
                  skip_rounds=0, llmORchains_list=None, automation=None, model_choice=None, special_criteria=None,
-                 num_parallel_inferences=1):
+                 num_parallel_inferences=1, system_prompt_path=None):
         # Define necessary class variables
         self.name = self.__class__.__name__
         self.last_user_message = None
@@ -1145,6 +1210,7 @@ class PlannerAgent:
         self.llmORchains_list = llmORchains_list or {}
         self.skip_rounds = skip_rounds
         self.max_autofix = 3  # Maximum number of auto-fix attempts
+        self.system_prompt_path = system_prompt_path
 
     def plan(self, question: str):
         self.last_user_message = question
@@ -1358,9 +1424,12 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0,
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                               automation=None, allow_custom_score_state_functions=False,
-                              params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
-                              agcoach_num_parallel_inferences=2, fixed_coach=False, return_array=False, agcoding_num_parallel_inferences=2,
-                              continue_each_loop=False, unique_id=None):
+                              params_user_message=None, max_execution_time=900, special_criteria=None,
+                              temperature_max=1,
+                              agcoach_num_parallel_inferences=2, fixed_coach=False, return_array=False,
+                              agcoding_num_parallel_inferences=2,
+                              continue_each_loop=False, unique_id=None, functions_to_import=None,
+                              embedding_function=None):
     scores = None
 
     if params_user_message is None and automation is None:
@@ -1373,33 +1442,74 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
 
     time_end = time.time() + max_execution_time
 
+    if special_criteria:
+        if 'TaskIdentificationAgent#default_llm_choice' in special_criteria:
+            default_llm_key = special_criteria['TaskIdentificationAgent#default_llm_choice']
+            # Remove the key from the special criteria to avoid passing it to the agents
+            del special_criteria['TaskIdentificationAgent#default_llm_choice']
+            print(f"Special criteria: default_llm_choice set to {default_llm_key}")
+        if 'CodingAgent#default_llm_choice' in special_criteria:
+            default_llm_key = special_criteria['CodingAgent#default_llm_choice']
+            # Remove the key from the special criteria to avoid passing it to the agents
+            del special_criteria['CodingAgent#default_llm_choice']
+            print(f"Special criteria: default_llm_choice set to {default_llm_key}")
+        if 'ValidationAgent#default_llm_choice' in special_criteria:
+            default_llm_key = special_criteria['ValidationAgent#default_llm_choice']
+            # Remove the key from the special criteria to avoid passing it to the agents
+            del special_criteria['ValidationAgent#default_llm_choice']
+            print(f"Special criteria: default_llm_choice set to {default_llm_key}")
+        if 'CapitalizationAgent#default_llm_choice' in special_criteria:
+            default_llm_key = special_criteria['CapitalizationAgent#default_llm_choice']
+            # Remove the key from the special criteria to avoid passing it to the agents
+            del special_criteria['CapitalizationAgent#default_llm_choice']
+            print(f"Special criteria: default_llm_choice set to {default_llm_key}")
+    print(f"Special criteria: {special_criteria}")
+    print(f"Automation: {automation}")
+
+    # Pour chaque agent, tester si saved_task['agent_name'] est égal a eux, si non => automation = 'skip_once', si oui => automation = saved_task['before_after']
     agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                              problem_prompts_subdir=problem_prompts_subdir,
                                              premium_llm_by_default=agtask_premium_llm_by_default,
                                              skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list,
-                                             automation=automation['taskreco'] if isinstance(automation, dict) else automation, model_choice=(
-            model_choice['taskreco' if 'taskreco' in model_choice else 'coach'] if type(
-                model_choice) == dict else model_choice), criteria=params_user_message, temperature_max=temperature_max,
-                                             num_parallel_inferences=agcoach_num_parallel_inferences, fixed_coach=fixed_coach, special_criteria=special_criteria)
+                                             automation=automation['taskreco'] if isinstance(automation,
+                                                                                             dict) else automation,
+                                             model_choice=(
+                                                 model_choice[
+                                                     'taskreco' if 'taskreco' in model_choice else 'coach'] if type(
+                                                     model_choice) == dict else model_choice),
+                                             criteria=params_user_message, temperature_max=temperature_max,
+                                             num_parallel_inferences=agcoach_num_parallel_inferences,
+                                             fixed_coach=fixed_coach, special_criteria=special_criteria)
 
     agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds,
-                               llmORchains_list=llmORchains_list, automation=automation['coder'] if isinstance(automation, dict) else automation, model_choice=(
-            model_choice['coding' if 'coding' in model_choice else 'coder'] if type(
-                model_choice) == dict else model_choice), special_criteria=special_criteria, num_parallel_inferences=agcoding_num_parallel_inferences)
+                               llmORchains_list=llmORchains_list,
+                               automation=automation['coder'] if isinstance(automation, dict) else automation,
+                               model_choice=(
+                                   model_choice['coding' if 'coding' in model_choice else 'coder'] if type(
+                                       model_choice) == dict else model_choice), special_criteria=special_criteria,
+                               num_parallel_inferences=agcoding_num_parallel_inferences)
 
     agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                        skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list,
-                                       automation=automation['critic'] if isinstance(automation, dict) else automation, model_choice=(
-            model_choice['validation' if 'validation' in model_choice else 'critic'] if type(
-                model_choice) == dict else model_choice), special_criteria=special_criteria)
+                                       automation=automation['critic'] if isinstance(automation, dict) else automation,
+                                       model_choice=(
+                                           model_choice[
+                                               'validation' if 'validation' in model_choice else 'critic'] if type(
+                                               model_choice) == dict else model_choice),
+                                       special_criteria=special_criteria)
 
     agent_capitalize = CapitalizationAgent(default_llm_key, premium_llm_choice=premium_llm_key,
                                            skip_rounds=agcapitalize_skip_rounds,
                                            problem_prompts_subdir=problem_prompts_subdir,
-                                           llmORchains_list=llmORchains_list, automation=automation['capitalizer'] if isinstance(automation, dict) else automation, model_choice=(
-            model_choice['capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(
-                model_choice) == dict else model_choice), special_criteria=special_criteria)
+                                           llmORchains_list=llmORchains_list,
+                                           automation=automation['capitalizer'] if isinstance(automation,
+                                                                                              dict) else automation,
+                                           model_choice=(
+                                               model_choice[
+                                                   'capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(
+                                                   model_choice) == dict else model_choice),
+                                           special_criteria=special_criteria)
 
     #agent_capitalize.retrieve_saved_tasks_in_db(include_code=include_code, selected_successful_functions=selected_successful_functions, selected_failed_functions=selected_failed_functions)
     continue_identifying_tasks = True
@@ -1408,11 +1518,13 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     # Global learn loop
     while continue_identifying_tasks and time.time() < time_end:
         HumanLLMMonitor.step_id = str(uuid.uuid4())
+        display_vram_info()
         task = agent_taskreco.identify_best_task()
 
         # Handle multiple-tasks case
         if len(task) > 1:
-            if agent_taskreco.human_llm_identify_best_task.selected_outputs and len(agent_taskreco.human_llm_identify_best_task.selected_outputs) == 1:
+            if agent_taskreco.human_llm_identify_best_task.selected_outputs and len(
+                    agent_taskreco.human_llm_identify_best_task.selected_outputs) == 1:
                 task = task[agent_taskreco.human_llm_identify_best_task.selected_outputs[0]]
             else:
                 # list all tasks with their index and the 200 first characters of their content
@@ -1423,8 +1535,9 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                 # get input from user with the index of the task to select, manage exceptions
                 while True:
                     try:
-                        id = 1 if automation else int(smart_input("Enter the index of the task to select: ", "orchestrate_agents",
-                                                                   "TASK SELECTION").strip())
+                        id = 1 if agent_taskreco.human_llm_identify_best_task.automation else int(
+                            smart_input("Enter the index of the task to select: ", "orchestrate_agents",
+                                        "TASK SELECTION").strip())
                         if id in range(len(task)):
                             task = task[id]
                             break
@@ -1453,38 +1566,41 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         parsed_code, validation, scores = coding_and_validation_loop(agent_coding, agent_validation, task_description,
                                                                      max_coding_attempts,
                                                                      manual_validation_to_capitalize,
-                                                                     automation=automation,
+                                                                     automation=agent_coding.human_llm_code_task.automation,
                                                                      end_time=time_end)
-
 
         if validation == "success":
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
         else:
-            if automation or smart_input(
-                    "Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ", "orchestrate_agents", message_type="VALIDATION_INFO").strip().upper() in [
+            if agent_capitalize.human_llm_generate_function_description.automation or smart_input(
+                    "Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ",
+                    "orchestrate_agents", message_type="VALIDATION_INFO").strip().upper() in [
                 "Y", "YES"]:
                 agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
-        if automation:
+        if agent_capitalize.human_llm_generate_function_description.automation:
             continue_identifying_tasks = continue_each_loop
         else:
             answer = smart_input(
-                "Do you want to:\n- search for a new task after reseting to empty documents (Y/YES) ?\n- search for a new task based based on the status of documents after applying the task you just validated (N/NO/Enter) ?\n- or just exit the program (E/EXIT) ?", "orchestrate_agents",  message_type="VALIDATION_INFO").strip().upper()
+                "Do you want to:\n- search for a new task after reseting to empty documents (Y/YES) ?\n- search for a new task based based on the status of documents after applying the task you just validated (N/NO/Enter) ?\n- or just exit the program (E/EXIT) ?",
+                "orchestrate_agents", message_type="VALIDATION_INFO").strip().upper()
             continue_identifying_tasks = False if answer in ["E", "EXIT"] else True
             if answer.upper() in ["Y", "YES"]:
                 [env.reset() for env in test_environments]
             else:
                 if parsed_code:
                     # Apply the code to the environments without restoring their state
-                    test_results = agent_coding.run_tests_on_code(message="", parsed_code=parsed_code, skip_already_processed=False, restore_state=False, custom_agent="orchestrate_agents")
+                    test_results = agent_coding.run_tests_on_code(message="", parsed_code=parsed_code,
+                                                                  skip_already_processed=False, restore_state=False,
+                                                                  custom_agent="orchestrate_agents")
                     # Unpack the results if needed
                     _parsed_code_, _success_, exec_results, _scores_, _env_states_, _execution_time_ = test_results
 
                     # Optionally display the execution results for each environment
                     for env, result in zip(test_environments, exec_results):
-                        smart_print(f"Execution result in environment {env.id}: {result}", "orchestrate_agents", "Execution Result")
+                        smart_print(f"Execution result in environment {env.id}: {result}", "orchestrate_agents",
+                                    "Execution Result")
                 else:
                     smart_print("No code to run.", "orchestrate_agents", "Execution Error")
-
 
         # Calculate the average score of the task, and return it with other statistics
         if scores:
@@ -1502,14 +1618,16 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                     (20 * (1 + validated_score_avg) if scores['validated_scores'] else 0)
             )
             if total_score_weighted_with_stats > 0:
-                print(f"total_score_weighted_with_stats: {total_score_weighted_with_stats}; scores['percentage_no_runtime_error']: {scores['percentage_no_runtime_error']}; scores['best_score_without_validation']: {scores['best_score_without_validation']}; validated_score_avg: {validated_score_avg}")
+                print(
+                    f"total_score_weighted_with_stats: {total_score_weighted_with_stats}; scores['percentage_no_runtime_error']: {scores['percentage_no_runtime_error']}; scores['best_score_without_validation']: {scores['best_score_without_validation']}; validated_score_avg: {validated_score_avg}")
             # add total_score_weighted_with_stats to total_scores
             total_scores.append(total_score_weighted_with_stats)
         else:
             total_scores.append(0)
 
     # print status of: continue_identifying_tasks and time.time() < time_end
-    print(f"continue_identifying_tasks: {continue_identifying_tasks}, time.time() < time_end: {time.time() < time_end}, time.time(): {time.time()}, time_end: {time_end}")
+    print(
+        f"continue_identifying_tasks: {continue_identifying_tasks}, time.time() < time_end: {time.time() < time_end}, time.time(): {time.time()}, time_end: {time_end}")
 
     if return_array:
         return total_scores
@@ -1517,128 +1635,58 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         return max(total_scores)
 
 
-def goto_task(id_task: uuid.UUID, automatic: str = None):
-    """
-    Retrieve the task from the database and start processing the task.
-    Parameters:
-        id_task (uuid): The identifier of the task to retrieve from the database.
-        automatic (str): If True, the function will run the loop in automatic mode.
-    """
-    import subprocess
-    # Retrieve the task from the database
-    _, saved_task = HumanLLMMonitor.get_agent_data(data_key="saved_task", id_task=id_task)
-    task = {
-        'before_after': saved_task[0].metadata['before_after'],
-        'agent_name': saved_task[0].metadata['agent_name'],
-        'type_tache': saved_task[0].metadata['type_tache'],
-        'content': saved_task[0].page_content,
-        'step_id': saved_task[0].metadata['step_id'],
-        'date': saved_task[0].metadata['date']
-    }
-    if 'user_id' in saved_task[0].metadata:
-        task['user_id'] = saved_task[0].metadata['user_id']
+def run_planner(*args, **kwargs):  # NEW VERSION
 
-    # Create a pickle directory if it does not exist
-    if not os.path.exists('pickle'):
-        os.makedirs('pickle')
-
-    # Serializing variables to pickle file
-    variables_to_pickle = {
-        'saved_task': task,
-        'automatic': automatic,
-        'unique_id': unique_id,
-        'documents': documents
-    }
-
-    # Save variables to pickle file
-    with open('pickle/variables.pkl', 'wb') as f:
-        pickle.dump(variables_to_pickle, f)
-
-    # Execute the bash command with unbuffered output and capture its output
-    process = subprocess.Popen(['python3', '-u', 'learn.py', '--proxy', '--secret'],
-                                   stdout=subprocess.PIPE,
-                                   stderr=subprocess.STDOUT,
-                                   text=True)
-    # Initialize the link variable
-    link = None
-
-    # Read the output line by line
-    for line in iter(process.stdout.readline, ''):
-        if "WebSocket Remote URL via proxy: " in line:
-            # Extract the link after the specific phrase
-            link = line.split("WebSocket Remote URL via proxy: ")[1].strip()
-            print(f"Link: {link}")
-            # Since the link continues on the same line, we can get it directly
-            break
-
-    if link is None:
-        print("The link was not found in the subprocess output.")
-
-    return link  # Return the retrieved link
-
-
-
-
-def run_planner(default_llm_key, premium_llm_key, test_environments=None,
-                manual_validation_to_capitalize=True, problem_prompts_subdir=None,
-                max_coding_attempts=4, include_code=None, selected_successful_functions=None,
-                selected_failed_functions=None, agtask_premium_llm_by_default=True,
-                agtask_skip_rounds=0, agcoding_skip_rounds=0, agvalidation_skip_rounds=0,
-                agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
-                automation=None, allow_custom_score_state_functions=False,
-                params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
-                agcoach_num_parallel_inferences=2, fixed_coach=False, unique_id=None, return_array=False, agcoding_num_parallel_inferences=2,
-                continue_each_loop=False, skip_rounds=0, functions_to_import=None):
-
-    # Initialize unique_id
-    if unique_id is None:
-        unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
-
-    if unique_id is not False:
-        if UnifiedVectorDB.unique_collection_id is None:
-            UnifiedVectorDB.set_unique_collection_id(unique_id)
+    unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}" if kwargs.get(
+        'unique_id') is None else kwargs.get('unique_id')
+    if unique_id is not False and UnifiedVectorDB.unique_collection_id is None:
+        UnifiedVectorDB.set_unique_collection_id(unique_id)
 
     # Initialize HumanLLMMonitor databases
-    HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
+    HumanLLMMonitor._check_and_init_vector_db(embedding_function=kwargs.get('embedding_function'),
+                                              reset_db_indices=kwargs.get('reset_db_indices'))
     HumanLLMMonitor.check_init_class_db(force=True)
 
     # Definition of automation depending on the task given
-    if 'saved_task' in locals():
+    automation = kwargs.get('automation')
+    if 'saved_task' in globals():
         match saved_task['agent_name']:
             case "TaskIdentificationAgent":
                 automation = {
                     'taskreco': saved_task['before_after'],
-                    'coder': automation_global,
-                    'critic': automation_global,
-                    'capitalizer': automation_global
+                    'coder': None if not special_criteria['CodingAgent#auto_n_rounds'] else "full_auto",
+                    'critic': None if not special_criteria['ValidationAgent#auto_n_rounds'] else "full_auto",
+                    'capitalizer': None if not special_criteria['CapitalizationAgent#auto_n_rounds'] else "full_auto"
                 }
             case "CodingAgent":
                 automation = {
-                    'taskreco': saved_task['before_after'],
+                    'taskreco': 'skip_once',
                     'coder': saved_task['before_after'],
-                    'critic': automation_global,
-                    'capitalizer': automation_global
+                    'critic': None if not special_criteria['ValidationAgent#auto_n_rounds'] else "full_auto",
+                    'capitalizer': None if not special_criteria['CapitalizationAgent#auto_n_rounds'] else "full_auto"
                 }
             case "ValidationAgent":
                 automation = {
-                    'taskreco': saved_task['before_after'],
-                    'coder': saved_task['before_after'],
+                    'taskreco': 'skip_once',
+                    'coder': 'skip_once',
                     'critic': saved_task['before_after'],
-                    'capitalizer': automation_global
+                    'capitalizer': None if not special_criteria['CapitalizationAgent#auto_n_rounds'] else "full_auto"
                 }
             case "CapitalizationAgent":
                 automation = {
-                    'taskreco': saved_task['before_after'],
-                    'coder': saved_task['before_after'],
-                    'critic': saved_task['before_after'],
+                    'taskreco': 'skip_once',
+                    'coder': 'skip_once',
+                    'critic': 'skip_once',
                     'capitalizer': saved_task['before_after']
                 }
             case _:
-                automation = automation
+                automation = kwargs.get('automation')
+    print(f"automation: {automation}")
+    kwargs['automation'] = automation
 
-    if functions_to_import is not None:
+    if kwargs.get('functions_to_import') is not None:
         # Imports the functions with the regex pattern given from functions directory into the elastic database
-        functions = import_functions_from_directory(functions_to_import)
+        functions = import_functions_from_directory(kwargs.get('functions_to_import'))
         for function in functions.items():
             serialized_entry = json.dumps({
                 "time": datetime.now().isoformat(),
@@ -1650,7 +1698,7 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
             tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": HumanLLMMonitor.step_id}
             HumanLLMMonitor.add_learnt_task(serialized_entry, tags)
 
-    smart_print(str(max_execution_time), "orchestrate_agents", "time_end")
+    smart_print(str(kwargs.get('max_execution_time')), "orchestrate_agents", "time_end")
 
     successful_tasks = HumanLLMMonitor.get_learnt_tasks()
     successful_tasks_list = [task for task in successful_tasks]
@@ -1664,17 +1712,20 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
             HumanLLMMonitor.initialize_websocket_server()
 
     # Select the problem prompts subdirectory if not provided
+    problem_prompts_subdir = kwargs.get('problem_prompts_subdir')
     if problem_prompts_subdir is None:
         # Get the list of subdirectories in the 'prompts' directory
         problem_prompts_subdirs = [name for name in os.listdir("prompts") if
                                    os.path.isdir(os.path.join("prompts", name))]
         default_subdir = problem_prompts_subdirs[0] if problem_prompts_subdirs else ""
         choice = smart_input("Enter a capital letter for subdirectory (leave empty for default): " + "; ".join(
-            f"\n[{i}] {subdir}" for i, subdir in zip(string.ascii_uppercase, problem_prompts_subdirs)) + " ?", "run_planner")
+            f"\n[{i}] {subdir}" for i, subdir in zip(string.ascii_uppercase, problem_prompts_subdirs)) + " ?",
+                             "run_planner")
         problem_prompts_subdir = problem_prompts_subdirs[ord(choice) - 65] if choice and choice.isupper() and ord(
             choice) - 65 in range(len(problem_prompts_subdirs)) else default_subdir
 
     # Initialize test environments if not provided
+    test_environments = kwargs.get('test_environments')
     if test_environments is None:
         env_type = "default"
         manager = EnvironmentManager(env_type)
@@ -1682,71 +1733,35 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
 
     # Initialize the PlannerAgent with the correct parameters
     planner = PlannerAgent(
-        default_llm_choice=default_llm_key,
-        envs=test_environments,
-        premium_llm_choice=premium_llm_key,
-        skip_rounds=skip_rounds,
-        llmORchains_list=llmORchains_list,
-        automation=automation,
-        model_choice=model_choice,
-        special_criteria=special_criteria,
-        num_parallel_inferences=agcoach_num_parallel_inferences
+        default_llm_choice=kwargs.get('default_llm_key'),
+        envs=kwargs.get('test_environments', test_environments),
+        premium_llm_choice=kwargs.get('premium_llm_key'),
+        system_prompt_path=kwargs.get('problem_prompts_subdir', problem_prompts_subdir),
+        automation=kwargs.get('automation'),
+        llmORchains_list=kwargs.get('llmORchains_list'),
+        skip_rounds=kwargs.get('skip_rounds', 0),
+        model_choice=kwargs.get('model_choice'),
+        num_parallel_inferences=kwargs.get('agcoach_num_parallel_inferences', 1),
+        special_criteria=kwargs.get('special_criteria')
     )
+
     # Ask the user to formulate their question using smart_input
     performance = None
-    if automation:
-        question = "learn"
-    else:
-        question = smart_input("Please formulate your question, or launch the learning loop by just sending the message 'learn' (or exit with q/e/quit/exit): ", agent_name='PlannerAgent').capitalize()
+    question = "learn" if automation else smart_input(
+        "Please formulate your question, or launch the learning loop by just sending the message 'learn' (or exit with q/e/quit/exit): ",
+        agent_name='PlannerAgent').capitalize()
+
     smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
-    while question not in ['q', 'Q', 'quit', 'Quit', 'QUIT', 'e', 'E', 'exit', 'Exit', 'EXIT']:
-        if question in ['LEARN', 'learn', 'Learn']:
-            # User wants to use the learning loop
-            performance = run_4agents_learning_loop(default_llm_key=default_llm_key,
-                                                    premium_llm_key=premium_llm_key,
-                                                    llmORchains_list=llmORchains_list,
-                                                    test_environments=test_environments,
-                                                    manual_validation_to_capitalize=manual_validation_to_capitalize,
-                                                    problem_prompts_subdir=problem_prompts_subdir,
-                                                    max_coding_attempts=max_coding_attempts,
-                                                    include_code=include_code,
-                                                    selected_successful_functions=selected_successful_functions,
-                                                    selected_failed_functions=selected_failed_functions,
-                                                    max_execution_time=max_execution_time,
-                                                    agtask_premium_llm_by_default=agtask_premium_llm_by_default,
-                                                    agtask_skip_rounds=agtask_skip_rounds,  # Auto-test: 1
-                                                    agcoding_skip_rounds=agcoding_skip_rounds,  # Auto-test: 4
-                                                    agvalidation_skip_rounds=agvalidation_skip_rounds,  # Auto-test: 4
-                                                    agcapitalize_skip_rounds=agcapitalize_skip_rounds,
-                                                    agcoding_num_parallel_inferences=agcoding_num_parallel_inferences,
-                                                    automation=automation,
-                                                    model_choice=model_choice,
-                                                    unique_id=unique_id,
-                                                    special_criteria=special_criteria)
+    while question.lower().strip() not in ['q', 'quit', 'e', 'exit']:
+        if question.lower().strip() in ['learn']:
+            performance = run_4agents_learning_loop(*args, **kwargs)
         else:
             temp = planner.plan(question)
             if temp == "no code available":
-                performance = run_4agents_learning_loop(default_llm_key=default_llm_key,
-                                          premium_llm_key=premium_llm_key,
-                                          llmORchains_list=llmORchains_list,
-                                          test_environments=envs,
-                                          manual_validation_to_capitalize=manual_validation_to_capitalize,
-                                          problem_prompts_subdir=problem_prompts_subdir,
-                                          max_coding_attempts=max_coding_attempts,
-                                          include_code=include_code,
-                                          selected_successful_functions=selected_successful_functions,
-                                          selected_failed_functions=selected_failed_functions,
-                                          max_execution_time=max_execution_time,
-                                          agtask_premium_llm_by_default=agtask_premium_llm_by_default,
-                                          agtask_skip_rounds=agtask_skip_rounds,  # Auto-test: 1
-                                          agcoding_skip_rounds=agcoding_skip_rounds,  # Auto-test: 4
-                                          agvalidation_skip_rounds=agvalidation_skip_rounds,  # Auto-test: 4
-                                          agcapitalize_skip_rounds=agcapitalize_skip_rounds,
-                                          agcoding_num_parallel_inferences=agcoding_num_parallel_inferences,
-                                          unique_id=unique_id,
-                                          special_criteria=special_criteria)
-        if automation: question = "e"
-        else: question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ", agent_name='PlannerAgent')
+                performance = run_4agents_learning_loop(*args, **kwargs)
+
+        question = "e" if automation else smart_input("Please formulate your question (or exit with q/e/quit/exit): ",
+                                                      agent_name='PlannerAgent')
 
         smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
 
@@ -1798,14 +1813,15 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
     metadata = {'step_id': HumanLLMMonitor.step_id}
     # Retrieve data
     previous_errors, _ = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_errors',
-                                                     metadata_filter=metadata) or []
-    previous_codes, _ = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_codes', metadata_filter=metadata) or []
+                                                        metadata_filter=metadata) or []
+    previous_codes, _ = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_codes',
+                                                       metadata_filter=metadata) or []
     previous_scores, _ = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_scores',
-                                                     metadata_filter=metadata) or []
+                                                        metadata_filter=metadata) or []
     unique_codes = set(
         HumanLLMMonitor.get_agent_data(agent_coding.name, 'unique_codes', metadata_filter=metadata)[0] or [])
     successful_codes, _ = HumanLLMMonitor.get_agent_data(agent_coding.name, 'successful_codes',
-                                                      metadata_filter=metadata) or []
+                                                         metadata_filter=metadata) or []
     all_results, _ = HumanLLMMonitor.get_agent_data(agent_coding.name, 'all_results', metadata_filter=metadata) or []
 
     for attempt in range(max_attempts):
@@ -1880,12 +1896,16 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
                                                metadata=metadata)
 
         if not automation and not successful_codes:
-            stop = smart_input("No successful code yet, do you want to stop coding attempts for this task (too hard) and try a new one ? (yes/no): ","coding_and_validation_loop", "VALIDATION_INFO",optional=False).lower() in ["yes", "y", True]
+            stop = smart_input(
+                "No successful code yet, do you want to stop coding attempts for this task (too hard) and try a new one ? (yes/no): ",
+                "coding_and_validation_loop", "VALIDATION_INFO", optional=False).lower() in ["yes", "y", True]
             if stop:
                 break
 
         if not automation and successful_codes:
-            stop = smart_input("A successful code has been found, do you want to stop coding attempts for this task (performance is sufficient) and try a new one ? (yes/no): ","coding_and_validation_loop","VALIDATION_INFO",optional=False).lower() in ["yes", "y", True]
+            stop = smart_input(
+                "A successful code has been found, do you want to stop coding attempts for this task (performance is sufficient) and try a new one ? (yes/no): ",
+                "coding_and_validation_loop", "VALIDATION_INFO", optional=False).lower() in ["yes", "y", True]
             if stop:
                 break
 
@@ -1905,7 +1925,8 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
     percentage_no_runtime_error = (sum(1 for _, no_runtime_error, _, _, _, _ in all_results if no_runtime_error) / len(
         all_results)) if all_results else 0
     best_score_without_validation = (
-        max(max(sum(scores.values()) / len(scores) if len(scores) > 0 else 0 for scores in score_dict) for _, _, _, score_dict, _, _ in all_results)) if len(
+        max(max(sum(scores.values()) / len(scores) if len(scores) > 0 else 0 for scores in score_dict) for
+            _, _, _, score_dict, _, _ in all_results)) if len(
         all_results) > 0 else 0
     all_scores = {
         'percentage_no_runtime_error': percentage_no_runtime_error,
@@ -1913,7 +1934,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
         'validated_scores': None}
 
     # Second part: If there are successful codes, ask user to select one
-    if successful_codes :
+    if successful_codes:
         if len(successful_codes) == 1:
             selected_code, _, scores = successful_codes[0]
             all_scores['validated_scores'] = scores
@@ -1932,18 +1953,22 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
             else:
                 # Create a string with the indexes of the successful codes with their names and scores
                 successful_codes_str = "\n".join(
-                    f"Code **{i}**: {parsed_code['main_function'] if 'main_function' in parsed_code else parsed_code} - Score:{scores} - Code extract:{parsed_code['program_code'][:100]}" for i, (parsed_code, _, scores) in
+                    f"Code **{i}**: {parsed_code['main_function'] if 'main_function' in parsed_code else parsed_code} - Score:{scores} - Code extract:{parsed_code['program_code'][:100]}"
+                    for i, (parsed_code, _, scores) in
                     enumerate(successful_codes))
                 selection = smart_input(
-                    f"Several codes were successful. Please enter the number of the code you want to add to the library:\n{successful_codes_str}",agent_name="CapitalizationAgent",message_type="Capitalization_info").strip()
+                    f"Several codes were successful. Please enter the number of the code you want to add to the library:\n{successful_codes_str}",
+                    agent_name="CapitalizationAgent", message_type="Capitalization_info").strip()
             if selection.isdigit() and 0 <= int(selection) <= len(successful_codes):
                 selected_index = max(0, min(int(selection), len(successful_codes) - 1))
-                smart_print("Code validated successfully.", "coding_and_validation_loop", "coding_and_validation_loop RESULT")
+                smart_print("Code validated successfully.", "coding_and_validation_loop",
+                            "coding_and_validation_loop RESULT")
                 selected_code, _, scores = successful_codes[selected_index]
                 all_scores['validated_scores'] = scores
                 return selected_code, "success", all_scores
             else:
-                smart_print("Invalid selection or no selection made. Exiting without adding any code.", "coding_and_validation_loop", "coding_and_validation_loop WARNING")
+                smart_print("Invalid selection or no selection made. Exiting without adding any code.",
+                            "coding_and_validation_loop", "coding_and_validation_loop WARNING")
         else:  # if in automatic mode, select the code with the highest score
             highest_score_index = get_highest_score_index([scores for _, _, _, scores in successful_codes],
                                                           mode='total')
@@ -1986,8 +2011,10 @@ def format_prompt(messages):
         else:
             prompt_str += f"Type {type(message)}: " + str(message.content) + "\n"
     return prompt_str
-    
-def create_Nmajority_chain(num_models=3, map_model_name=None, reduce_model_name=None, map_temperature=0.7, reduce_temperature=0.):
+
+
+def create_Nmajority_chain(num_models=3, map_model_name=None, reduce_model_name=None, map_temperature=0.7,
+                           reduce_temperature=0.):
     # Initialize the OpenAI models
     if map_model_name is None:
         map_model_name = MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"]
@@ -2021,6 +2048,60 @@ def create_Nmajority_chain(num_models=3, map_model_name=None, reduce_model_name=
     return chain
 
 
+def display_vram_info():
+    import sys
+    import builtins  # Import built-in functions explicitly
+
+    tracked_ids = set()
+    types_count, types_size = {}, {}
+    id_builtin = builtins.id
+
+    def tensor_memory_size(tensor):
+        if tensor.is_cuda:  # Only consider tensors on GPU
+            return tensor.element_size() * tensor.nelement()
+        return 0  # Ignore CPU memory here if focus is GPU VRAM
+
+    # Inspect all objects in memory
+    for obj in gc.get_objects():
+        try:
+            # Only process actionable objects (models, tensors)
+            if isinstance(obj, (PreTrainedModel,
+                                Embedding)) or "Embedding" in obj.__class__.__name__:  # torch.nn.Module, torch.Tensor,
+                obj_id = id_builtin(obj)  # Use built-in id
+                if obj_id in tracked_ids:  # Avoid duplicates
+                    continue
+                tracked_ids.add(obj_id)
+                obj_type = obj.__class__
+                # Count the type
+                types_count[obj_type] = types_count.get(obj_type, 0) + 1
+
+                # Estimate memory
+                if isinstance(obj, torch.Tensor):
+                    size_in_bytes = tensor_memory_size(obj)
+                elif isinstance(obj, torch.nn.Module):
+                    size_in_bytes = sum(
+                        p.numel() * p.element_size()
+                        for p in obj.parameters()
+                        if p.requires_grad
+                    )
+                else:  # Fallback for other objects
+                    size_in_bytes = 0
+
+                types_size[obj_type] = types_size.get(obj_type, 0) + size_in_bytes
+
+        except Exception as e:
+            # Handle potential errors gracefully
+            print(f"Error processing object of type {type(obj)}: {e}")
+
+    # Convert sizes to MB for readability
+    types_size_mb = {k: v / (1024 ** 2) for k, v in types_size.items()}
+    types_size_mb = dict(sorted(types_size_mb.items(), key=lambda item: item[1], reverse=True))
+    print("\nMemory usage by type (MB):")
+    for obj_type, size_mb in types_size_mb.items():
+        if size_mb > 5:  # Only display types using more than 5 MB
+            print(f"{obj_type}: {size_mb:.2f} MB for {types_count[obj_type]} objects")
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -2037,15 +2118,18 @@ if __name__ == "__main__":
             saved_task = variables_from_pickle.get('saved_task')
             automatic = variables_from_pickle.get('automatic')
             unique_id = variables_from_pickle.get('unique_id')
-            documents = variables_from_pickle.get('documents')
+            special_criteria = variables_from_pickle.get('special_criteria')
 
         # Suppression du fichier pickle après utilisation pour éviter les conflits lors des prochains lancements
         os.remove('pickle/variables.pkl')
 
     # Initialize the WebSocket server with port autodetection and proxy
     if not ('unique_id' in globals()):
-        unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
-    HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy, unique_id=unique_id)
+        #unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+        unique_id = "XP_Collab"
+    unique_id = "XP_Collab"
+    HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy,
+                                                unique_id=unique_id)
 
     # Allow some time for the WebSocket server to start
     time.sleep(1)  # Adjust if necessary
@@ -2066,31 +2150,32 @@ if __name__ == "__main__":
     }
 
     # Set the documents to test/validate as a list of environments
-    if not ('documents' in globals()):
-        documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
-                    'title':"Complex QA and language models hybrid architectures, Survey",
-                'context':"This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
-                'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"},
-                { 'id':"42252c6c-12f3-4edf-9045-8acd69bc3356",
-                    'title':"Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
-                'context':"This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
-                'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
+    documents = [{'id': "cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
+                  'title': "Complex QA and language models hybrid architectures, Survey",
+                  'context': "This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
+                  'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"},
+                 {'id': "42252c6c-12f3-4edf-9045-8acd69bc3356",
+                  'title': "Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
+                  'context': "This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
+                  'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
 
     envs = []
     for doc in documents:
         env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
-                                 target_file_path=doc['target_file_path'], id=doc['id'], llm=llmORchains_list["default_llm"]).get_environment()
+                                 target_file_path=doc['target_file_path'], id=doc['id'],
+                                 llm=llmORchains_list["default_llm"]).get_environment()
         envs.append(env)
 
     problem_subdir = "IR_CPS_TechSynthesis" if 'saved_task' not in globals() else saved_task['type_tache']
 
-    special_criteria = None
     if 'saved_task' in globals():
-        special_criteria = {
-            "all#saved_task": saved_task
-        }
+        special_criteria["all#saved_task"] = saved_task
+    else:
+        special_criteria = None
     if not ('automatic' in globals()):
         automatic = None
+    else:
+        automation_global = "full_auto" if automatic else None
 
     # Run the planner agent
     run_planner(default_llm_key="default_llm",
@@ -2114,4 +2199,6 @@ if __name__ == "__main__":
                 functions_to_import=".*",
                 special_criteria=special_criteria,
                 automation=automatic,
-                model_choice={"coach": "default_llm","coder": "premium_llm","critic": "default_llm","capitalizer": "default_llm"})  # Auto-test: 0"""
+                model_choice={"coach": "default_llm", "coder": "premium_llm", "critic": "default_llm",
+                              "capitalizer": "default_llm"},
+                embedding_function=embedding_function)  # Auto-test: 0"""
