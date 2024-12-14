@@ -2789,7 +2789,9 @@ class HumanLLMMonitor:
             premium_llm_function = self.premium_llm if self.premium_llm else None
         print(f"****agent : {self.agent_name}, automation : {self.automation}****")
         if self.automation == 'before' and (hasattr(self, "saved_task")):
-            self.system_prompt = json.loads(self.saved_task['content'])['prompt']
+            temp = json.loads(self.saved_task['content'])
+            print(f"****temp (prompt before {self.agent_name}) : {temp}****")
+            self.system_prompt = temp['prompt']
             if self.auto_n_rounds > 0:
                 self.automation = "full_auto"
             else:
@@ -2822,12 +2824,15 @@ class HumanLLMMonitor:
             start_time = datetime.now()
             # Pre-inference human intervention
             if self.automation in ['before', 'after', 'skip_once']:
+                print(f"****agent : {self.agent_name}, automation : {self.automation}****")
                 input_comments, skip_inference, use_premium_llm, llm_outputs = None, False, False, []
                 llm_input_messages = original_input_messages
                 self.llm_input_messages = original_input_messages
                 self.last_inference_check_results = [None]
                 if self.automation == 'after' and hasattr(self, "saved_task"): # Plus besoin de tester sur agent_name
-                    llm_outputs = [AIMessage(content=json.loads(self.saved_task['content'])['llm_output'])]
+                    temp = json.loads(self.saved_task['content'])
+                    print(f"****temp (llm_output after {self.agent_name}) : {temp}****")
+                    llm_outputs = [AIMessage(content=temp['llm_output'])]
                     if self.auto_n_rounds > 0:
                         self.automation = "full_auto"
                     else:

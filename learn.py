@@ -878,7 +878,7 @@ class ValidationAgent:
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, skip_rounds=0,
                  llmORchains_list=None, automation=None, model_choice=None, special_criteria=None):
         #super().__init__(llm)
-        saved_task, temperature_max, num_parallel_inferences, recommend_critiques, auto_n_rounds = None, None, None, None, None
+        saved_task, temperature_max, num_parallel_inferences, recommend_critiques, auto_n_rounds = None, None, 1, None, None
         self.additional_check_list = None
         self.name = self.__class__.__name__
 
@@ -965,7 +965,7 @@ class CapitalizationAgent:
                  special_criteria=None):
         self.additional_check_list = None
         self.name = self.__class__.__name__
-        saved_task, auto_n_rounds, num_parallel_inferences, temperature_max, recommend_critics = None, None, None, None, None
+        saved_task, auto_n_rounds, num_parallel_inferences, temperature_max, recommend_critics = None, None, 1, None, None
 
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
 
