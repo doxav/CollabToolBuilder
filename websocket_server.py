@@ -80,7 +80,7 @@ class WebsocketServer:
 
                     if agent_name in self.monitors:
                         monitor = self.monitors[agent_name]
-                        print(f"Executing function '{function_name}' for monitor '{agent_name}' with params: {params}")
+                        # print(f"Executing function '{function_name}' for monitor '{agent_name}' with params: {params}")
                         result = monitor.execute_function(function_name, params)
                         message = json.dumps({
                             "status": "success",
@@ -99,7 +99,7 @@ class WebsocketServer:
                         await client.send(message)
         except Exception as e:
             # print exception details
-            print(f"Error in WebSocket handler: {e}")
+            # print(f"Error in WebSocket handler: {e}")
             pass
         finally:
             self.connected_clients.remove(websocket)
@@ -114,13 +114,13 @@ class WebsocketServer:
                     sock.close()
                     return  # Port is available
                 except OSError:
-                    print(f"Port {self.port} is in use, trying the next one...")
+                    # print(f"Port {self.port} is in use, trying the next one...")
                     self.port += 1
 
     def start_localtunnel(self):
         """Start localtunnel if it's enabled and available on the system."""
         if self.proxy_enabled and shutil.which("lt") is not None:
-            print("Starting localtunnel...")
+            # print("Starting localtunnel...")
             try:
                 self.process_lt = subprocess.Popen(
                     ["lt", "--port", str(self.port)],
@@ -217,7 +217,7 @@ class WebsocketServer:
         except RuntimeError:
             # No running event loop in this thread, so we can run the coroutine directly
             asyncio.run(send_to_clients())
-        print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {message}")
+        # print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {message}")
 
     def send_notasync_message(self, message):
         """Send a message without awaiting (fire and forget)."""

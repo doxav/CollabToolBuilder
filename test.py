@@ -15,8 +15,8 @@ class SimilarityCalculator:
         plan_embedding_similarity = self.normalized_cosine_similarity(
             plan_embedding, self.target_plan_embedding, self.min_cosine_similarity
         )
-        print("self.min_plan_cosine_similarity", self.min_cosine_similarity)
-        print("plan_embedding_similarity", plan_embedding_similarity)
+        # print("self.min_plan_cosine_similarity", self.min_cosine_similarity)
+        # print("plan_embedding_similarity", plan_embedding_similarity)
         return plan_embedding_similarity
 
 # Example usage:

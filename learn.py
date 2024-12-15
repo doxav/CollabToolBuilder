@@ -1,43 +1,29 @@
 import inspect
 import random
 import string
-import traceback
-import contextlib
-import ast
-import types
 import time
-from zipfile import error
-
-from config import *
-import sys
-
-import openai
-from typing import Dict
-
-
-from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, smart_print, smart_input
-
 import os
-import io
 import uuid
 import re
-import shutil
-import hashlib
-
-from datetime import datetime
+import sys
 import socket
-
+import json
+import difflib
+import openai
+from datetime import datetime
+from typing import Dict
+from datasets import load_dataset
 from langchain_core.runnables import Runnable
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.ai import AIMessage
 from langchain_core.messages.system import SystemMessage
-
 from langchain_openai import ChatOpenAI
+from config import *
+from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, smart_print, smart_input
+from env.IR_CPS_TechSynthesis.env import *
+from env.SWEBench.env import *
 
-import json
-import difflib
-from datasets import load_dataset
 
 dataset_repo = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take50", split='train')
 
@@ -65,158 +51,6 @@ embedding_function = "intfloat/e5-base-v2"  # UnifiedVectorDB.OpenAI_embedding_f
 reset_db_indices = False  # Set to True after changing embeddings
 
 HumanLLMMonitor.use_websocket = True
-
-class Environment:
-    def __init__(self, temp_root_dir: str = None, data_dir: str = "data"):
-        self.temp_root_dir = temp_root_dir if temp_root_dir else os.path.join(os.getcwd(), "temp")
-        self.data_dir = data_dir
-        self.current_temp_dir = None
-        self.last_unique_id_backup = None
-        # create "backups" directory were saved states will be stored
-        if not os.path.exists(os.path.join(self.temp_root_dir, "backups")):
-            os.makedirs(os.path.join(self.temp_root_dir, "backups"))
-        # Environment.reset(self) # Moving reset to the first call to __init__ to avoid multiple reset when class is subclassed
-
-    def reset(self, backup_previous_temp_dir=True):
-        if self.current_temp_dir is not None:
-            Environment.close(self, backup_previous_temp_dir)
-        # create a new temp directory in temp_root_dir named with a uuid
-        self.current_temp_dir = os.path.join(self.temp_root_dir, str(uuid.uuid4()))
-        os.makedirs(self.current_temp_dir)
-        # create a write only link to the data directory in the temp directory
-        os.symlink(os.path.abspath(self.data_dir), os.path.join(self.current_temp_dir, "data"),
-                   target_is_directory=True)
-
-    def step(self, action_code, context={}):
-        # Memorize current directory and switch to temporary directory
-        current_dir = os.getcwd()
-        os.chdir(self.current_temp_dir)
-
-        # Ensure `result` is set in the code
-        if not re.search(r'\bresult\s*=', action_code.strip().splitlines()[-1]):
-            helper = "\nresult = locals().get('_', True)"
-        else:
-            helper = ""
-
-        # Setup for capturing stdout and stderr
-        stdout, stderr = io.StringIO(), io.StringIO()
-
-        try:
-            # Execute code with redirected stdout and stderr
-            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-                exec(action_code + helper, context)
-            # Safely evaluate and retrieve result
-            exec_result = ast.literal_eval(repr(context.get('result', True)))
-            no_runtime_error = True
-        except Exception as e:
-            # Format traceback and include captured output for clarity
-            error_traceback = ''.join(traceback.format_exception(None, e, e.__traceback__))
-            exec_result = f"Execution failed. Error: {e}\nTraceback:\n{error_traceback}\nStdout:\n{stdout.getvalue()}\nStderr:\n{stderr.getvalue()}"
-            no_runtime_error = False
-        finally:
-            # Restore original directory
-            os.chdir(current_dir)
-
-        return no_runtime_error, exec_result
-
-    def close(self, backup_previous_temp_dir=True):
-        # move temp directory and its content including the data link to backups directory
-        if backup_previous_temp_dir:
-            shutil.move(self.current_temp_dir, os.path.join(self.temp_root_dir, "backups"))
-        else:
-            shutil.rmtree(self.current_temp_dir)
-
-    def backup_state(self, unique_id: str = None):
-        # copy all the temp directory (excluding data directory) into a folder named by unique_id into backups directory
-        if unique_id is None:
-            self.last_unique_id_backup = unique_id = str(uuid.uuid4())
-        if self.get_state(unique_id) != self.get_state():
-            shutil.copytree(self.current_temp_dir, os.path.join(self.temp_root_dir, "backups", unique_id),
-                            ignore=shutil.ignore_patterns('data'))
-        return unique_id
-
-    def restore_state(self, unique_id):
-        from_folder = os.path.join(self.temp_root_dir, "backups", unique_id)
-        if not os.path.exists(from_folder): return "Restore state folder not found"
-        if self.get_state(unique_id) != self.get_state():
-            # copy all the content of the backup directory into the temp directory (excluding data directory)
-            self.reset(backup_previous_temp_dir=False)
-            # copy all the content of the backup directory into the temp directory which already contains the data directory
-            shutil.copytree(from_folder, self.current_temp_dir, ignore=shutil.ignore_patterns('data'),
-                            dirs_exist_ok=True)
-            return "State restored"
-        else:
-            return "State identical to backup folder"
-
-    def restore_last_state(self):
-        if self.last_unique_id_backup:
-            self.restore_state(self.last_unique_id_backup)
-            return "Last state restored"
-        else:
-            return "No last state to restore"
-
-    def get_state(self, unique_id=None, extended_comparison=False):
-        # return a dictionary containing the content of the temp directory
-        state = {}
-        state_folder = self.current_temp_dir if unique_id is None else os.path.join(self.temp_root_dir, "backups",
-                                                                                    unique_id)
-        if not os.path.exists(state_folder):
-            return "No state found"
-        for root, dirs, files in os.walk(state_folder):
-            for file in files:
-                file_path = os.path.join(root, file)
-                with open(file_path, "rb") as f:
-                    file_content = f.read()
-                if extended_comparison:
-                    file_stat = os.stat(file_path)  # Capture file's metadata
-                    state[file_path] = {"hash": hashlib.sha256(file_content).hexdigest(), "mtime": file_stat.st_mtime}
-                else:
-                    state[file_path] = hashlib.sha256(file_content).hexdigest()
-        # convert the dictionary into a string useful for comparison and analysis by language models
-        state_text = "Files directory content: " + (json.dumps(state) if state.keys().__len__() > 0 else "empty")
-        return state_text
-
-    def get_score(self):
-        # indicate that automatic scoring is not set, then ask the user to provide a score between 0 and 1, we ensure that the score is a float between 0 and 1
-        score = None
-        while score is None:
-            try:
-                score = float(input("No automatic get_score set, please provide a score between 0 and 1: "))
-                if score < 0 or score > 1:
-                    score = None
-            except ValueError:
-                pass
-        return {'score (top:1, worst:0)': score}
-
-    def set_score_function(self, score_function_code: str):
-        local_scope = {'self': self}
-        func_name = re.search(r'def (\w+)\(', score_function_code).group(1)
-        if validate_function_code(score_function_code, func_name, local_scope):
-            self.get_score = types.MethodType(local_scope[func_name], self)
-
-    def set_state_function(self, state_function_code: str):
-        local_scope = {'self': self}
-        func_name = re.search(r'def (\w+)\(', state_function_code).group(1)
-        if validate_function_code(state_function_code, func_name, local_scope):
-            self.get_state = types.MethodType(local_scope[func_name], self)
-
-
-class EnvironmentManager:
-    def __init__(self, env_type="default", **kwargs):
-        if env_type == "techsynthesis":
-            from env.IR_CPS_TechSynthesis.env import VoyagerEnvIR_CPS_TechSynthesis
-            # pass to VoyagerEnvIR_CPS_TechSynthesis all the args from the EnvironmentManager
-            self.env = VoyagerEnvIR_CPS_TechSynthesis(**kwargs)
-        elif env_type == "sweSynthesis":
-            from env.IR_CPS_TechSynthesis.env import  SWEBenchEnvironment
-            # passing all the parameteres   all the args from the EnvironmentManager
-            self.env = SWEBenchEnvironment(**kwargs)    
-        else:
-            self.env = Environment()
-        self.env.reset()
-
-    def get_environment(self):
-        return self.env
 
 def apply_special_criteria(agent, special_criteria, available_locals=None):
     """
@@ -258,7 +92,7 @@ class TaskIdentificationAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
                  premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None,
                  criteria=None, params_user_message=None, temperature_min=0., temperature_max=1.,
-                 num_parallel_inferences=1, fixed_coach=False, special_criteria=None):
+                 num_parallel_inferences=1, agcoach_num_parallel_inferences=1, fixed_coach=False, special_criteria=None):
         self.additional_check_list = None
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
@@ -313,17 +147,14 @@ class TaskIdentificationAgent():
                 
         original_stdout = sys.stdout
         sys.stdout = open('system_debug.txt', 'w') 
-        print(self.problem_prompts_subdir + 'identify_best_task')
+        # print(self.problem_prompts_subdir + 'identify_best_task')
         sys.stdout=original_stdout 
         
         original_stdout = sys.stdout
         sys.stdout = open('user_message.txt', 'w') 
-        print(user_message)
+        # print(user_message)
         sys.stdout=original_stdout  
         
-        
-        
-
         task = self.human_llm_identify_best_task.CallHumanLLM(
             system_prompt_template=self.problem_prompts_subdir + 'identify_best_task',
             user_message=user_message,
@@ -333,9 +164,6 @@ class TaskIdentificationAgent():
             stream_output=True
         )
         
-
-       
-       
         return task
 
     def expand_criteria_aligned(self, criteria):
@@ -379,7 +207,7 @@ class CodingAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
                  db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0,
                  llmORchains_list=None, optuna=None, model_choice=None, special_criteria=None, temperature_min=0.,
-                 temperature_max=1., num_parallel_inferences=2):
+                 temperature_max=1., num_parallel_inferences=1):
         #super().__init__(llm)
         self.additional_check_list = None
         self.name = self.__class__.__name__
@@ -704,7 +532,7 @@ class CodingAgent():
                     primitives.append(f.read())
         with open('primitives_checking.txt', 'w') as file:
           sys.stdout = file  # Redirect standard output to the file
-          print(primitives)
+        #   print(primitives)
 
     
 # Reset sys.stdout to the console
@@ -713,6 +541,9 @@ class CodingAgent():
         return primitives
 
     def code_task_and_run_test(self, refined_task):
+
+        print('Starting code_task_and_run_test')
+
         def flatten_and_pair(nested_list):
             def flatten(nested):
                 flat_list = []
@@ -766,11 +597,15 @@ class CodingAgent():
         previous_codes = previous_codes if previous_codes else []
         error_patches = flatten_and_pair(error_patches) if error_patches else []
 
+        print('reached 1')
+
         env_states = "\n".join([env.get_state(extended=False) for env in self.envs])
         primitives = "\n".join(self.get_primitives())
         successful_tasks = "\n".join(HumanLLMMonitor.get_learnt_tasks())
         failed_tasks = "\n".join(HumanLLMMonitor.get_failed_tasks())
         validation_response_um = "\n".join(HumanLLMMonitor.get_validation_results())
+
+        print('reached 2')
 
         previous_attempts = ""
         for errors_list, scores_list, codes_list in zip(previous_errors, previous_scores, previous_codes):
@@ -793,6 +628,8 @@ class CodingAgent():
             "previous_attempts": previous_attempts,
             "error_patches_str": error_patches_str
         }
+
+        print('reached 3')
 
         # Load and format the user message from a file template
         user_message = HumanLLMMonitor.load_prompt("coding_agent_user_message_template", template_data=template_data, directory='prompts')
@@ -818,10 +655,18 @@ class CodingAgent():
         # Ajouter temperature seulement si l'attribut temperature existe dans l'instance
         if hasattr(self, 'temperature'):
             kwargs["temperature_max"] = self.temperature
+        
+        print('reached 4')
 
         # Appeler la méthode avec les arguments sous forme de **kwargs
         codes = self.human_llm_code_task.CallHumanLLM(**kwargs)
         results = []
+
+        print('RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR')
+
+        # Save results to a pickle file
+        with open('inspection/results.pkl', 'wb') as f:
+            pickle.dump(codes, f)
 
         for index, code in enumerate(codes):
             # Get the proper check_results corresponding to the output_id (which is the index)
@@ -1329,23 +1174,6 @@ class PlannerAgent:
             return ""
 
 
-def validate_function_code(code, function_name, local_scope=None, compile_test_only=False):
-    if local_scope is None:
-        local_scope = {}
-    try:
-        compiled_code = compile(code, '<string>', 'exec')
-        if compile_test_only:
-            return True
-        exec(compiled_code, globals(), local_scope)
-        func = local_scope.get(function_name)
-        if func is None or not callable(func):
-            raise ValueError(f"Function {function_name} is not defined or not callable.")
-        return func
-    except Exception as e:
-
-        return None
-
-
 def extract_function_code(task_content, function_name, current_function_code=None):
     """
     Extracts the complete code block for the specified function from the given task content.
@@ -1391,9 +1219,11 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                               optuna_opti=None, allow_custom_score_state_functions=False,
                               params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
-                              agcoach_num_parallel_inferences=2, fixed_coach=False, return_array=False, agcoding_num_parallel_inferences=2,
+                              agcoach_num_parallel_inferences=1, fixed_coach=False, return_array=False, agcoding_num_parallel_inferences=1,
                               continue_each_loop=False,unique_id=None):
     scores = None
+
+    print("Starting learning loop...")
 
     if params_user_message is None and optuna_opti is None:
         params_user_message = {
@@ -1424,7 +1254,6 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             model_choice['coding' if 'coding' in model_choice else 'coder'] if type(
                 model_choice) == dict else model_choice), special_criteria=special_criteria,
                                num_parallel_inferences=agcoding_num_parallel_inferences)
-
     agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                        skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list,
                                        optuna=optuna_opti, model_choice=(
@@ -1446,8 +1275,6 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     while continue_identifying_tasks and time.time() < time_end:
         HumanLLMMonitor.step_id = str(uuid.uuid4())
         task = agent_taskreco.identify_best_task()
-         
-       
 
         # Handle multiple-tasks case
         if len(task) > 1:
@@ -1562,7 +1389,7 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
                 agcapitalize_skip_rounds=0, llmORchains_list=None, model_choice=None,
                 optuna_opti=None, allow_custom_score_state_functions=False,
                 params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
-                agcoach_num_parallel_inferences=2, fixed_coach=False, unique_id=None, return_array=False, agcoding_num_parallel_inferences=2,
+                agcoach_num_parallel_inferences=1, fixed_coach=False, unique_id=None, return_array=False, agcoding_num_parallel_inferences=1,
                 continue_each_loop=False, skip_rounds=0, functions_to_import=None):
 
     # Initialize unique_id
@@ -1722,6 +1549,9 @@ def get_highest_score_index(score_array, mode='total'):
 def coding_and_validation_loop(agent_coding: CodingAgent, agent_validation, task_description, max_attempts,
                                extra_manual_validation_to_capitalize=True, continue_even_if_successful=True,
                                optuna=None, end_time=None):
+    
+    print("Starting coding and validation loop...")
+
     metadata = {'step_id': HumanLLMMonitor.step_id}
     # Retrieve data
     previous_errors = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_errors',
@@ -1757,6 +1587,8 @@ def coding_and_validation_loop(agent_coding: CodingAgent, agent_validation, task
         HumanLLMMonitor.add_agent_data(agent_coding.name, 'unique_codes', list(unique_codes), metadata=metadata)
 
         results = agent_coding.code_task_and_run_test(task_description)
+
+        # print(results)
 
         all_results.extend(results)
         HumanLLMMonitor.add_agent_data(agent_coding.name, 'all_results', all_results, metadata=metadata)
@@ -1895,11 +1727,9 @@ class PrintPromptRunnable(Runnable):
         smart_print("\033[31m" + formatted_prompt + "\033[0m")
         return input_msg
 
-
 class ExtractMessage(Runnable):
     def invoke(self, input_msg, config):
         return "\n".join(getattr(message, 'content', message) for message in getattr(input_msg, 'messages', input_msg))
-
 
 def format_prompt(messages):
     prompt_str = ""
@@ -1949,73 +1779,104 @@ def create_Nmajority_chain(num_models=3, map_model_name=None, reduce_model_name=
 
 
 if __name__ == "__main__":
-    import argparse
+    # import argparse
+    # import pickle
 
-    # Handle command line arguments
-    parser = argparse.ArgumentParser(description="Run the learning loop with optional WebSocket settings")
-    parser.add_argument("--port", type=int, default=6789, help="Optional port for WebSocket server")
-    parser.add_argument("--secret", action='store_true', help="Optional secret for WebSocket URL")
-    parser.add_argument("--proxy", action='store_true', help="Start a proxy via localtunnel if available")
-    args = parser.parse_args()
+    # # Handle command line arguments
+    # parser = argparse.ArgumentParser(description="Run the learning loop with optional WebSocket settings")
+    # parser.add_argument("--port", type=int, default=6789, help="Optional port for WebSocket server")
+    # parser.add_argument("--secret", action='store_true', help="Optional secret for WebSocket URL")
+    # parser.add_argument("--proxy", action='store_true', help="Start a proxy via localtunnel if available")
+    # args = parser.parse_args()
 
-    # Initialize the WebSocket server with port autodetection and proxy
-    unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
-    HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy, unique_id=unique_id)
+    # # Initialize the WebSocket server with port autodetection and proxy
+    # unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+    # HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy, unique_id=unique_id)
 
-    # Allow some time for the WebSocket server to start
-    time.sleep(1)  # Adjust if necessary
+    # # Allow some time for the WebSocket server to start
+    # time.sleep(1)  # Adjust if necessary
 
-    # Initialize the default and premium LLMs
-    #from langchain_groq import ChatGroq
-    llmORchains_list = {
-        "default_llm": ChatOpenAI(
-            model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False,
-            temperature=0.),
-        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"], cache=False, temperature=0.),
-        #"default_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.),
-        #"premium_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["code_gpt"], cache=False),#, temperature=0.),
-        "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
-                                                   reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=3),
-        "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
-                                                    reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=10)
-    }
+    # # Initialize the default and premium LLMs
+    # #from langchain_groq import ChatGroq
+    # llmORchains_list = {
+    #     "default_llm": ChatOpenAI(
+    #         model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False,
+    #         temperature=0.),
+    #     "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"], cache=False, temperature=0.),
+    #     #"default_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.),
+    #     #"premium_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["code_gpt"], cache=False),#, temperature=0.),
+    #     "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
+    #                                                reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=3),
+    #     "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
+    #                                                 reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=10)
+    # }
 
-    # Set the documents to test/validate as a list of environments
-    documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
-                'title':"Complex QA and language models hybrid architectures, Survey",
-            'context':"This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
-            'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"},
-            { 'id':"42252c6c-12f3-4edf-9045-8acd69bc3356",
-                'title':"Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
-            'context':"This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
-            'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
+    # # Set the documents to test/validate as a list of environments
+    # documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
+    #             'title':"Complex QA and language models hybrid architectures, Survey",
+    #         'context':"This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
+    #         'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"},
+    #         { 'id':"42252c6c-12f3-4edf-9045-8acd69bc3356",
+    #             'title':"Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
+    #         'context':"This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
+    #         'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
 
-    # envs = []
-    # for doc in documents:
-    #     env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
-    #                              target_file_path=doc['target_file_path'], id=doc['id'], llm=llmORchains_list["default_llm"]).get_environment()
-    #     envs.append(env)
+    # # envs = []
+    # # for doc in documents:
+    # #     env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
+    # #                              target_file_path=doc['target_file_path'], id=doc['id'], llm=llmORchains_list["default_llm"]).get_environment()
+    # #     envs.append(env)
    
-    # Run the planner agent
+    # # Run the planner agent
     
-    env = EnvironmentManager(env_type="sweSynthesis", llm=llmORchains_list["default_llm"]).get_environment()
-    envs = [env]
-    run_planner(default_llm_key="default_llm",
-                premium_llm_key="premium_llm",
-                llmORchains_list=llmORchains_list,
-                test_environments=envs,
-                manual_validation_to_capitalize=False,
-                problem_prompts_subdir="SWE_Synthesis",   # I have   changed the code for Redirecting to SWE_prompts_folder/
-                max_coding_attempts=4,
-                include_code=False,
-                selected_successful_functions=[],
-                selected_failed_functions=[],
-                max_execution_time=3600,
-                agtask_premium_llm_by_default=False,
-                agtask_skip_rounds=0,  # Auto-test: 1
-                agcoding_skip_rounds=0,  # Auto-test: 4
-                agvalidation_skip_rounds=0,  # Auto-test: 4
-                agcapitalize_skip_rounds=0,
-                agcoding_num_parallel_inferences=2,
-                unique_id=unique_id,
-                functions_to_import=".*")  # Auto-test: 0"""
+    # env = EnvironmentManager(env_type="sweSynthesis", llm=llmORchains_list["default_llm"]).get_environment()
+    # envs = [env]
+    # run_planner(default_llm_key="default_llm",
+    #             premium_llm_key="premium_llm",
+    #             llmORchains_list=llmORchains_list,
+    #             test_environments=envs,
+    #             manual_validation_to_capitalize=False,
+    #             problem_prompts_subdir="SWE_Synthesis",  
+    #             max_coding_attempts=4,
+    #             include_code=False,
+    #             selected_successful_functions=[],
+    #             selected_failed_functions=[],
+    #             max_execution_time=3600,
+    #             agtask_premium_llm_by_default=False,
+    #             agtask_skip_rounds=0,  # Auto-test: 1
+    #             agcoding_skip_rounds=0,  # Auto-test: 4
+    #             agvalidation_skip_rounds=0,  # Auto-test: 4
+    #             agcapitalize_skip_rounds=0,
+    #             agcoding_num_parallel_inferences=1,
+    #             unique_id=unique_id,
+    #             functions_to_import=".*")  # Auto-test: 0"""
+
+    from primitives.swe_primititves.find_buggy_code import find_buggy_code
+    import datasets
+
+    dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take3", split='train')
+    dataset = dataset.select(range(1, 2))
+
+    for data in dataset:
+        problem = SWEProblem.parse_obj(data)
+        
+        bot = SWEManager()
+
+        print(find_buggy_code(bot, problem))
+
+        # env = SWEBenchEnvironment(problem)
+
+        # structure = str(env.summarize_repo("env/SWEBench/repos/scikit-learn", max_files=500, max_output_characters=24000))
+
+        # print(len(structure))
+
+        # import tiktoken
+        # encoding = tiktoken.encoding_for_model("gpt-4")
+        # tokens = encoding.encode(structure)
+        # print("Tokens:", len(tokens))
+
+        # print(get_abs_current_dir())
+        # print(find_files.invoke({"file_name": "multiclass"}))
+        # print(ls.invoke({}))
+        # print(get_files_content.invoke({"paths": ["pyproject.toml", "astropy/logger.py"], "line_numbers": [10, 33]}))
+

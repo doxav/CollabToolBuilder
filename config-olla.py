@@ -29,7 +29,7 @@ from constants import ERROR_MESSAGES
 BACKEND_DIR = Path(__file__).parent  # the path containing this file
 BASE_DIR = BACKEND_DIR.parent  # the path containing the backend/
 
-print(BASE_DIR)
+# print(BASE_DIR)
 
 try:
     from dotenv import load_dotenv, find_dotenv

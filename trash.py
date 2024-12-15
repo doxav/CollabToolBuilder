@@ -147,7 +147,7 @@ def create_patch_workflow(bot):
 
     def extract_data(state: PatchState):
         state['example_patch'] = re.search(r'<patch>(.*?)</patch>', state['data']['text'], re.DOTALL).group(1).strip()
-        print(f"{state['data']['instance_id']}: Data extraction complete")
+        # print(f"{state['data']['instance_id']}: Data extraction complete")
         return state
 
     def search_issue_code(state: PatchState):
@@ -169,7 +169,7 @@ def create_patch_workflow(bot):
         message = state['messages'][-1]
         bot.directory_path = f"/{state['repo']}/"
         response = extractor_llm.invoke([extract_content_from_files_prompt.format(files=message.content, current_dir=directory.cwd)])
-        print(f"{state['data']['instance_id']}: Got error-related files")
+        # print(f"{state['data']['instance_id']}: Got error-related files")
         return {
             **state,
             "messages": [response]

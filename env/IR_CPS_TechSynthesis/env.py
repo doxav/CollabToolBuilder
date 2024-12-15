@@ -1,64 +1,51 @@
-import datetime
-import os.path
-#import warnings
 import copy
-import time
-import uuid
-from dataclasses import dataclass, field
-import re
-from typing import List, SupportsFloat, Any, Tuple, Dict
-from dataclasses import asdict
-from langchain_core.messages import SystemMessage, HumanMessage
-import json
-import inspect, os
-from typing import Any, Dict, Callable, List
-from langchain_community.tools import ShellTool, tool
-from pydantic import BaseModel
-import io
-shell = ShellTool()
-
-from config import *
-#from attr import dataclass, field
-#import PyPDF2
-import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-import pdb
-
-import traceback
-
-import json
-import requests
-import hashlib
-from datasets import load_dataset
-import contextlib
-
-import argparse
-import ast
-import json
 import os
-import subprocess
+import re
+import ast
+import io
 import uuid
+import json
+import time
+import types
+import shutil
+import hashlib
+import numpy as np
+import requests
+import traceback
+import contextlib
+from typing import Any, Dict, List
+from dataclasses import dataclass, field, asdict
+from sklearn.metrics.pairwise import cosine_similarity
+from bs4 import BeautifulSoup
 
-import pandas as pd
-from tqdm import tqdm
-
-from learn import Environment
-
-# import a function from langchain which could embed a text into a vector using OpenAI ada-002 or HuggingFace
-import langchain
+from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_openai import OpenAIEmbeddings
 
 from utils.file_utils import save_to_pickle, load_from_pickle
 from utils.llm_utils import UnifiedVectorDB
-#from langchain_community.cache import InMemoryCache, SQLiteCache
-#langchain.llm_cache = SQLiteCache(database_path="sqlite/langchain_cache.db")
+from config import *
 
-from bs4 import BeautifulSoup
 
 ##############################################################################################################
 # Placeholder classes for the technical synthesis environment
 ##############################################################################################################
+
+def validate_function_code(code, function_name, local_scope=None, compile_test_only=False):
+    if local_scope is None:
+        local_scope = {}
+    try:
+        compiled_code = compile(code, '<string>', 'exec')
+        if compile_test_only:
+            return True
+        exec(compiled_code, globals(), local_scope)
+        func = local_scope.get(function_name)
+        if func is None or not callable(func):
+            raise ValueError(f"Function {function_name} is not defined or not callable.")
+        return func
+    except Exception as e:
+
+        return None
 
 def method_call_counter(method):
     def wrapper(*args, **kwargs):
@@ -309,6 +296,154 @@ class DocumentStructure:
     def get_events(self):
         return self.events
 
+class Environment:
+    def __init__(self, temp_root_dir: str = None, data_dir: str = "data"):
+        self.temp_root_dir = temp_root_dir if temp_root_dir else os.path.join(os.getcwd(), "temp")
+        self.data_dir = data_dir
+        self.current_temp_dir = None
+        self.last_unique_id_backup = None
+        # create "backups" directory were saved states will be stored
+        if not os.path.exists(os.path.join(self.temp_root_dir, "backups")):
+            os.makedirs(os.path.join(self.temp_root_dir, "backups"))
+        # Environment.reset(self) # Moving reset to the first call to __init__ to avoid multiple reset when class is subclassed
+
+    def reset(self, backup_previous_temp_dir=True):
+        if self.current_temp_dir is not None:
+            Environment.close(self, backup_previous_temp_dir)
+        # create a new temp directory in temp_root_dir named with a uuid
+        self.current_temp_dir = os.path.join(self.temp_root_dir, str(uuid.uuid4()))
+        os.makedirs(self.current_temp_dir)
+        # create a write only link to the data directory in the temp directory
+        os.symlink(os.path.abspath(self.data_dir), os.path.join(self.current_temp_dir, "data"), target_is_directory=True)
+
+    def step(self, action_code, context={}):
+        # Memorize current directory and switch to temporary directory
+        current_dir = os.getcwd()
+        os.chdir(self.current_temp_dir)
+
+        # Ensure `result` is set in the code
+        if not re.search(r'\bresult\s*=', action_code.strip().splitlines()[-1]):
+            helper = "\nresult = locals().get('_', True)"
+        else:
+            helper = ""
+
+        # Setup for capturing stdout and stderr
+        stdout, stderr = io.StringIO(), io.StringIO()
+
+        try:
+            # Execute code with redirected stdout and stderr
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                exec(action_code + helper, context)
+            # Safely evaluate and retrieve result
+            exec_result = ast.literal_eval(repr(context.get('result', True)))
+            no_runtime_error = True
+        except Exception as e:
+            # Format traceback and include captured output for clarity
+            error_traceback = ''.join(traceback.format_exception(None, e, e.__traceback__))
+            exec_result = f"Execution failed. Error: {e}\nTraceback:\n{error_traceback}\nStdout:\n{stdout.getvalue()}\nStderr:\n{stderr.getvalue()}"
+            no_runtime_error = False
+        finally:
+            # Restore original directory
+            os.chdir(current_dir)
+
+        return no_runtime_error, exec_result
+
+    def close(self, backup_previous_temp_dir=True):
+        # move temp directory and its content including the data link to backups directory
+        if backup_previous_temp_dir:
+            shutil.move(self.current_temp_dir, os.path.join(self.temp_root_dir, "backups"))
+        else:
+            shutil.rmtree(self.current_temp_dir)
+
+    def backup_state(self, unique_id: str = None):
+        # copy all the temp directory (excluding data directory) into a folder named by unique_id into backups directory
+        if unique_id is None:
+            self.last_unique_id_backup = unique_id = str(uuid.uuid4())
+        if self.get_state(unique_id) != self.get_state():
+            shutil.copytree(self.current_temp_dir, os.path.join(self.temp_root_dir, "backups", unique_id), ignore=shutil.ignore_patterns('data'))
+        return unique_id
+
+    def restore_state(self, unique_id):
+        from_folder = os.path.join(self.temp_root_dir, "backups", unique_id)
+        if not os.path.exists(from_folder): return "Restore state folder not found"
+        if self.get_state(unique_id) != self.get_state():
+            # copy all the content of the backup directory into the temp directory (excluding data directory)
+            self.reset(backup_previous_temp_dir=False)
+            # copy all the content of the backup directory into the temp directory which already contains the data directory
+            shutil.copytree(from_folder, self.current_temp_dir, ignore=shutil.ignore_patterns('data'),
+                            dirs_exist_ok=True)
+            return "State restored"
+        else:
+            return "State identical to backup folder"
+
+    def restore_last_state(self):
+        if self.last_unique_id_backup:
+            self.restore_state(self.last_unique_id_backup)
+            return "Last state restored"
+        else:
+            return "No last state to restore"
+
+    def get_state(self, unique_id=None, extended_comparison=False):
+        # return a dictionary containing the content of the temp directory
+        state = {}
+        state_folder = self.current_temp_dir if unique_id is None else os.path.join(self.temp_root_dir, "backups", unique_id)
+        if not os.path.exists(state_folder):
+            return "No state found"
+        for root, dirs, files in os.walk(state_folder):
+            for file in files:
+                file_path = os.path.join(root, file)
+                with open(file_path, "rb") as f:
+                    file_content = f.read()
+                if extended_comparison:
+                    file_stat = os.stat(file_path)  # Capture file's metadata
+                    state[file_path] = {"hash": hashlib.sha256(file_content).hexdigest(), "mtime": file_stat.st_mtime}
+                else:
+                    state[file_path] = hashlib.sha256(file_content).hexdigest()
+        # convert the dictionary into a string useful for comparison and analysis by language models
+        state_text = "Files directory content: " + (json.dumps(state) if state.keys().__len__() > 0 else "empty")
+        return state_text
+
+    def get_score(self):
+        # indicate that automatic scoring is not set, then ask the user to provide a score between 0 and 1, we ensure that the score is a float between 0 and 1
+        score = None
+        while score is None:
+            try:
+                score = float(input("No automatic get_score set, please provide a score between 0 and 1: "))
+                if score < 0 or score > 1:
+                    score = None
+            except ValueError:
+                pass
+        return {'score (top:1, worst:0)': score}
+
+    def set_score_function(self, score_function_code: str):
+        local_scope = {'self': self}
+        func_name = re.search(r'def (\w+)\(', score_function_code).group(1)
+        if validate_function_code(score_function_code, func_name, local_scope):
+            self.get_score = types.MethodType(local_scope[func_name], self)
+
+    def set_state_function(self, state_function_code: str):
+        local_scope = {'self': self}
+        func_name = re.search(r'def (\w+)\(', state_function_code).group(1)
+        if validate_function_code(state_function_code, func_name, local_scope):
+            self.get_state = types.MethodType(local_scope[func_name], self)
+
+class EnvironmentManager:
+    def __init__(self, env_type="default", **kwargs):
+        if env_type == "techsynthesis":
+            from env.IR_CPS_TechSynthesis.env import VoyagerEnvIR_CPS_TechSynthesis
+            # pass to VoyagerEnvIR_CPS_TechSynthesis all the args from the EnvironmentManager
+            self.env = VoyagerEnvIR_CPS_TechSynthesis(**kwargs)
+        elif env_type == "sweSynthesis":
+            from env.IR_CPS_TechSynthesis.env import  SWEBenchEnvironment
+            # passing all the parameteres   all the args from the EnvironmentManager
+            self.env = SWEBenchEnvironment(**kwargs)    
+        else:
+            self.env = Environment()
+        self.env.reset()
+
+    def get_environment(self):
+        return self.env
+
 class SynthesisManager:
     def __init__(self, document: DocumentStructure, target_file_path: str = None):
         self.document = document
@@ -420,7 +555,7 @@ class SynthesisManager:
             except Exception as e:
                 # print error
                 error = str(e.message) if hasattr(e, 'message') else str(e)
-                print(f'EPO SELENIUM scraping failed with error code: {error}')
+                # print(f'EPO SELENIUM scraping failed with error code: {error}')
                 soup = None
             driver.quit()
 
@@ -1120,7 +1255,7 @@ class SynthesisManager:
         output_check = ''
         for section in self.target_data['plan']:
             output_check += section['section'] + " /"
-        print(output_check)
+        # print(output_check)
         # Compute the total length for the target data (similar to the test method)
         self.target_total_content_length = sum(len(section['content']) for section in self.target_data['plan'])
         self.target_total_sections_count = len(self.target_data["plan"])
@@ -1349,12 +1484,12 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         return self.document.get_state()  # Return initial state
 
     def close(self):
-        with open(self.log_path, 'a') as log_file:
-            print(f"Environment closed at {datetime.now()}\n") # TODO: log it
+        # with open(self.log_path, 'a') as log_file:
+        #     print(f"Environment closed at {datetime.now()}\n") # TODO: log it
         self.document.reset()
         self.has_reset_once = False
         self.state = None
-        print("Environment internal states reset and closed.") # TODO: log it
+        # print("Environment internal states reset and closed.") # TODO: log it
 
     def step(
         self,
@@ -1363,7 +1498,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         reset_step: bool = False,
         completed_tasks: int = 0,
     ):
-        self.synthesis_manager.reset_method_calls_counters() # we want to count method calls for a step only
+        self.synthesis_manager.reset_method_calls_counters()  # we want to count method calls for a step only
         if not self.has_reset_once:
             print("Environment has not been reset yet - resetting now !")
             self.reset()
@@ -1394,507 +1529,3 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         document_state += ">>>"
         return document_state
     
-    
-class SWEBenchEnvironment(Environment):
-    def __init__(self,
-                 synthesis_type: str = "",
-                 refined_goals: [str] = None,
-                 goal: str = "",
-                 title: str = "",
-                 openai_api_key: str = None,
-                 target_repo_commit: str = None,
-                 target_repo_id: str = None,
-                 llm = None,
-                 log_path='./logs',
-                 id: str = None,
-                 CPS_env_type="sweSynthesis",
-                 context: str = None,
-                 directory_path="../../swe_repo", 
-                 problem_id: str = None,                 
-                 ):
-        super().__init__()
-        
-
-        # dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take3", split='train'
-        self.files_having_bugs=[],
-        self.id = str(uuid.uuid4()) if id is None else id
-        self.generated_patch_code="",
-        self.patch_applied=False,
-        self.unit_tests=[],
-        self.unit_test_passed=3,
-        self.unit_test_failed=0,
-        self.has_reset_once = False,
-        SWEBenchEnvironment.llm_model = llm
-        # os.chdir('swe_repo')
-        self.directory_path=str(directory_path),
-        self.synthesis_manager = SweSynthesisManager(directory_path=self.directory_path) # Initialize your Synthesis Manager
-    
-    @staticmethod
-    def llm(prompt: str):
-        return SWEBenchEnvironment.llm_model.invoke([SystemMessage(content=""), HumanMessage(content=prompt)]).content
-           
-    def get_properties_as_string(self):
-        properties = {
-            'files_having_bugs': self.files_having_bugs,
-            'generated_patch_code': self.generated_patch_code,
-            'patch_applied': self.patch_applied,
-            'unit_tests': self.unit_tests,
-            'unit_test_passed': self.unit_test_passed,
-            'unit_test_failed': self.unit_test_failed
-        }
-        # Generate string representation of each property and its value
-        result = "\n".join([f"{key}: {value}" for key, value in properties.items()])
-        return result
-    
-          
-    def get_row_by_instance_id(self,instance_id):
-     for row in self.dataset:
-        if row['instance_id'] == instance_id:
-            return row
-     return None
-    
-        
-    def clone_repo(self,instance_id,target_folder=None):
-     try:
-        repo=self.get_row_by_instance_id(instance_id)
-         
-        print(
-            f"Cloning repository from https://github.com/{repo['repo']}.git to Repositories Folder"
-        )
-        current_dir = os.path.dirname(os.path.realpath(__file__))
-        if(target_folder is None):
-         target_folder = os.path.join(current_dir, '..', '..','swe_repo')
-        os.chdir(target_folder)
-        subprocess.run(
-            [
-                "git",
-                "clone",
-                f"https://github.com/{repo['repo']}.git",
-            ],
-            check=True,
-        )
-        print("Repository cloned successfully.")
-     except subprocess.CalledProcessError as e:
-        print(f"An error occurred while running git command: {e}")
-     except Exception as e:
-        print(f"An unexpected error occurred: {e}")  
-            
-    def checkout_commit(repo_path, commit_id):
-     """Checkout the specified commit in the given local git repository.
-     :param repo_path: Path to the local git repository
-     :param commit_id: Commit ID to checkout
-     :return: None
-     """
-     try:
-        # Change directory to the provided repository path and checkout the specified commit
-        print(f"Checking out commit {commit_id} in repository at {repo_path}...")
-        subprocess.run(["git", "-C", repo_path, "checkout", commit_id], check=True)
-        print("Commit checked out successfully.")
-     except subprocess.CalledProcessError as e:
-        print(f"An error occurred while running git command: {e}")
-     except Exception as e:
-        print(f"An unexpected error occurred: {e}")      
-    
-    
-    def get_project_structure_from_scratch(self,repo_name, commit_id, instance_id):
-        
-     self.clone_repo(instance_id)
-     self.checkout_commit("../../swe_repo/{repo_name}", commit_id)
-     structure = self.create_structure(f"{repo_playground}/{repo_to_top_folder[repo_name]}")
- 
- 
- 
-     d = {
-        "repo": repo_name,
-        "base_commit": commit_id,
-        "structure": structure,
-        "instance_id": instance_id,
-     }
-     return d
-        
-    
-    def create_structure(self,directory_path):
-     """Create the structure of the repository directory by parsing Python files.
-         :param directory_path: Path to the repository directory.
-         :return: A dictionary representing the structure.
-     """
-     structure = {}
-
-     for root, _, files in os.walk(directory_path):
-        repo_name = os.path.basename(directory_path)
-        relative_root = os.path.relpath(root, directory_path)
-        if relative_root == ".":
-            relative_root = repo_name
-        curr_struct = structure
-        for part in relative_root.split(os.sep):
-            if part not in curr_struct:
-                curr_struct[part] = {}
-            curr_struct = curr_struct[part]
-        for file_name in files:
-            if file_name.endswith(".py"):
-                file_path = os.path.join(root, file_name)
-                class_info, function_names, file_lines = self.parse_python_file(file_path)
-                curr_struct[file_name] = {
-                    "classes": class_info,
-                    "functions": function_names,
-                    "text": file_lines,
-                }
-            else:
-                curr_struct[file_name] = {}
-
-    
-    
-     return structure   
- 
-    
-    def parse_python_file(self,file_path, file_content=None):
-     """Parse a Python file to extract class and function definitions with their line numbers.
-     :param file_path: Path to the Python file.
-     :return: Class names, function names, and file contents
-     """
-     if file_content is None:
-        try:
-            with open(file_path, "r") as file:
-                file_content = file.read()
-                parsed_data = ast.parse(file_content)
-        except Exception as e:  # Catch all types of exceptions
-            # print(f"Error in file {file_path}: {e}")
-            return [], [], ""
-     else:
-        try:
-            parsed_data = ast.parse(file_content)
-        except Exception as e:  # Catch all types of exceptions
-            # print(f"Error in file {file_path}: {e}")
-            return [], [], ""
-
-     class_info = []
-     function_names = []
-     class_methods = set()
-
-     for node in ast.walk(parsed_data):
-        if isinstance(node, ast.ClassDef):
-            methods = []
-            for n in node.body:
-                if isinstance(n, ast.FunctionDef):
-                    methods.append(
-                        {
-                            "name": n.name,
-                            "start_line": n.lineno,
-                            "end_line": n.end_lineno,
-                            "text": file_content.splitlines()[
-                                n.lineno - 1 : n.end_lineno
-                            ],
-                        }
-                    )
-                    class_methods.add(n.name)
-            class_info.append(
-                {
-                    "name": node.name,
-                    "start_line": node.lineno,
-                    "end_line": node.end_lineno,
-                    "text": file_content.splitlines()[
-                        node.lineno - 1 : node.end_lineno
-                    ],
-                    "methods": methods,
-                }
-            )
-        elif isinstance(node, ast.FunctionDef) and not isinstance(
-            node, ast.AsyncFunctionDef
-        ):
-            if node.name not in class_methods:
-                function_names.append(
-                    {
-                        "name": node.name,
-                        "start_line": node.lineno,
-                        "end_line": node.end_lineno,
-                        "text": file_content.splitlines()[
-                            node.lineno - 1 : node.end_lineno
-                        ],
-                    }
-                )
-
-     return class_info, function_names, file_content.splitlines()    
-
-    
-    def get_state(self,unique_id=None, extended_comparison=False, extended=False):
-        return self.get_properties_as_string()
-    
-    
-    def step(
-        self,
-        code: str = "",
-        programs: str = "",
-        reset_step: bool = False,
-        completed_tasks: int = 0,
-    ):
-        self.synthesis_manager.reset_method_calls_counters() # we want to count method calls for a step only
-        if not self.has_reset_once:
-            print("Environment has not been reset yet - resetting now !")
-            self.reset()
-        return super().step(action_code=code, context={'problem': self.synthesis_manager, 'bot': self.synthesis_manager, 'results': None, 'SynthesisManager': SweSynthesisManager, 'llm':SWEBenchEnvironment.llm})
-        
-
-
-class SweSynthesisManager:
-    def __init__(self, target_file_path: str = None,directory_path: str = None):   
-        if target_file_path:
-            self.target_file_path = target_file_path            
-        self.directory_path = directory_path        
-    
-    
-    @method_call_counter
-    @tool
-    def ls(self) -> str:
-     """
-     This function lists the files in the current directory.
-     :function: ls
-     :return: a string containing the path of current directory and the files present in the current directory
-     """
-     ls_out = shell.run({"commands": [f"cd test-repos{self.directory_path}", 'ls']})
-     return f"""
-     Current Directory: {self.directory_path}
-     Files: 
-     {ls_out}
-     """
-
-
-   
-    @method_call_counter
-    @tool
-    def goto_directory(self,path: str) -> str:
-     """
-     This function changes the current directory to the specified directory. This function must be used to goto a directory not to open a file.
-     :function: goto_dir
-     :param str path: path of the new directory you want to change relative to the current directory e.g 'matplotlib/doc'
-     :return: output of command 'fail' or 'success'
-     """
-
-     if '..' in path:
-        return 'use goto_previous_dir tool instead to go to previous directory'
-     out = shell.run({"commands": [f"cd test-repos{self.directory_path}", f'cd {path}']})
-     if out == "":
-        self.directory_path = f"{self.directory_path}{path}/"
-        return 'successfully entered ' + self.directory_path
-     else:
-        return out
-    
-    
-    
-
-    
-    @method_call_counter
-    @tool
-    def goto_previous_dir(self) -> str:
-     """
-     This function takes the user to the previous directory.
-     :function: goto_previous_dir
-     :return: output 
-     """
-     if self.directory_path == '/':
-         return "Already in top most directory. Can't go back anymore"
-     else:
-        paths = self.directory_path.split('/')[1:-1]
-        paths.pop()
-        self.directory_path = '/'
-        for dir in paths:
-           self.directory_path += dir + '/'
-        return f"Current Directory: {self.directory_path}"
-
-    
-    @method_call_counter
-    @tool
-    def get_current_dir(self) -> str:
-     """
-     This function returns the path of the currently opened directory.
-     :function: get_current_dir
-     :return: the current directory
-     """
-     return self.directory_path
-
-
-    @method_call_counter
-    @tool
-    def get_abs_current_dir(self) -> str:
-     """
-    Constructs and returns the absolute path to the current directory.
-
-    The path is generated by joining the base project directory (`self.abs_project_dir`)
-    with the subdirectory 'test-repos' and a modified version of `self.directory_path` 
-    (with the first and last characters removed). 
-
-    Returns:
-        str: The absolute path to the current directory.
-       """
-     return os.path.join(self.abs_project_dir, 'test-repos', self.directory_path[1:-1])
-
-
-    
-    @method_call_counter
-    @tool
-    def number_of_lines(self,path: str) -> str:
-     """
-     This function takes a file path as input and returns the number of lines in the file.
-    :function: number_of_lines
-     :param path: The relative path to the file (e.g., 'lib/matplotlib/axis.py').
-     
-     :return: The number of lines in the file.
-     """
-
-     abs_file_path = os.path.join(self,self.get_abs_current_dir(), path)
-     if os.path.exists(abs_file_path):
-        with open(abs_file_path, 'r') as file:
-            return f"Number of lines in {self.directory_path+path}: {sum(1 for line in file)}"
-     else:
-        return f"File {self.directory_path+path} not found"
-
-
-    
-    @method_call_counter
-    @tool
-    def open_file(self,path: str, line_number: int = 1, max_lines: int = 100) -> str:
-     """   
-     This function takes a file path, a line number, and a maximum number of lines as input and returns the contents of the file starting from the specified line number, limited to the maximum number of lines.
-     :function: open_file
-    :param path: The relative path to the file (e.g., 'lib/matplotlib/axis.py').
-     :param line_number: The line number from which to start reading the file. Defaults to 1.
-    :param max_lines: The maximum number of lines to return from the starting line. Defaults to 100.
-     :return: A string containing the file contents from the specified starting line, limited to max_lines.
-     """
-
-     if line_number < 1:
-        return "Error: line number cannot be zero or negative"
-     if max_lines < 1:
-        return "Error: max_lines cannot be zero or negative"
-
-     abs_file_path = os.path.join(self.get_abs_current_dir(), path)
-     if os.path.exists(abs_file_path):
-        with open(abs_file_path, 'r') as file:
-            with open(abs_file_path, 'r') as temp_file:
-                num_lines = sum(1 for line in temp_file)
-            if line_number > num_lines:
-                return f"Can't access {line_number} line. This file only contains {num_lines} lines"
-            
-            out = f"Showing contents of File: {self.directory_path+path} starting from {line_number}\n\n"
-            for n, line in enumerate(file, 1):
-                if n >= line_number:
-                    out += f"{n}: {line}\n"
-                    if n == line_number + max_lines - 1:
-                        break
-            return out
-     else:
-        return path + " doesn't exist"
-
-    
-    
-    @method_call_counter
-    @tool
-    def find_files(self,file_name: str) -> str:
-     """
-     Searches the current directory and its subdirectories for the files that have name containing the specified file_name.
-     :function: find_files
-     :param file_name: The file_name to search for in file names.
-     :return: paths of the files that contain the specified file_name in their names.
-     """
-     matched_files = []
-     
-     # Walk through the current directory and all subdirectories
-     for root, dirs, files in os.walk("test-repos" + self.directory_path):
-         for file in files:
-             if file_name in file:
-                 matched_files.append(os.path.join(self.directory_path, file))
-     
-     return "Files found:\n" + "\n".join(matched_files)
-
-    
-    
-    @method_call_counter
-    @tool
-    def search_file(self,path: str, search_term: str) -> str:
-     """
-     This function takes a file path and a search term as input and returns the lines in the file that contain the search term. 
-     :param str path: The relative path to the file (e.g., 'lib/matplotlib/axis.py').
-     :param str search_term: The term to search for in the file.
-     :return: A string containing the lines in the file that contain the search term.
-     """
- 
-     abs_file_path = os.path.join(self.get_abs_current_dir(), path)
-     if os.path.exists(abs_file_path):
-         with open(abs_file_path, 'r') as file:
-             out = f"Searching for '{search_term}' in {self.directory_path+path}\n\n"
-             for n, line in enumerate(file, 1):
-                 if search_term in line:
-                     out += f"{n}: {line}\n"
-             return out
-     else:
-        return f"File {self.directory_path+path} not found"
-    
-
-
-    
-    @method_call_counter
-    @tool
-    def search_dir(self,path: str, search_term: str) -> str:
-     """
-     Searches for files in the specified directory that contain the search term. It returns the file names and line numbers where the search term is found.
- 
-     :param path: The relative path to the directory (e.g., 'lib/matplotlib').
-     :param search_term: The term to search for in the files in the directory.
-     :return: A string containing the files in the directory that contain the search term.
-     """
-     abs_dir_path = os.path.join(self.get_abs_current_dir(), path)
-     
-     if os.path.exists(abs_dir_path):
-         matched = ""
-         for root, dirs, files in os.walk(abs_dir_path):
-             for file in files:
-                 file_path = os.path.join(root, file)
-                 try:
-                     with open(file_path, 'r', encoding='utf-8') as file_a:
-                         for n, line in enumerate(file_a, 1):
-                             if search_term in line:
-                                 matched += f"File: {file_path}, Line: {n}\n"
-                                 break
-                 except (UnicodeDecodeError, IOError):  # Handle decoding errors and file I/O errors
-                     continue
-         
-         if matched:
-             return "Files found:\n" + matched
-         else:
-             return "No files containing the search term were found."
-     else:
-        return f"Directory {abs_dir_path} not found."
-
-   
-   
-    @method_call_counter
-    @tool
-    def get_files_content(self,paths: List[str], line_numbers: List[int]) -> str:
-     """
-     This function takes a list of file paths and a list of line numbers as input and returns the contents of the files starting from the specified line numbers.
-     :param paths: A list of relative paths to the files (e.g., ['lib/matplotlib/axis.py', 'lib/matplotlib/figure.py']).
-     :param line_numbers: A list of line numbers from which to start reading the files.
-     :return: A string containing the contents of the files from the specified starting line numbers.
-     """
-     out = ""
-     for path, line_number in zip(paths, line_numbers):
-         out += self.open_file.invoke({'path': path, "directory.cwd":self.directory_path , 'line_number': line_number, 'max_lines': 50}) + '\n\n'
-     return out
-
-   
-    @method_call_counter
-    def getSearchTools(self):
-     return [self.ls, self.goto_directory, self.goto_previous_dir, self.get_current_dir, self.number_of_lines, self.open_file, self.find_files, self.search_file, self.search_dir]
-
-
-    @method_call_counter
-    def getContentViewingTools(self):
-     return [self.get_files_content]
-    
-    @method_call_counter
-    def reset_method_calls_counters(self):
-        if hasattr(self, '_method_counts'):
-            self._method_counts = {}
-
-        
-    
-            

@@ -243,7 +243,6 @@ def is_vscode_installed():
         # FileNotFoundError means the code command is not in the PATH
         return False
 
-
 def _visual_input(initial_string="", filetype="md", agent_name=None, column_id=None, column_max=None, message_type=None):
     """
     Open a visual editor (VSCode or Tkinter) to interactively edit a given string or list.
@@ -361,7 +360,6 @@ def list_prompt_variants(prompt_name, package_path="."):
     variants = [filename[len(package_path) + 9:-4] for filename in glob.glob(pattern)]
     return [base_name] + variants  # Include base prompt in the list
 
-
 def save_prompt(prompt_name, text, package_path="."):
     prompt_file_path_name = f"{package_path}/prompts/{prompt_name}.txt"
 
@@ -374,7 +372,6 @@ def save_prompt(prompt_name, text, package_path="."):
     smart_print(f"Saving new prompt file {prompt_file_path_name}", "save_prompt", optional=True)
 
     return dump_text(text, prompt_file_path_name)
-
 
 def save_prompt_with_tag(prompt_name, text, new_tag, package_path="."):
     # Extract base prompt name and current tag
@@ -2761,3 +2758,5 @@ class HumanLLMMonitor:
         ret = {"output_id": output_id, "suggestions": response.content, "improvement_prompt" : improvement_prompt}
         smart_print(json.dumps(ret), self.agent_name, "CRITIC SUGGESTIONS", column_id=output_id, optional=False)
         return ret
+    
+    
