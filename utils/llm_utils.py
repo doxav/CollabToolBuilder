@@ -414,13 +414,22 @@ class FewShotsParams:
     summary_char_limit: int = 500
 
 class UnifiedVectorDB:
+
+    db_type = 'elasticsearch'  # can be 'elasticsearch' or 'chroma'
+    es_url = 'http://127.0.0.1:9200'
+    es_user = None
+    es_password = None
+    OpenAI_embedding_function_name = "text-embedding-ada-002"
+    db_connection_check_done = False
+    unique_collection_id = None
+
     def __init__(self, collection_name, db_type='elasticsearch', es_url='http://127.0.0.1:9200', es_user=None, es_password=None,
-                 embedding_function_name="text-embedding-ada-002", unique_collection_id=None, persist_directory=None, reset_db_indices=False):
+                 embedding_function="text-embedding-ada-002", unique_collection_id=None, persist_directory=None, reset_db_indices=False):
         self.db_type = db_type
         self.es_url = es_url
         self.es_user = es_user
         self.es_password = es_password
-        self.embedding_function_name = embedding_function_name
+        self.embedding_function_name = embedding_function
         self.unique_collection_id = unique_collection_id
         self.persist_directory = persist_directory
         self.reset_db_indices = reset_db_indices
@@ -482,6 +491,10 @@ class UnifiedVectorDB:
             print(f"Error: {e}\nURL: {self.es_url}\nCheck Elasticsearch and credentials.")
             exit(1)
 
+    @classmethod
+    def set_unique_collection_id(cls, unique_id):
+        cls.unique_collection_id = unique_id
+        
     def add_texts(self, texts, ids=None, metadatas=None):
         if self.db_type == 'chroma':
             return self.db.add_texts(texts=texts, ids=ids, metadatas=metadatas)
