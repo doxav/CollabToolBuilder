@@ -504,6 +504,17 @@
                 const paramsMatch = programCode.match(/def\s+\w+\(([^)]*)\)/);
                 const params = paramsMatch ? paramsMatch[1].split(',').map(param => param.trim()) : [];
 
+                // For each param in params, removes the default value if the value exceeds 10 characters or if the default value is ""
+                params.forEach((param, index) => {
+                    if (param.includes("=")) {
+                        let [paramName, paramValue] = param.split('=');
+                        console.log("ParamValue: ", paramValue);
+                        if (paramValue.length > 10 || paramValue === '""' || paramValue === '" "' || paramValue === ' ""' || paramValue === "None") {
+                            params[index] = paramName;
+                        }
+                    }
+                });
+
                 // Extract the docstring using a regular expression
                 const docstringMatch = programCode.match(/"""\s*([\s\S]*?)\s*"""/);
                 const docstring = docstringMatch ? docstringMatch[1].trim() : "";
@@ -517,11 +528,14 @@
                 return `${entry.class_name}${params}`;
             });
 
+            // Remove redundant class names
+            const uniqueClassNames = [...new Set(classNames)];
+
             // For each className in classNames, add the name in a div in the func-names-content div
             const funcNamesContent = document.getElementById('func-names-content');
             funcNamesContent.innerHTML = '';
             // Create a foldable div element for each className which is folded by default and contains the docstring when unfolded
-            classNames.forEach((className, index) => {
+            uniqueClassNames.forEach((className, index) => {
                 const foldableDiv = document.createElement('div');
                 foldableDiv.className = 'foldable';
                 foldableDiv.innerHTML = `
@@ -2599,14 +2613,13 @@ function getColumnsToKeep(agent) {
                         const isCodingAgent = agent === 'CodingAgent';
                         return `
                         <div style="flex: 1; border: 1px solid #ccc; border-radius: 10px; padding: 10px; text-align: center;">
+
                             <label style="font-weight: bold;">${agent}</label>
-                            <div>
-                                <label><input type="checkbox" id="checkbox-agent${agentId}"> Automatic mode</label>
-                            </div>
+
                             <div style="display: inline-flex; align-items: center; gap: 10px;">
                                 <label>Skip rounds:</label>
-                                <input type="number" id="int-input-agent${agentId}" value="0" placeholder="Enter value" style="width: 50px;" disabled>
-                                <label><input type="checkbox" id="full-auto-agent${agentId}" disabled> Full auto</label>
+                                <input type="number" id="int-input-agent${agentId}" value="0" placeholder="Enter value" style="width: 50px;">
+                                <label><input type="checkbox" id="full-auto-agent${agentId}"> Full auto</label>
                             </div>
                             <div>
                                 <label><input type="checkbox" id="recommendations-agent${agentId}" disabled> Automatic application of recommendations</label>
@@ -2627,7 +2640,7 @@ function getColumnsToKeep(agent) {
                             }
                             <div>
                                 <label>LLM:</label>
-                                <select id="selectlist-agent${agentId}" disabled>
+                                <select id="selectlist-agent${agentId}">
                                     <option value="default_llm">Default LLM</option>
                                     <option value="premium_llm">Premium LLM</option>
                                     <option value="3_majority_chain">3_majority_chain</option>
@@ -2636,9 +2649,9 @@ function getColumnsToKeep(agent) {
                             </div>
                             <div>
                                 <label>Number of inferences:</label>
-                                <select id="select-value-agent${agentId}" disabled>
+                                <select id="select-value-agent${agentId}">
                                     <option value="0" selected disabled>0</option>
-                                    <option value="1" >1</option>
+                                    <option value="1">1</option>
                                     <option value="2">2</option>
                                     <option value="3">3</option>
                                     <option value="4">4</option>
@@ -2646,7 +2659,7 @@ function getColumnsToKeep(agent) {
                             </div>
                             <div>
                                 <label>LLM Temperature: <span id="slider-value-agent${agentId}">0.5</span></label>
-                                <input type="range" id="slider-agent${agentId}" min="0" max="1" step="0.1" value="0.5" disabled>
+                                <input type="range" id="slider-agent${agentId}" min="0" max="1" step="0.1" value="0.5">
                             </div>
                         </div>
                         `;
@@ -2688,19 +2701,7 @@ function getColumnsToKeep(agent) {
                 const sliderValue = document.getElementById(`slider-value-agent${agent}`);
                 const autofix = agent === '2' ? document.getElementById(`max-autofix-agent${agent}`) : null;
 
-                checkbox.addEventListener('change', function () {
-                    const isChecked = this.checked;
-                    input.disabled = !isChecked;
-                    fullAuto.disabled = !isChecked;
-                    select.disabled = !isChecked;
-                    selectValue.disabled = !isChecked;
-                    slider.disabled = !isChecked;
-                    if (!isChecked) {
-                        recommendations.disabled = true;
-                        recommendations.checked = false;
-                    }
-                    if (autofix) autofix.disabled = !isChecked || input.value <= 0;
-                });
+
 
                 input.addEventListener('input', function () {
                     const hasValue = parseInt(this.value, 10) > 0;
