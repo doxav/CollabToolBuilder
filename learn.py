@@ -51,6 +51,7 @@ UnifiedVectorDB.es_user = elastic_user
 UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
 
+
 embedding_function = "text-embedding-ada-002" if embedding_function is None else embedding_function  #"Alibaba-NLP/gte-base-en-v1.5" UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
 reset_db_indices = False  # Set to True after changing embeddings
 
@@ -261,6 +262,8 @@ class TaskIdentificationAgent:
         saved_task, auto_n_rounds, recommend_critics, log_user_message = None, None, None, None  # Params for special_criteria application
         new_params = apply_special_criteria(self, special_criteria,
                                             locals())  #for key, value in new_params.items(): locals()[key] = value
+        if hasattr(self, 'num_parallel_inferences') and self.num_parallel_inferences == 0:
+            self.num_parallel_inferences = 2
 
         HumanLLMMonitor_args, local_vars = (
                     set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
@@ -373,6 +376,8 @@ class CodingAgent:
                                             locals())  #for key, value in new_params.items(): locals()[key] = value
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
         self.last_user_message = None
+        if hasattr(self, 'num_parallel_inferences') and self.num_parallel_inferences == 0:
+            self.num_parallel_inferences = 2
 
         HumanLLMMonitor_args, local_vars = (
                     set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
@@ -699,10 +704,10 @@ class CodingAgent:
 
         return result
 
+
     def get_primitives(self):
         primitives = []
         # Add the pipelines folder for the primitives
-
         if self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/":
             path_folder = "pipelines/pipelines"
         else:
@@ -878,7 +883,7 @@ class ValidationAgent:
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, skip_rounds=0,
                  llmORchains_list=None, automation=None, model_choice=None, special_criteria=None):
         #super().__init__(llm)
-        saved_task, temperature_max, num_parallel_inferences, recommend_critiques, auto_n_rounds = None, None, None, None, None
+        saved_task, temperature_max, num_parallel_inferences, recommend_critiques, auto_n_rounds = None, None, 1, None, None
         self.additional_check_list = None
         self.name = self.__class__.__name__
 
@@ -886,6 +891,9 @@ class ValidationAgent:
                                             locals())  #for key, value in new_params.items(): locals()[key] = value
         if special_criteria is not None and 'log_user_message' in special_criteria:
             setattr(self, 'log_user_message', special_criteria['log_user_message'])
+        if hasattr(self, 'num_parallel_inferences') and self.num_parallel_inferences == 0:
+            self.num_parallel_inferences = 1
+
         HumanLLMMonitor_args, local_vars = (
                     set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
         kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
@@ -965,7 +973,7 @@ class CapitalizationAgent:
                  special_criteria=None):
         self.additional_check_list = None
         self.name = self.__class__.__name__
-        saved_task, auto_n_rounds, num_parallel_inferences, temperature_max, recommend_critics = None, None, None, None, None
+        saved_task, auto_n_rounds, num_parallel_inferences, temperature_max, recommend_critics = None, None, 1, None, None
 
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
 
@@ -975,6 +983,9 @@ class CapitalizationAgent:
 
         new_params = apply_special_criteria(self, special_criteria,
                                             locals())  #for key, value in new_params.items(): locals()[key] = value
+        if hasattr(self, 'num_parallel_inferences') and self.num_parallel_inferences == 0:
+            self.num_parallel_inferences = 1
+
         if special_criteria is not None and 'log_user_message' in special_criteria:
             setattr(self, 'log_user_message', special_criteria['log_user_message'])
         HumanLLMMonitor_args, local_vars = (
@@ -1702,6 +1713,25 @@ def run_planner(*args, **kwargs):  # NEW VERSION
 
     successful_tasks = HumanLLMMonitor.get_learnt_tasks()
     successful_tasks_list = [task for task in successful_tasks]
+    print(f"Successful tasks: {successful_tasks_list}")
+    # Add the pipelines folder for the primitives
+    path_folder = "primitives/generate_primitives"
+    folder_path = os.path.join(os.path.dirname(__file__), path_folder)
+    # Utiliser os.listdir pour ne pas parcourir les sous-répertoires
+    for file in os.listdir(folder_path):
+        if file.endswith(".py"):
+            file_path = os.path.join(folder_path, file)
+            with open(file_path, "r") as f:
+                code = f.read()
+                serialized_entry = json.dumps({
+                    "time": datetime.now().isoformat(),
+                    "class_name": file.replace(".py", ""),
+                    "program_code": code,
+                    "tool_description": "",
+                    "task_description": "",
+                }, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
+                successful_tasks_list.append(serialized_entry)
+
     smart_print(json.dumps(successful_tasks_list), "orchestrate_agents", "successful_tasks_list")
 
     HumanLLMMonitor.user_id = smart_input("User ID ?", "PlannerAgent", message_type="USER_ID")
@@ -2110,10 +2140,11 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=6789, help="Optional port for WebSocket server")
     parser.add_argument("--secret", action='store_true', help="Optional secret for WebSocket URL")
     parser.add_argument("--proxy", action='store_true', help="Start a proxy via localtunnel if available")
+    parser.add_argument("--pickle_name", type=str, help="Optional pickle file name")
     args = parser.parse_args()
 
-    if os.path.exists('pickle/variables.pkl'):
-        with open('pickle/variables.pkl', 'rb') as f:
+    if args.pickle_name and os.path.exists(f'pickle/{args.pickle_name}.pkl'):
+        with open(f'pickle/{args.pickle_name}.pkl', 'rb') as f:
             variables_from_pickle = pickle.load(f)
             saved_task = variables_from_pickle.get('saved_task')
             automatic = variables_from_pickle.get('automatic')
@@ -2121,13 +2152,13 @@ if __name__ == "__main__":
             special_criteria = variables_from_pickle.get('special_criteria')
 
         # Suppression du fichier pickle après utilisation pour éviter les conflits lors des prochains lancements
-        os.remove('pickle/variables.pkl')
+        os.remove(f'pickle/{args.pickle_name}.pkl')
 
     # Initialize the WebSocket server with port autodetection and proxy
     if not ('unique_id' in globals()):
-        #unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
-        unique_id = "XP_Collab"
-    unique_id = "XP_Collab"
+        unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+
+    unique_id = "TEST"
     HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy,
                                                 unique_id=unique_id)
 
@@ -2170,6 +2201,8 @@ if __name__ == "__main__":
 
     if 'saved_task' in globals():
         special_criteria["all#saved_task"] = saved_task
+        if special_criteria[f"{saved_task['agent_name']}#num_parallel_inferences"] == 0:
+            special_criteria[f"{saved_task['agent_name']}#num_parallel_inferences"] = json.loads(saved_task['content'])['num_parallel_inferences']
     else:
         special_criteria = None
     if not ('automatic' in globals()):
@@ -2194,7 +2227,6 @@ if __name__ == "__main__":
                 agcoding_skip_rounds=0,  # Auto-test: 4
                 agvalidation_skip_rounds=0,  # Auto-test: 4
                 agcapitalize_skip_rounds=0,
-                agcoding_num_parallel_inferences=2,
                 unique_id=unique_id,
                 functions_to_import=".*",
                 special_criteria=special_criteria,
