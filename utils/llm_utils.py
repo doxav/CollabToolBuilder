@@ -1615,7 +1615,7 @@ class HumanLLMMonitor:
             return self.premium_llm.invoke(messages)
 
     def _before_inference(self, messages, default_llm_function, premium_llm_function, function_calling,
-                          callable_system_message=None, use_premium_llm=None, model_choice=None):
+                          callable_system_message=None, use_premium_llm=None, model_choice=None, task_name=None):
         self.mode = 'before'
         comments = None
         initial_user_message = messages[1].content
@@ -2059,7 +2059,7 @@ class HumanLLMMonitor:
         return visual_result
 
     def _after_inference(self, inference_result_msg, premium_llm_function, color="37", output_id=None,
-                         outputs_count=None):
+                         outputs_count=None, task_name=None):
         if not self.outputs:
             self.outputs = {}
             for i in range(outputs_count):
@@ -2089,11 +2089,16 @@ class HumanLLMMonitor:
             for check_name, result in check_results.items():
                 check_display += f"{nl}CHECK {check_name} result: " + str(result).replace("\\n", "\n")
 
+            if not task_name:
+                pattern = r'def\s+(\w+)\('
+                match = re.search(pattern, inference_result_msg.content, flags=re.MULTILINE)
+                task_name = match.group(1) if match else print("No function definitions found.")
+
             HumanLLMMonitor.add_agent_data(self.agent_name, "saved_task", {'llm_output': inference_result_msg.content,
                                                                            'user_message': self.current_inference_context['input_contents'][1].content,
-                                                                           'num_parallel_inference': self.num_parallel_inferences},
+                                                                           'num_parallel_inferences': self.num_parallel_inferences},
                                            before_after='after', user_id=HumanLLMMonitor.user_id, step_id=self.step_id,
-                                           type_tache="IR_CPS_TechSynthesis", id_task=True)
+                                           type_tache="IR_CPS_TechSynthesis", id_task=True, function_name=task_name)
             menu = (
                 f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n{check_display}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")
 
@@ -2641,7 +2646,7 @@ class HumanLLMMonitor:
             metadatas=[tags]
         )
 
-    def process_llm_output(self, llm_output, counter, llm_outputs, init_skip_rounds):
+    def process_llm_output(self, llm_output, counter, llm_outputs, init_skip_rounds, task_name=None):
         """Traite un seul LLM output (séquentiellement ou en parallèle)."""
         print(f"Processing LLM output {counter} out of {len(llm_outputs)}")
         if len(llm_outputs) > 1:
@@ -2665,7 +2670,7 @@ class HumanLLMMonitor:
         # Post-inference human intervention (traitement standard après une inférence)
         output_messages_instance, output_comments_instance, score_instance = self._after_inference(
             llm_output, premium_llm_function=None, output_id=counter,
-            outputs_count=len(llm_outputs))
+            outputs_count=len(llm_outputs), task_name=task_name)
         return output_messages_instance, output_comments_instance, score_instance
 
     #    def CallHumanLLM(self, original_input_messages=None, llm_function=None, premium_llm_function=None, callable_system_message=None, system_prompt_template=None, user_message=None, return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=90, stream_output=True):
@@ -2673,7 +2678,7 @@ class HumanLLMMonitor:
                      callable_system_message=None, system_prompt_template=None, user_message=None,
                      return_message_content_only=True, function_calling=False, temperature_min=None, timeout_seconds=300,
                      stream_output=False, use_default_llm=True, model_choice=None,
-                     temperature_max=None):
+                     temperature_max=None, task_name=None):
         #if not self.selected_llm_or_chain: raise ValueError("No LLM or chain selected for use.")
         if temperature_min is None: temperature_min = self.temperature_min
         if temperature_max is None: temperature_max = self.temperature_max
@@ -2845,10 +2850,14 @@ class HumanLLMMonitor:
                     else:
                         self.automation = None
                     print(f"****llm_output : {llm_outputs}****")
+                    smart_print(
+                        llm_outputs[0].content,
+                        self.agent_name, "NEW inference result recieved", column_id=0,
+                        column_max=1)
             else:
                 llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(
                     original_input_messages, default_llm_function, premium_llm_function, function_calling,
-                    callable_system_message, model_choice=model_choice)
+                    callable_system_message, model_choice=model_choice, task_name=task_name)
                 self.llm_input_messages = llm_input_messages
                 self.clear_selected_outputs()
                 self.last_inference_check_results = [None] * self.num_parallel_inferences  # Pre-allocate the list with None
@@ -2927,7 +2936,7 @@ class HumanLLMMonitor:
                         print(f"****agent : {self.agent_name}, websocket****")
                         for counter, llm_output in enumerate(llm_outputs, start=1):
                             print(f"****agent : {self.agent_name}, websocket, counter : {counter}****")
-                            futures.append(executor.submit(self.process_llm_output, llm_output, counter, llm_outputs, init_skip_rounds))
+                            futures.append(executor.submit(self.process_llm_output, llm_output, counter, llm_outputs, init_skip_rounds, task_name))
 
                         # Attendre que toutes les tâches soient terminées.
                         results = [future.result() for future in futures]
@@ -2942,7 +2951,7 @@ class HumanLLMMonitor:
                 else:
                     # Traitement séquentiel classique
                     for counter, llm_output in enumerate(llm_outputs, start=1):
-                        output_messages_instance, output_comments_instance, score_instance = self.process_llm_output(llm_output, counter, llm_outputs, init_skip_rounds)
+                        output_messages_instance, output_comments_instance, score_instance = self.process_llm_output(llm_output, counter, llm_outputs, init_skip_rounds, task_name)
                         output_messages.append(output_messages_instance)
                         if output_messages_instance == -1:
                             break
