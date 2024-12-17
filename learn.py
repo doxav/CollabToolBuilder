@@ -700,10 +700,10 @@ class CodingAgent:
 
         return result
 
+
     def get_primitives(self):
         primitives = []
         # Add the pipelines folder for the primitives
-
         if self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/":
             path_folder = "pipelines/pipelines"
         else:
@@ -1703,6 +1703,25 @@ def run_planner(*args, **kwargs):  # NEW VERSION
 
     successful_tasks = HumanLLMMonitor.get_learnt_tasks()
     successful_tasks_list = [task for task in successful_tasks]
+    print(f"Successful tasks: {successful_tasks_list}")
+    # Add the pipelines folder for the primitives
+    path_folder = "primitives/generate_primitives"
+    folder_path = os.path.join(os.path.dirname(__file__), path_folder)
+    # Utiliser os.listdir pour ne pas parcourir les sous-répertoires
+    for file in os.listdir(folder_path):
+        if file.endswith(".py"):
+            file_path = os.path.join(folder_path, file)
+            with open(file_path, "r") as f:
+                code = f.read()
+                serialized_entry = json.dumps({
+                    "time": datetime.now().isoformat(),
+                    "class_name": file.replace(".py", ""),
+                    "program_code": code,
+                    "tool_description": "",
+                    "task_description": "",
+                }, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
+                successful_tasks_list.append(serialized_entry)
+
     smart_print(json.dumps(successful_tasks_list), "orchestrate_agents", "successful_tasks_list")
 
     HumanLLMMonitor.user_id = smart_input("User ID ?", "PlannerAgent", message_type="USER_ID")
@@ -2128,7 +2147,7 @@ if __name__ == "__main__":
     if not ('unique_id' in globals()):
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
 
-    unique_id = "XP_Collab_Xavier_Seb"
+    unique_id = "TEST"
     HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy,
                                                 unique_id=unique_id)
 

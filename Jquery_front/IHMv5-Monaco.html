@@ -504,6 +504,17 @@
                 const paramsMatch = programCode.match(/def\s+\w+\(([^)]*)\)/);
                 const params = paramsMatch ? paramsMatch[1].split(',').map(param => param.trim()) : [];
 
+                // For each param in params, removes the default value if the value exceeds 10 characters or if the default value is ""
+                params.forEach((param, index) => {
+                    if (param.includes("=")) {
+                        let [paramName, paramValue] = param.split('=');
+                        console.log("ParamValue: ", paramValue);
+                        if (paramValue.length > 10 || paramValue === '""' || paramValue === '" "' || paramValue === ' ""' || paramValue === "None") {
+                            params[index] = paramName;
+                        }
+                    }
+                });
+
                 // Extract the docstring using a regular expression
                 const docstringMatch = programCode.match(/"""\s*([\s\S]*?)\s*"""/);
                 const docstring = docstringMatch ? docstringMatch[1].trim() : "";
@@ -2602,7 +2613,8 @@ function getColumnsToKeep(agent) {
                         const isCodingAgent = agent === 'CodingAgent';
                         return `
                         <div style="flex: 1; border: 1px solid #ccc; border-radius: 10px; padding: 10px; text-align: center;">
-                            <label style="font-weight: bold;">${agent}</label>
+
+                            <di><label style="font-weight: bold;">${agent}</label></div>
 
                             <div style="display: inline-flex; align-items: center; gap: 10px;">
                                 <label>Skip rounds:</label>
@@ -2638,7 +2650,8 @@ function getColumnsToKeep(agent) {
                             <div>
                                 <label>Number of inferences:</label>
                                 <select id="select-value-agent${agentId}">
-                                    <option value="1" selected>1</option>
+                                    <option value="0" selected disabled>0</option>
+                                    <option value="1">1</option>
                                     <option value="2">2</option>
                                     <option value="3">3</option>
                                     <option value="4">4</option>
