@@ -1624,6 +1624,7 @@ def run_planner(*args, **kwargs):  # NEW VERSION
     if kwargs.get('functions_to_import') is not None:
         # Imports the functions with the regex pattern given from functions directory into the elastic database
         functions = import_functions_from_directory(kwargs.get('functions_to_import'))
+        if not HumanLLMMonitor.step_id: HumanLLMMonitor.step_id = str(uuid.uuid4())
         for function in functions.items():
             serialized_entry = json.dumps({
                 "time": datetime.now().isoformat(),
