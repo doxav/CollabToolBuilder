@@ -2158,7 +2158,6 @@ if __name__ == "__main__":
     if not ('unique_id' in globals()):
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
 
-    unique_id = "TEST"
     HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy,
                                                 unique_id=unique_id)
 
