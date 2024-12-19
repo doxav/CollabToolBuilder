@@ -1720,13 +1720,16 @@ toggleLogButton.addEventListener('click', function() {
 });
 
 searchTask.addEventListener('input', function(event) {
-    console.log('La valeur a changé :', event.target.value);
-    let searchValue = event.target.value.toLowerCase();
+    filterTaskList();
+});
+
+function filterTaskList() {
+    let searchValue = searchTask.value.toLowerCase();
     $("#task-selection option").each(function() {
         let text = $(this).text().toLowerCase();
         $(this).toggle(text.includes(searchValue));
     });
-});
+}
 
 function addLogLine(message) {
     logLines.push(message.replace(/\\n/g, '\n'));
@@ -2814,6 +2817,7 @@ function getColumnsToKeep(agent) {
                     option.textContent = `${task.id_task} - ${task.date.substring(0, 16)} - ${task.agent_name} - ${task.function_name} - ${task.before_after.charAt(0).toUpperCase() + task.before_after.slice(1)} - ${username}`; // Texte visible pour l'utilisateur
                     selectElement.appendChild(option);
                 });
+                filterTaskList();
 
             });
         }else{
@@ -2839,9 +2843,11 @@ function getColumnsToKeep(agent) {
                     option.textContent = `${task.date.substring(0, 16)} - ${task.agent_name} - ${username}`; // Texte visible pour l'utilisateur
                     selectElement.appendChild(option);
                 });
+                filterTaskList();
 
             });
         }
+
     }
 
     // Adds the listener for the expand button of the solution columns
