@@ -318,8 +318,8 @@ class Environment:
 
     def step(self, action_code, context={}):
         # Memorize current directory and switch to temporary directory
-        current_dir = os.getcwd()
-        os.chdir(self.current_temp_dir)
+        # current_dir = os.getcwd()
+        # os.chdir(self.current_temp_dir)
 
         # Ensure `result` is set in the code
         if not re.search(r'\bresult\s*=', action_code.strip().splitlines()[-1]):
@@ -332,6 +332,7 @@ class Environment:
 
         try:
             # Execute code with redirected stdout and stderr
+            # print(context)
             with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                 exec(action_code + helper, context)
             # Safely evaluate and retrieve result
@@ -342,9 +343,9 @@ class Environment:
             error_traceback = ''.join(traceback.format_exception(None, e, e.__traceback__))
             exec_result = f"Execution failed. Error: {e}\nTraceback:\n{error_traceback}\nStdout:\n{stdout.getvalue()}\nStderr:\n{stderr.getvalue()}"
             no_runtime_error = False
-        finally:
+        # finally:
             # Restore original directory
-            os.chdir(current_dir)
+            # os.chdir(current_dir)
 
         return no_runtime_error, exec_result
 
@@ -434,7 +435,7 @@ class EnvironmentManager:
             # pass to VoyagerEnvIR_CPS_TechSynthesis all the args from the EnvironmentManager
             self.env = VoyagerEnvIR_CPS_TechSynthesis(**kwargs)
         elif env_type == "sweSynthesis":
-            from env.IR_CPS_TechSynthesis.env import  SWEBenchEnvironment
+            from env.SWEBench.env import SWEBenchEnvironment
             # passing all the parameteres   all the args from the EnvironmentManager
             self.env = SWEBenchEnvironment(**kwargs)    
         else:

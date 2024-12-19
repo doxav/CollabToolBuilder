@@ -16,7 +16,7 @@ import json
 from elasticsearch import Elasticsearch
 import requests
 from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
+from requests.packages.urllib3.util.retry import Retry # type: ignore
 
 from langchain_community.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
 from langchain_core.runnables import RunnableSequence, ConfigurableField
@@ -436,10 +436,10 @@ class UnifiedVectorDB:
             try:
                 response = session.get(UnifiedVectorDB.es_url, auth=auth, timeout=5, verify=False)
                 response.raise_for_status()
-                # print("Elasticsearch response:", response.text)
+                print("Elasticsearch response:", response.text)
                 UnifiedVectorDB.db_connection_check_done = True
             except requests.exceptions.RequestException as e:
-                # print(f"Error: {e}\nURL: {UnifiedVectorDB.es_url}\nCheck Elasticsearch and credentials. UnifiedVectorDB.es_user:{UnifiedVectorDB.es_user}, UnifiedVectorDB.es_password:{UnifiedVectorDB.es_password}")
+                print(f"Error: {e}\nURL: {UnifiedVectorDB.es_url}\nCheck Elasticsearch and credentials. UnifiedVectorDB.es_user:{UnifiedVectorDB.es_user}, UnifiedVectorDB.es_password:{UnifiedVectorDB.es_password}")
                 exit(1)
         elif UnifiedVectorDB.db_type == 'chroma':
             # print("Chroma DB check is not yet implemented")
@@ -467,7 +467,7 @@ class UnifiedVectorDB:
             elastic_client = Elasticsearch(UnifiedVectorDB.es_url,
                                            http_auth=(UnifiedVectorDB.es_user,
                                                       UnifiedVectorDB.es_password) if (UnifiedVectorDB.es_user not in [False, "", None]) else None,
-                                           verify_certs=False, ssl_show_warn=False)
+                                           verify_certs=True, ssl_show_warn=False)
             self.db = ElasticsearchStore(
                 index_name=self.collection_name,
                 embedding=embedding_function,

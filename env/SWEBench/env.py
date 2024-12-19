@@ -1,4 +1,4 @@
-import json
+import json, uuid
 import os
 import os.path
 import subprocess
@@ -37,10 +37,13 @@ class SWEBenchEnvironment(Environment):
         ):
         super().__init__()
         
+        self.id = str(uuid.uuid4()) if id is None else id
         SWEBenchEnvironment.llm_model = llm
         self.swe_data = swe_data
         self.reset_env = reset_env
-        self.synthesis_manager = SWEManager() 
+        SWEManager.target_dir = f"env/SWEBench/repos/{self.swe_data.repo.split('/')[-1]}"
+        SWEManager.current_dir = "/"
+        self.swe_manager = SWEManager() 
         self.setup_repo()
     
     @staticmethod
@@ -49,26 +52,25 @@ class SWEBenchEnvironment(Environment):
     
     def reset(self):
         repo_name = self.swe_data.repo.split('/')[-1]
-        subprocess.run(f"cd {self.swe_repos_path}/{repo_name} & git branch -d {self.swe_data.instance_id} & git checkout -b {self.swe_data.instance_id} {self.swe_data.base_commit}", shell=True, text=True, capture_output=True).stdout
-        initial_state = {
-            'files_having_bugs': [],
-            'generated_patch_code': "",
-            'patch_applied': False,
-            'unit_tests': [],
-            'unit_test_passed': [],
-            'unit_test_failed': []
-        }
-        temp_dir = os.path.join(self.swe_repos_path, self.swe_data.instance_id)
+        print(subprocess.run(f"cd {self.swe_repos_path}/{repo_name} & git branch -d {self.swe_data.instance_id}", shell=True, text=True, capture_output=True).stdout)
+        print(subprocess.run(f"cd {self.swe_repos_path}/{repo_name} & git checkout -b {self.swe_data.instance_id} {self.swe_data.base_commit}", shell=True, text=True, capture_output=True).stdout)
+
+        temp_dir = os.path.join(self.swe_temp_path, self.swe_data.instance_id)
+        with open(os.path.join(temp_dir, "state.json"), "r") as state_file:
+            state = json.load(state_file)
+            state['patch_applied'] = False
+
         with open(os.path.join(temp_dir, "state.json"), "w") as state_file:
-            json.dump(initial_state, state_file)
+            json.dump(state, state_file)
 
     def setup_repo(self):
-        temp_dir = os.path.join(self.swe_repos_path, self.swe_data.instance_id)
+        temp_dir = os.path.join(self.swe_temp_path, self.swe_data.instance_id)
         if not os.path.exists(temp_dir):
             os.makedirs(temp_dir)
             if not os.path.exists(os.path.join(temp_dir, "state.json")):
                 initial_state = {
-                    'files_having_bugs': [],
+                    'buggy_files': [],
+                    'buggy_files_content': "",
                     'generated_patch_code': "",
                     'patch_applied': False,
                     'unit_tests': [],
@@ -82,17 +84,34 @@ class SWEBenchEnvironment(Environment):
         SWEManager.target_dir = f"{self.swe_repos_path}/{repo_name}" 
 
         if not os.path.exists(f"{self.swe_repos_path}/{repo_name}"):
-            print(subprocess.run(f"cd {self.swe_repos_path} & git config --global http.postBuffer 524288000 & git clone https://github.com/{self.swe_data.repo}.git", shell=True, text=True, capture_output=True).stdout)
+            output = subprocess.run(f"cd {self.swe_repos_path} & git config --global http.postBuffer 524288000 & git clone https://github.com/{self.swe_data.repo}.git", shell=True, text=True, capture_output=True).stdout
+            if output == "":
+                print("Repo cloned successfully")
+            else:
+                print(output)
+                print("Error cloning repo")
 
-        if self.reset_env:
-            self.reset()
-        else:
-            subprocess.run(f"cd {self.swe_repos_path}/{repo_name} & git checkout -b {self.swe_data.instance_id} {self.swe_data.base_commit}", shell=True, text=True, capture_output=True).stdout
-
+        self.reset()
         print('Repo setup complete')    
     
-    def get_state(self) -> str:
-        with open(os.path.join(self.swe_repos_path, self.swe_data.instance_id, "state.json"), "r") as state_file:
+    def backup_state(self, unique_id = None):
+        temp_dir = os.path.join(self.swe_temp_path, self.swe_data.instance_id)
+        with open(os.path.join(temp_dir, "state.json"), "r") as state_file:
+            state = json.load(state_file)
+
+        with open(os.path.join(temp_dir, "state_backup.json"), "w") as state_backup_file:
+            json.dump(state, state_backup_file)
+    
+    def restore_last_state(self):
+        temp_dir = os.path.join(self.swe_temp_path, self.swe_data.instance_id)
+        with open(os.path.join(temp_dir, "state_backup.json"), "r") as state_backup_file:
+            state_backup = json.load(state_backup_file)
+
+        with open(os.path.join(temp_dir, "state.json"), "w") as state_file:
+            json.dump(state_backup, state_file)
+   
+    def get_state(self, extended = None) -> str:
+        with open(os.path.join(self.swe_temp_path, self.swe_data.instance_id, "state.json"), "r") as state_file:
             state = json.load(state_file)
         return json.dumps(state, indent=4)
     
@@ -100,12 +119,12 @@ class SWEBenchEnvironment(Environment):
         self,
         code: str = "",
     ):
-        return super().step(action_code=code, context={'problem': self.swe_data, 'bot': self.synthesis_manager, 'results': None})
+        return super().step(action_code=code, context={'problem': self.swe_data, 'bot': self.swe_manager, 'env': self, 'results': None})
         
 
 class SWEManager:
-    current_dir: str = "/"
-    target_dir: str = "env/SWEBench/repos/scikit-learn"
+    current_dir: str = "/" # The current directory within which tools are navigating in the problem repository
+    target_dir: str = ""  # The root directory for the current problem repository
     
     def getSearchTools(self):
      return [ls, goto_directory, goto_previous_dir, get_current_dir, number_of_lines, open_file, find_files, search_file, search_dir]
@@ -519,13 +538,13 @@ def search_dir(path: str, search_term: str) -> str:
 def get_files_content(paths: List[str], line_numbers: List[int]) -> str:
     """
     This function takes a list of file paths and a list of line numbers as input and returns the contents of the files starting from the specified line numbers.
-    :param paths: A list of relative paths to the files (e.g., ['lib/matplotlib/axis.py', 'lib/matplotlib/figure.py']).
+    :param paths: A list of relative paths to the files (e.g., ['lib/matplotlib/axis.py', 'lib/matplotlib/figure.py']). This function will return 50 lines for each file starting from the line_number provided.
     :param line_numbers: A list of line numbers from which to start reading the files.
     :return: A string containing the contents of the files from the specified starting line numbers.
     """
     out = ""
     for path, line_number in zip(paths, line_numbers):
-        out += open_file.invoke({'path': path, 'line_number': line_number, 'max_lines': 10}) + '\n\n'
+        out += open_file.invoke({'path': path, 'line_number': line_number, 'max_lines': 50}) + '\n\n'
     return out
 
 

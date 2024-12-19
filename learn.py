@@ -127,6 +127,7 @@ class TaskIdentificationAgent():
         envs_status = "\n".join([env.get_state() for env in self.envs])
         few_shots = self.human_llm_identify_best_task.get_multiple_few_shots(
             few_shots_params=self.params_user_message)
+        print(few_shots)
         self.human_llm_identify_best_task.user_message_few_shots = self.params_user_message
 
         # User message template
@@ -393,8 +394,6 @@ class CodingAgent():
         elif skip_already_processed or not isinstance(parsed_code, dict):  # This logic speedup because the same code should have the same score BUT only on the same problem & state
             return None
 
-        #smart_print(f"************ Code parsed result ************\n{parsed_code}\n************************".replace("\\n", "\n"), self.name, "run_tests_on_code RESULT")
-
         # Set initial state before running tests or runnable code
         no_runtime_errors, exec_results = [], []
         # insert content of config.py into the code to ensure that the OPENAI_API_KEY is set
@@ -419,8 +418,7 @@ class CodingAgent():
                 matching_tests = [test for doc_id, test in parsed_code["tests"] if doc_id == env.id] if parsed_code[
                     "tests"] else [parsed_code['runnable_code']]
                 if not matching_tests:
-                    no_runtime_error, exec_result = False, f"Error: no test found for given id {env.id}" if parsed_code[
-                        "tests"] else f"Error: no runnable code found nor tests"
+                    no_runtime_error, exec_result = False, f"Error: no test found for given id {env.id}" if parsed_code["tests"] else f"Error: no runnable code found nor tests"
                 else:
                     # Concatenate common code with program and tests or runnable code
                     code_to_run = common_code + parsed_code["program_code"] + "\n" + "\n".join(matching_tests)
@@ -495,34 +493,25 @@ class CodingAgent():
                                 # Store updated error_patches
                                 HumanLLMMonitor.add_agent_data(self.name, 'error_patches', error_patches, metadata=metadata)
 
-            # Append the results for each environment
             no_runtime_errors.append(no_runtime_error)
             exec_results.append(exec_result)
 
         # Calculate total time taken  # Added line
         total_execution_time = time.time() - start_time
         # Return combined results
-        result = (parsed_code, all(no_runtime_errors), exec_results, [env.get_score() for env in self.envs],
-                  [env.get_state(extended=False) for env in self.envs], total_execution_time)
+        result = (parsed_code, all(no_runtime_errors), exec_results, [env.get_score() for env in self.envs], [env.get_state(extended=False) for env in self.envs], total_execution_time)
 
         if restore_state:
             for env in self.envs:
                 env.restore_last_state()
-
         return result
 
     def get_primitives(self):
         primitives = []
-        # Add the pipelines folder for the primitives
 
-        # if self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/":
-        #     path_folder = "pipelines/pipelines"
-        # else:
-        #     path_folder = "primitives/generate_primitives"
         path_folder = "primitives/swe_primititves"
         folder_path = os.path.join(os.path.dirname(__file__), path_folder)
         # Utiliser os.listdir pour ne pas parcourir les sous-répertoires
-
 
         for file in os.listdir(folder_path):
             if file.endswith(".py"):
@@ -532,12 +521,8 @@ class CodingAgent():
                     primitives.append(f.read())
         with open('primitives_checking.txt', 'w') as file:
           sys.stdout = file  # Redirect standard output to the file
-        #   print(primitives)
 
-    
-# Reset sys.stdout to the console
-        sys.stdout = sys.__stdout__
-                    
+        sys.stdout = sys.__stdout__                    
         return primitives
 
     def code_task_and_run_test(self, refined_task):
@@ -597,15 +582,13 @@ class CodingAgent():
         previous_codes = previous_codes if previous_codes else []
         error_patches = flatten_and_pair(error_patches) if error_patches else []
 
-        print('reached 1')
-
         env_states = "\n".join([env.get_state(extended=False) for env in self.envs])
         primitives = "\n".join(self.get_primitives())
         successful_tasks = "\n".join(HumanLLMMonitor.get_learnt_tasks())
         failed_tasks = "\n".join(HumanLLMMonitor.get_failed_tasks())
         validation_response_um = "\n".join(HumanLLMMonitor.get_validation_results())
 
-        print('reached 2')
+        # print("Primitives: ", primitives)
 
         previous_attempts = ""
         for errors_list, scores_list, codes_list in zip(previous_errors, previous_scores, previous_codes):
@@ -628,8 +611,6 @@ class CodingAgent():
             "previous_attempts": previous_attempts,
             "error_patches_str": error_patches_str
         }
-
-        print('reached 3')
 
         # Load and format the user message from a file template
         user_message = HumanLLMMonitor.load_prompt("coding_agent_user_message_template", template_data=template_data, directory='prompts')
@@ -656,17 +637,10 @@ class CodingAgent():
         if hasattr(self, 'temperature'):
             kwargs["temperature_max"] = self.temperature
         
-        print('reached 4')
 
         # Appeler la méthode avec les arguments sous forme de **kwargs
         codes = self.human_llm_code_task.CallHumanLLM(**kwargs)
         results = []
-
-        print('RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR')
-
-        # Save results to a pickle file
-        with open('inspection/results.pkl', 'wb') as f:
-            pickle.dump(codes, f)
 
         for index, code in enumerate(codes):
             # Get the proper check_results corresponding to the output_id (which is the index)
@@ -823,11 +797,12 @@ class CapitalizationAgent:
                 self.human_llm_generate_function_description.add_inference_check(key, value)
 
     def capitalize_successful_tasks(self, task_description: str, parsed_code: str) -> None:
+
+        print('Starting capitalize_successful_tasks')
         import socket, uuid, datetime
 
         if self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/":
-            function_name = parsed_code.get("main_function_name",
-                                            parsed_code.get("main_function", {}).get("name", "unknown"))
+            function_name = parsed_code.get("main_function_name", parsed_code.get("main_function", {}).get("name", "unknown"))
             pipeline_file_path = os.path.join("pipelines/pipelines", function_name + ".py")
             tool_description = str(self.generate_tool_description(function_name, parsed_code["program_code"]))
             self.learnt_tasks_repository[function_name] = [tool_description, parsed_code["program_code"]]
@@ -837,8 +812,7 @@ class CapitalizationAgent:
                                                                                                                 "\n"),
                 self.name, "capitalize_successful_tasks SUCCESS", optional=True)
         else:
-            function_name = parsed_code.get("main_function_name",
-                                            parsed_code.get("main_function", {}).get("name", "unknown"))
+            function_name = parsed_code.get("main_function_name", parsed_code.get("main_function", {}).get("name", "unknown"))
             # save function program_code in a file under the functions directory and add to the function signature the generated dosctring
             function_file_path = os.path.join("functions", function_name + ".py")
             tool_description = str(self.generate_tool_description(function_name, parsed_code["program_code"]))
@@ -884,8 +858,7 @@ class CapitalizationAgent:
             docstring_matches = docstring_pattern.findall(tool_description)
             docstring = docstring_matches[0] if docstring_matches else f'"""{tool_description}"""'
             # use regex to add docstring to the function parsed_code["main_function_name"] after the def line in parsed_code["program_code"]
-            parsed_code["program_code"] = re.sub(r"(def " + function_name + "\(.*?\):)", r'\1\n    ' + docstring,
-                                                 parsed_code["program_code"], count=1)
+            parsed_code["program_code"] = re.sub(r"(def " + function_name + "\(.*?\):)", r'\1\n    ' + docstring, parsed_code["program_code"], count=1)
             function_file.write(parsed_code["program_code"])
 
         # Open file in VSCode if necessary
@@ -899,15 +872,19 @@ class CapitalizationAgent:
         # Serialize entry for logging
         serialized_entry = json.dumps({
             "time": datetime.datetime.now().isoformat(),
-            ("class_name" if (
-                        self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/") else "main_function_name"): function_name,
+            ("class_name" if (self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/") else "main_function_name"): function_name,
             "program_code": parsed_code["program_code"],
             "tool_description": tool_description,
             "task_description": task_description,
         }, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
 
+        with open('inspection/results.pkl', 'wb') as f:
+            pickle.dump(serialized_entry, f)
+        
+        print('Adding learnt task')
+
         # Add to vector database with tags
-        tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": HumanLLMMonitor.step_id}
+        tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": str(HumanLLMMonitor.step_id)}
         HumanLLMMonitor.add_learnt_task(serialized_entry, tags)
 
     def capitalize_failed_tasks(self, task_description: str, parsed_code: str) -> None:
@@ -1027,13 +1004,18 @@ class PlannerAgent:
         self.last_user_message = question
 
         # Retrieve learnt tasks (functions/code)
+        print("Getting the learnt tasks...")
         learnt_tasks = HumanLLMMonitor.get_learnt_tasks(k=30)
+        # print(learnt_tasks)
         if not learnt_tasks:
             smart_print("No learnt tasks are available to answer the question.", agent_name=self.name)
+            print("No learnt tasks are available to answer the question.")
             return "no code available"
 
         # Prepare the code snippets string
         code_snippets = "\n\n".join(learnt_tasks)
+
+        print("Got the learnt tasks")
 
         # Prepare the prompt for the LLM
         prompt_template = (
@@ -1046,6 +1028,7 @@ class PlannerAgent:
         )
         prompt = prompt_template.format(question=question, code_snippets=code_snippets)
 
+        print("Selecting the best code snippet to answer the question...")
         # Call the LLM using a method similar to CallHumanLLM
         selected_code = self.call_llm_with_similar_method(
             prompt,
@@ -1053,8 +1036,11 @@ class PlannerAgent:
             temperature=0.2  # You can adjust the temperature as needed
         )
 
+        print(f"Selected code: {selected_code[0:200]}...")
+
         if selected_code:
             # Execute the code on the environments and handle errors
+            print("Executing the selected code on the environments...")
             result = self.execute_code_on_envs(selected_code)
             if result:
                 parsed_code, success, _, _, _, _ = result
@@ -1063,24 +1049,34 @@ class PlannerAgent:
                     code_to_run = parsed_code['program_code']
                     exec_locals = {}
                     try:
-                        # Execute the code in a secure context
-                        exec(code_to_run, globals(), exec_locals)
-                        main_function_name = parsed_code['main_function']['name']
-                        if main_function_name in exec_locals:
-                            # Iterate over each environment
-                            for env in self.envs:
-                                bot = env.synthesis_manager  # Or env.bot if the bot is an attribute of the environment
-                                # Call the main function with the appropriate parameters
-                                exec_locals[main_function_name](bot)
-                                answer = bot.document.document_content.sections_list
-                                temp = ""
-                                for item in answer:
-                                    temp += item.title + "\n" + item.content + "\n"
-                                smart_print(f"Response for document {bot.document.title} (Id: {env.id}): {temp}",
-                                            agent_name=self.name)
+                        env = self.envs[0]  # Assuming there is only one environment
+                        if isinstance(env, SWEBenchEnvironment):
+                            print("Executing code on SWEBench environment")
+                            print("Code to run:", code_to_run)
+                            no_runtime_error, exec_result = env.step(f"{code_to_run}\n{parsed_code['main_function']['name']}(bot)")
+                            if no_runtime_error:
+                                print(f"Executed successfully for environment {env.id}")
+                                smart_print(f"Executed successfully for environment {env.id} with output {exec_result}", agent_name=self.name)
+                            else:
+                                print(f"Error in environment {env.id}: {exec_result}")
+                                smart_print(f"Error in environment {env.id}: {exec_result}", agent_name=self.name)
                         else:
-                            smart_print("The main function was not found in the selected code.",
-                                        agent_name=self.name)
+                            # Execute the code in a secure context
+                            exec(code_to_run, globals(), exec_locals)
+                            main_function_name = parsed_code['main_function']['name']
+                            if main_function_name in exec_locals:
+                                # Iterate over each environment
+                                for env in self.envs:
+                                    bot = env.synthesis_manager  # Or env.bot if the bot is an attribute of the environment
+                                    # Call the main function with the appropriate parameters
+                                    exec_locals[main_function_name](bot)
+                                    answer = bot.document.document_content.sections_list
+                                    temp = ""
+                                    for item in answer:
+                                        temp += item.title + "\n" + item.content + "\n"
+                                    smart_print(f"Response for document {bot.document.title} (Id: {env.id}): {temp}", agent_name=self.name)
+                            else:
+                                smart_print("The main function was not found in the selected code.", agent_name=self.name)
                     except Exception as e:
                         smart_print(f"Error during code execution: {e}", agent_name=self.name)
                 else:
@@ -1324,15 +1320,12 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
         if validation == "success":
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
         else:
-            if optuna_opti or smart_input(
-                    "Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ", "orchestrate_agents", message_type="VALIDATION_INFO").strip().upper() in [
-                "Y", "YES"]:
+            if optuna_opti or smart_input("Do you want to capitalize this try as a 'failed task' to avoid this task to be proposed as a next best task ? (yes/no): ", "orchestrate_agents", message_type="VALIDATION_INFO").strip().upper() in ["Y", "YES"]:
                 agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
         if optuna_opti:
             continue_identifying_tasks = continue_each_loop
         else:
-            answer = smart_input(
-                "Do you want to:\n- search for a new task after reseting to empty documents (Y/YES) ?\n- search for a new task based based on the status of documents after applying the task you just validated (N/NO/Enter) ?\n- or just exit the program (E/EXIT) ?", "orchestrate_agents",  message_type="VALIDATION_INFO").strip().upper()
+            answer = smart_input("Do you want to:\n- search for a new task after reseting to empty documents (Y/YES) ?\n- search for a new task based based on the status of documents after applying the task you just validated (N/NO/Enter) ?\n- or just exit the program (E/EXIT) ?", "orchestrate_agents",  message_type="VALIDATION_INFO").strip().upper()
             continue_identifying_tasks = False if answer in ["E", "EXIT"] else True
             if answer.upper() in ["Y", "YES"]:
                 [env.reset() for env in test_environments]
@@ -1421,6 +1414,9 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
             HumanLLMMonitor.add_learnt_task(serialized_entry, tags)
 
     successful_tasks = HumanLLMMonitor.get_learnt_tasks()
+
+    # print("Successful tasks:", successful_tasks)
+
     successful_tasks_list = [task for task in successful_tasks]
     smart_print(json.dumps(successful_tasks_list), "orchestrate_agents", "successful_tasks_list")
 
@@ -1432,19 +1428,41 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
     # Select the problem prompts subdirectory if not provided
     if problem_prompts_subdir is None:
         # Get the list of subdirectories in the 'prompts' directory
-        problem_prompts_subdirs = [name for name in os.listdir("prompts") if
-                                   os.path.isdir(os.path.join("prompts", name))]
+        problem_prompts_subdirs = [name for name in os.listdir("prompts") if os.path.isdir(os.path.join("prompts", name))]
         default_subdir = problem_prompts_subdirs[0] if problem_prompts_subdirs else ""
         choice = smart_input("Enter a capital letter for subdirectory (leave empty for default): " + "; ".join(
             f"\n[{i}] {subdir}" for i, subdir in zip(string.ascii_uppercase, problem_prompts_subdirs)) + " ?", "run_planner")
         problem_prompts_subdir = problem_prompts_subdirs[ord(choice) - 65] if choice and choice.isupper() and ord(
             choice) - 65 in range(len(problem_prompts_subdirs)) else default_subdir
 
+    question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ", agent_name='PlannerAgent').capitalize()
     # Initialize test environments if not provided
+    question_command = question
     if test_environments is None:
-        env_type = "default"
-        manager = EnvironmentManager(env_type)
-        test_environments = [manager.get_environment()]
+        pattern = r'\b[\w-]+__[\w-]+-\d+\b'
+        instance_ids = re.findall(pattern, question)
+        if instance_ids:
+            print('Instance ID detected.')
+            instance_id = instance_ids[0].lower()
+            print(instance_id)
+            question_command = question.replace(instance_ids[0], '')
+            dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take3", split='train')
+            problem = None
+            for data in dataset:
+                if data['instance_id'] == instance_id:
+                    problem = data
+                    print('Problem set found.')
+                    break
+            if problem is not None:
+                print('Creating SWE Environment.')
+                test_environments = [SWEBenchEnvironment(swe_data=SWEProblem.parse_obj(problem))]
+            else:
+                raise ValueError("Invalid instance ID.")
+        else:
+            print('No instance ID detected.')
+            env_type = "default"
+            manager = EnvironmentManager(env_type)
+            test_environments = [manager.get_environment()]
 
     # Initialize the PlannerAgent with the correct parameters
     planner = PlannerAgent(
@@ -1459,15 +1477,15 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
         num_parallel_inferences=agcoach_num_parallel_inferences
     )
     # Ask the user to formulate their question using smart_input
-    question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ", agent_name='PlannerAgent').capitalize()
     smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
     while question not in ['q', 'Q', 'quit', 'Quit', 'QUIT', 'e', 'E', 'exit', 'Exit', 'EXIT']:
-        if question in ['LEARN', 'learn', 'Learn','SWE','LearnSwe','learnSwe']:
+        # if question in ['LEARN', 'learn', 'Learn','SWE','LearnSwe','learnSwe']:
+        if "learn" in question_command.lower():
             # User wants to use the learning loop
             run_4agents_learning_loop(default_llm_key=default_llm_key,
                                       premium_llm_key=premium_llm_key,
                                       llmORchains_list=llmORchains_list,
-                                      test_environments=envs,
+                                      test_environments=test_environments,
                                       manual_validation_to_capitalize=manual_validation_to_capitalize,
                                       problem_prompts_subdir=problem_prompts_subdir,
                                       max_coding_attempts=max_coding_attempts,
@@ -1502,8 +1520,7 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
                                           agcapitalize_skip_rounds=agcapitalize_skip_rounds,
                                           agcoding_num_parallel_inferences=agcoding_num_parallel_inferences,
                                           unique_id=unique_id)
-        question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ",
-                               agent_name='PlannerAgent')
+        question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ", agent_name='PlannerAgent')
         smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
 
 
@@ -1545,8 +1562,7 @@ def get_highest_score_index(score_array, mode='total'):
 
     return highest_index
 
-
-def coding_and_validation_loop(agent_coding: CodingAgent, agent_validation, task_description, max_attempts,
+def coding_and_validation_loop(agent_coding: CodingAgent, agent_validation: ValidationAgent, task_description, max_attempts,
                                extra_manual_validation_to_capitalize=True, continue_even_if_successful=True,
                                optuna=None, end_time=None):
     
@@ -1554,16 +1570,19 @@ def coding_and_validation_loop(agent_coding: CodingAgent, agent_validation, task
 
     metadata = {'step_id': HumanLLMMonitor.step_id}
     # Retrieve data
-    previous_errors = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_errors',
-                                                     metadata_filter=metadata) or []
+    previous_errors = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_errors', metadata_filter=metadata) or []
     previous_codes = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_codes', metadata_filter=metadata) or []
-    previous_scores = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_scores',
-                                                     metadata_filter=metadata) or []
-    unique_codes = set(
-        HumanLLMMonitor.get_agent_data(agent_coding.name, 'unique_codes', metadata_filter=metadata) or [])
-    successful_codes = HumanLLMMonitor.get_agent_data(agent_coding.name, 'successful_codes',
-                                                      metadata_filter=metadata) or []
+    previous_scores = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_scores', metadata_filter=metadata) or []
+    unique_codes = set(HumanLLMMonitor.get_agent_data(agent_coding.name, 'unique_codes', metadata_filter=metadata) or [])
+    successful_codes = HumanLLMMonitor.get_agent_data(agent_coding.name, 'successful_codes',metadata_filter=metadata) or []
     all_results = HumanLLMMonitor.get_agent_data(agent_coding.name, 'all_results', metadata_filter=metadata) or []
+
+    print("Previous errors: ", previous_errors)
+    print("Previous codes: ", previous_codes)
+    print("Previous scores: ", previous_scores)
+    print("Unique codes: ", unique_codes)
+    print("Successful codes: ", successful_codes)
+    print("All results: ", all_results)
 
     for attempt in range(max_attempts):
         # Check for timeouts
@@ -1588,26 +1607,20 @@ def coding_and_validation_loop(agent_coding: CodingAgent, agent_validation, task
 
         results = agent_coding.code_task_and_run_test(task_description)
 
-        # print(results)
-
         all_results.extend(results)
         HumanLLMMonitor.add_agent_data(agent_coding.name, 'all_results', all_results, metadata=metadata)
 
         current_skip_rounds = agent_validation.human_llm_validate_code.skip_rounds
         for index, (parsed_code, no_runtime_error, exec_result, scores, env_states, times) in enumerate(results):
             agent_validation.human_llm_validate_code.skip_rounds = current_skip_rounds  # to prevent skip_rounds decreased multiple times by multiple calls of HumanLLMMonitor
-            smart_print(
-                f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace(
-                    "\\n", "\n"), "coding_and_validation_loop", "coding_and_validation_loop RESULT")
+            smart_print(f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace("\\n", "\n"), "coding_and_validation_loop", "coding_and_validation_loop RESULT")
             validation_agent_feedback = agent_validation.validate_code(parsed_code["program_code"], no_runtime_error,
                                                                        exec_result, task=task_description,
                                                                        scores=scores, env_states=env_states)
-            smart_print("Agent validation 'feedback' currently only support 1 feedback", "coding_and_validation_loop",
-                        "coding_and_validation_loop WARNING")
+            smart_print("Agent validation 'feedback' currently only support 1 feedback", "coding_and_validation_loop","coding_and_validation_loop WARNING")
             validation_agent_feedback = validation_agent_feedback[0]
             afb = validation_agent_feedback.content.replace('\\n', '\n')
-            smart_print("#" * 20 + f"\nAgent validation feedback: {afb}", "coding_and_validation_loop",
-                        "coding_and_validation_loop RESULT")
+            smart_print("#" * 20 + f"\nAgent validation feedback: {afb}", "coding_and_validation_loop", "coding_and_validation_loop RESULT")
 
             if extra_manual_validation_to_capitalize:
                 validated = (smart_input(
@@ -1616,8 +1629,6 @@ def coding_and_validation_loop(agent_coding: CodingAgent, agent_validation, task
                                  "yes", "y", True])
             else:
                 validated = get_success_value_in_text(afb) in ["yes", "y", True]
-            if validated:
-                successful_codes.append((parsed_code, validation_agent_feedback, scores))
 
             if index < len(previous_errors):
                 previous_errors[index] = validation_agent_feedback
@@ -1634,9 +1645,8 @@ def coding_and_validation_loop(agent_coding: CodingAgent, agent_validation, task
             HumanLLMMonitor.add_agent_data(agent_coding.name, 'previous_scores', previous_scores, metadata=metadata)
 
             if validated:
-                successful_codes.append((parsed_code, validation_agent_feedback, scores))
-                HumanLLMMonitor.add_agent_data(agent_coding.name, 'successful_codes', successful_codes,
-                                               metadata=metadata)
+                successful_codes.append((parsed_code, validation_agent_feedback.content, scores))
+                HumanLLMMonitor.add_agent_data(agent_coding.name, 'successful_codes', successful_codes, metadata=metadata)
 
         if not optuna and not successful_codes:
             stop = smart_input("No successful code yet, do you want to stop coding attempts for this task (too hard) and try a new one ? (yes/no): ","coding_and_validation_loop", "VALIDATION_INFO",optional=False).lower() in ["yes", "y", True]
@@ -1661,8 +1671,7 @@ def coding_and_validation_loop(agent_coding: CodingAgent, agent_validation, task
                 smart_print("Max attempts reached. Trying a new task.", "coding_and_validation_loop", "VALIDATION_INFO")
 
     # Calculate metrics over all attempts
-    percentage_no_runtime_error = (sum(1 for _, no_runtime_error, _, _, _, _ in all_results if no_runtime_error) / len(
-        all_results)) if all_results else 0
+    percentage_no_runtime_error = (sum(1 for _, no_runtime_error, _, _, _, _ in all_results if no_runtime_error) / len(all_results)) if all_results else 0
     best_score_without_validation = (
         max(max(sum(scores.values()) / len(scores) if len(scores) > 0 else 0 for scores in score_dict) for _, _, _, score_dict, _, _ in all_results)) if len(
         all_results) > 0 else 0
@@ -1711,7 +1720,6 @@ def coding_and_validation_loop(agent_coding: CodingAgent, agent_validation, task
             return selected_code, "success", all_scores
 
     return None, "failed", all_scores  # If no successful code was selected, return failure
-
 
 def sanitized_task_name(task):
     # Implement task name sanitization logic
@@ -1779,39 +1787,39 @@ def create_Nmajority_chain(num_models=3, map_model_name=None, reduce_model_name=
 
 
 if __name__ == "__main__":
-    # import argparse
-    # import pickle
+    import argparse
+    import pickle
 
-    # # Handle command line arguments
-    # parser = argparse.ArgumentParser(description="Run the learning loop with optional WebSocket settings")
-    # parser.add_argument("--port", type=int, default=6789, help="Optional port for WebSocket server")
-    # parser.add_argument("--secret", action='store_true', help="Optional secret for WebSocket URL")
-    # parser.add_argument("--proxy", action='store_true', help="Start a proxy via localtunnel if available")
-    # args = parser.parse_args()
+    # Handle command line arguments
+    parser = argparse.ArgumentParser(description="Run the learning loop with optional WebSocket settings")
+    parser.add_argument("--port", type=int, default=6789, help="Optional port for WebSocket server")
+    parser.add_argument("--secret", action='store_true', help="Optional secret for WebSocket URL")
+    parser.add_argument("--proxy", action='store_true', help="Start a proxy via localtunnel if available")
+    args = parser.parse_args()
 
-    # # Initialize the WebSocket server with port autodetection and proxy
-    # unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
-    # HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy, unique_id=unique_id)
+    # Initialize the WebSocket server with port autodetection and proxy
+    unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+    HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy, unique_id=unique_id)
 
-    # # Allow some time for the WebSocket server to start
-    # time.sleep(1)  # Adjust if necessary
+    # Allow some time for the WebSocket server to start
+    time.sleep(1)  # Adjust if necessary
 
-    # # Initialize the default and premium LLMs
-    # #from langchain_groq import ChatGroq
-    # llmORchains_list = {
-    #     "default_llm": ChatOpenAI(
-    #         model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False,
-    #         temperature=0.),
-    #     "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"], cache=False, temperature=0.),
-    #     #"default_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.),
-    #     #"premium_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["code_gpt"], cache=False),#, temperature=0.),
-    #     "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
-    #                                                reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=3),
-    #     "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
-    #                                                 reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=10)
-    # }
+    # Initialize the default and premium LLMs
+    #from langchain_groq import ChatGroq
+    llmORchains_list = {
+        "default_llm": ChatOpenAI(
+            model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False,
+            temperature=0.),
+        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"], cache=False, temperature=0.),
+        #"default_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.),
+        #"premium_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["code_gpt"], cache=False),#, temperature=0.),
+        "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
+                                                   reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=3),
+        "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
+                                                    reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=10)
+    }
 
-    # # Set the documents to test/validate as a list of environments
+    # Set the documents to test/validate as a list of environments
     # documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
     #             'title':"Complex QA and language models hybrid architectures, Survey",
     #         'context':"This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
@@ -1821,62 +1829,81 @@ if __name__ == "__main__":
     #         'context':"This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
     #         'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
 
-    # # envs = []
-    # # for doc in documents:
-    # #     env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
-    # #                              target_file_path=doc['target_file_path'], id=doc['id'], llm=llmORchains_list["default_llm"]).get_environment()
-    # #     envs.append(env)
+    # envs = []
+    # for doc in documents:
+    #     env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
+    #                              target_file_path=doc['target_file_path'], id=doc['id'], llm=llmORchains_list["default_llm"]).get_environment()
+    #     envs.append(env)
    
-    # # Run the planner agent
-    
+    # Run the planner agent
+    envs = None
     # env = EnvironmentManager(env_type="sweSynthesis", llm=llmORchains_list["default_llm"]).get_environment()
     # envs = [env]
-    # run_planner(default_llm_key="default_llm",
-    #             premium_llm_key="premium_llm",
-    #             llmORchains_list=llmORchains_list,
-    #             test_environments=envs,
-    #             manual_validation_to_capitalize=False,
-    #             problem_prompts_subdir="SWE_Synthesis",  
-    #             max_coding_attempts=4,
-    #             include_code=False,
-    #             selected_successful_functions=[],
-    #             selected_failed_functions=[],
-    #             max_execution_time=3600,
-    #             agtask_premium_llm_by_default=False,
-    #             agtask_skip_rounds=0,  # Auto-test: 1
-    #             agcoding_skip_rounds=0,  # Auto-test: 4
-    #             agvalidation_skip_rounds=0,  # Auto-test: 4
-    #             agcapitalize_skip_rounds=0,
-    #             agcoding_num_parallel_inferences=1,
-    #             unique_id=unique_id,
-    #             functions_to_import=".*")  # Auto-test: 0"""
+    run_planner(default_llm_key="default_llm",
+                premium_llm_key="premium_llm",
+                llmORchains_list=llmORchains_list,
+                test_environments=envs,
+                manual_validation_to_capitalize=False,
+                problem_prompts_subdir="SWE_Synthesis",  
+                max_coding_attempts=4,
+                include_code=False,
+                selected_successful_functions=[],
+                selected_failed_functions=[],
+                max_execution_time=3600,
+                agtask_premium_llm_by_default=False,
+                agtask_skip_rounds=0,  # Auto-test: 1
+                agcoding_skip_rounds=0,  # Auto-test: 4
+                agvalidation_skip_rounds=0,  # Auto-test: 4
+                agcapitalize_skip_rounds=0,
+                agcoding_num_parallel_inferences=1,
+                unique_id=unique_id,
+                functions_to_import=".*")  # Auto-test: 0"""
 
-    from primitives.swe_primititves.find_buggy_code import find_buggy_code
-    import datasets
+    # from primitives.swe_primititves.find_buggy_code import find_buggy_code
 
-    dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take3", split='train')
-    dataset = dataset.select(range(1, 2))
+    # dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take3", split='train')
+    # dataset = dataset.select(range(1, 2))
 
-    for data in dataset:
-        problem = SWEProblem.parse_obj(data)
+    # for data in dataset:
+    #     problem = SWEProblem.parse_obj(data)
         
-        bot = SWEManager()
+    #     bot = SWEManager()
+    #     env = SWEBenchEnvironment(problem)
 
-        print(find_buggy_code(bot, problem))
+    #     with open("primitives/swe_primititves/find_buggy_code.txt", "r") as f:
+    #         no_runtime_error, exec_result = env.step(code=f.read())
+        
+    #     print("No runtime error:", no_runtime_error)
+    #     print("Execution result:", exec_result)
+        
+    #     env.backup_state()
 
-        # env = SWEBenchEnvironment(problem)
+    #     print(env.get_state())
 
-        # structure = str(env.summarize_repo("env/SWEBench/repos/scikit-learn", max_files=500, max_output_characters=24000))
+    #     structure = str(env.summarize_repo("env/SWEBench/repos/scikit-learn", max_files=500, max_output_characters=24000))
 
-        # print(len(structure))
+    #     print(len(structure))
 
-        # import tiktoken
-        # encoding = tiktoken.encoding_for_model("gpt-4")
-        # tokens = encoding.encode(structure)
-        # print("Tokens:", len(tokens))
+    #     import tiktoken
+    #     encoding = tiktoken.encoding_for_model("gpt-4")
+    #     tokens = encoding.encode(structure)
+    #     print("Tokens:", len(tokens))
 
-        # print(get_abs_current_dir())
-        # print(find_files.invoke({"file_name": "multiclass"}))
-        # print(ls.invoke({}))
-        # print(get_files_content.invoke({"paths": ["pyproject.toml", "astropy/logger.py"], "line_numbers": [10, 33]}))
+    #     print(get_abs_current_dir())
+    #     print(find_files.invoke({"file_name": "multiclass"}))
+    #     print(ls.invoke({}))
+    #     print(get_files_content.invoke({"paths": ["pyproject.toml", "astropy/logger.py"], "line_numbers": [10, 33]}))
 
+    # with open('inspection/results.pkl', 'rb') as file:
+    #     state = pickle.load(file)
+
+    # Add to vector database with tags
+    # tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": HumanLLMMonitor.step_id}
+    # HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
+    # HumanLLMMonitor.check_init_class_db(force=True)
+    # answer = HumanLLMMonitor(llmORchains_list=llmORchains_list, agent_name='Validation_Agent').get_learnt_tasks()
+    # print(type(answer))
+    # print(len(answer))
+    # answer = list(answer)
+    # task: dict = json.loads(answer[0])
+    # print(task.keys())

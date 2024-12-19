@@ -1,6 +1,4 @@
-
-
-def find_buggy_code(bot, problem):
+def find_buggy_code(bot):
     """
     A LangGraph workflow that takes a problem_statement and uses agents to search through the projects directory and find those files that contains the bugs.
 
@@ -23,6 +21,7 @@ def find_buggy_code(bot, problem):
     from langgraph.prebuilt import ToolNode
     from typing import TypedDict, Annotated
     from langchain_core.runnables import RunnableConfig
+    import json
 
     OPENAI_API_KEY = "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"
 
@@ -178,9 +177,20 @@ def find_buggy_code(bot, problem):
         }
     }
 
-    # for chunk in app.stream(initial_state, stream_mode="values", config=RunnableConfig(recursion_limit=100)):
-    #     chunk["messages"][-1].pretty_print()
-
     result = app.invoke(initial_state, config=RunnableConfig(recursion_limit=100))
     
+    with open(f"{env.swe_temp_path}/{problem.instance_id}/state.json", 'r') as file:
+        state = json.load(file)
+    
+    state['buggy_files'] = []
+    for path, line_number in zip(result['response']['paths'], result['response']['line_numbers']):
+        state['buggy_files'].append({
+            "path": path,
+            "line_number": line_number
+        })
+    state['buggy_files_content'] = result['response']['code']
+
+    with open(f"{env.swe_temp_path}/{problem.instance_id}/state.json", 'w') as file:
+        json.dump(state, file)
+
     return result['response']
