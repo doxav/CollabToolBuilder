@@ -748,11 +748,7 @@ class HumanLLMMonitor:
             ret += [{
                 "id_task": task.metadata["id_task"],
                 "agent_name": task.metadata["agent_name"],
-                "type_tache": task.metadata["type_tache"],
-                #"content": task.page_content,
                 "before_after": task.metadata["before_after"],
-                #"user_id": task.metadata["user_id"],
-                "step_id": task.metadata["step_id"],
                 "date": task.metadata["date"]
             }]
             if "score" in task.metadata:
@@ -763,6 +759,10 @@ class HumanLLMMonitor:
                 ret[-1]['user_id'] = task.metadata['user_id']
             if "function_name" in task.metadata:
                 ret[-1]['function_name'] = task.metadata['function_name']
+            if "step_id" in task.metadata:
+                ret[-1]['step_id'] = task.metadata['step_id']
+            if "type_tache" in task.metadata:
+                ret[-1]['type_tache'] = task.metadata['type_tache']
 
         # Trier la liste par la clé 'date', du plus récent au plus ancien
         ret = sorted(ret, key=lambda x: x['date'], reverse=True)
