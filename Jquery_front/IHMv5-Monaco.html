@@ -254,13 +254,7 @@
             console.log("Current agent is : ", currentAgent, " and data.agent_name is : ", data.agent_name);
             current_llm_in_use = "default_llm";
         }
-        if(data.agent_name === "TaskIdentificationAgent" && data.message.includes("BEFORE") ){
-            console.log("Let's update the Task List");
-            // Show task-selection
-            $("#task-selection").show();
-            updateTaskList("None");
-            init_task_list = true;
-        }
+
         if (data.agent_name !== undefined) {
            if (currentAgent !== data.agent_name) {
                // Clear the agent content for this agent
@@ -334,6 +328,10 @@
                     clearInterval(countdown);
                 }
             }, 1000);
+            // Show the task-list and update the task list
+            $("#task-selection").show();
+            updateTaskList("None");
+            init_task_list = true;
             return;
         }
 
@@ -2778,7 +2776,7 @@ function getColumnsToKeep(agent) {
 
         if(id === "None"){
             console.log("Getting task list");
-            sendFunctionCall("TaskIdentificationAgent", "get_tasks", {"id_last_task":"None"},function (response) {
+            sendFunctionCall(currentAgent, "get_tasks", {"id_last_task":"None"},function (response) {
                 let tasks = JSON.parse(response)
                 console.log("Task list:", tasks);
                 // Référence à l'élément <select>
@@ -2803,7 +2801,7 @@ function getColumnsToKeep(agent) {
             });
         }else{
             console.log("Getting task list");
-            sendFunctionCall("TaskIdentificationAgent", "get_tasks", {"id_last_task":id},function (response) {
+            sendFunctionCall(currentAgent, "get_tasks", {"id_last_task":id},function (response) {
                 let tasks = JSON.parse(response)
                 console.log("Task list:", tasks);
                 // Référence à l'élément <select>
