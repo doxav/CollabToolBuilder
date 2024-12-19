@@ -223,6 +223,9 @@
     }
 
 
+
+
+
     function removeUnicodeSequences(jsonString) {
         // Expression régulière pour trouver les séquences \uXXXX
         const unicodeRegex = /\\u[\dA-Fa-f]{4}/g;
@@ -330,6 +333,7 @@
             }, 1000);
             // Show the task-list and update the task list
             $("#task-selection").show();
+            $("#search-task-toggle").show();
             updateTaskList("None");
             init_task_list = true;
             return;
@@ -1539,6 +1543,7 @@ z-index: -1;
     <div id="main-content">
         <div class="toggle-buttons">
             <div class="sidebar-toggle" id="toggle-history-main">Show history</div>
+            <input id="search-task-toggle" placeholder="Search a task" style="margin-right: 10px; background-color: mediumspringgreen; display: none;"/>
             <select id="task-selection" style="margin-right: 10px; background-color: mediumspringgreen; display: none;" >
                 <option value="TASK 1">TASK 1</option>
                 <option value="TASK 2">TASK 2</option>
@@ -1700,6 +1705,9 @@ monacoLoaderPromise.then(function() {
 // Référence aux éléments du DOM
 const logContainer = document.getElementById('log-container');
 const toggleLogButton = document.getElementById('toggle-log-button');
+const inputElement = document.getElementById('search-task-toggle');
+
+
 
 toggleLogButton.addEventListener('click', function() {
     if (logContainer.style.display === 'none') {
@@ -1709,6 +1717,15 @@ toggleLogButton.addEventListener('click', function() {
         logContainer.style.display = 'none';
         toggleLogButton.textContent = 'Afficher le Log';
     }
+});
+
+inputElement.addEventListener('input', function(event) {
+    console.log('La valeur a changé :', event.target.value);
+    let searchValue = event.target.value.toLowerCase();
+    $("#task-selection option").each(function() {
+        let text = $(this).text().toLowerCase();
+        $(this).toggle(text.includes(searchValue));
+    });
 });
 
 function addLogLine(message) {
