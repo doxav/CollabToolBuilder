@@ -242,6 +242,47 @@ def apply_special_criteria(agent, special_criteria, available_locals=None):
     print(new_params)
     return new_params  # Return only new params
 
+def apply_criteria_and_prepare_monitor_args(agent, special_criteria, available_locals=None):
+    """
+    Apply special criteria to the attributes and parameters of an agent
+    and prepare arguments for initializing HumanLLMMonitor.
+
+    :param agent: The agent instance to modify.
+    :param special_criteria: Dictionary containing the special criteria.
+    :param available_locals: Dictionary containing the local variables of the caller function.
+    :return: Dictionary of keyword arguments for HumanLLMMonitor.
+    """
+    if available_locals is None:
+        # Use inspect to dynamically capture arguments
+        frame = inspect.currentframe().f_back  # Go up one level
+        _, _, _, values = inspect.getargvalues(frame)
+        available_locals = values
+
+    new_params = {}
+    if special_criteria:
+        class_name = agent.__class__.__name__
+        # Apply special criteria to agent attributes and local parameters
+        for key, value in special_criteria.items():
+            if key in ['self', 'special_criteria']:
+                continue
+            if '#' in key:
+                agent_name, key = key.split('#', 1)
+                if agent_name != class_name and agent_name not in ['all', '']:
+                    continue
+            if hasattr(agent, key):
+                setattr(agent, key, value)
+                print(f"Special criteria applied to {agent}'s class property: {key} = {value}")
+            elif key in available_locals:
+                new_params[key] = value
+                print(f"Special criteria applicable to {agent}'s local variables: {key} = {value}")
+
+    # Prepare HumanLLMMonitor arguments
+    HumanLLMMonitor_args = set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}
+    kw_common_args = {param: available_locals[param] for param in HumanLLMMonitor_args if param in available_locals}
+    kw_common_args.update(new_params)
+
+    return kw_common_args
+
 
 # Agent 1: Task Identification
 class TaskIdentificationAgent:
@@ -260,22 +301,10 @@ class TaskIdentificationAgent:
         self.automation = automation
         self.model_choice = model_choice
         saved_task, auto_n_rounds, recommend_critics, log_user_message = None, None, None, None  # Params for special_criteria application
-        new_params = apply_special_criteria(self, special_criteria,
-                                            locals())  #for key, value in new_params.items(): locals()[key] = value
-        if hasattr(self, 'num_parallel_inferences') and self.num_parallel_inferences == 0:
-            self.num_parallel_inferences = 2
 
-        HumanLLMMonitor_args, local_vars = (
-                    set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
-        print(f"Human_args: {HumanLLMMonitor_args}, local_vars: {local_vars}")
-        kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
-        print(
-            f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
-        kw_common_args.update(new_params)
+        kw_common_args = apply_criteria_and_prepare_monitor_args(self, special_criteria, locals())
 
-        #self.criteria = criteria, self.params_user_message = params_user_message, self.temperature_min = temperature_min, self.temperature_max = temperature_max
-        self.human_llm_identify_best_task = HumanLLMMonitor(
-            **kw_common_args)  #,output_schema="identify_best_task.schema.py")
+        self.human_llm_identify_best_task = HumanLLMMonitor( **kw_common_args)  #,output_schema="identify_best_task.schema.py")
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
@@ -372,19 +401,12 @@ class CodingAgent:
         self.model_choice = model_choice
         self.processed_codes = set()
         saved_task, auto_n_rounds, recommend_critics = None, None, None
-        new_params = apply_special_criteria(self, special_criteria,
-                                            locals())  #for key, value in new_params.items(): locals()[key] = value
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
         self.last_user_message = None
         if hasattr(self, 'num_parallel_inferences') and self.num_parallel_inferences == 0:
             self.num_parallel_inferences = 2
 
-        HumanLLMMonitor_args, local_vars = (
-                    set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
-        kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
-        print(
-            f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
-        kw_common_args.update(new_params)
+        kw_common_args = apply_criteria_and_prepare_monitor_args(self, special_criteria, locals())
 
         self.human_llm_code_task = HumanLLMMonitor(**kw_common_args)
         self.human_llm_code_task.skip_rounds = skip_rounds
@@ -887,19 +909,7 @@ class ValidationAgent:
         self.additional_check_list = None
         self.name = self.__class__.__name__
 
-        new_params = apply_special_criteria(self, special_criteria,
-                                            locals())  #for key, value in new_params.items(): locals()[key] = value
-        if special_criteria is not None and 'log_user_message' in special_criteria:
-            setattr(self, 'log_user_message', special_criteria['log_user_message'])
-        if hasattr(self, 'num_parallel_inferences') and self.num_parallel_inferences == 0:
-            self.num_parallel_inferences = 1
-
-        HumanLLMMonitor_args, local_vars = (
-                    set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
-        kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
-        print(
-            f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
-        kw_common_args.update(new_params)
+        kw_common_args = apply_criteria_and_prepare_monitor_args(self, special_criteria, locals())
 
         self.human_llm_validate_code = HumanLLMMonitor(**kw_common_args)
         self.human_llm_validate_code.skip_rounds = skip_rounds
@@ -981,19 +991,7 @@ class CapitalizationAgent:
             self.replace_if_exists_function = special_criteria['CapitalizationAgent#replace_if_exists_function']
             del special_criteria['CapitalizationAgent#replace_if_exists_function']
 
-        new_params = apply_special_criteria(self, special_criteria,
-                                            locals())  #for key, value in new_params.items(): locals()[key] = value
-        if hasattr(self, 'num_parallel_inferences') and self.num_parallel_inferences == 0:
-            self.num_parallel_inferences = 1
-
-        if special_criteria is not None and 'log_user_message' in special_criteria:
-            setattr(self, 'log_user_message', special_criteria['log_user_message'])
-        HumanLLMMonitor_args, local_vars = (
-                    set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}), locals()
-        kw_common_args = {param: local_vars[param] for param in HumanLLMMonitor_args if param in local_vars}
-        print(
-            f"{self.name} applicables special criteria's new_params:{new_params}\nHumanLLMMonitor params configured by {self.name}:{kw_common_args.keys()}\nHumanLLMMonitor params altered by special criteria for {self.name}:{set(new_params.keys()) & set(kw_common_args.keys())}")
-        kw_common_args.update(new_params)
+        kw_common_args = apply_criteria_and_prepare_monitor_args(self, special_criteria, locals())
 
         self.learnt_tasks_repository: Dict[str, str] = {}
         self.failed_tasks_repository: Dict[str, str] = {}
@@ -1220,10 +1218,16 @@ class PlannerAgent:
         self.llm = default_llm_choice  # Assuming this is an LLM object or a callable function
         self.llmORchains_list = llmORchains_list or {}
         self.skip_rounds = skip_rounds
-        self.max_autofix = 3  # Maximum number of auto-fix attempts
+        self.max_autofix = 3  # TODO: re-use autofix from CodingAgent which is currently not available seperately as a function
         self.system_prompt_path = system_prompt_path
 
-    def plan(self, question: str):
+        # Initialize CallHumanLLMMonitor with a generic approach
+        kw_common_args = apply_criteria_and_prepare_monitor_args(self, special_criteria, locals())
+
+        self.human_llm_planner = HumanLLMMonitor(**kw_common_args)
+        self.coding_agent = CodingAgent( default_llm_choice=self.llm, envs=self.envs, premium_llm_choice=None, problem_prompts_subdir=self.problem_prompts_subdir, skip_rounds=self.skip_rounds, llmORchains_list=self.llmORchains_list, automation=self.automation, model_choice=self.model_choice, special_criteria=None, num_parallel_inferences=1)
+
+    def plan(self, question: str, reuse_prompt=None):
         self.last_user_message = question
 
         # Retrieve learnt tasks (functions/code)
@@ -1236,77 +1240,35 @@ class PlannerAgent:
         code_snippets = "\n\n".join(learnt_tasks)
 
         # Prepare the prompt for the LLM
-        prompt_template = (
-            "You are a helpful assistant that selects the best code to answer the user's question.\n"
-            "User's question:\n{question}\n\n"
+        prompt_path = reuse_prompt if reuse_prompt else self.system_prompt_path
+        prompt_template = HumanLLMMonitor.load_prompt(prompt_path) if prompt_path else (
+            "You are a helpful assistant that selects the best functions to answer the user's question.\n"
             "Available code snippets:\n{code_snippets}\n\n"
-            "Please select the code that will best answer the question. "
-            "If multiple functions do exactly the same thing, choose the most efficient one.\n"
-            "Provide only the code that should be executed to answer the question."
-        )
+            "Please generate the python code that will best answer the question using available questions.")
+            # PROMPT (and code processing) SHOULD BE UPDATED to :
+            # - enable to decide to learn specific tasks/tools/functions if needed
+            # - use @step decoartor on functions to organize a step-by-step execution with possible parallelism-dependencies + remedies-fallback...
+            # - use "past plan" with the last failed plan to improve the current plan
+            # - use data declaration and input/output data workflow management to monitor data for complex problems
+            # - use "reflexion" to update next steps if needed based on previous step result
+            # - use a better "tool" selection management
+            # - allow to create datasets or knowledge bases to use for learning or code in further solving steps
+            # - allow to use a kind of empty HumanLLM agent for "manual" steps or "manual" LLM task learning
         prompt = prompt_template.format(question=question, code_snippets=code_snippets)
 
-        # Call the LLM using a method similar to CallHumanLLM
-        selected_code = self.call_llm_with_similar_method(
-            prompt,
-            use_premium_llm=False,
-            temperature=0.5  # You can adjust the temperature as needed
-        )
+        user_message_content = f"User's question:\n{question}"
 
+        selected_code = self.human_llm_planner.CallHumanLLM(original_input_messages=[SystemMessage(content=prompt), HumanMessage(content=user_message_content)]) #, automation=self.automation)
         if selected_code:
             # Execute the code on the environments and handle errors
             result = self.execute_code_on_envs(selected_code)
-            if result:
-                parsed_code, success, _, _, _, _ = result
-                if success:
-                    # The code was successfully verified; we can now execute it
-                    code_to_run = parsed_code['program_code']
-                    exec_locals = {}
-                    try:
-                        # Execute the code in a secure context
-                        exec(code_to_run, globals(), exec_locals)
-                        main_function_name = parsed_code['main_function']['name']
-                        if main_function_name in exec_locals:
-                            # Iterate over each environment
-                            for env in self.envs:
-                                bot = env.synthesis_manager  # Or env.bot if the bot is an attribute of the environment
-                                # Call the main function with the appropriate parameters
-                                exec_locals[main_function_name](bot)
-                                answer = bot.document.document_content.sections_list
-                                temp = ""
-                                for item in answer:
-                                    temp += item.title + "\n" + item.content + "\n"
-                                smart_print(f"Response for document {bot.document.title} (Id: {env.id}): {temp}",
-                                            agent_name=self.name)
-                        else:
-                            smart_print("The main function was not found in the selected code.",
-                                        agent_name=self.name)
-                    except Exception as e:
-                        smart_print(f"Error during code execution: {e}", agent_name=self.name)
-                else:
-                    smart_print("The code failed the tests and will not be executed.", agent_name=self.name)
-            else:
-                smart_print("Failed to execute the code.", agent_name=self.name)
+            smart_print(f"Code execution result: {result}", agent_name=self.name)
         else:
             smart_print("No code was selected by the LLM.", agent_name=self.name)
 
     def execute_code_on_envs(self, code_str):
-        # Create an instance of CodingAgent
-        coding_agent = CodingAgent(
-            default_llm_choice=self.llm,
-            envs=self.envs,
-            premium_llm_choice=None,
-            problem_prompts_subdir=self.problem_prompts_subdir,
-            skip_rounds=self.skip_rounds,
-            llmORchains_list=self.llmORchains_list,
-            automation=self.automation,
-            model_choice=self.model_choice,
-            special_criteria=None,
-            num_parallel_inferences=1
-        )
-
         # Use the parse_ai_generated_code method to analyze the code
-        parse_success, parsed_code_or_error = coding_agent.parse_ai_generated_code(
+        parse_success, parsed_code_or_error = self.coding_agent.parse_ai_generated_code(
             message=code_str,
             required_bot_arg='bot',  # If your main function needs to accept 'bot' as an argument
             automatic_tests=True
@@ -1315,14 +1277,7 @@ class PlannerAgent:
         if parse_success:
             parsed_code = parsed_code_or_error
             # Use the run_tests_on_code method to verify the code
-            result = coding_agent.run_tests_on_code(
-                message="",
-                parsed_code=parsed_code,
-                skip_already_processed=False,
-                output_id=None,
-                restore_state=True,
-                custom_agent=self.name
-            )
+            result = self.coding_agent.run_tests_on_code( message="", parsed_code=parsed_code, skip_already_processed=False, output_id=None, restore_state=True, custom_agent=self.name)
 
             # Process the result as before
             if result:
@@ -1333,8 +1288,7 @@ class PlannerAgent:
                     smart_print("The code encountered errors on some environments.", agent_name=self.name)
                     for idx, (no_runtime_error, exec_result) in enumerate(zip(exec_results, states)):
                         if not no_runtime_error:
-                            smart_print(f"Error in environment {self.envs[idx].id}: {exec_result}",
-                                        agent_name=self.name)
+                            smart_print(f"Error in environment {self.envs[idx].id}: {exec_result}", agent_name=self.name)
                 smart_print(f"Total execution time: {total_execution_time:.2f} seconds", agent_name=self.name)
                 return result
             else:
@@ -1344,34 +1298,6 @@ class PlannerAgent:
             error_message = parsed_code_or_error
             smart_print(f"Error during code parsing: {error_message}", agent_name=self.name)
             return None
-
-    def call_llm_with_similar_method(self, prompt, use_premium_llm=False, temperature=0.5):
-        """
-        Calls the LLM inspired by the CallHumanLLM method, without using concurrent.futures or multiple inferences.
-        """
-        # Define the LLM function to use
-        llm_function = self.llmORchains_list.get('premium_llm' if use_premium_llm else 'default_llm')
-
-        if not llm_function:
-            smart_print("No LLM is available to perform the call.", agent_name=self.name)
-            return ""
-
-        # Prepare the input messages for the LLM
-        system_message = SystemMessage(content="")
-        user_message = HumanMessage(content=prompt)
-        llm_input_messages = [system_message, user_message]
-
-        # Configure the LLM with the desired temperature
-        llm = llm_function.with_config(configurable={"llm_temperature": temperature})
-
-        # Call the LLM
-        try:
-            response = llm.invoke(llm_input_messages)
-            llm_output = response.content if hasattr(response, 'content') else str(response)
-            return llm_output.strip()
-        except Exception as e:
-            smart_print(f"Error during LLM call: {e}", agent_name=self.name)
-            return ""
 
 
 def validate_function_code(code, function_name, local_scope=None, compile_test_only=False):
