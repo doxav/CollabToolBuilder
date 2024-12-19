@@ -1705,7 +1705,7 @@ monacoLoaderPromise.then(function() {
 // Référence aux éléments du DOM
 const logContainer = document.getElementById('log-container');
 const toggleLogButton = document.getElementById('toggle-log-button');
-const inputElement = document.getElementById('search-task-toggle');
+const searchTask = document.getElementById('search-task-toggle');
 
 
 
@@ -1719,7 +1719,7 @@ toggleLogButton.addEventListener('click', function() {
     }
 });
 
-inputElement.addEventListener('input', function(event) {
+searchTask.addEventListener('input', function(event) {
     console.log('La valeur a changé :', event.target.value);
     let searchValue = event.target.value.toLowerCase();
     $("#task-selection option").each(function() {
