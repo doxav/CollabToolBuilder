@@ -858,12 +858,12 @@ class CodingAgent:
         for index, code in enumerate(codes):
             # Get the proper check_results corresponding to the output_id (which is the index)
             check_results = self.human_llm_code_task.last_inference_check_results[index]
-
-            code_parsing_success, parsed_code = check_results.get("Code Parsing", (False, None))
-            if code_parsing_success and isinstance(parsed_code, dict):
-                test_results = check_results.get("Run Tests", None)
-                if test_results:
-                    results.append(test_results)
+            if check_results:
+                code_parsing_success, parsed_code = check_results.get("Code Parsing", (False, None))
+                if code_parsing_success and isinstance(parsed_code, dict):
+                    test_results = check_results.get("Run Tests", None)
+                    if test_results:
+                        results.append(test_results)
 
         if len(results) > 1:
             # display the list of results with success, exception and code
@@ -993,8 +993,6 @@ class CapitalizationAgent:
 
         kw_common_args = apply_criteria_and_prepare_monitor_args(self, special_criteria, locals())
 
-        self.learnt_tasks_repository: Dict[str, str] = {}
-        self.failed_tasks_repository: Dict[str, str] = {}
         self.human_llm_generate_function_description = HumanLLMMonitor(**kw_common_args)
         self.human_llm_generate_function_description.skip_rounds = skip_rounds
         self.automation = automation
@@ -1005,6 +1003,12 @@ class CapitalizationAgent:
 
     def capitalize_successful_tasks(self, task_description: str, parsed_code: str) -> None:
         import socket, uuid, datetime
+        self.human_llm_generate_function_description.task_parameters = {'task_description' : task_description, 'parsed_code' : parsed_code}
+        if hasattr(self, 'saved_task') and self.automation in ['before', 'after']:
+            content = self.saved_task.get('content', {})
+            task_description = content.get("task_parameters", {}).get("task_description", task_description)
+            parsed_code = content.get("task_parameters", {}).get("parsed_code", parsed_code)
+            self.human_llm_generate_function_description.task_parameters = {'task_description': task_description,'parsed_code': parsed_code}
 
         function_name = parsed_code.get("main_function_name",
                                         parsed_code.get("main_function", {}).get("name", "unknown"))
@@ -1025,7 +1029,6 @@ class CapitalizationAgent:
 
             pipeline_file_path = os.path.join("pipelines/pipelines", function_name + ".py")
             tool_description = str(self.generate_tool_description(function_name, parsed_code["program_code"]))
-            self.learnt_tasks_repository[function_name] = [tool_description, parsed_code["program_code"]]
             # print last added task
             smart_print(
                 f"************ Last added task ************\n{function_name}\n************************".replace("\\n",
@@ -1035,7 +1038,6 @@ class CapitalizationAgent:
             # save function program_code in a file under the functions directory and add to the function signature the generated dosctring
             function_file_path = os.path.join("functions", function_name + ".py")
             tool_description = str(self.generate_tool_description(function_name, parsed_code["program_code"]))
-            self.learnt_tasks_repository[function_name] = [tool_description, parsed_code["program_code"]]
             # print last added task
             smart_print(
                 f"************ Last added task ************\n{function_name}\n************************".replace("\\n",
@@ -1127,7 +1129,6 @@ class CapitalizationAgent:
             task_description_refined = task_description
 
         # Store task description
-        self.failed_tasks_repository[task_name] = task_description_refined
         smart_print(
             f"************ Last added failed task ************\n{task_name}\n************************".replace("\\n",
                                                                                                                "\n"),
@@ -1408,8 +1409,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                              problem_prompts_subdir=problem_prompts_subdir,
                                              premium_llm_by_default=agtask_premium_llm_by_default,
                                              skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list,
-                                             automation=automation['taskreco'] if isinstance(automation,
-                                                                                             dict) else automation,
+                                             automation=automation['taskreco'] if isinstance(automation,dict) else automation,
                                              model_choice=(
                                                  model_choice[
                                                      'taskreco' if 'taskreco' in model_choice else 'coach'] if type(
@@ -1440,8 +1440,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                            skip_rounds=agcapitalize_skip_rounds,
                                            problem_prompts_subdir=problem_prompts_subdir,
                                            llmORchains_list=llmORchains_list,
-                                           automation=automation['capitalizer'] if isinstance(automation,
-                                                                                              dict) else automation,
+                                           automation=automation['capitalizer'] if isinstance(automation, dict) else automation,
                                            model_choice=(
                                                model_choice[
                                                    'capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(
@@ -1450,6 +1449,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
 
     #agent_capitalize.retrieve_saved_tasks_in_db(include_code=include_code, selected_successful_functions=selected_successful_functions, selected_failed_functions=selected_failed_functions)
     continue_identifying_tasks = True
+    max_coding_attempts = 4 if not agent_coding.automation == "skip_once" else 1
     total_scores = []
 
     # Global learn loop
@@ -1505,8 +1505,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                                                      manual_validation_to_capitalize,
                                                                      automation=agent_coding.human_llm_code_task.automation,
                                                                      end_time=time_end)
-
-        if validation == "success":
+# TODO: Fusionner les capitalizations, en ajoutant un paramètre pour savoir si on doit capitaliser les tâches réussies ou échouées et adapter le prompt en conséquence pour déterminer automatiquement si on doit capitaliser les tâches réussies ou échouées dans le cas d'un goto
+        if validation == "success" or (agent_capitalize.human_llm_generate_function_description.automation in ["before", "after"] and (hasattr(agent_capitalize.human_llm_generate_function_description, 'saved_task') and agent_capitalize.human_llm_generate_function_description.saved_task['agent_name'] == "CapitalizationAgent")):
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
         else:
             if agent_capitalize.human_llm_generate_function_description.automation or smart_input(
@@ -2129,7 +2129,7 @@ if __name__ == "__main__":
     if 'saved_task' in globals():
         special_criteria["all#saved_task"] = saved_task
         if special_criteria[f"{saved_task['agent_name']}#num_parallel_inferences"] == 0:
-            special_criteria[f"{saved_task['agent_name']}#num_parallel_inferences"] = json.loads(saved_task['content'])['num_parallel_inferences']
+            special_criteria[f"{saved_task['agent_name']}#num_parallel_inferences"] = saved_task.get('content', {}).get('num_parallel_inferences', 2)
     else:
         special_criteria = None
     if not ('automatic' in globals()):

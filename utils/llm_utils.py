@@ -785,7 +785,7 @@ class HumanLLMMonitor:
             'before_after': saved_task[0].metadata['before_after'],
             'agent_name': saved_task[0].metadata['agent_name'],
             'type_tache': saved_task[0].metadata['type_tache'],
-            'content': saved_task[0].page_content,
+            'content': json.loads(saved_task[0].page_content),
             'step_id': saved_task[0].metadata['step_id'],
             'date': saved_task[0].metadata['date']
         }
@@ -1319,8 +1319,9 @@ class HumanLLMMonitor:
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1,
                  llmORchains_list=None,
                  synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, envs=None,
-                 fixed_coach=False, prompt_critic=None, saved_task=None, automation=None, auto_n_rounds=None, recommend_critics=None):
+                 fixed_coach=False, prompt_critic=None, saved_task=None, automation=None, auto_n_rounds=None, recommend_critics=None, task_parameters=None):
         # Instance properties to track time
+        self.task_parameters = task_parameters
         self.selected_outputs = []
         self.menu_start_time = None
         self.start_time = None
@@ -1367,6 +1368,7 @@ class HumanLLMMonitor:
         self.saved_task = saved_task
         self.auto_n_rounds = auto_n_rounds
         self.recommend_critics = recommend_critics
+
 
     # Clears the selected answers before processing new outputs.
     # This should be called at the beginning of a new inference process.
@@ -1623,7 +1625,8 @@ class HumanLLMMonitor:
         use_premium_llm = use_premium_llm if use_premium_llm is not None else self.premium_llm_by_default
         forced_llm_output = False  # TODO: try to set it to None
         HumanLLMMonitor.add_agent_data(self.agent_name, "saved_task", {'prompt': messages[0].content + messages[1].content,
-                                                                       'num_parallel_inferences': self.num_parallel_inferences},
+                                                                       'num_parallel_inferences': self.num_parallel_inferences,
+                                                                       'task_parameters': self.task_parameters},
                                        before_after='before', user_id=HumanLLMMonitor.user_id, step_id=self.step_id, type_tache="IR_CPS_TechSynthesis", id_task=True)
 
         while self.skip_rounds <= 0:
@@ -2096,7 +2099,7 @@ class HumanLLMMonitor:
 
             HumanLLMMonitor.add_agent_data(self.agent_name, "saved_task", {'llm_output': inference_result_msg.content,
                                                                            'user_message': self.current_inference_context['input_contents'][1].content,
-                                                                           'num_parallel_inferences': self.num_parallel_inferences},
+                                                                           'num_parallel_inferences': self.num_parallel_inferences, 'task_parameters': self.task_parameters},
                                            before_after='after', user_id=HumanLLMMonitor.user_id, step_id=self.step_id,
                                            type_tache="IR_CPS_TechSynthesis", id_task=True, function_name=task_name)
             menu = (
@@ -2800,9 +2803,9 @@ class HumanLLMMonitor:
             premium_llm_function = self.premium_llm if self.premium_llm else None
         print(f"****agent : {self.agent_name}, automation : {self.automation}****")
         if self.automation == 'before' and (hasattr(self, "saved_task")):
-            temp = json.loads(self.saved_task['content'])
+            temp = self.saved_task.get('content', {})
             print(f"****temp (prompt before {self.agent_name}) : {temp}****")
-            self.system_prompt = temp['prompt']
+            self.system_prompt = temp.get('prompt', "")
             if self.auto_n_rounds > 0:
                 self.automation = "full_auto"
             else:
@@ -2842,16 +2845,16 @@ class HumanLLMMonitor:
                 self.llm_input_messages = original_input_messages
                 self.last_inference_check_results = [None]
                 if self.automation == 'after' and hasattr(self, "saved_task"): # Plus besoin de tester sur agent_name
-                    temp = json.loads(self.saved_task['content'])
+                    temp = self.saved_task.get('content', {})
                     print(f"****temp (llm_output after {self.agent_name}) : {temp}****")
-                    llm_outputs = [AIMessage(content=temp['llm_output'])]
+                    llm_outputs = [AIMessage(content=temp.get('llm_output', ""))]
                     if self.auto_n_rounds > 0:
                         self.automation = "full_auto"
                     else:
                         self.automation = None
                     print(f"****llm_output : {llm_outputs}****")
                     smart_print(
-                        llm_outputs[0].content,
+                        llm_outputs[0].content if llm_outputs else "No LLM output",
                         self.agent_name, "NEW inference result recieved", column_id=0,
                         column_max=1)
             else:
@@ -2971,8 +2974,8 @@ class HumanLLMMonitor:
                 else:
                     self.automation = None
                 input_content = ""
-                if 'input_contents' in json.loads(self.saved_task['content']):
-                    input_content = json.loads(self.saved_task['content'])['input_contents']
+                if 'input_contents' in self.saved_task.get('content', {}):
+                    input_content = self.saved_task.get('content', {}).get('input_contents', "")
                 output_messages = [AIMessage(content=input_content)]
                 break
 
