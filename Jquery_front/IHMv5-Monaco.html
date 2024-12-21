@@ -2296,17 +2296,16 @@ function getColumnsToKeep(agent) {
         });
 
         $(`#suggestions-${agent_columnId}`).click(function () {
-            //const cleanSuggestions = "";
-            //let suggestions = JSON.parse(cleanSuggestions);
-            //console.log("suggestsions:", suggestions);
-            //annotationswithID = suggestions.suggestions;
-            //console.log("output_id:", suggestions.output_id);
-            //let comment_editor = window[`editorInstance_${data.agent_name}-${suggestions.output_id}`];
-            //console.log("editor:", comment_editor);
-            // Add text in the comment editor
-           //comment_editor.setValue(annotationswithID);
-           let comment_editor = window[`editorInstance_${currentAgent}-0`];
-           comment_editor.setValue("Oui");
+            let editor_content = targetColumn.editorInstance.getValue();
+            let output_id = data.column_id;
+           sendFunctionCall(data.agent_name, "generate_best_improvement_suggestions", {inference_result_content:editor_content, output_id:output_id}, function(responseMessage) {
+                console.log("responseMessage:", responseMessage);
+                let suggestions = JSON.parse(responseMessage);
+                annotationswithID = suggestions.suggestions;
+                let comment_editor = window[`editorInstance_${currentAgent}_${suggestions.output_id}`];
+                comment_editor.setValue(annotationswithID);
+            });
+
         });
 
     $(`#evaluate-${agent_columnId}`).click(function () {
