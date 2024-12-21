@@ -884,7 +884,7 @@ class CapitalizationAgent:
         print('Adding learnt task')
 
         # Add to vector database with tags
-        tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": str(HumanLLMMonitor.step_id)}
+        tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": int(HumanLLMMonitor.step_id)}
         HumanLLMMonitor.add_learnt_task(serialized_entry, tags)
 
     def capitalize_failed_tasks(self, task_description: str, parsed_code: str) -> None:
@@ -1015,6 +1015,12 @@ class PlannerAgent:
         # Prepare the code snippets string
         code_snippets = "\n\n".join(learnt_tasks)
 
+        # if self.envs:
+        #     if isinstance(self.envs[0], SWEBenchEnvironment):
+        #         question = f"Solve the SWE bench problem {self.envs[0].swe_data.instance_id} by finding buggy files, generating patch, applying patch and running tests. Current state of the solution is:\n{self.envs[0].get_state(extended=False)}.\nOn the basis of current state, provide the best code that shoud be executed next"
+        
+        # print(question)
+
         print("Got the learnt tasks")
 
         # Prepare the prompt for the LLM
@@ -1025,6 +1031,7 @@ class PlannerAgent:
             "Please select the code that will best answer the question. "
             "If multiple functions do exactly the same thing, choose the most efficient one.\n"
             "Provide only the code that should be executed to answer the question."
+            # "Provide full code and also execute the selected function with bot parameter"
         )
         prompt = prompt_template.format(question=question, code_snippets=code_snippets)
 
@@ -1036,7 +1043,9 @@ class PlannerAgent:
             temperature=0.2  # You can adjust the temperature as needed
         )
 
-        print(f"Selected code: {selected_code[0:200]}...")
+        print("----------------------------------------")
+        print(f"Selected code: {selected_code}...")
+        print("----------------------------------------")
 
         if selected_code:
             # Execute the code on the environments and handle errors
@@ -1269,7 +1278,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
 
     # Global learn loop
     while continue_identifying_tasks and time.time() < time_end:
-        HumanLLMMonitor.step_id = str(uuid.uuid4())
+        HumanLLMMonitor.step_id = str(random.randint(0, 1000000))
+        # HumanLLMMonitor.step_id = str(uuid.uuid4())
         task = agent_taskreco.identify_best_task()
 
         # Handle multiple-tasks case
@@ -1400,22 +1410,23 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
     if functions_to_import is not None:
         # Imports the functions with the regex pattern given from functions directory into the elastic database
         functions = import_functions_from_directory(functions_to_import)
-   
+        print("Imported functions:", type(functions))
         for function in functions.items():
-            
+            # print("Function:", function)
             serialized_entry = json.dumps({
                 "time": datetime.now().isoformat(),
-                "class_name": function[0],
+                "main_function_name": function[0],
                 "program_code": function[1],
                 "tool_description": "",
                 "task_description": "",
             }, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
             tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": HumanLLMMonitor.step_id}
-            HumanLLMMonitor.add_learnt_task(serialized_entry, tags)
-
+            print("Adding learnt task:", HumanLLMMonitor.add_learnt_task(serialized_entry, tags))
+        
+    # return
     successful_tasks = HumanLLMMonitor.get_learnt_tasks()
 
-    # print("Successful tasks:", successful_tasks)
+    print("Successful tasks:", len(successful_tasks))
 
     successful_tasks_list = [task for task in successful_tasks]
     smart_print(json.dumps(successful_tasks_list), "orchestrate_agents", "successful_tasks_list")
@@ -1805,7 +1816,7 @@ if __name__ == "__main__":
     time.sleep(1)  # Adjust if necessary
 
     # Initialize the default and premium LLMs
-    #from langchain_groq import ChatGroq
+    # from langchain_groq import ChatGroq
     llmORchains_list = {
         "default_llm": ChatOpenAI(
             model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False,
@@ -1859,7 +1870,7 @@ if __name__ == "__main__":
                 unique_id=unique_id,
                 functions_to_import=".*")  # Auto-test: 0"""
 
-    # from primitives.swe_primititves.find_buggy_code import find_buggy_code
+    # from primitives.swe_primititves.generate_patch import generate_patch
 
     # dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take3", split='train')
     # dataset = dataset.select(range(1, 2))
@@ -1869,6 +1880,8 @@ if __name__ == "__main__":
         
     #     bot = SWEManager()
     #     env = SWEBenchEnvironment(problem)
+
+    #     generate_patch(bot, problem, env)
 
     #     with open("primitives/swe_primititves/find_buggy_code.txt", "r") as f:
     #         no_runtime_error, exec_result = env.step(code=f.read())
@@ -1898,12 +1911,14 @@ if __name__ == "__main__":
     #     state = pickle.load(file)
 
     # Add to vector database with tags
-    # tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": HumanLLMMonitor.step_id}
+    # tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": 1}
     # HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
     # HumanLLMMonitor.check_init_class_db(force=True)
+    # HumanLLMMonitor(llmORchains_list=llmORchains_list, agent_name='Validation_Agent').add_learnt_task(state, tags)
     # answer = HumanLLMMonitor(llmORchains_list=llmORchains_list, agent_name='Validation_Agent').get_learnt_tasks()
     # print(type(answer))
     # print(len(answer))
     # answer = list(answer)
-    # task: dict = json.loads(answer[0])
-    # print(task.keys())
+    # for ans in answer:
+    #     task: dict = json.loads(ans)
+    #     print(task['main_function_name'])

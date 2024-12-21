@@ -163,7 +163,7 @@ def find_buggy_code(bot):
     app = workflow.compile()
     
     initial_state = {
-        "messages": [HumanMessage(content=search_issue_code_prompt.format(repo=problem.repo, issue=problem.problem_statement, hint=problem.hints_text, repo_structure=problem.repo_structure))],
+        "messages": [HumanMessage(content=search_issue_code_prompt.format(repo=problem.repo, issue=problem.problem_statement, hint=problem.hints_text, repo_structure=""))],
         "repo": problem.repo,
         "problem": {
             "problem_statement": problem.problem_statement,

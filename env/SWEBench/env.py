@@ -21,7 +21,6 @@ class SWEProblem(BaseModel):
     hints_text: str
     test_patch: str
     environment_setup_commit: str
-    repo_structure: Optional[Dict[str, Any]] = None
 
 class SWEBenchEnvironment(Environment):
 
@@ -132,6 +131,15 @@ class SWEManager:
     def getContentViewingTools(self):
      return [get_files_content]
     
+    def getEditingTools(self):
+        return [edit_file]
+    
+    def getDiff(self) -> str:
+        return subprocess.run(f"cd {SWEManager.target_dir} & git diff", shell=True, text=True, capture_output=True).stdout
+    
+    def restoreRepo(self) -> str:
+        return subprocess.run(f"cd {SWEManager.target_dir} & git restore .", shell=True, text=True, capture_output=True).stdout
+    
     def extract_classes_and_functions(self, file_path, limit_docstring=True, max_docstring_length=100):
         """
         Extract classes and functions from a Python file with optional docstring trimming.
@@ -171,7 +179,7 @@ class SWEManager:
 
         return {"classes": classes, "functions": functions}
     
-    def summarize_repo(self, root_dir, max_output_characters=5000, max_files=50, include_docstring=True, include_args=True):
+    def summarize_repo(self, root_dir, max_output_characters=20000, max_files=50, include_docstring=True, include_args=True) -> dict:
         """
         Summarize a repository by extracting classes and functions from Python files with size constraints.
 
@@ -228,119 +236,7 @@ class SWEManager:
     def reset_method_calls_counters(self):
         if hasattr(self, '_method_counts'):
             self._method_counts = {}
-
-    def get_project_structure_from_scratch(self,repo_name, commit_id, instance_id):
-        self.clone_repo(instance_id)
-        self.checkout_commit("../../swe_repo/{repo_name}", commit_id)
-        structure = self.create_structure(f"{repo_playground}/{repo_to_top_folder[repo_name]}")
-
-        d = {
-        "repo": repo_name,
-        "base_commit": commit_id,
-        "structure": structure,
-        "instance_id": instance_id,
-        }
-        return d
         
-    def create_structure(self, directory_path):
-     """Create the structure of the repository directory by parsing Python files.
-         :param directory_path: Path to the repository directory.
-         :return: A dictionary representing the structure.
-     """
-     structure = {}
-
-     for root, _, files in os.walk(directory_path):
-        repo_name = os.path.basename(directory_path)
-        relative_root = os.path.relpath(root, directory_path)
-        if relative_root == ".":
-            relative_root = repo_name
-        curr_struct = structure
-        for part in relative_root.split(os.sep):
-            if part not in curr_struct:
-                curr_struct[part] = {}
-            curr_struct = curr_struct[part]
-        for file_name in files:
-            if file_name.endswith(".py"):
-                file_path = os.path.join(root, file_name)
-                class_info, function_names, file_lines = self.parse_python_file(file_path)
-                curr_struct[file_name] = {
-                    "classes": class_info,
-                    "functions": function_names,
-                    "text": file_lines,
-                }
-            else:
-                curr_struct[file_name] = {}
-     return structure   
- 
-    def parse_python_file(self,file_path, file_content=None):
-     """Parse a Python file to extract class and function definitions with their line numbers.
-     :param file_path: Path to the Python file.
-     :return: Class names, function names, and file contents
-     """
-     if file_content is None:
-        try:
-            with open(file_path, "r") as file:
-                file_content = file.read()
-                parsed_data = ast.parse(file_content)
-        except Exception as e:  # Catch all types of exceptions
-            # print(f"Error in file {file_path}: {e}")
-            return [], [], ""
-     else:
-        try:
-            parsed_data = ast.parse(file_content)
-        except Exception as e:  # Catch all types of exceptions
-            # print(f"Error in file {file_path}: {e}")
-            return [], [], ""
-
-     class_info = []
-     function_names = []
-     class_methods = set()
-
-     for node in ast.walk(parsed_data):
-        if isinstance(node, ast.ClassDef):
-            methods = []
-            for n in node.body:
-                if isinstance(n, ast.FunctionDef):
-                    methods.append(
-                        {
-                            "name": n.name,
-                            "start_line": n.lineno,
-                            "end_line": n.end_lineno,
-                            "text": file_content.splitlines()[
-                                n.lineno - 1 : n.end_lineno
-                            ],
-                        }
-                    )
-                    class_methods.add(n.name)
-            class_info.append(
-                {
-                    "name": node.name,
-                    "start_line": node.lineno,
-                    "end_line": node.end_lineno,
-                    "text": file_content.splitlines()[
-                        node.lineno - 1 : node.end_lineno
-                    ],
-                    "methods": methods,
-                }
-            )
-        elif isinstance(node, ast.FunctionDef) and not isinstance(
-            node, ast.AsyncFunctionDef
-        ):
-            if node.name not in class_methods:
-                function_names.append(
-                    {
-                        "name": node.name,
-                        "start_line": node.lineno,
-                        "end_line": node.end_lineno,
-                        "text": file_content.splitlines()[
-                            node.lineno - 1 : node.end_lineno
-                        ],
-                    }
-                )
-
-     return class_info, function_names, file_content.splitlines()    
-
-
 @tool
 def ls() -> str:
     """
@@ -434,9 +330,9 @@ def open_file(path: str, line_number: int = 1, max_lines: int = 100) -> str:
     """   
     This function takes a file path, a line number, and a maximum number of lines as input and returns the contents of the file starting from the specified line number, limited to the maximum number of lines.
     :function: open_file
-:param path: The relative path to the file (e.g., 'lib/matplotlib/axis.py').
+    :param path: The relative path to the file (e.g., 'lib/matplotlib/axis.py').
     :param line_number: The line number from which to start reading the file. Defaults to 1.
-:param max_lines: The maximum number of lines to return from the starting line. Defaults to 100.
+    :param max_lines: The maximum number of lines to return from the starting line. Defaults to 100.
     :return: A string containing the file contents from the specified starting line, limited to max_lines.
     """
 
@@ -453,7 +349,7 @@ def open_file(path: str, line_number: int = 1, max_lines: int = 100) -> str:
             if line_number > num_lines:
                 return f"Can't access {line_number} line. This file only contains {num_lines} lines"
             
-            out = f"Showing contents of File: {SWEManager.current_dir+path} starting from {line_number}\n\n"
+            out = f"Showing contents of File: {SWEManager.current_dir+path} starting from {line_number}\n"
             for n, line in enumerate(file, 1):
                 if n >= line_number:
                     out += f"{n}: {line}\n"
@@ -462,6 +358,56 @@ def open_file(path: str, line_number: int = 1, max_lines: int = 100) -> str:
             return out
     else:
         return path + " doesn't exist"
+
+@tool
+def edit_file(path: str, line_number: int, num_lines: int, new_content: str) -> str:
+    """
+    This function edits a file by replacing a specified number of lines starting from a given line number with new content.
+    Ensures a newline is added after the last edited line if not already present.
+    
+    :function: edit_file
+    :param path: The relative path to the file (e.g., 'lib/matplotlib/axis.py').
+    :param line_number: The line number from which to start editing the file.
+    :param num_lines: The number of lines to replace starting from the given line number.
+    :param new_content: The content to replace the specified lines with. It can span multiple lines.
+    :return: A success message or an error message in case of failure.
+    """
+    if line_number < 1:
+        return "Error: line number cannot be zero or negative"
+    if num_lines < 0:
+        return "Error: num_lines cannot be negative"
+
+    abs_file_path = os.path.join(get_abs_current_dir(), path)
+    if os.path.exists(abs_file_path):
+        with open(abs_file_path, 'r') as file:
+            lines = file.readlines()
+        
+        total_lines = len(lines)
+        if line_number > total_lines:
+            return f"Error: Cannot start editing at line {line_number}. The file contains only {total_lines} lines."
+        
+        start_idx = line_number - 1
+        end_idx = start_idx + num_lines
+        
+        # Adjust end index if it exceeds the file length
+        if end_idx > total_lines:
+            end_idx = total_lines
+        
+        # Ensure new content ends with a newline
+        new_lines_content = new_content.splitlines(keepends=True)
+        if not new_lines_content[-1].endswith('\n'):
+            new_lines_content[-1] += '\n'
+
+        # Replace specified lines with new content
+        new_lines = lines[:start_idx] + new_lines_content + lines[end_idx:]
+        
+        # Write updated content back to the file
+        with open(abs_file_path, 'w') as file:
+            file.writelines(new_lines)
+        
+        return f"Successfully edited file: {path} starting from line {line_number} and replaced {num_lines} lines."
+    else:
+        return f"Error: File '{path}' does not exist."
 
 @tool
 def find_files(file_name: str) -> str:
@@ -538,13 +484,13 @@ def search_dir(path: str, search_term: str) -> str:
 def get_files_content(paths: List[str], line_numbers: List[int]) -> str:
     """
     This function takes a list of file paths and a list of line numbers as input and returns the contents of the files starting from the specified line numbers.
-    :param paths: A list of relative paths to the files (e.g., ['lib/matplotlib/axis.py', 'lib/matplotlib/figure.py']). This function will return 50 lines for each file starting from the line_number provided.
+    :param paths: A list of relative paths to the files (e.g., ['lib/matplotlib/axis.py', 'lib/matplotlib/figure.py']). This function will return 100 lines for each file starting from the line_number provided.
     :param line_numbers: A list of line numbers from which to start reading the files.
     :return: A string containing the contents of the files from the specified starting line numbers.
     """
     out = ""
     for path, line_number in zip(paths, line_numbers):
-        out += open_file.invoke({'path': path, 'line_number': line_number, 'max_lines': 50}) + '\n\n'
+        out += open_file.invoke({'path': path, 'line_number': line_number, 'max_lines': 100}) + '\n\n'
     return out
 
 
