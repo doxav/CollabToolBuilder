@@ -1762,12 +1762,12 @@ document.addEventListener('keydown', function (event) {
     }
 });
 function hideAgentButtons(agentName) {
-    $(`div[data-agent="${agentName}"]`).find('button#autofix-button, button[id^="select-"], button[id^="delete-"], button[id^="evaluate-"], button[id^="regenwithmymodifbutton-"], button[id^="regenallbutton-"], input[id^="comment-"], button#custom-autofix-button').hide();
+    $(`div[data-agent="${agentName}"]`).find('button#autofix-button, button[id^="select-"], button[id^="delete-"], button[id^="evaluate-"], button[id^="regenwithmymodifbutton-"], button[id^="regenallbutton-"], button[id^="suggestions-"], input[id^="comment-"], button#custom-autofix-button').hide();
 }
 
 function showAgentButtons(agentName) {
     //$(`div[data-agent="${agentName}"]`).find('button#autofix-button, button[id^="select-"], button[id^="delete-"], button[id^="evaluate-"], button[id^="regenwithmymodifbutton-"], button[id^="regenallbutton-"], input[id^="comment-"], button#custom-autofix-button').show();
-    $(`div[data-agent="${agentName}"]`).find('button#autofix-button, button[id^="delete-"], button[id^="evaluate-"], button[id^="regenwithmymodifbutton-"], button[id^="regenallbutton-"], input[id^="comment-"], button#custom-autofix-button').show();
+    $(`div[data-agent="${agentName}"]`).find('button#autofix-button, button[id^="delete-"], button[id^="evaluate-"], button[id^="regenwithmymodifbutton-"], button[id^="regenallbutton-"], button[id^="suggestions-"], input[id^="comment-"], button#custom-autofix-button').show();
 }
 
 // Function to update button visibility based on the selector
@@ -1783,6 +1783,7 @@ function updateButtonVisibility() {
         // Include any other session 1 specific buttons here
     ];
     const session1HideSelectors = [
+        'button[id^="suggestions-"]',
         'button[id^="evaluate-"]',
         'button[id^="regenwithmymodifbutton-"]',
         'button[id^="regenallbutton-"]',
@@ -1792,6 +1793,7 @@ function updateButtonVisibility() {
     ];
 
     const session2ShowSelectors = [
+        'button[id^="suggestions-"]',
         'button[id^="evaluate-"]',
         'button[id^="regenwithmymodifbutton-"]',
         'button[id^="regenallbutton-"]',
@@ -1807,6 +1809,7 @@ function updateButtonVisibility() {
     const session3ShowSelectors = [
         'button#autofix-button',
         'button[id^="delete-"]',
+        'button[id^="suggestions-"]',
         'button[id^="evaluate-"]',
         'button[id^="regenwithmymodifbutton-"]',
         'button[id^="regenallbutton-"]',
@@ -1891,6 +1894,7 @@ function updateButtonVisibility() {
             const otherFullColumnId = $(this).attr('id').replace(/^column-/, ''); // Remove 'column-' prefix
             $(`button#save-${otherFullColumnId},
                button#evaluate-${otherFullColumnId},
+               button#evaluate-${otherFullColumnId},
                button#regenallbutton-${otherFullColumnId},
                button#regenwithmymodifbutton-${otherFullColumnId},
                input#comment-${otherFullColumnId}`).hide();
@@ -1899,6 +1903,7 @@ function updateButtonVisibility() {
     else {
         // If no green "Continue" button is visible, hide all relevant buttons across all columns
         $(`button[id^="save-"],
+           button[id^="suggestions-"],
            button[id^="evaluate-"],
            button[id^="regenallbutton-"],
            button[id^="regenwithmymodifbutton-"],
@@ -2178,7 +2183,8 @@ function getColumnsToKeep(agent) {
 
 
                     <div style="display: flex; flex-direction: column; gap: 5px;">
-                        <button id="evaluate-${agent_columnId}"><i class="fa-regular fa-paper-plane"></i>Regenerate from instructions</button><br>
+                        <button id="suggestions-${agent_columnId}"><i class="fa-regular fa-paper-plane"></i>Get suggestions</button><br>
+                        <button id="evaluate-${agent_columnId}"><i class="fa-solid fa-rotate"></i>Regenerate from instructions</button><br>
                         <button id="regenwithmymodifbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i>Regenerate from this answer's annotations</button>
                         <button id="regenallbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i>Regenerate from all answers & annotations</button>
                     </div>
@@ -2238,8 +2244,8 @@ function getColumnsToKeep(agent) {
             function enableGenButtons(isEnabled, agent_columnId = null, selectedButton = null, timeoutReEnable = 30000) {
                 // Determine the button selectors, handling the case when agent_columnId is null
                 let buttonSelectors = agent_columnId === null
-                    ? ['[id^=evaluate-]', '[id^=regenallbutton-]', '[id^=regenwithmymodifbutton-]']
-                    : [`#evaluate-${agent_columnId}`, `#regenallbutton-${agent_columnId}`, `#regenwithmymodifbutton-${agent_columnId}`];
+                    ? ['[id^=evaluate-]', '[id^=regenallbutton-]', '[id^=regenwithmymodifbutton-]', '[id^=suggestions-]']
+                    : [`#evaluate-${agent_columnId}`, `#regenallbutton-${agent_columnId}`, `#regenwithmymodifbutton-${agent_columnId}`, `#suggestions-${agent_columnId}`];
 
                 let buttons = buttonSelectors.map(selector => $(selector));
                 let targetButton = $(selectedButton);
@@ -2287,6 +2293,19 @@ function getColumnsToKeep(agent) {
                 alert(responseMessage);
                 document.querySelector(`#save-${agent_columnId}`).style.display = 'none';
             });
+        });
+
+        $(`#suggestions-${agent_columnId}`).click(function () {
+            let editor_content = targetColumn.editorInstance.getValue();
+            let output_id = data.column_id;
+           sendFunctionCall(data.agent_name, "generate_best_improvement_suggestions", {inference_result_content:editor_content, output_id:output_id}, function(responseMessage) {
+                console.log("responseMessage:", responseMessage);
+                let suggestions = JSON.parse(responseMessage);
+                annotationswithID = suggestions.suggestions;
+                let comment_editor = window[`editorInstance_${currentAgent}_${suggestions.output_id}`];
+                comment_editor.setValue(annotationswithID);
+            });
+
         });
 
     $(`#evaluate-${agent_columnId}`).click(function () {
