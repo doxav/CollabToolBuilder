@@ -1,9 +1,10 @@
 from datasets import load_dataset
 from env.SWEBench.env import *
 from primitives.swe_primititves.generate_patch import *
+from primitives.swe_primititves.find_buggy_code import *
 
 dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take3", split='train')
-dataset = dataset.select(range(1, 2))
+dataset = dataset.select(range(0, 1))
 
 for data in dataset:
     problem = SWEProblem.parse_obj(data)
@@ -13,11 +14,14 @@ for data in dataset:
     # print(get_abs_current_dir())
     # print(find_files.invoke({"file_name": "multiclass"}))
     # print(ls.invoke({}))
-    # print(edit_file.invoke({"path": "CODE_OF_CONDUCT.md", "line_number": 8, "num_lines": 1, "new_content": "from datasets import load_dataset"}))
+    # print(edit_lines_in_file.invoke({"file_path": "setup.py", "n": 11, "m": 11, "replacement_text": 'print("hello world")'}))
 
     bot = SWEManager()
 
+    # print(find_buggy_code(bot, problem, env))
     print(generate_patch(bot, problem, env))
 
+
+    # print(env.get_score(code))
 
     

@@ -1,7 +1,4 @@
-from env.SWEBench.env import SWEBenchEnvironment, SWEManager, SWEProblem
-
-
-def generate_patch(bot: SWEManager, problem: SWEProblem, env: SWEBenchEnvironment):
+def generate_patch(bot, problem, env):
     """
     Generates a Python patch file in `git diff` format for a given problem by analyzing buggy files, 
     summarizing relevant repository structures, and using an LLM to produce the patch code.
@@ -35,7 +32,6 @@ def generate_patch(bot: SWEManager, problem: SWEProblem, env: SWEBenchEnvironmen
     from langchain_core.messages import AnyMessage, HumanMessage
     from langgraph.prebuilt import ToolNode
     from langchain_core.runnables import RunnableConfig
-    from time import time
 
     # Load the state.json file
     with open(f"{env.swe_temp_path}/{problem.instance_id}/state.json", 'r') as file:
@@ -114,9 +110,9 @@ def generate_patch(bot: SWEManager, problem: SWEProblem, env: SWEBenchEnvironmen
 
     generate_patch_prompt_template = PromptTemplate.from_template(generate_patch_prompt)
 
-    OPENAI_API_KEY = "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"
+    OPENAI_API_KEY = ""
 
-    model = "gpt-4o-mini"
+    model = "gpt-4o"
     llm = ChatOpenAI(
         model=model,
         temperature=0,
@@ -138,17 +134,27 @@ def generate_patch(bot: SWEManager, problem: SWEProblem, env: SWEBenchEnvironmen
     tool_node = ToolNode(tools=bot.getEditingTools())
 
     apply_patch_prompt = PromptTemplate.from_template("""
-    This is a patch file for {repo} repository in git diff format 
+    This is a patch file for the {repo} repository in git diff format: 
     {patch}
-                                                                    
-    You have been provided with the file editing tools. Use the tools provided to you to edit the files in this repository and this patch. Remember currently you are in {current_dir} directory. Strictly follow the identation of the patch file.                                                   
+
+    You are provided with tools to edit files in this repository. Ensure:
+    1. Apply logical blocks of code (e.g., an entire function, if-else block) at once.
+    2. Validate syntax and indentation after every edit.
+    3. If a logical block cannot be applied due to errors, log the issue, skip that part, and proceed to the next.
+    4. Avoid line-by-line edits; always prefer larger blocks.
+    5. Return a summary of changes and any skipped parts at the end.
+
+    Currently, you are in the {current_dir} directory.
     """)
 
     class PatchState(TypedDict):
         messages: Annotated[list[AnyMessage], add_messages]
     
     def apply_patch(state: PatchState):
+        print("Applying patch")
         messages = state['messages']
+        last_message = messages[-1]
+        last_message.pretty_print()
         response = llm.invoke(messages)
         return {
             **state,
@@ -156,8 +162,10 @@ def generate_patch(bot: SWEManager, problem: SWEProblem, env: SWEBenchEnvironmen
         }
 
     def should_use_edit_tool(state: PatchState):
+        print("Checking if editing tools should be used")
         messages = state['messages']
         last_message = messages[-1]
+        last_message.pretty_print()
         if 'tool_calls' not in last_message.additional_kwargs:
             return 'end'
         return 'continue'
@@ -176,12 +184,12 @@ def generate_patch(bot: SWEManager, problem: SWEProblem, env: SWEBenchEnvironmen
             "end": END
         }
     )
-    workflow.add_edge("editing_tools", END)
+    workflow.add_edge("editing_tools", "apply_patch")
 
     app = workflow.compile()
-    SWEManager.current_dir = '/'
+    bot.resetCurrentDir()
     initial_state = {
-        "messages": [HumanMessage(content=apply_patch_prompt.format(repo=problem.repo.split('/')[-1], current_dir=SWEManager.current_dir, patch=response))],
+        "messages": [HumanMessage(content=apply_patch_prompt.format(repo=problem.repo.split('/')[-1], current_dir=bot.current_dir, patch=response))],
     }
 
     for chunk in app.stream(initial_state, stream_mode="values", config=RunnableConfig(recursion_limit=100)):

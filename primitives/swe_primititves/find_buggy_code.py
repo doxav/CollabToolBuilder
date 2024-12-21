@@ -90,7 +90,7 @@ def find_buggy_code(bot):
     These are the files with lines of code. 
     {files}
                                                                  
-    Use the tools provided to you to provide the contents of these files starting from the line numbers. Remember currently you are in {current_dir} directory.                                                              
+    Use the tools provided to you to provide the contents of these files starting from the line numbers. Remember currently you are in '/' root directory of repo.                                                              
     """)
 
 
@@ -168,7 +168,7 @@ def find_buggy_code(bot):
         "problem": {
             "problem_statement": problem.problem_statement,
             "hint": problem.hints_text,
-            "repo_structure": problem.repo_structure if problem.repo_structure else ""
+            "repo_structure": ""
         },
         "response": {
             "paths": [],
@@ -178,6 +178,9 @@ def find_buggy_code(bot):
     }
 
     result = app.invoke(initial_state, config=RunnableConfig(recursion_limit=100))
+
+    for message in result['messages']:
+        message.pretty_print()
     
     with open(f"{env.swe_temp_path}/{problem.instance_id}/state.json", 'r') as file:
         state = json.load(file)

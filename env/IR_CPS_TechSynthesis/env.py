@@ -335,6 +335,7 @@ class Environment:
             # print(context)
             with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                 exec(action_code + helper, context)
+            print(f"Stdout:\n{stdout.getvalue()}\nStderr:\n{stderr.getvalue()}")
             # Safely evaluate and retrieve result
             exec_result = ast.literal_eval(repr(context.get('result', True)))
             no_runtime_error = True
