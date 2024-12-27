@@ -62,7 +62,7 @@ UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
 
 
-embedding_function = "text-embedding-ada-002" if embedding_function is None else embedding_function  #"Alibaba-NLP/gte-base-en-v1.5" UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
+embedding_function = "text-embedding-ada-002"  #"Alibaba-NLP/gte-base-en-v1.5" UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
 reset_db_indices = False  # Set to True after changing embeddings
 
 HumanLLMMonitor.use_websocket = True
@@ -1340,7 +1340,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               temperature_max=1,
                               agcoach_num_parallel_inferences=1, fixed_coach=False, return_array=False,
                               agcoding_num_parallel_inferences=1,
-                              continue_each_loop=False,unique_id=None, primitives_dir=None, unique_id=None, functions_to_import=None,
+                              continue_each_loop=False,unique_id=None, primitives_dir=None, functions_to_import=None,
                               embedding_function=None):
     scores = None
 
@@ -1697,6 +1697,10 @@ def run_planner(*args, **kwargs):  # NEW VERSION
             primitives_dir = "primitives/generate_primitives"
             manager = EnvironmentManager(env_type)
             test_environments = [manager.get_environment()]
+    
+    kwargs['test_environments'] = test_environments
+    kwargs['problem_prompts_subdir'] = problem_prompts_subdir
+    kwargs['primitives_dir'] = primitives_dir
 
     # Initialize the PlannerAgent with the correct parameters
     planner = PlannerAgent(
@@ -1708,8 +1712,8 @@ def run_planner(*args, **kwargs):  # NEW VERSION
         llmORchains_list=kwargs.get('llmORchains_list'),
         skip_rounds=kwargs.get('skip_rounds', 0),
         model_choice=kwargs.get('model_choice'),
-        num_parallel_inferences=kwargs.get('agcoach_num_parallel_inferences', 1),,
-        primitives_dir=primitives_dir
+        num_parallel_inferences=kwargs.get('agcoach_num_parallel_inferences', 1),
+        primitives_dir=primitives_dir,
         special_criteria=kwargs.get('special_criteria')
     )
 
@@ -1719,48 +1723,15 @@ def run_planner(*args, **kwargs):  # NEW VERSION
         # if question in ['LEARN', 'learn', 'Learn','SWE','LearnSwe','learnSwe']:
         if "learn" in question_command.lower():
             # User wants to use the learning loop
-            run_4agents_learning_loop(default_llm_key=default_llm_key,
-                                      premium_llm_key=premium_llm_key,
-                                      llmORchains_list=llmORchains_list,
-                                      test_environments=test_environments,
-                                      manual_validation_to_capitalize=manual_validation_to_capitalize,
-                                      problem_prompts_subdir=problem_prompts_subdir,
-                                      max_coding_attempts=max_coding_attempts,
-                                      include_code=include_code,
-                                      selected_successful_functions=selected_successful_functions,
-                                      selected_failed_functions=selected_failed_functions,
-                                      max_execution_time=max_execution_time,
-                                      agtask_premium_llm_by_default=agtask_premium_llm_by_default,
-                                      agtask_skip_rounds=agtask_skip_rounds,  # Auto-test: 1
-                                      agcoding_skip_rounds=agcoding_skip_rounds,  # Auto-test: 4
-                                      agvalidation_skip_rounds=agvalidation_skip_rounds,  # Auto-test: 4
-                                      agcapitalize_skip_rounds=agcapitalize_skip_rounds,
-                                      agcoding_num_parallel_inferences=agcoding_num_parallel_inferences, primitives_dir=primitives_dir)
+            run_4agents_learning_loop(*args, **kwargs)
         else:
             temp = planner.plan(question)
             if temp == "no code available":
-                run_4agents_learning_loop(default_llm_key=default_llm_key,
-                                          premium_llm_key=premium_llm_key,
-                                          llmORchains_list=llmORchains_list,
-                                          test_environments=envs,
-                                          manual_validation_to_capitalize=manual_validation_to_capitalize,
-                                          problem_prompts_subdir=problem_prompts_subdir,
-                                          max_coding_attempts=max_coding_attempts,
-                                          include_code=include_code,
-                                          selected_successful_functions=selected_successful_functions,
-                                          selected_failed_functions=selected_failed_functions,
-                                          max_execution_time=max_execution_time,
-                                          agtask_premium_llm_by_default=agtask_premium_llm_by_default,
-                                          agtask_skip_rounds=agtask_skip_rounds,  # Auto-test: 1
-                                          agcoding_skip_rounds=agcoding_skip_rounds,  # Auto-test: 4
-                                          agvalidation_skip_rounds=agvalidation_skip_rounds,  # Auto-test: 4
-                                          agcapitalize_skip_rounds=agcapitalize_skip_rounds,
-                                          agcoding_num_parallel_inferences=agcoding_num_parallel_inferences,
-                                          unique_id=unique_id, primitives_dir=primitives_dir)
+                run_4agents_learning_loop(*args, **kwargs, unique_id=unique_id)
         question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ", agent_name='PlannerAgent')
         smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
 
-    return performance
+    return
 
 
 def get_success_value_in_text(text):
@@ -2159,6 +2130,19 @@ if __name__ == "__main__":
     # for doc in documents:
     #     env = SWEBenchEnvironment(SWEProblem.parse_obj(doc))
     #     envs.append(env)
+
+    envs=None
+
+    if 'saved_task' in globals():
+        special_criteria["all#saved_task"] = saved_task
+        if special_criteria[f"{saved_task['agent_name']}#num_parallel_inferences"] == 0:
+            special_criteria[f"{saved_task['agent_name']}#num_parallel_inferences"] = json.loads(saved_task['content'])['num_parallel_inferences']
+    else:
+        special_criteria = None
+    if not ('automatic' in globals()):
+        automatic = None
+    else:
+        automation_global = "full_auto" if automatic else None
    
     # Run the planner agent
     envs = None
