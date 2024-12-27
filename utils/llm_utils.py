@@ -3,6 +3,7 @@ import re
 import threading
 import urllib.request
 import subprocess
+import uuid
 
 from typing import List, Optional, Union
 from dataclasses import dataclass, field
@@ -589,6 +590,7 @@ class InferenceCheck:
     def run_check(self, output_id, *args, **kwargs):
         return self.check_function(*args, **kwargs, output_id=output_id)
 
+
 class HumanLLMMonitor:
     default_skip_rounds = 0
     step_id = 0
@@ -610,32 +612,91 @@ class HumanLLMMonitor:
     db_learnt_tasks = None
     db_failed_tasks = None
 
+    user_id = None
+
     @classmethod
-    def add_agent_data(cls, agent_name, data_key, data_value, metadata=None):
-        """Stores agent-specific data with optional metadata."""
-        if type(data_value) == list and len(data_value) > 0:
-            if type(data_value[0]) == AIMessage:
+    def add_agent_data(cls, agent_name, data_key, data_value, function_name=None, id_task=False,
+                       before_after=None, user_id=None, step_id=None, type_tache=None, score=None, metadata=None):
+        """Stores agent-specific data with additional metadata.
+        Elasticsearch generates an 'id' automatically and includes it in the metadata.
+        """
+        if isinstance(data_value, list) and len(data_value) > 0:
+            if isinstance(data_value[0], AIMessage):
                 data_value = data_value[0].content
-        if type(data_value) == dict:
+        if isinstance(data_value, dict):
             serialized_data = json.dumps(data_value)
         else:
             serialized_data = json.dumps({data_key: data_value})
+
+        # Generate UUID for id_task
+        id_task = str(uuid.uuid4()) if id_task else False
+
         tags = metadata or {}
-        tags.update({"agent_name": agent_name, "data_key": data_key})
+        tags.update({
+            "agent_name": agent_name,
+            "data_key": data_key
+        })
+        print(f"Adding agent data: {tags}")
+        print(f"User ID: {user_id}")
+        if function_name:
+            tags["function_name"] = function_name
+        if id_task:
+            tags["id_task"] = id_task
+        if before_after:
+            tags["before_after"] = before_after
+        if user_id:
+            tags["user_id"] = user_id
+        if step_id:
+            tags["step_id"] = step_id
+        if type_tache:
+            tags["type_tache"] = type_tache
+        if score is not None:
+            tags["score"] = score
+        tags["date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+
         cls.common_vectordb.add_texts(texts=[serialized_data], metadatas=[tags])
 
     @classmethod
-    def get_agent_data(cls, agent_name, data_key, metadata_filter=None, sort_order=None, k=5):
-        """Retrieves agent-specific data based on the agent name and data key."""
-        metadata = {"agent_name": agent_name, "data_key": data_key}
+    def get_agent_data(cls, agent_name=None, data_key=None, id_task=None, function_name=None, before_after=None, user_id=None,
+                       step_id=None, type_tache=None, score=None,
+                       metadata_filter=None, sort_order=None, k=5, start_index=0, end_index=None):
+        """Retrieves agent-specific data based on the agent name, data key, and additional metadata.
+        Supports pagination by specifying start and end indices.
+        """
+        metadata = {}
+        if agent_name is not None:
+            metadata["agent_name"] = agent_name
+        if data_key is not None:
+            metadata["data_key"] = data_key
+        if function_name is not None:
+            metadata["function_name"] = function_name
+        if id_task is not None:
+            metadata["id_task"] = id_task
+        if before_after is not None:
+            metadata["before_after"] = before_after
+        if user_id is not None:
+            metadata["user_id"] = user_id
+        if step_id is not None:
+            metadata["step_id"] = step_id
+        if type_tache is not None:
+            metadata["type_tache"] = type_tache
+        if score is not None:
+            metadata["score"] = score
         if metadata_filter:
             metadata.update(metadata_filter)
+
+        # Fetch results with a large 'k' to ensure we have enough data
+        max_k = end_index if end_index is not None else k
         results = cls.common_vectordb.query(
-            query_text='', metadata_filter=metadata, sort_order=sort_order, k=k)
+            query_text='*', metadata_filter=metadata, sort_order=sort_order, k=max_k)
+
+        # Apply pagination
+        paginated_results = results[start_index:end_index] if end_index is not None else results[start_index:]
+
         ret = []
-        for item in results:
+        for item in paginated_results:
             temp = json.loads(item.page_content)
-            if type(temp) == dict:
+            if isinstance(temp, dict):
                 tmp = {}
                 for key in temp:
                     if temp[key]:
@@ -643,7 +704,148 @@ class HumanLLMMonitor:
                 ret.append(tmp)
             else:
                 ret += temp[data_key]
-        return ret
+        # Ret contains only text field of the data, results contains all the metadata
+        return ret, results
+
+    @classmethod
+    def get_tasks(cls, page_size=200, nb_pages=1, id_last_task=None):
+        """Retrieves saved tasks using get_agent_data with pagination.
+        Parameters:
+            page_size (int): Number of results per page. Default is 200.
+            nb_pages (int): Number of pages to retrieve. Default is 1.
+            id_last_task (str): ID of the last task retrieved. If provided, retrieves tasks after this ID.
+        Returns:
+            str: List of tasks in json format.
+        """
+        data_key = "saved_task"
+
+        start_index = 0
+        end_index = page_size * nb_pages
+
+        _, tasks = cls.get_agent_data(
+            data_key=data_key,
+            k=end_index,
+            start_index=start_index,
+            end_index=end_index
+        )
+        # Check if there is a newer task (if id_last_task is not the last task of the list)
+        if id_last_task and id_last_task != "None":
+            modif = False
+            for i, task in enumerate(tasks):
+                if task.metadata["id_task"] == id_last_task and i + 1 < len(tasks):
+                    tasks = tasks[i+1:]
+                    modif = True
+                    break
+            if not modif:
+                return "None"
+        ret = []
+
+
+        for task in tasks:
+            ret += [{
+                "id_task": task.metadata["id_task"],
+                "agent_name": task.metadata["agent_name"],
+                "before_after": task.metadata["before_after"],
+                "date": task.metadata["date"]
+            }]
+            if "score" in task.metadata:
+                ret[-1]['score'] = task.metadata['score']
+            if "input_contents" in task.metadata:
+                ret[-1]['input_contents'] = task.metadata['input_contents']
+            if "user_id" in task.metadata:
+                ret[-1]['user_id'] = task.metadata['user_id']
+            if "function_name" in task.metadata:
+                ret[-1]['function_name'] = task.metadata['function_name']
+            if "step_id" in task.metadata:
+                ret[-1]['step_id'] = task.metadata['step_id']
+            if "type_tache" in task.metadata:
+                ret[-1]['type_tache'] = task.metadata['type_tache']
+
+        # Trier la liste par la clé 'date', du plus récent au plus ancien
+        ret = sorted(ret, key=lambda x: x['date'], reverse=True)
+
+        return json.dumps(ret)
+
+    @classmethod
+    def goto_task(cls, id_task: str, automatic: str = None, special_criteria : dict =  None):
+        """
+        Retrieve the task from the database and start processing the task.
+        Parameters:
+            id_task (str): The identifier of the task to retrieve from the database.
+            automatic (str): If True, the function will run the loop in automatic mode.
+            special_criteria (dict): The special criteria to use for the task.
+        """
+        import subprocess
+        # Retrieve the task from the database
+        _, saved_task = HumanLLMMonitor.get_agent_data(data_key="saved_task", id_task=id_task)
+        task = {
+            'before_after': saved_task[0].metadata['before_after'],
+            'agent_name': saved_task[0].metadata['agent_name'],
+            'type_tache': saved_task[0].metadata['type_tache'],
+            'content': saved_task[0].page_content,
+            'step_id': saved_task[0].metadata['step_id'],
+            'date': saved_task[0].metadata['date']
+        }
+        if 'user_id' in saved_task[0].metadata:
+            task['user_id'] = saved_task[0].metadata['user_id']
+
+        # Create a pickle directory if it does not exist
+        if not os.path.exists('pickle'):
+            os.makedirs('pickle')
+
+        # Serializing variables to pickle file
+        variables_to_pickle = {
+            'saved_task': task,
+            'automatic': bool(automatic),
+            'unique_id': UnifiedVectorDB.unique_collection_id,
+            'special_criteria': special_criteria
+        }
+
+        # Save variables to pickle file
+        filename = f"variables_{HumanLLMMonitor.user_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        with open(f"pickle/{filename}.pkl", 'wb') as f:
+            pickle.dump(variables_to_pickle, f)
+
+        if not os.path.exists('goto_output'):
+            os.makedirs('goto_output')
+
+        with open(f'./goto_output/output_{id_task}_{HumanLLMMonitor.user_id}.log', 'w') as f:
+            f.write("")
+
+        # Execute the bash command with unbuffered output and capture its output
+        process = subprocess.Popen(['bash', '-c', f'python3 -u learn.py --proxy --secret --pickle_name {filename} > ./goto_output/output_{id_task}_{HumanLLMMonitor.user_id}.log 2>&1'],
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT,
+                                   text=True)
+        # Initialize the link variable
+        link = None
+        with open(f"./goto_output/output_{id_task}_{HumanLLMMonitor.user_id}.log", "r") as logfile:
+            # Move to end of file
+            logfile.seek(0, 2)  # 2 means "from the end of the file"
+
+            # Wait for the link to be found in the output file
+            while True:
+                line = logfile.readline()
+                if not line:
+                    # If no new line is found, wait for 0.5 seconds
+                    time.sleep(0.5)
+                    continue
+
+                if "WebSocket Remote URL via proxy: " in line:
+                    link = line.split("WebSocket Remote URL via proxy: ")[1].strip()
+                    print(f"Link: {link}")
+                    break
+
+        # Return the link if found
+        if link is None:
+            print("The link was not found in the output file.")
+
+        return link
+
+    @classmethod
+    def set_id(cls, user_id):
+        print(f"Setting user_id to {user_id}")
+        cls.user_id = user_id
 
     @staticmethod
     def _check_and_init_vector_db(embedding_function=None, reset_db_indices=False):
@@ -903,19 +1105,20 @@ class HumanLLMMonitor:
     @staticmethod
     def set_common_vectordb_embedding_function(embedding_function):
         # if embedding_function is a string, then create the corresponding embedding function
-        if isinstance(embedding_function, str):
-            if embedding_function in ["OpenAIEmbeddings", "text-embedding-ada-002"]:
-                HumanLLMMonitor.common_vectordb_embedding_function = OpenAIEmbeddings(model=embedding_function,
-                                                                                      deployment=UnifiedVectorDB.OpenAI_embedding_function_name)
-            elif embedding_function == "HuggingFaceEmbeddings":
-                HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
-                    model_name="intfloat/e5-base-v2", encode_kwargs={"normalize_embeddings": True})
+        if HumanLLMMonitor.common_vectordb_embedding_function is None:
+            if isinstance(embedding_function, str):
+                if embedding_function in ["OpenAIEmbeddings", "text-embedding-ada-002"]:
+                    HumanLLMMonitor.common_vectordb_embedding_function = OpenAIEmbeddings(model=embedding_function,
+                                                                                          deployment=UnifiedVectorDB.OpenAI_embedding_function_name)
+                elif embedding_function == "HuggingFaceEmbeddings":
+                    HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
+                        model_name="intfloat/e5-base-v2", encode_kwargs={"normalize_embeddings": True})
+                else:
+                    HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
+                        model_name=embedding_function, encode_kwargs={"normalize_embeddings": True},
+                        model_kwargs={"trust_remote_code": True})
             else:
-                HumanLLMMonitor.common_vectordb_embedding_function = HuggingFaceEmbeddings(
-                    model_name=embedding_function, encode_kwargs={"normalize_embeddings": True},
-                    model_kwargs={"trust_remote_code": True})
-        else:
-            HumanLLMMonitor.common_vectordb_embedding_function = embedding_function
+                HumanLLMMonitor.common_vectordb_embedding_function = embedding_function
 
     @staticmethod
     def get_few_shots_tag_args(prompt):
@@ -1071,7 +1274,13 @@ class HumanLLMMonitor:
     def set_default_llmORchain(self, llm_name, temperature=0.1):
         return self.set_llmORchain(llm_name, is_premium=False, temperature=temperature)
 
-    def set_premium_llmORchain(self, llm_name, temperature=0.1):
+    def set_userid(self, user_id):
+        HumanLLMMonitor.user_id = user_id
+        print(f"Setting user_id to {user_id}")
+
+
+
+    def set_premium_llmORchain(self, llm_name, temperature=0.7):
         return self.set_llmORchain(llm_name, is_premium=True, temperature=temperature)
 
     def set_output_schema(self, output_schema, package_path="."):
@@ -1106,8 +1315,8 @@ class HumanLLMMonitor:
                  default_llmORchain=None,
                  premium_llmORchain=None, premium_llm_by_default=False, num_parallel_inferences=1,
                  llmORchains_list=None,
-                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.1, temperature_max=None, optuna=False, envs=None,
-                 fixed_coach=False, prompt_critic=None):
+                 synthesize_mode=False, inference_checks=None, output_schema=None, temperature_min=0.7, temperature_max=None, envs=None,
+                 fixed_coach=False, prompt_critic=None, saved_task=None, automation=None, auto_n_rounds=None, recommend_critics=None):
         # Instance properties to track time
         self.selected_outputs = []
         self.menu_start_time = None
@@ -1118,7 +1327,6 @@ class HumanLLMMonitor:
         self.llmORchains_list = llmORchains_list
         self.temperature_min = temperature_min
         self.temperature_max = temperature_max if temperature_max else (temperature_min+0.2)
-        self.optuna = optuna
         self.prompt_critic = prompt_critic
         self.system_prompt = system_prompt
         self.set_output_schema(output_schema)
@@ -1151,6 +1359,11 @@ class HumanLLMMonitor:
         self.user_message = ""
         self.envs = envs
         self.fixed_coach = fixed_coach
+        self.automation = automation
+        self.outputs = None
+        self.saved_task = saved_task
+        self.auto_n_rounds = auto_n_rounds
+        self.recommend_critics = recommend_critics
 
     # Clears the selected answers before processing new outputs.
     # This should be called at the beginning of a new inference process.
@@ -1399,13 +1612,16 @@ class HumanLLMMonitor:
             return self.premium_llm.invoke(messages)
 
     def _before_inference(self, messages, default_llm_function, premium_llm_function, function_calling,
-                          callable_system_message=None, use_premium_llm=None, optuna=None, model_choice=None):
+                          callable_system_message=None, use_premium_llm=None, model_choice=None, task_name=None):
         self.mode = 'before'
         comments = None
         initial_user_message = messages[1].content
         function_name = inspect.stack()[2].function
         use_premium_llm = use_premium_llm if use_premium_llm is not None else self.premium_llm_by_default
         forced_llm_output = False  # TODO: try to set it to None
+        HumanLLMMonitor.add_agent_data(self.agent_name, "saved_task", {'prompt': messages[0].content + messages[1].content,
+                                                                       'num_parallel_inferences': self.num_parallel_inferences},
+                                       before_after='before', user_id=HumanLLMMonitor.user_id, step_id=self.step_id, type_tache="IR_CPS_TechSynthesis", id_task=True)
 
         while self.skip_rounds <= 0:
             # MENU
@@ -1431,7 +1647,7 @@ class HumanLLMMonitor:
 
             smart_print(before_menu + menu, self.agent_name, "BEFORE inference action MENU", optional=False)
             self.menu_start_time = time.time()
-            if optuna:
+            if self.automation=='coach':
                 llm_keys = list(self.llmORchains_list.keys())
                 if type(model_choice) == int:
                     # Model change from choice of optuna
@@ -1457,7 +1673,8 @@ class HumanLLMMonitor:
                 self.synthesize_mode = False
                 # Default actions for all agents while running with optuna
                 action = ""
-
+            elif self.automation:
+                action = ""
             else:  # Default case
                 action = smart_input(
                     f"\033[32mBEFORE\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
@@ -1534,7 +1751,7 @@ class HumanLLMMonitor:
                     use_premium_llm = True
                 break
             else:
-                proceed = "y" if optuna else "n"
+                proceed = "y" if self.automation else "n"
                 if proceed in ["y", "p", ""]:
                     if proceed == "p":
                         use_premium_llm = True
@@ -1839,10 +2056,19 @@ class HumanLLMMonitor:
         return visual_result
 
     def _after_inference(self, inference_result_msg, premium_llm_function, color="37", output_id=None,
-                         outputs_count=None, optuna=None):
+                         outputs_count=None, task_name=None):
+        if not self.outputs:
+            self.outputs = {}
+            for i in range(outputs_count):
+                self.outputs[i] = None
+        if len(self.outputs) < outputs_count:
+            for i in range(len(self.outputs), outputs_count):
+                self.outputs[i] = None
+
         self.mode = 'after'
         comments, score = None, None
         nl = "\n"
+        print(f"***{self.agent_name}, AFTER INFERENCE***")
         if inference_result_msg is None:
             # enable to request inference_result_msg.content to be None
             inference_result_msg = type('InferenceResult', (object,), {'content': None})
@@ -1860,6 +2086,16 @@ class HumanLLMMonitor:
             for check_name, result in check_results.items():
                 check_display += f"{nl}CHECK {check_name} result: " + str(result).replace("\\n", "\n")
 
+            if not task_name:
+                pattern = r'def\s+(\w+)\('
+                match = re.search(pattern, inference_result_msg.content, flags=re.MULTILINE)
+                task_name = match.group(1) if match else print("No function definitions found.")
+
+            HumanLLMMonitor.add_agent_data(self.agent_name, "saved_task", {'llm_output': inference_result_msg.content,
+                                                                           'user_message': self.current_inference_context['input_contents'][1].content,
+                                                                           'num_parallel_inferences': self.num_parallel_inferences},
+                                           before_after='after', user_id=HumanLLMMonitor.user_id, step_id=self.step_id,
+                                           type_tache="IR_CPS_TechSynthesis", id_task=True, function_name=task_name)
             menu = (
                 f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n{check_display}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")
 
@@ -1875,10 +2111,22 @@ class HumanLLMMonitor:
 
             smart_print(menu, self.agent_name, "AFTER inference action MENU" + (
                 f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""), self.agent_name, column_id=output_id-1, column_max=outputs_count)
+            print(f"***{self.agent_name}, AFTER INFERENCE, after smart_print menu***")
             self.menu_start_time = time.time()
-            action = "" if optuna else smart_input(
-                f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
-                self.agent_name, optional=False, column_id=output_id-1, column_max=outputs_count).upper()
+
+            if self.automation:
+                if comments is None:
+                    temp, _ = self.get_agent_data(self.agent_name, "llm_suggestions")
+                    if temp:
+                        comments = temp[0]['llm_suggestions']
+                if (hasattr(self, 'recommend_critics') and self.recommend_critics) and self.outputs[output_id - 1] is None:
+                    inference_result_msg.content = self.criticAnswer(comments, inference_result_msg.content, text_has_annotations=False)
+                    self.outputs[output_id - 1] = inference_result_msg.content
+                action = ""
+            else :
+                action = smart_input(
+                    f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
+                    self.agent_name, optional=False, column_id=output_id-1, column_max=outputs_count).upper()
 
             if self.temp_inference_result_content: # if modified async, it is important in case of edition ("A") to keep the modified content
                 inference_result_msg.content = self.temp_inference_result_content
@@ -1890,7 +2138,7 @@ class HumanLLMMonitor:
                 self.modifyAnswer(inference_result_msg, output_id)
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
-                inference_result_msg.content = self.criticAnswer(comments, inference_result_msg, text_has_annotations=False)
+                inference_result_msg.content = self.criticAnswer(comments, inference_result_msg.content, text_has_annotations=False)
 
             elif action == "C":  # Find a better Prompt by providing critic and ideal answer
                 comments = self.findBetterPrompt(comments, inference_result_msg, premium_llm_function)
@@ -2036,19 +2284,28 @@ class HumanLLMMonitor:
 
             Args:
                 suggestions (str): The suggestions or critics to be applied to the text content.
-                text_content (str): The original text content that needs to be improved.
+                text_content (str or List[str]): The original text content that needs to be improved.
                 text_has_annotations (bool): Indicates whether the text contains annotations. Default is True.
                 annotation_format (str): The format of the annotations. If None and text_has_annotations is True,
                                      the format will be auto-detected.
             instruction_processing_approach (str): The approach for processing instructions. Possible values are
                                                    'FULLTEXT_ALL', 'FULLTEXT_EACH', 'ANNOTATIONS_ALL', 'ANNOTATIONS_EACH'.
-                                                   Default is 'FULLTEXT_ALL'.
+                                                   Default is 'ANNOTATIONS_ALL'.
 
         Returns:
             str: The improved text content after applying the suggestions and critics.
         """
         import re
         import json
+        import difflib  # Ajout de l'importation du module difflib
+
+        # Combine text_content if it's a list
+        if isinstance(text_content, list):
+            combined_text_content = '\n'.join(text_content)
+        elif isinstance(text_content, str):
+            combined_text_content = text_content
+        else:
+            raise TypeError("text_content must be a string or a list of strings.")
 
         # Auto-detect annotation format if necessary
         def detect_annotation_format(text):
@@ -2056,7 +2313,8 @@ class HumanLLMMonitor:
                 'latex-inline': re.compile(r'\\(?P<tag>\w+)(\[(?P<instruction>[^\]]*)\])?\{(?P<content>.*?)\}',
                                            re.DOTALL),
                 'HTML-inline': re.compile(
-                    r'<(?P<tag>\w+)( action="(?P<instruction>[^"]*)")?>(?P<content>.*?)</(?P=tag)>', re.DOTALL),
+                    r'<(?P<tag>\w+)(\s+instruction="(?P<instruction>[^"]*)")?>\s*(?P<content>.*?)\s*</(?P=tag)>',
+                    re.DOTALL),
                 'latex-id': re.compile(r'\[(?P<id>\d+)\]\{(?P<content>.*?)\}', re.DOTALL),
                 'HTML-id': re.compile(r'<(?P<id>\d+)>(?P<content>.*?)</(?P=id)>', re.DOTALL)
             }
@@ -2071,9 +2329,9 @@ class HumanLLMMonitor:
             if annotation_format == 'latex-inline':
                 pattern = re.compile(r'\\(?P<tag>\w+)(\[(?P<instruction>[^\]]*)\])?\{(?P<content>.*?)\}', re.DOTALL)
             elif annotation_format == 'HTML-inline':
-                # pattern = re.compile(r'<(?P<tag>\w+)(\s+action="(?P<instruction>[^"]*)")?>(?P<content>.*?)</(?P=tag)>', re.DOTALL)
                 pattern = re.compile(
-                    r'(<(?P<tag>\w+)(\s+action="(?P<instruction>[^"]*)")?>)(?P<content>.*?)(</(?P=tag)>)', re.DOTALL)
+                    r'<(?P<tag>\w+)(\s+instruction="(?P<instruction>[^"]*)")?>\s*(?P<content>.*?)\s*</(?P=tag)>',
+                    re.DOTALL)
             elif annotation_format == 'latex-id':
                 pattern = re.compile(r'\[(?P<id>\d+)\]\{(?P<content>.*?)\}', re.DOTALL)
             elif annotation_format == 'HTML-id':
@@ -2109,19 +2367,22 @@ class HumanLLMMonitor:
                         if key == 'Recommend critiques':
                             critic = value
                             break
-                else :
+                else:
                     break
 
         if critic:
+            if suggestions == "":
+                suggestions = critic['suggestions']
             HumanLLMMonitor.add_agent_data(self.agent_name, "llm_suggestions",
-                        {'llm_suggestions': critic['suggestions'], 'user_suggestions': suggestions, 'llm_suggestions_prompt': critic['improvement_prompt']})
+                                           {'llm_suggestions': critic['suggestions'], 'user_suggestions': suggestions,
+                                            'llm_suggestions_prompt': critic['improvement_prompt']})
 
         if text_has_annotations:
             if annotation_format is None:
-                annotation_format = detect_annotation_format(text_content)
+                annotation_format = detect_annotation_format(combined_text_content)
                 if annotation_format is None:
                     raise ValueError("Could not auto-detect annotation format.")
-            annotations = parse_annotations(text_content, annotation_format)
+            annotations = parse_annotations(combined_text_content, annotation_format)
             if annotation_format in ['latex-inline', 'HTML-inline']:
                 # Instructions are inline within annotations
                 for annotation in annotations:
@@ -2150,13 +2411,13 @@ class HumanLLMMonitor:
                 2. **IMPROVE:** Enhance the content.
                 3. **INSERT:** Add new content as instructed.
                 """
-                user_prompt = f"{text_content}"
+                user_prompt = f"{combined_text_content}"
                 llm_output = self.premium_llm.invoke(
-                    [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+                    [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)])
                 final_text = llm_output.content
 
             elif instruction_processing_approach == 'FULLTEXT_EACH':
-                final_text = text_content
+                final_text = combined_text_content
                 for annotation in annotations:
                     system_prompt = """
                 Your task is to improve the following text by processing the annotation and following the instruction.
@@ -2168,7 +2429,7 @@ class HumanLLMMonitor:
                         if other_annotation != annotation:
                             temp_text = temp_text.replace(other_annotation['full_match'], other_annotation['content'])
                     llm_output = self.premium_llm.invoke(
-                        [SystemMessage(content=system_prompt), HumanMessage(content=temp_text)])
+                        [SystemMessage(content=system_prompt.strip()), HumanMessage(content=temp_text)])
                     final_text = llm_output.content
 
             elif instruction_processing_approach == 'ANNOTATIONS_ALL':
@@ -2179,30 +2440,40 @@ class HumanLLMMonitor:
                 system_prompt = """
                 Your task is to generate new content for the annotated parts according to the instructions.
                 Provide your output as a JSON dictionary mapping IDs to the new content.
+                The values should be strings containing the new content, without additional keys or nesting.
+                Example Output: {"1": "new content for annotation 1", "2": "new content for annotation 2"}
                 """
                 user_prompt = f"Annotations:\n{json.dumps(annotations_data)}"
                 llm_output = self.premium_llm.invoke(
-                    [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
-                new_contents = json.loads(llm_output.content)
-                final_text = text_content
+                    [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)])
+                llm_response = llm_output.content.strip()
+                try:
+                    new_contents = json.loads(llm_response)
+                except json.JSONDecodeError:
+                    raise ValueError(f"Invalid JSON response from LLM: {llm_response}")
+
+                final_text = combined_text_content
                 for annotation in annotations:
                     id_ = annotation.get('id') or str(annotations.index(annotation))
                     full_match = annotation['full_match']
                     new_content = new_contents.get(id_)
                     if new_content:
+                        # Ensure new_content is a string
+                        if not isinstance(new_content, str):
+                            raise ValueError(f"New content for annotation ID {id_} is not a string.")
                         final_text = final_text.replace(full_match, new_content)
                     else:
                         raise ValueError(f"No new content found for annotation ID {id_}")
 
             elif instruction_processing_approach == 'ANNOTATIONS_EACH':
-                final_text = text_content
+                final_text = combined_text_content
                 for annotation in annotations:
                     system_prompt = """
                 Your task is to generate new content for the following text according to the instruction.
                 """
                     user_prompt = f"Text: {annotation['content']}\nInstruction: {annotation['instruction']}"
                     llm_output = self.premium_llm.invoke(
-                        [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+                        [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)])
                     new_content = llm_output.content.strip()
                     full_match = annotation['full_match']
                     final_text = final_text.replace(full_match, new_content)
@@ -2213,18 +2484,29 @@ class HumanLLMMonitor:
             if suggestions is None:
                 suggestions = smart_input("Provide critic/feedback/request: ", self.agent_name,
                                           column_max=self.num_parallel_inferences)
+            temp_prev_sugg, _ = HumanLLMMonitor.get_agent_data(self.agent_name, "llm_suggestions")
+            prev_sugg = ""
+            for i in temp_prev_sugg:
+                llm_suggestion = i.get('llm_suggestions', '')
+                user_suggestion = i.get('user_suggestions', '')
+                diff = difflib.unified_diff(llm_suggestion.splitlines(), user_suggestion.splitlines(), lineterm='')
+                diff_text = '\n'.join(diff)
+                prev_sugg += f"#{diff_text}#\n"
             prompt_sugg = ""
             if suggestions:
                 prompt_sugg = (
-                    "Your task is also to take into account the **SUGGESTIONS** and modify the answer accordingly.\n"
-                    f"\n### SUGGESTIONS: << {suggestions} >>\n")
+                    "Your task is also to take into account the **SUGGESTIONS** and modify the answer accordingly. Also we will give you **PREVIOUS SUGGESTIONS** that were given on previous task.\n"
+                    "These previous suggestions are here to help you more understanding the suggestions and to help you to improve the answer.\n"
+                    f"\n### SUGGESTIONS: << {suggestions} >>\n"
+                    f"\n### PREVIOUS SUGGESTIONS: << {prev_sugg} >>"
+                )
             system_prompt = f"""Given the INSTRUCTION provided by the user (and the **INITIAL PROMPT**), your task is to generate a very different new answer from the INITIAL ANSWER or to refine the initial answer.
             {prompt_sugg}
             ### INITIAL PROMPT: << {self.llm_input_messages[0].content} >>
-            ### INITIAL ANSWER: << {text_content} >> """
+            ### INITIAL ANSWER: << {combined_text_content} >> """
             user_prompt = f"INSTRUCTION: << {suggestions} >>"
             llm_output = self.premium_llm.invoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+                [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)])
             final_text = llm_output.content
 
         self.temp_inference_result_content = final_text  # Capture the result
@@ -2361,8 +2643,9 @@ class HumanLLMMonitor:
             metadatas=[tags]
         )
 
-    def process_llm_output(self, llm_output, counter, llm_outputs, init_skip_rounds, optuna = None):
+    def process_llm_output(self, llm_output, counter, llm_outputs, init_skip_rounds, task_name=None):
         """Traite un seul LLM output (séquentiellement ou en parallèle)."""
+        print(f"Processing LLM output {counter} out of {len(llm_outputs)}")
         if len(llm_outputs) > 1:
             self.skip_rounds = init_skip_rounds
             smart_print(f"ANSWER NUMBER #{counter-1} ", self.agent_name, "POST INFERENCE", append=True, optional=True)
@@ -2384,15 +2667,15 @@ class HumanLLMMonitor:
         # Post-inference human intervention (traitement standard après une inférence)
         output_messages_instance, output_comments_instance, score_instance = self._after_inference(
             llm_output, premium_llm_function=None, output_id=counter,
-            outputs_count=len(llm_outputs), optuna=optuna)
+            outputs_count=len(llm_outputs), task_name=task_name)
         return output_messages_instance, output_comments_instance, score_instance
 
     #    def CallHumanLLM(self, original_input_messages=None, llm_function=None, premium_llm_function=None, callable_system_message=None, system_prompt_template=None, user_message=None, return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=90, stream_output=True):
     def CallHumanLLM(self, original_input_messages=None, default_llm_function=None, premium_llm_function=None,
                      callable_system_message=None, system_prompt_template=None, user_message=None,
                      return_message_content_only=True, function_calling=False, temperature_min=None, timeout_seconds=300,
-                     stream_output=False, use_default_llm=True, optuna=None, model_choice=None,
-                     temperature_max=None):
+                     stream_output=False, use_default_llm=True, model_choice=None,
+                     temperature_max=None, task_name=None):
         #if not self.selected_llm_or_chain: raise ValueError("No LLM or chain selected for use.")
         if temperature_min is None: temperature_min = self.temperature_min
         if temperature_max is None: temperature_max = self.temperature_max
@@ -2512,7 +2795,20 @@ class HumanLLMMonitor:
             default_llm_function = self.default_llm if use_default_llm else self.premium_llm
         if premium_llm_function is None:
             premium_llm_function = self.premium_llm if self.premium_llm else None
-        if original_input_messages is None:
+        print(f"****agent : {self.agent_name}, automation : {self.automation}****")
+        if self.automation == 'before' and (hasattr(self, "saved_task")):
+            temp = json.loads(self.saved_task['content'])
+            print(f"****temp (prompt before {self.agent_name}) : {temp}****")
+            self.system_prompt = temp['prompt']
+            if self.auto_n_rounds > 0:
+                self.automation = "full_auto"
+            else:
+                self.automation = None
+            original_input_messages = [
+                SystemMessage(content=self.system_prompt),
+                HumanMessage(content=user_message)]
+        elif original_input_messages is None:
+            print(f"****user_message {self.agent_name} : {user_message}****")
             original_input_messages = [
                 SystemMessage(content=self.load_prompt(prompt_name=self.system_prompt, directory='prompts')),
                 HumanMessage(content=user_message)]
@@ -2534,77 +2830,96 @@ class HumanLLMMonitor:
                     f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[2].function} skipping HumanLLMMonitor for {self.skip_rounds} rounds****\033[0m",
                     self.agent_name, "Skipping round", optional=True)
 
-            # Pre-inference human intervention
-            llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(
-                original_input_messages, default_llm_function, premium_llm_function, function_calling,
-                callable_system_message, optuna=optuna, model_choice=model_choice)
-            self.llm_input_messages = llm_input_messages
-            self.clear_selected_outputs()
             start_time = datetime.now()
-            self.last_inference_check_results = [None] * self.num_parallel_inferences  # Pre-allocate the list with None
-            if llm_input_messages and not skip_inference:
-                # Use concurrent futures to parallelize the LLM calls.
-                outputs = []
+            # Pre-inference human intervention
+            if self.automation in ['before', 'after', 'skip_once']:
+                print(f"****agent : {self.agent_name}, automation : {self.automation}****")
+                input_comments, skip_inference, use_premium_llm, llm_outputs = None, False, False, []
+                llm_input_messages = original_input_messages
+                self.llm_input_messages = original_input_messages
+                self.last_inference_check_results = [None]
+                if self.automation == 'after' and hasattr(self, "saved_task"): # Plus besoin de tester sur agent_name
+                    temp = json.loads(self.saved_task['content'])
+                    print(f"****temp (llm_output after {self.agent_name}) : {temp}****")
+                    llm_outputs = [AIMessage(content=temp['llm_output'])]
+                    if self.auto_n_rounds > 0:
+                        self.automation = "full_auto"
+                    else:
+                        self.automation = None
+                    print(f"****llm_output : {llm_outputs}****")
+                    smart_print(
+                        llm_outputs[0].content,
+                        self.agent_name, "NEW inference result recieved", column_id=0,
+                        column_max=1)
+            else:
+                llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(
+                    original_input_messages, default_llm_function, premium_llm_function, function_calling,
+                    callable_system_message, model_choice=model_choice, task_name=task_name)
+                self.llm_input_messages = llm_input_messages
+                self.clear_selected_outputs()
+                self.last_inference_check_results = [None] * self.num_parallel_inferences  # Pre-allocate the list with None
+                if llm_input_messages and not skip_inference:
+                    # Use concurrent futures to parallelize the LLM calls.
+                    outputs = []
 
-                with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_parallel_inferences) as executor:
-                    if type(self.premium_llm if use_premium_llm else self.default_llm) == type(
-                            self.llmORchains_list.get('3_majority_chain')):
-                        stream_output = True
-                    futures = [executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling,
-                                               ((temperature_min + i*(temperature_max-temperature_min)/(self.num_parallel_inferences-1) ) if (temperature_min is not None and self.num_parallel_inferences>1 and temperature_min >= 0.) else 0),
-                                               stream_output, i) for i in
-                               range(self.num_parallel_inferences)]
-                    for idx, future in enumerate(futures):
-                        try:
-                            llm_response = future.result(timeout=timeout_seconds)
-                            outputs.append(llm_response)
-                            if HumanLLMMonitor.use_websocket:
-                                smart_print(
-                                    llm_response.content,
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_parallel_inferences) as executor:
+                        if type(self.premium_llm if use_premium_llm else self.default_llm) == type(
+                                self.llmORchains_list.get('3_majority_chain')):
+                            stream_output = True
+                        futures = [executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling,
+                                                   ((temperature_min + i*(temperature_max-temperature_min)/(self.num_parallel_inferences-1) ) if (temperature_min is not None and self.num_parallel_inferences>1 and temperature_min >= 0.) else 0),
+                                                   stream_output, i) for i in
+                                   range(self.num_parallel_inferences)]
+                        for idx, future in enumerate(futures):
+                            try:
+                                llm_response = future.result(timeout=timeout_seconds)
+                                outputs.append(llm_response)
+                                if HumanLLMMonitor.use_websocket:
+                                    smart_print(
+                                        llm_response.content,
+                                        self.agent_name, "NEW inference result recieved", column_id=idx,
+                                        column_max=self.num_parallel_inferences)
+                                else:
+                                    smart_print(
+                                    f'\033[0m**** New inference result recieved and added to outputs as #{len(outputs)}\033[0m:\n{llm_response.content}\n\033[9mEND OF #{len(outputs)}****\033[0m',
                                     self.agent_name, "NEW inference result recieved", column_id=idx,
                                     column_max=self.num_parallel_inferences)
-                            else:
-                                smart_print(
-                                f'\033[0m**** New inference result recieved and added to outputs as #{len(outputs)}\033[0m:\n{llm_response.content}\n\033[9mEND OF #{len(outputs)}****\033[0m',
-                                self.agent_name, "NEW inference result recieved", column_id=idx,
-                                column_max=self.num_parallel_inferences)
-                        except concurrent.futures.TimeoutError:
-                            smart_print('A task ran longer than the allotted timeout and was cancelled.',
-                                        self.agent_name, "Inference result TIMEOUT")
-                        except Exception as exc:
-                            smart_print(f'Generated an exception: {exc}', self.agent_name, "Inference result EXCEPTION")
-                    # Wait for all the futures to complete before continuing.
-                    concurrent.futures.wait(futures)
-                if len(outputs) == 0:
-                    smart_print(f'**** No inference result recieved, set output to None', self.agent_name,
-                                "NO inference recieved")
-                    llm_outputs = None
-                elif len(outputs) == 1:
-                    # smart_print(f'**** One inference result recieved, set output to it', self.agent_name, "ONE inference recieved")
-                    llm_outputs = outputs
-                else:
-                    if self.synthesize_mode and len(
-                            outputs) > 1:  #NEW/UPDATED: TODO: allow to exclude code synthesis with (self.synthesize_mode or (self.skip_rounds > 0 and self.agent_name == "Coder"))
-                        synthesized_response = self.synthesize_responses([output.content for output in outputs],
-                                                                         use_default_llm)  #NEW
-                        llm_outputs = [AIMessage(content=synthesized_response.content)]  #NEW
-                        smart_print(f'**** {len(outputs)} inference results received, THEN SYNTHETISED to 1',
-                                    self.agent_name, "MULTIPLE to 1 SYNTHESIS (similar to Mixture of Agents)")  #NEW
-                    else:  #UPDATED
-                        smart_print(
-                            f'**** {len(outputs)} inference results received - You will be requested to select which ones to keep',
-                            self.agent_name, "MULTIPLE inferences received")
+                            except concurrent.futures.TimeoutError:
+                                smart_print('A task ran longer than the allotted timeout and was cancelled.',
+                                            self.agent_name, "Inference result TIMEOUT")
+                            except Exception as exc:
+                                smart_print(f'Generated an exception: {exc}', self.agent_name, "Inference result EXCEPTION")
+                        # Wait for all the futures to complete before continuing.
+                        concurrent.futures.wait(futures)
+                    if len(outputs) == 0:
+                        smart_print(f'**** No inference result recieved, set output to None', self.agent_name,
+                                    "NO inference recieved")
+                        llm_outputs = None
+                    elif len(outputs) == 1:
+                        # smart_print(f'**** One inference result recieved, set output to it', self.agent_name, "ONE inference recieved")
                         llm_outputs = outputs
-            else:  # Skip the LLM inference.
-                # Ensure skip_inference is a string
-                if not isinstance(skip_inference, str):
-                    skip_inference = str(skip_inference)
+                    else:
+                        if self.synthesize_mode and len(
+                                outputs) > 1:  #NEW/UPDATED: TODO: allow to exclude code synthesis with (self.synthesize_mode or (self.skip_rounds > 0 and self.agent_name == "Coder"))
+                            synthesized_response = self.synthesize_responses([output.content for output in outputs],
+                                                                             use_default_llm)  #NEW
+                            llm_outputs = [AIMessage(content=synthesized_response.content)]  #NEW
+                            smart_print(f'**** {len(outputs)} inference results received, THEN SYNTHETISED to 1',
+                                        self.agent_name, "MULTIPLE to 1 SYNTHESIS (similar to Mixture of Agents)")  #NEW
+                        else:  #UPDATED
+                            smart_print(
+                                f'**** {len(outputs)} inference results received - You will be requested to select which ones to keep',
+                                self.agent_name, "MULTIPLE inferences received")
+                            llm_outputs = outputs
+                else:  # Skip the LLM inference.
+                    # Ensure skip_inference is a string
+                    if not isinstance(skip_inference, str):
+                        skip_inference = str(skip_inference)
 
-                llm_outputs = [AIMessage(content=skip_inference)]
+                    llm_outputs = [AIMessage(content=skip_inference)]
             end_time = datetime.now()
             raw_llm_outputs = [(output.content if output else None) for output in llm_outputs] if isinstance(
                 llm_outputs, list) else None
-
             output_messages, output_comments, score = [], [], []
             if llm_outputs:
                 init_skip_rounds = self.skip_rounds  # save the current skip_rounds value because multiple outputs decrease skip rounds for each parallel output
@@ -2615,8 +2930,10 @@ class HumanLLMMonitor:
                     # Utilisez un ThreadPoolExecutor pour exécuter les réponses en parallèle en mode WebSocket.
                     with concurrent.futures.ThreadPoolExecutor() as executor:
                         futures = []
+                        print(f"****agent : {self.agent_name}, websocket****")
                         for counter, llm_output in enumerate(llm_outputs, start=1):
-                            futures.append(executor.submit(self.process_llm_output, llm_output, counter, llm_outputs, init_skip_rounds))
+                            print(f"****agent : {self.agent_name}, websocket, counter : {counter}****")
+                            futures.append(executor.submit(self.process_llm_output, llm_output, counter, llm_outputs, init_skip_rounds, task_name))
 
                         # Attendre que toutes les tâches soient terminées.
                         results = [future.result() for future in futures]
@@ -2631,7 +2948,7 @@ class HumanLLMMonitor:
                 else:
                     # Traitement séquentiel classique
                     for counter, llm_output in enumerate(llm_outputs, start=1):
-                        output_messages_instance, output_comments_instance, score_instance = self.process_llm_output(llm_output, counter, llm_outputs, init_skip_rounds, optuna)
+                        output_messages_instance, output_comments_instance, score_instance = self.process_llm_output(llm_output, counter, llm_outputs, init_skip_rounds, task_name)
                         output_messages.append(output_messages_instance)
                         if output_messages_instance == -1:
                             break
@@ -2644,7 +2961,21 @@ class HumanLLMMonitor:
                 else:
                     # Sortir de la boucle
                     break
+            # Modifier afin de tester sur 'skip_once', et dans ce cas pas besoin de tester l'agent_name
+            elif self.automation == 'skip_once' and hasattr(self, "saved_task"):
+                if self.auto_n_rounds > 0:
+                    self.automation = "full_auto"
+                else:
+                    self.automation = None
+                input_content = ""
+                if 'input_contents' in json.loads(self.saved_task['content']):
+                    input_content = json.loads(self.saved_task['content'])['input_contents']
+                output_messages = [AIMessage(content=input_content)]
+                break
 
+        if self.auto_n_rounds:
+            if self.auto_n_rounds > 0: self.auto_n_rounds -= 1
+            if not self.auto_n_rounds: self.automation = None
         # Get the calling function's name using inspect
         caller_function_name = inspect.stack()[1].function
 
@@ -2681,10 +3012,16 @@ class HumanLLMMonitor:
         the inference output, identified by output_id. If there are no check results,
         it requests general improvement suggestions based on the inference result content.
 
+        Additionally, it generates annotations in the specified format using a LLM,
+        and saves them in the database.
+
         :param output_id: The ID of the output message to critique.
         :param inference_result_content: The actual content of the inference result to be critiqued.
-        :return: A dictionary of improvement suggestions.
+        :return: A dictionary containing improvement suggestions and annotations.
         """
+
+        import re
+        import json
 
         # Run checks on the inference content if available
         improvement_feedback = []
@@ -2703,13 +3040,13 @@ class HumanLLMMonitor:
                     elif isinstance(result, list) and result:
                         improvement_feedback.extend([f"{check_name} feedback: {item}" for item in result if item])
 
-        previous_suggestions = HumanLLMMonitor.get_agent_data(self.agent_name, "llm_suggestions")
+        previous_suggestions, _ = HumanLLMMonitor.get_agent_data(self.agent_name, "llm_suggestions")
         prev_sugg = ""
         prev_sugg_u = ""
         if previous_suggestions:
             for sugg in previous_suggestions:
-                prev_sugg += f"\n{sugg['llm_suggestions']}"
-                prev_sugg_u += f"\n{sugg['user_suggestions']}"
+                prev_sugg += f"\n{sugg.get('llm_suggestions', '')}"
+                prev_sugg_u += f"\n{sugg.get('user_suggestions', '')}"
 
         # Prepare a prompt based on whether feedback is available
         if improvement_feedback:
@@ -2741,22 +3078,67 @@ class HumanLLMMonitor:
             HumanMessage(content=improvement_prompt)
         ])
 
-        # Return formatted suggestions from the premium LLM
-        # Check if in the message there are no unexpected non-whitespace characters
-        if re.search(r'[^\x20-\x7E\t\n\r]', response.content):
-            # Remove unexpected characters
-            response.content = re.sub(r'[^\x20-\x7E\t\n\r]', "", response.content)
-
-        # Check if in the message there are no unexpected non-whitespace characters
-        if re.search(r'[^\x20-\x7E\t\n\r]', improvement_prompt):
-            # Remove unexpected characters
-            improvement_prompt = re.sub(r'[^\x20-\x7E\t\n\r]', "", improvement_prompt)
-
+        # Clean up the response content
+        response.content = re.sub(r'[^\x20-\x7E\t\n\r]', '', response.content)
+        improvement_prompt = re.sub(r'[^\x20-\x7E\t\n\r]', '', improvement_prompt)
         response.content = re.sub(r'\\u[0-9A-Fa-f]{4}', '', response.content)
         improvement_prompt = re.sub(r'\\u[0-9A-Fa-f]{4}', '', improvement_prompt)
 
-        ret = {"output_id": output_id, "suggestions": response.content, "improvement_prompt" : improvement_prompt}
-        smart_print(json.dumps(ret), self.agent_name, "CRITIC SUGGESTIONS", column_id=output_id, optional=False)
+        # Save the suggestions using add_agent_data
+        HumanLLMMonitor.add_agent_data(self.agent_name, "llm_suggestions", {
+            'llm_suggestions': response.content,
+            'user_suggestions': "",
+            'improvement_prompt': improvement_prompt
+        })
+
+        # Now generate annotations using the LLM
+        # Retrieve previous annotations
+        previous_annotations, _ = HumanLLMMonitor.get_agent_data(self.agent_name, "llm_annotations")
+        prev_annotations = ""
+        if previous_annotations:
+            for ann in previous_annotations:
+                prev_annotations += f"\n{ann.get('annotations', '')}"
+
+        # Construct the annotation prompt
+        annotation_prompt = (
+            "Based on the ANSWER below, generate a list of annotations in the following format:\n"
+            "<TAG>: <Texte annoté> <Commentaire de l'annotation>\n"
+            "Le TAG peut être l'un de ces trois : FIX, INSERT, IMPROVE.\n"
+            "Chaque annotation doit être pertinente et couvrir des parties du PROMPT.\n"
+            "Fournissez au minimum 5 annotations, mais vous pouvez en inclure davantage.\n\n"
+            f"PROMPT:<<<{self.system_prompt}>>>\n\n"
+            f"ANSWER:<<<{inference_result_content}>>>\n\n"
+            f"Previous Annotations:<<<{prev_annotations}>>>\n\n"
+            "Listez vos annotations ci-dessous."
+        )
+
+        # Use the premium LLM to generate annotations
+        annotation_response = self.premium_llm.invoke([
+            SystemMessage(content="Vous êtes chargé de générer des annotations pour améliorer la réponse."),
+            HumanMessage(content=annotation_prompt)
+        ])
+
+        # Clean up the annotation response
+        annotations = annotation_response.content.strip()
+        annotations = re.sub(r'[^\x20-\x7E\t\n\r]', '', annotations)
+        annotations = re.sub(r'\\u[0-9A-Fa-f]{4}', '', annotations)
+
+        # Save the annotations using add_agent_data
+        HumanLLMMonitor.add_agent_data(self.agent_name, "llm_annotations", {
+            'annotations': annotations,
+            'annotation_prompt': annotation_prompt
+        })
+
+        # Prepare the return value
+        ret = {
+            "output_id": output_id,
+            "suggestions": response.content,
+            "improvement_prompt": improvement_prompt,
+            "annotations": annotations,
+            "annotation_prompt": annotation_prompt
+        }
+
+        smart_print(json.dumps(ret), self.agent_name, "CRITIC SUGGESTIONS", column_id=output_id,
+                    optional=False)
         return ret
-    
-    
+

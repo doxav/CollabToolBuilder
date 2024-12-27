@@ -86,7 +86,7 @@ def objective(trial, name_xp : str):
         max_coding_attempts=2,
         max_execution_time=900,
         model_choice={"coach": "default_llm","coder": "premium_llm","critic": "default_llm","capitalizer": "default_llm"},
-        optuna_opti="coach",
+        automation="coach",
         special_criteria={
             "max_autofix": max_autofix,
             "presence_penalty": presence_penalty,

@@ -6,7 +6,7 @@ import time
 import os
 from langchain_openai import ChatOpenAI
 from config import MODELS_CONFIG_LIST
-from learn import EnvironmentManager, run_4agents_learning_loop
+from learn import EnvironmentManager, run_4agents_learning_loop, run_planner
 from optimisation.optuna_analysis import analysis
 from utils.llm_utils import HumanLLMMonitor, UnifiedVectorDB
 
@@ -24,6 +24,9 @@ def init_prompts_directory(name_xp: str, agent_name : str):
         os.system(f"cp ./prompts/IR_CPS_TechSynthesis/identify_best_task.txt ./prompts/IR_CPS_TechSynthesis/{name_xp}/")
     elif agent_name == "coach":
         os.system(f"cp ./prompts/IR_CPS_TechSynthesis/code_task.txt ./prompts/IR_CPS_TechSynthesis/{name_xp}/")
+    else:
+        os.system(f"cp ./prompts/IR_CPS_TechSynthesis/* ./prompts/IR_CPS_TechSynthesis/{name_xp}/")
+        return
 
     os.system(f"find ./prompts -maxdepth 1 -type f ! -name 'code_task.*' ! -name 'identify_best_task.*' -exec cp {{}} ./prompts/IR_CPS_TechSynthesis/{name_xp}/ \;")
 
@@ -140,8 +143,8 @@ def definition_global_parameters(temperature : float = None, presence_penalty : 
     return llmORchains_list, envs
 
 def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "premium_llm", problem_prompts_subdir : str = None, max_coding_attempts : int = 2, max_execution_time : int = 900,
-               model_choice=None, optuna_opti : str = "coach", params_user_message : str = None, special_criteria : dict = None, name_exp : str = "", temperature_max : float = None, number_inferences : int = 1,
-               fixed_coach : bool = False, arrayn_ret : bool = False, continue_each_loop : bool = False):
+               model_choice=None, automation : str = "coach", params_user_message : str = None, special_criteria : dict = None, name_exp : str = "", temperature_max : float = None, number_inferences : int = 1,
+               fixed_coach : bool = False, arrayn_ret : bool = False, continue_each_loop : bool = False, unique_id : str = None):
     """
     Launch the run with the specified parameters.
 
@@ -152,7 +155,7 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
         max_coding_attempts (int, optional): The maximum number of coding attempts.
         max_execution_time (int, optional): The maximum execution time in seconds.
         model_choice (dict, optional): The model choices for different roles.
-        optuna_opti (str, optional): The Optuna optimization target.
+        automation (str, optional): The Optuna optimization target.
         params_user_message (str, optional): The criteria for evaluation.
         special_criteria (dict, optional): Special criteria for the run.
         name_exp (str, optional): The name of the experiment.
@@ -172,31 +175,32 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
     # Set unique collection ID based on name_exp
     UnifiedVectorDB.set_unique_collection_id(f"{name_exp}")
 
-    performance = run_4agents_learning_loop(default_llm_key=default_llm_key,
-                                            premium_llm_key=premium_llm_key,
-                                            llmORchains_list=llmORchains_list,
-                                            test_environments=envs,
-                                            manual_validation_to_capitalize=False,
-                                            problem_prompts_subdir=problem_prompts_subdir,
-                                            max_coding_attempts=max_coding_attempts,
-                                            include_code=False,
-                                            selected_successful_functions=[],
-                                            selected_failed_functions=[],
-                                            agtask_premium_llm_by_default=True,
-                                            max_execution_time=max_execution_time,
-                                            agtask_skip_rounds=0,
-                                            agcoding_skip_rounds=0,
-                                            agvalidation_skip_rounds=0,
-                                            agcapitalize_skip_rounds=0,
-                                            model_choice=model_choice,
-                                            optuna_opti=optuna_opti,
-                                            params_user_message=params_user_message,
-                                            special_criteria=special_criteria,
-                                            agcoach_num_parallel_inferences=number_inferences,
-                                            temperature_max=temperature_max,
-                                            fixed_coach=fixed_coach,
-                                            return_array=arrayn_ret,
-                                            continue_each_loop=continue_each_loop)
+    performance = run_planner(default_llm_key=default_llm_key,
+                              premium_llm_key=premium_llm_key,
+                              llmORchains_list=llmORchains_list,
+                              test_environments=envs,
+                              manual_validation_to_capitalize=False,
+                              problem_prompts_subdir=problem_prompts_subdir,
+                              max_coding_attempts=max_coding_attempts,
+                              include_code=False,
+                              selected_successful_functions=[],
+                              selected_failed_functions=[],
+                              agtask_premium_llm_by_default=True,
+                              max_execution_time=max_execution_time,
+                              agtask_skip_rounds=0,
+                              agcoding_skip_rounds=0,
+                              agvalidation_skip_rounds=0,
+                              agcapitalize_skip_rounds=0,
+                              model_choice=model_choice,
+                              automation=automation,
+                              params_user_message=params_user_message,
+                              special_criteria=special_criteria,
+                              agcoach_num_parallel_inferences=number_inferences,
+                              temperature_max=temperature_max,
+                              fixed_coach=fixed_coach,
+                              return_array=arrayn_ret,
+                              continue_each_loop=continue_each_loop,
+                              unique_id=unique_id)
     print("Analysis...")
     analysis(name_exp)
     print("Analysis done.")

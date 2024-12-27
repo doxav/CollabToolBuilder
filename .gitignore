@@ -7,10 +7,12 @@ config.py
 primitives/config.py
 .env
 config_cluster.py
-Optuna_results/xp_*
-Optuna_db/xp_*
+Optuna_results/*
+Optuna_db/*
 functions/*.py
 .idea
+prompts/IR_CPS_TechSynthesis/xp_*
+websocket*.txt
 mvenv/
 
 .venv/

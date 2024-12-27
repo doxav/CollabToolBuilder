@@ -12,6 +12,7 @@ import threading
 import shutil  # To check if localtunnel is available
 
 class WebsocketServer:
+    parallel_functions = ["updateAnswer", "criticAnswer", "get_tasks"]
     def __init__(self, port=6789, secret=None, proxy_enabled=False, unique_id=None):
         self.server_id = str(uuid.uuid4())
         self.monitors = {}  # Stores agent monitors
@@ -62,7 +63,6 @@ class WebsocketServer:
             except Exception:
                 pass
             return
-
         self.connected_clients.add(websocket)
         try:
             async for message in websocket:
@@ -77,32 +77,66 @@ class WebsocketServer:
                     agent_name = message_data.get("agent_name")
                     function_name = message_data.get("function")
                     params = message_data.get("params", {})
+                    request_id = message_data.get("request_id")  # Add this line
 
                     if agent_name in self.monitors:
                         monitor = self.monitors[agent_name]
-                        # print(f"Executing function '{function_name}' for monitor '{agent_name}' with params: {params}")
-                        result = monitor.execute_function(function_name, params)
-                        message = json.dumps({
-                            "status": "success",
-                            "message": None,
-                            "result": result,
-                            "function": function_name
-                        })
+                        print(
+                            f"Executing function '{function_name}' for monitor '{agent_name}' with params: {params}")
+                        if function_name in self.parallel_functions:  # Add this condition
+                            # Execute function asynchronously
+                            asyncio.create_task(
+                                self.execute_function_async(websocket, monitor, function_name, params,
+                                                            request_id))  # Add this line
+                            message = None  # Since response will be sent asynchronously
+                        else:
+                            # Execute function synchronously
+                            result = monitor.execute_function(function_name, params)
+                            message = json.dumps({
+                                "status": "success",
+                                "message": None,
+                                "result": result,
+                                "function": function_name,
+                                "request_id": request_id  # Add this line
+                            })
                     else:
                         message = json.dumps({
                             "status": "error",
-                            "message": f"Monitor '{agent_name}' not found"
+                            "message": f"Monitor '{agent_name}' not found",
+                            "request_id": request_id  # Add this line
                         })
 
                 for client in self.connected_clients:
                     if client != websocket and message is not None:
                         await client.send(message)
         except Exception as e:
-            # print exception details
-            # print(f"Error in WebSocket handler: {e}")
+            # Print exception details
+            print(f"Error in WebSocket handler: {e}")
             pass
         finally:
             self.connected_clients.remove(websocket)
+
+    async def execute_function_async(self, websocket, monitor, function_name, params, request_id):
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, monitor.execute_function, function_name, params)
+            message = json.dumps({
+                "status": "success",
+                "message": None,
+                "result": result,
+                "function": function_name,
+                "request_id": request_id
+            })
+            await websocket.send(message)
+        except Exception as e:
+            # Handle exceptions and send error message
+            error_message = json.dumps({
+                "status": "error",
+                "message": f"Error executing function '{function_name}': {e}",
+                "function": function_name,
+                "request_id": request_id
+            })
+            await websocket.send(error_message)
 
     def find_available_port(self):
         """Find the next available port starting from the current self.port."""
@@ -216,8 +250,10 @@ class WebsocketServer:
             asyncio.run_coroutine_threadsafe(send_to_clients(), loop)
         except RuntimeError:
             # No running event loop in this thread, so we can run the coroutine directly
-            asyncio.run(send_to_clients())
-        # print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {message}")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(send_to_clients())
+        print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {message}")
 
     def send_notasync_message(self, message):
         """Send a message without awaiting (fire and forget)."""
