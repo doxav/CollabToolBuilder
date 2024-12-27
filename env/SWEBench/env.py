@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_community.tools import tool
 from config import *
-from env.IR_CPS_TechSynthesis.env import Environment
+from env.env import Environment
 import ast
 from langchain.prompts import ChatPromptTemplate
 from langchain.output_parsers import PydanticOutputParser
@@ -110,7 +110,7 @@ class SWEBenchEnvironment(Environment):
         with open(os.path.join(temp_dir, "state.json"), "w") as state_file:
             json.dump(state_backup, state_file)
    
-    def get_state(self, extended = None) -> str:
+    def get_state(self) -> str:
         with open(os.path.join(self.swe_temp_path, self.swe_data.instance_id, "state.json"), "r") as state_file:
             state = json.load(state_file)
         return json.dumps(state, indent=4)
@@ -452,7 +452,6 @@ def edit_lines_in_file(file_path, start_line_number, num_lines_to_replace, repla
         return f"Successfully replaced {num_lines_to_replace} lines starting from line {start_line_number} in {file_path}."
     except Exception as e:
         return f"Error: {e}\nPlease fix this error before trying another edit. if you are getting this error multiple time, please skip this part of the patch"
-
 
 @tool
 def create_file(path: str, content: str) -> str:

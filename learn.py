@@ -20,6 +20,7 @@ from langchain_core.messages.ai import AIMessage
 from langchain_core.messages.system import SystemMessage
 from langchain_openai import ChatOpenAI
 from config import *
+from env.env import EnvironmentManager, validate_function_code
 from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, smart_print, smart_input
 from env.IR_CPS_TechSynthesis.env import *
 from env.SWEBench.env import *
@@ -51,6 +52,7 @@ embedding_function = "intfloat/e5-base-v2"  # UnifiedVectorDB.OpenAI_embedding_f
 reset_db_indices = False  # Set to True after changing embeddings
 
 HumanLLMMonitor.use_websocket = True
+
 
 def apply_special_criteria(agent, special_criteria, available_locals=None):
     """
@@ -208,7 +210,7 @@ class CodingAgent():
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
                  db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0,
                  llmORchains_list=None, optuna=None, model_choice=None, special_criteria=None, temperature_min=0.,
-                 temperature_max=1., num_parallel_inferences=1):
+                 temperature_max=1., num_parallel_inferences=1, primitives_dir=None):
         #super().__init__(llm)
         self.additional_check_list = None
         self.name = self.__class__.__name__
@@ -239,6 +241,7 @@ class CodingAgent():
             for key, value in self.additional_check_list.items():
                 self.human_llm_code_task.add_inference_check(key, value)
         # "CodingAgent#additional_check_list": [(check_name, check_function), ...]
+        self.primitives_dir = primitives_dir
 
     def parse_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None,
                                 automatic_tests=True, output_id=None):
@@ -385,7 +388,7 @@ class CodingAgent():
         error_patches = HumanLLMMonitor.get_agent_data(self.name, 'error_patches', metadata_filter=metadata)
         error_patches = error_patches if error_patches else []
 
-        primitives = self.get_primitives()
+        primitives = self.get_primitives(self.primitives_dir)
         parsed_code = getattr(self, 'parsed_code', None) if parsed_code is None else parsed_code
         current_skip_rounds = self.human_llm_code_task.skip_rounds  # save the initial value to align it for code validation
 
@@ -426,7 +429,7 @@ class CodingAgent():
                     no_runtime_error, exec_result = env.step(code_to_run)
                     if no_runtime_error:
                         smart_print("TEST SUCCESSFUL", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
-                        smart_print(env.get_state(extended=True), custom_agent if custom_agent else self.name, "CODE_RESULT", optional=False, column_id=output_id)
+                        smart_print(env.get_state(), custom_agent if custom_agent else self.name, "CODE_RESULT", optional=False, column_id=output_id)
                     while not no_runtime_error and current_skip_rounds <= 0:
                         smart_print("\033[31mCODE ERROR\033[0m: " + exec_result, custom_agent if custom_agent else self.name,
                                     "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
@@ -484,7 +487,7 @@ class CodingAgent():
                         smart_print(f"# UPDATED **{'SUCCESFUL' if no_runtime_error else 'FAILED'}** CODE:\n{edited_code}", custom_agent if custom_agent else self.name, "UPDATED_CODE", optional=False, column_id=output_id)
                         # If no runtime error, store the error and diff
                         if no_runtime_error:
-                            smart_print(env.get_state(extended=True), custom_agent if custom_agent else self.name, "CODE_RESULT", optional=False, column_id=output_id)
+                            smart_print(env.get_state(), custom_agent if custom_agent else self.name, "CODE_RESULT", optional=False, column_id=output_id)
                             diff = difflib.unified_diff(prev_code.splitlines(), edited_code.splitlines(), lineterm='')
                             diff_text = '\n'.join(diff)
                             # Avoid duplicates: check if the error and diff combination already exists
@@ -503,17 +506,15 @@ class CodingAgent():
             scores = [env.get_score(parsed_code["program_code"]) for env in self.envs]
         else:
             scores = [env.get_score() for env in self.envs]
-        result = (parsed_code, all(no_runtime_errors), exec_results, scores, [env.get_state(extended=False) for env in self.envs], total_execution_time)
+        result = (parsed_code, all(no_runtime_errors), exec_results, scores, [env.get_state() for env in self.envs], total_execution_time)
 
         if restore_state:
             for env in self.envs:
                 env.restore_last_state()
         return result
 
-    def get_primitives(self):
+    def get_primitives(self, path_folder):
         primitives = []
-
-        path_folder = "primitives/swe_primititves"
         folder_path = os.path.join(os.path.dirname(__file__), path_folder)
         # Utiliser os.listdir pour ne pas parcourir les sous-répertoires
 
@@ -586,8 +587,8 @@ class CodingAgent():
         previous_codes = previous_codes if previous_codes else []
         error_patches = flatten_and_pair(error_patches) if error_patches else []
 
-        env_states = "\n".join([env.get_state(extended=False) for env in self.envs])
-        primitives = "\n".join(self.get_primitives())
+        env_states = "\n".join([env.get_state() for env in self.envs])
+        primitives = "\n".join(self.get_primitives(self.primitives_dir))
         successful_tasks = "\n".join(HumanLLMMonitor.get_learnt_tasks())
         failed_tasks = "\n".join(HumanLLMMonitor.get_failed_tasks())
         validation_response_um = "\n".join(HumanLLMMonitor.get_validation_results())
@@ -990,7 +991,7 @@ class CapitalizationAgent:
 class PlannerAgent:
     def __init__(self, default_llm_choice, envs, premium_llm_choice=None, problem_prompts_subdir=None,
                  skip_rounds=0, llmORchains_list=None, optuna=None, model_choice=None, special_criteria=None,
-                 num_parallel_inferences=1):
+                 num_parallel_inferences=1, primitives_dir=None):
         # Define necessary class variables
         self.name = self.__class__.__name__
         self.last_user_message = None
@@ -1003,6 +1004,8 @@ class PlannerAgent:
         self.llmORchains_list = llmORchains_list or {}
         self.skip_rounds = skip_rounds
         self.max_autofix = 3  # Maximum number of auto-fix attempts
+        self.special_criteria = special_criteria
+        self.primitives_dir = primitives_dir
 
     def plan(self, question: str):
         self.last_user_message = question
@@ -1021,7 +1024,7 @@ class PlannerAgent:
 
         # if self.envs:
         #     if isinstance(self.envs[0], SWEBenchEnvironment):
-        #         question = f"Solve the SWE bench problem {self.envs[0].swe_data.instance_id} by finding buggy files, generating patch, applying patch and running tests. Current state of the solution is:\n{self.envs[0].get_state(extended=False)}.\nOn the basis of current state, provide the best code that shoud be executed next"
+        #         question = f"Solve the SWE bench problem {self.envs[0].swe_data.instance_id} by finding buggy files, generating patch, applying patch and running tests. Current state of the solution is:\n{self.envs[0].get_state()}.\nOn the basis of current state, provide the best code that shoud be executed next"
         
         # print(question)
 
@@ -1139,7 +1142,8 @@ class PlannerAgent:
             optuna=self.optuna_opti,
             model_choice=self.model_choice,
             special_criteria=None,
-            num_parallel_inferences=1
+            num_parallel_inferences=1,
+            primitives_dir=self.primitives_dir
         )
 
         # Use the parse_ai_generated_code method to analyze the code
@@ -1261,7 +1265,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               optuna_opti=None, allow_custom_score_state_functions=False,
                               params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
                               agcoach_num_parallel_inferences=1, fixed_coach=False, return_array=False, agcoding_num_parallel_inferences=1,
-                              continue_each_loop=False,unique_id=None):
+                              continue_each_loop=False,unique_id=None, primitives_dir=None):
     scores = None
 
     print("Starting learning loop...")
@@ -1294,7 +1298,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                llmORchains_list=llmORchains_list, optuna=optuna_opti, model_choice=(
             model_choice['coding' if 'coding' in model_choice else 'coder'] if type(
                 model_choice) == dict else model_choice), special_criteria=special_criteria,
-                               num_parallel_inferences=agcoding_num_parallel_inferences)
+                               num_parallel_inferences=agcoding_num_parallel_inferences, primitives_dir=primitives_dir)
     agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                        skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list,
                                        optuna=optuna_opti, model_choice=(
@@ -1429,7 +1433,7 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
                 optuna_opti=None, allow_custom_score_state_functions=False,
                 params_user_message=None, max_execution_time=900, special_criteria=None, temperature_max=1,
                 agcoach_num_parallel_inferences=1, fixed_coach=False, unique_id=None, return_array=False, agcoding_num_parallel_inferences=1,
-                continue_each_loop=False, skip_rounds=0, functions_to_import=None):
+                continue_each_loop=False, skip_rounds=0, functions_to_import=None, primitives_dir=None):
 
     # Initialize unique_id
     if unique_id is None:
@@ -1489,6 +1493,8 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
         pattern = r'\b[\w-]+__[\w-]+-\d+\b'
         instance_ids = re.findall(pattern, question)
         if instance_ids:
+            problem_prompts_subdir = "SWE_Synthesis"
+            primitives_dir = "primitives/swe_primitives"
             print('Instance ID detected.')
             instance_id = instance_ids[0].lower()
             print(instance_id)
@@ -1508,6 +1514,8 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
         else:
             print('No instance ID detected.')
             env_type = "default"
+            problem_prompts_subdir = "IR_CPS_TechSynthesis"
+            primitives_dir = "primitives/generate_primitives"
             manager = EnvironmentManager(env_type)
             test_environments = [manager.get_environment()]
 
@@ -1521,7 +1529,8 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
         optuna=optuna_opti,
         model_choice=model_choice,
         special_criteria=special_criteria,
-        num_parallel_inferences=agcoach_num_parallel_inferences
+        num_parallel_inferences=agcoach_num_parallel_inferences,
+        primitives_dir=primitives_dir
     )
     # Ask the user to formulate their question using smart_input
     smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
@@ -1545,7 +1554,7 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
                                       agcoding_skip_rounds=agcoding_skip_rounds,  # Auto-test: 4
                                       agvalidation_skip_rounds=agvalidation_skip_rounds,  # Auto-test: 4
                                       agcapitalize_skip_rounds=agcapitalize_skip_rounds,
-                                      agcoding_num_parallel_inferences=agcoding_num_parallel_inferences)
+                                      agcoding_num_parallel_inferences=agcoding_num_parallel_inferences, primitives_dir=primitives_dir)
         else:
             temp = planner.plan(question)
             if temp == "no code available":
@@ -1566,7 +1575,7 @@ def run_planner(default_llm_key, premium_llm_key, test_environments=None,
                                           agvalidation_skip_rounds=agvalidation_skip_rounds,  # Auto-test: 4
                                           agcapitalize_skip_rounds=agcapitalize_skip_rounds,
                                           agcoding_num_parallel_inferences=agcoding_num_parallel_inferences,
-                                          unique_id=unique_id)
+                                          unique_id=unique_id, primitives_dir=primitives_dir)
         question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ", agent_name='PlannerAgent')
         smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
 
