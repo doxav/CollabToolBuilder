@@ -41,9 +41,7 @@ class SWEBenchEnvironment(Environment):
         SWEBenchEnvironment.llm_model = llm
         self.swe_data = swe_data
         self.reset_env = reset_env
-        SWEManager.target_dir = f"env/SWEBench/repos/{self.swe_data.repo.split('/')[-1]}"
-        SWEManager.current_dir = "/"
-        self.swe_manager = SWEManager() 
+        self.swe_manager = SWEManager(target_dir=f"env/SWEBench/repos/{self.swe_data.repo.split('/')[-1]}") 
         self.setup_repo()
     
     @staticmethod
@@ -158,10 +156,15 @@ Only output a score value between 0.0 and 1.0. If the function does not do what 
         return {'score (top:1, worst:0)': structured_output.score}
 
 class SWEManager:
-    current_dir: str = "/" # The current directory within which tools are navigating in the problem repository
-    target_dir: str = ""  # The root directory for the current problem repository
+    current_dirs: List[str] = [] # The current directory within which tools are navigating in the problem repository
+    target_dirs: List[str] = []  # The root directory for the current problem repository
+
+    def __init__(self, target_dir: str):
+        self.id = len(SWEManager.current_dirs)
+        SWEManager.current_dirs.append("/")
+        SWEManager.target_dirs.append(target_dir)
     
-    def getSearchTools(self):
+    def getSearchTools(self) -> list:
      return [ls, goto_directory, goto_previous_dir, get_current_dir, number_of_lines, open_file, find_files, search_file, search_dir]
 
     def getContentViewingTools(self):
@@ -171,13 +174,13 @@ class SWEManager:
         return [edit_lines_in_file, create_file]
     
     def getDiff(self) -> str:
-        return subprocess.run(f"cd {SWEManager.target_dir} & git diff", shell=True, text=True, capture_output=True).stdout
+        return subprocess.run(f"cd {SWEManager.target_dirs[self.id]} & git diff", shell=True, text=True, capture_output=True).stdout
     
     def resetCurrentDir(self):
-        SWEManager.current_dir = "/"
+        SWEManager.current_dirs[self.id] = "/"
     
     def restoreRepo(self) -> str:
-        return subprocess.run(f"cd {SWEManager.target_dir} & git restore .", shell=True, text=True, capture_output=True).stdout
+        return subprocess.run(f"cd {SWEManager.target_dirs[self.id]} & git restore .", shell=True, text=True, capture_output=True).stdout
     
     def extract_classes_and_functions(self, file_path, limit_docstring=True, max_docstring_length=100):
         """
@@ -277,21 +280,21 @@ class SWEManager:
             self._method_counts = {}
         
 @tool
-def ls() -> str:
+def ls(id=0) -> str:
     """
     This function lists the files in the current directory.
     :function: ls
     :return: a string containing the path of current directory and the files present in the current directory
     """
-    ls_out = subprocess.run(f"cd {get_abs_current_dir()} & dir", shell=True, text=True, capture_output=True).stdout
+    ls_out = subprocess.run(f"cd {get_abs_current_dir(id)} & dir", shell=True, text=True, capture_output=True).stdout
     return f"""
-    Current Directory: {SWEManager.current_dir}
+    Current Directory: {SWEManager.current_dirs[id]}
     Files: 
     {ls_out}
     """
 
 @tool
-def goto_directory(path: str) -> str:
+def goto_directory(path: str, id=0) -> str:
     """
     This function changes the current directory to the specified directory. This function must be used to goto a directory not to open a file.
     :function: goto_dir
@@ -301,40 +304,40 @@ def goto_directory(path: str) -> str:
 
     if '..' in path:
         return 'use goto_previous_dir tool instead to go to previous directory'
-    out = subprocess.run(f"cd {get_abs_current_dir()} & cd {path}", shell=True, text=True, capture_output=True).stdout
+    out = subprocess.run(f"cd {get_abs_current_dir(id)} & cd {path}", shell=True, text=True, capture_output=True).stdout
     if out == "":
-        SWEManager.current_dir = f"{SWEManager.current_dir}{path}/"
-        return 'successfully entered ' + SWEManager.current_dir
+        SWEManager.current_dirs[id] = f"{SWEManager.current_dirs[id]}{path}/"
+        return 'successfully entered ' + SWEManager.current_dirs[id]
     else:
         return out
 
 @tool
-def goto_previous_dir() -> str:
+def goto_previous_dir(id=0) -> str:
     """
     This function takes the user to the previous directory.
     :function: goto_previous_dir
     :return: output 
     """
-    if SWEManager.current_dir == '/':
+    if SWEManager.current_dirs[id] == '/':
         return "Already in top most directory. Can't go back anymore"
     else:
-        paths = SWEManager.current_dir.split('/')[1:-1]
+        paths = SWEManager.current_dirs[id].split('/')[1:-1]
         paths.pop()
-        SWEManager.current_dir = '/'
+        SWEManager.current_dirs[id] = '/'
         for dir in paths:
-            SWEManager.current_dir += dir + '/'
-        return f"Current Directory: {SWEManager.current_dir}"
+            SWEManager.current_dirs[id] += dir + '/'
+        return f"Current Directory: {SWEManager.current_dirs[id]}"
 
 @tool
-def get_current_dir() -> str:
+def get_current_dir(id=0) -> str:
     """
     This function returns the path of the currently opened directory.
     :function: get_current_dir
     :return: the current directory
     """
-    return SWEManager.current_dir
+    return SWEManager.current_dirs[id]
 
-def get_abs_current_dir() -> str:
+def get_abs_current_dir(id=0) -> str:
     """
 Constructs and returns the absolute path to the current directory.
 
@@ -345,10 +348,10 @@ with the subdirectory 'test-repos' and a modified version of `SWEManager.directo
 Returns:
     str: The absolute path to the current directory.
     """
-    return SWEManager.target_dir + SWEManager.current_dir
+    return SWEManager.target_dirs[id] + SWEManager.current_dirs[id]
 
 @tool
-def number_of_lines(path: str) -> str:
+def number_of_lines(path: str, id=0) -> str:
     """
     This function takes a file path as input and returns the number of lines in the file.
     :function: number_of_lines
@@ -357,15 +360,15 @@ def number_of_lines(path: str) -> str:
     :return: The number of lines in the file.
     """
 
-    abs_file_path = os.path.join(get_abs_current_dir(), path) if path != "/" else get_abs_current_dir()
+    abs_file_path = os.path.join(get_abs_current_dir(id), path) if path != "/" else get_abs_current_dir(id)
     if os.path.exists(abs_file_path):
         with open(abs_file_path, 'r') as file:
-            return f"Number of lines in {SWEManager.current_dir+path}: {sum(1 for line in file)}"
+            return f"Number of lines in {SWEManager.current_dirs[id]+path}: {sum(1 for line in file)}"
     else:
-        return f"File {SWEManager.current_dir+path} not found"
+        return f"File {SWEManager.current_dirs[id]+path} not found"
 
 @tool
-def open_file(path: str, line_number: int = 1, max_lines: int = 100) -> str:
+def open_file(path: str, line_number: int = 1, max_lines: int = 100, id=0) -> str:
     """   
     This function takes a file path, a line number, and a maximum number of lines as input and returns the contents of the file starting from the specified line number, limited to the maximum number of lines.
     :function: open_file
@@ -382,7 +385,7 @@ def open_file(path: str, line_number: int = 1, max_lines: int = 100) -> str:
     if path[0] == '/':
         path = path[1:]
 
-    abs_file_path = os.path.join(get_abs_current_dir(), path)
+    abs_file_path = os.path.join(get_abs_current_dir(id), path)
     if os.path.exists(abs_file_path):
         with open(abs_file_path, 'r', encoding='utf-8', errors='ignore') as file:
             with open(abs_file_path, 'r') as temp_file:
@@ -390,7 +393,7 @@ def open_file(path: str, line_number: int = 1, max_lines: int = 100) -> str:
             if line_number > num_lines:
                 return f"Can't access {line_number} line. This file only contains {num_lines} lines"
             
-            out = f"Showing contents of File: {SWEManager.current_dir+path} starting from {line_number}\n"
+            out = f"Showing contents of File: {SWEManager.current_dirs[id]+path} starting from {line_number}\n"
             for n, line in enumerate(file, 1):
                 if n >= line_number:
                     out += f"{n}: {line}\n"
@@ -401,7 +404,7 @@ def open_file(path: str, line_number: int = 1, max_lines: int = 100) -> str:
         return path + " doesn't exist"
 
 @tool
-def edit_lines_in_file(file_path, start_line_number, num_lines_to_replace, replacement_text):
+def edit_lines_in_file(file_path, start_line_number, num_lines_to_replace, replacement_text, id=0):
     """
     Replaces a specific number of lines starting from a given line number in a file
     with the given replacement text. Python files are validated for syntax errors after the edit.
@@ -419,7 +422,7 @@ def edit_lines_in_file(file_path, start_line_number, num_lines_to_replace, repla
         str: Success or error message.
     """
 
-    file_path = os.path.join(get_abs_current_dir(), file_path)
+    file_path = os.path.join(get_abs_current_dir(id), file_path)
     try:
         # Read the file content
         with open(file_path, 'r') as file:
@@ -454,7 +457,7 @@ def edit_lines_in_file(file_path, start_line_number, num_lines_to_replace, repla
         return f"Error: {e}\nPlease fix this error before trying another edit. if you are getting this error multiple time, please skip this part of the patch"
 
 @tool
-def create_file(path: str, content: str) -> str:
+def create_file(path: str, content: str, id=0) -> str:
     """
     This function creates a new file at the specified path with the provided content.
     Ensures the necessary directories exist before creating the file.
@@ -464,7 +467,7 @@ def create_file(path: str, content: str) -> str:
     :param content: The content to write into the new file. It can span multiple lines.
     :return: A success message or an error message in case of failure.
     """
-    abs_file_path = os.path.join(get_abs_current_dir(), path)
+    abs_file_path = os.path.join(get_abs_current_dir(id), path)
     directory = os.path.dirname(abs_file_path)
     
     try:
@@ -481,7 +484,7 @@ def create_file(path: str, content: str) -> str:
         return f"Error: Could not create file '{path}'. Details: {str(e)}"
 
 @tool
-def find_files(file_name: str) -> str:
+def find_files(file_name: str, id=0) -> str:
     """
     Searches the current directory and its subdirectories for the files that have name containing the specified file_name.
     :function: find_files
@@ -491,15 +494,15 @@ def find_files(file_name: str) -> str:
     matched_files = []
     
     # Walk through the current directory and all subdirectories
-    for root, dirs, files in os.walk(get_abs_current_dir()):
+    for root, dirs, files in os.walk(get_abs_current_dir(id)):
         for file in files:
             if file_name in file:
-                matched_files.append(os.path.relpath(os.path.join(root, file), get_abs_current_dir()))
+                matched_files.append(os.path.relpath(os.path.join(root, file), get_abs_current_dir(id)))
     
     return "Files found:\n" + "\n".join(matched_files)
 
 @tool
-def search_file(path: str, search_term: str) -> str:
+def search_file(path: str, search_term: str, id=0) -> str:
     """
     This function takes a file path and a search term as input and returns the lines in the file that contain the search term. 
     :param str path: The relative path to the file (e.g., 'lib/matplotlib/axis.py').
@@ -507,19 +510,19 @@ def search_file(path: str, search_term: str) -> str:
     :return: A string containing the lines in the file that contain the search term.
     """
 
-    abs_file_path = os.path.join(get_abs_current_dir(), path) if path != "/" else get_abs_current_dir()
+    abs_file_path = os.path.join(get_abs_current_dir(id), path) if path != "/" else get_abs_current_dir(id)
     if os.path.exists(abs_file_path):
         with open(abs_file_path, 'r') as file:
-            out = f"Searching for '{search_term}' in {SWEManager.current_dir+path}\n\n"
+            out = f"Searching for '{search_term}' in {SWEManager.current_dirs[id]+path}\n\n"
             for n, line in enumerate(file, 1):
                 if search_term in line:
                     out += f"{n}: {line}\n"
             return out
     else:
-        return f"File {SWEManager.current_dir+path} not found"
+        return f"File {SWEManager.current_dirs[id]+path} not found"
 
 @tool
-def search_dir(path: str, search_term: str) -> str:
+def search_dir(path: str, search_term: str, id=0) -> str:
     """
     Searches for files in the specified directory that contain the search term. It returns the file names and line numbers where the search term is found.
 
@@ -528,7 +531,7 @@ def search_dir(path: str, search_term: str) -> str:
     :return: A string containing the files in the directory that contain the search term.
     """
     
-    abs_dir_path = os.path.join(get_abs_current_dir(), path) if path != "/" else get_abs_current_dir()
+    abs_dir_path = os.path.join(get_abs_current_dir(id), path) if path != "/" else get_abs_current_dir(id)
     
     if os.path.exists(abs_dir_path):
         matched = ""
@@ -539,7 +542,7 @@ def search_dir(path: str, search_term: str) -> str:
                     with open(file_path, 'r', encoding='utf-8') as file_a:
                         for n, line in enumerate(file_a, 1):
                             if search_term in line:
-                                matched += f"File: {SWEManager.current_dir+path}/{file}, Line: {n}\n"
+                                matched += f"File: {SWEManager.current_dirs[id]+path}/{file}, Line: {n}\n"
                                 break
                 except (UnicodeDecodeError, IOError):  # Handle decoding errors and file I/O errors
                     continue
@@ -552,7 +555,7 @@ def search_dir(path: str, search_term: str) -> str:
         return f"Directory {path} not found."
 
 @tool
-def get_files_content(paths: List[str], line_numbers: List[int], num_lines: List[int]) -> str:
+def get_files_content(paths: List[str], line_numbers: List[int], num_lines: List[int], id=0) -> str:
     """
     This function takes a list of file paths and a list of line numbers as input and returns the contents of the files starting from the specified line numbers.
     :param paths: A list of relative paths to the files (e.g., ['lib/matplotlib/axis.py', 'lib/matplotlib/figure.py']). This function will return 100 lines for each file starting from the line_number provided.
@@ -560,10 +563,10 @@ def get_files_content(paths: List[str], line_numbers: List[int], num_lines: List
     :param num_lines: A list of the maximum number of lines to return from the starting line.
     :return: A string containing the contents of the files from the specified starting line numbers.
     """
-    SWEManager().resetCurrentDir()
+    SWEManager.current_dirs[id] = '/'
     out = ""
     for path, line_number, n in zip(paths, line_numbers, num_lines):
-        out += open_file.invoke({'path': path, 'line_number': line_number, 'max_lines': n}) + '\n\n'
+        out += open_file.invoke({'path': path, 'line_number': line_number, 'max_lines': n, 'id': id}) + '\n\n'
     return out
 
 

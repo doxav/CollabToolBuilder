@@ -57,8 +57,8 @@ if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_UR
 
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
-UnifiedVectorDB.es_user = elastic_user
-UnifiedVectorDB.es_password = elastic_password
+# UnifiedVectorDB.es_user = elastic_user
+# UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
 
 
@@ -66,10 +66,6 @@ embedding_function = "text-embedding-ada-002"  #"Alibaba-NLP/gte-base-en-v1.5" U
 reset_db_indices = False  # Set to True after changing embeddings
 
 HumanLLMMonitor.use_websocket = True
-
-
-
-
 
 
 def apply_special_criteria(agent, special_criteria, available_locals=None):
@@ -1674,22 +1670,22 @@ def run_planner(*args, **kwargs):  # NEW VERSION
         if instance_ids:
             problem_prompts_subdir = "SWE_Synthesis"
             primitives_dir = "primitives/swe_primitives"
-            print('Instance ID detected.')
-            instance_id = instance_ids[0].lower()
-            print(instance_id)
-            question_command = question.replace(instance_ids[0], '')
             dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take3", split='train')
-            problem = None
-            for data in dataset:
-                if data['instance_id'] == instance_id:
-                    problem = data
-                    print('Problem set found.')
-                    break
-            if problem is not None:
-                print('Creating SWE Environment.')
-                test_environments = [SWEBenchEnvironment(swe_data=SWEProblem.parse_obj(problem))]
-            else:
-                raise ValueError("Invalid instance ID.")
+            test_environments = []
+            for instance_id in instance_ids:
+                instance_id = instance_id.lower()
+                print(instance_id)
+                problem = None
+                for data in dataset:
+                    if data['instance_id'] == instance_id:
+                        problem = data
+                        print('Problem set found.')
+                        break
+                if problem is not None:
+                    print('Creating SWE Environment.')
+                    test_environments.append(SWEBenchEnvironment(swe_data=SWEProblem.parse_obj(problem)))
+                else:
+                    raise ValueError("Invalid instance ID.")
         else:
             print('No instance ID detected.')
             env_type = "default"
@@ -2163,8 +2159,10 @@ if __name__ == "__main__":
                 agvalidation_skip_rounds=0,  # Auto-test: 4
                 agcapitalize_skip_rounds=0,
                 agcoding_num_parallel_inferences=1,
+                agcoach_num_parallel_inferences=1,
                 unique_id=unique_id,
-                functions_to_import=".*",
+                # functions_to_import=".*",
+                functions_to_import=None,
                 
                 special_criteria=special_criteria,
                 automation=automatic,

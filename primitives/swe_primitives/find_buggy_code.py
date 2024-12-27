@@ -106,15 +106,22 @@ def find_buggy_code(bot):
     def should_use_search_tool(state: PatchState):
         messages = state['messages']
         last_message = messages[-1]
+
         if 'tool_calls' not in last_message.additional_kwargs:
             return 'end'
+        
+        for tool_call in last_message.additional_kwargs['tool_calls']:
+            args = json.loads(tool_call['function']['arguments'])
+            args['id'] = bot.id
+            tool_call['function']['arguments'] = json.dumps(args)
+        print(last_message)
         print('Using search tool')
         return 'continue'
 
     def extract_content_from_files(state: PatchState):
         print('Extracting content from files')
         message = state['messages'][-1]
-        response: AIMessage = extractor_llm.invoke([extract_content_from_files_prompt.format(files=message.content, current_dir=bot.current_dir)])
+        response: AIMessage = extractor_llm.invoke([extract_content_from_files_prompt.format(files=message.content, current_dir=SWEManager.current_dirs[bot.id])])
         print(f"Got error-related files")
 
         for tool_call in response.tool_calls:
@@ -123,6 +130,12 @@ def find_buggy_code(bot):
                 for path, line_number in zip(args['paths'], args['line_numbers']):
                     state['response']['paths'].append(path)
                     state['response']['line_numbers'].append(line_number)
+
+        for tool_call in response.additional_kwargs['tool_calls']:
+            args = json.loads(tool_call['function']['arguments'])
+            args['id'] = bot.id
+            tool_call['function']['arguments'] = json.dumps(args)
+            
         return {
             **state,
             "messages": [response]

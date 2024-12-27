@@ -1,4 +1,4 @@
-def generate_patch(bot, problem, env):
+def generate_patch(bot):
     """
     Generates a Python patch file in `git diff` format for a given problem by analyzing buggy files, 
     summarizing relevant repository structures, and using an LLM to produce the patch code.
@@ -168,6 +168,10 @@ def generate_patch(bot, problem, env):
         last_message.pretty_print()
         if 'tool_calls' not in last_message.additional_kwargs:
             return 'end'
+        for tool_call in last_message.additional_kwargs['tool_calls']:
+            args = json.loads(tool_call['function']['arguments'])
+            args['id'] = bot.id
+            tool_call['function']['arguments'] = json.dumps(args)
         return 'continue'
     
     workflow = StateGraph(PatchState)
@@ -192,6 +196,7 @@ def generate_patch(bot, problem, env):
         "messages": [HumanMessage(content=apply_patch_prompt.format(repo=problem.repo.split('/')[-1], current_dir=bot.current_dir, patch=response))],
     }
 
+    bot.resetCurrentDir()
     for chunk in app.stream(initial_state, stream_mode="values", config=RunnableConfig(recursion_limit=100)):
         chunk["messages"][-1].pretty_print()
 
