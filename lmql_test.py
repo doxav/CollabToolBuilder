@@ -28,21 +28,21 @@ def simulate_changes(query_string, model=None, decoder=None, temperature=1.0, nu
             alternatives = [lmql.run(query_string, model=model, decoder='argmax', **kwargs)]
         return alternatives
     except Exception as e:
-        print(f"Error simulating changes: {e}")
+        # print(f"Error simulating changes: {e}")
         return None
 
 def customize_before(func):
     @wraps(func)
     async def wrapper(*args, **kwargs):
-        print(f"Customize generation before executing query function: {func.__name__}")
+        # print(f"Customize generation before executing query function: {func.__name__}")
 
         # Display current values
-        print(f'Kwargs: {kwargs}' )
-        print(f'Args: {args}' )
-        print(f"Current constraints: {kwargs.get('where', 'None')}")
-        print(f"Current sub-query: {args[0] if args else 'None'}")
-        print(f"Current decoding algorithm: {kwargs.get('decoder', 'argmax')}")
-        print(f"Current temperature: {kwargs.get('temperature', 1.0)}")
+        # print(f'Kwargs: {kwargs}' )
+        # print(f'Args: {args}' )
+        # print(f"Current constraints: {kwargs.get('where', 'None')}")
+        # print(f"Current sub-query: {args[0] if args else 'None'}")
+        # print(f"Current decoding algorithm: {kwargs.get('decoder', 'argmax')}")
+        # print(f"Current temperature: {kwargs.get('temperature', 1.0)}")
 
         # Save the current state before modifications
         current_state = copy.deepcopy(kwargs)
@@ -61,7 +61,7 @@ def customize_before(func):
             # Ask if the user wants to preview the expected alternatives with the proposed changes
             if input("Do you want to preview the expected alternatives with the proposed changes? (y/n): ").lower() == 'y':
                 preview_alternatives = simulate_changes(args[0], decoder=new_decoder or kwargs.get('decoder', 'argmax'), temperature=kwargs.get('temperature', 1.0), num_alternatives=num_alternatives, **kwargs)
-                print(f"Preview of the expected alternatives with the proposed changes:")
+                # print(f"Preview of the expected alternatives with the proposed changes:")
                 for i, alternative in enumerate(preview_alternatives):
                     print(f"Alternative {i + 1}:\n{alternative}\n")
 
@@ -94,7 +94,7 @@ def check_after(func):
     async def wrapper(*args, **kwargs):
         alternatives = await func(*args, **kwargs)
 
-        print(f"Result after executing query function: {func.__name__}")
+        # print(f"Result after executing query function: {func.__name__}")
         # check if alternatives is a list or a string
         if isinstance(alternatives, list):
             for i, alternative in enumerate(alternatives):
@@ -112,7 +112,7 @@ def check_after(func):
             if 1 <= selected_index <= len(alternatives):
                 return alternatives[selected_index - 1]
             else:
-                print("Invalid index, continuing with the first alternative.")
+                # print("Invalid index, continuing with the first alternative.")
                 return alternatives[0]
         elif action == 'refine':
             refined_result = input("Enter refined result: ")
@@ -134,15 +134,15 @@ def check_after(func):
 def humancontrol_lmql(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        print(f"Customize generation before executing query function: {func.__name__}")
+    #     print(f"Customize generation before executing query function: {func.__name__}")
 
-        # Display current values
-        print(f'Kwargs: {kwargs}' )
-        print(f'Args: {args}' )
-        print(f"Current constraints: {kwargs.get('where', 'None')}")
-        print(f"Current sub-query: {args[0] if args else 'None'}")
-        print(f"Current decoding algorithm: {kwargs.get('decoder', 'argmax')}")
-        print(f"Current temperature: {kwargs.get('temperature', 1.0)}")
+    #     # Display current values
+    #     print(f'Kwargs: {kwargs}' )
+    #     print(f'Args: {args}' )
+    #     print(f"Current constraints: {kwargs.get('where', 'None')}")
+    #     print(f"Current sub-query: {args[0] if args else 'None'}")
+    #     print(f"Current decoding algorithm: {kwargs.get('decoder', 'argmax')}")
+    #     print(f"Current temperature: {kwargs.get('temperature', 1.0)}")
 
         # Save the current state before modifications
         current_state = copy.deepcopy(kwargs)
@@ -162,7 +162,7 @@ def humancontrol_lmql(func):
             # Ask if the user wants to preview the expected alternatives with the proposed changes
             if input("Do you want to preview the expected alternatives with the proposed changes? (y/n): ").lower() == 'y':
                 preview_alternatives = simulate_changes(args[0], decoder=new_decoder or kwargs.get('decoder', 'argmax'), temperature=kwargs.get('temperature', 1.0), num_alternatives=num_alternatives, **kwargs)
-                print(f"Preview of the expected alternatives with the proposed changes:")
+                # print(f"Preview of the expected alternatives with the proposed changes:")
                 for i, alternative in enumerate(preview_alternatives):
                     print(f"Alternative {i + 1}:\n{alternative}\n")
 
@@ -197,7 +197,7 @@ def humancontrol_lmql(func):
         # TODO: improve processing with concurrent.futures.ThreadPoolExecutor
         alternatives = [lmql.generate_sync(*args, **kwargs) for _ in range(num_alternatives)]
 
-        print(f"Result after executing query function: {func.__name__}")
+        # print(f"Result after executing query function: {func.__name__}")
         # check if alternatives is a list or a string
         if isinstance(alternatives, list):
             for i, alternative in enumerate(alternatives):

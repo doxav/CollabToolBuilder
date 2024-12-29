@@ -148,13 +148,13 @@ class WebsocketServer:
                     sock.close()
                     return  # Port is available
                 except OSError:
-                    print(f"Port {self.port} is in use, trying the next one...")
+                    # print(f"Port {self.port} is in use, trying the next one...")
                     self.port += 1
 
     def start_localtunnel(self):
         """Start localtunnel if it's enabled and available on the system."""
         if self.proxy_enabled and shutil.which("lt") is not None:
-            print("Starting localtunnel...")
+            # print("Starting localtunnel...")
             try:
                 self.process_lt = subprocess.Popen(
                     ["lt", "--port", str(self.port)],

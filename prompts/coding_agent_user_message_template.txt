@@ -1,5 +1,5 @@
 TASK DEFINITION: [[[{refined_task}]]]
-CURRENT STATE OF DOCUMENTS TO PERFORM/TEST TASK: [[[{env_states}]]]
+CURRENT STATE OF PROBLEM TO PERFORM/TEST TASK: [[[{env_states}]]]
 RE-USABLE CODE PRIMITIVES: [[[{primitives}]]]
 PREVIOUSLY SUCCESSFUL TASKS: [[[{successful_tasks}]]]
 PREVIOUSLY FAILED TASKS: [[[{failed_tasks}]]]

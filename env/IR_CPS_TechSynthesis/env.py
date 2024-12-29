@@ -1,40 +1,32 @@
-import datetime
-import os.path
-#import warnings
 import copy
-import time
-import uuid
-from dataclasses import dataclass, field
+import os
 import re
-from typing import List, SupportsFloat, Any, Tuple, Dict
-from dataclasses import asdict
-from langchain_core.messages import SystemMessage, HumanMessage
-
-from config import *
-#from attr import dataclass, field
-#import PyPDF2
-import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-import pdb
-
-import traceback
-
+import ast
+import io
+import uuid
 import json
+import time
+import types
+import shutil
+import hashlib
+import numpy as np
 import requests
+import traceback
+import contextlib
+from typing import Any, Dict, List
+from dataclasses import dataclass, field, asdict
+from sklearn.metrics.pairwise import cosine_similarity
+from bs4 import BeautifulSoup
 
-from learn import Environment
-
-# import a function from langchain which could embed a text into a vector using OpenAI ada-002 or HuggingFace
-import langchain
+from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_openai import OpenAIEmbeddings
 
 from utils.file_utils import save_to_pickle, load_from_pickle
 from utils.llm_utils import UnifiedVectorDB
-#from langchain_community.cache import InMemoryCache, SQLiteCache
-#langchain.llm_cache = SQLiteCache(database_path="sqlite/langchain_cache.db")
+from env.env import Environment
+from config import *
 
-from bs4 import BeautifulSoup
 
 ##############################################################################################################
 # Placeholder classes for the technical synthesis environment
@@ -306,12 +298,12 @@ class SynthesisManager:
             Section(**section)
             return True
         except TypeError as e:
-            print(e)
+            # print(e)
             return False
 
     @method_call_counter
     def chat(self, message: str):
-        print(f"SynthesisManager Chat message: {message}")
+     print(f"SynthesisManager Chat message:")
 
     @staticmethod
     @method_call_counter
@@ -386,7 +378,7 @@ class SynthesisManager:
             # URL for EPO scraping
             # encode query string
             url = 'https://worldwide.espacenet.com/patent/search?q=' + query.replace(' ', '%20')
-            print(url)
+            # print(url)
             driver.get(url)
 
             # Wait until the search results are loaded
@@ -400,7 +392,7 @@ class SynthesisManager:
             except Exception as e:
                 # print error
                 error = str(e.message) if hasattr(e, 'message') else str(e)
-                print(f'EPO SELENIUM scraping failed with error code: {error}')
+                # print(f'EPO SELENIUM scraping failed with error code: {error}')
                 soup = None
             driver.quit()
 
@@ -808,8 +800,6 @@ class SynthesisManager:
             print(f"Error reading {pdf_path}: {e}")
         return text
 
-
-
     @staticmethod
     @method_call_counter
     def search_fiche_anomalie(query, directory_path, output_format='json', max_results=20):
@@ -839,9 +829,6 @@ class SynthesisManager:
             return json.dumps(results, indent=2)
         else:
             return '\n'.join(['Filename: {}\nContent: {}\n'.format(result['filename'], result['content']) for result in results])
-
-
-
 
     # OK: based on search_google
     @staticmethod
@@ -1105,7 +1092,7 @@ class SynthesisManager:
         output_check = ''
         for section in self.target_data['plan']:
             output_check += section['section'] + " /"
-        print(output_check)
+        # print(output_check)
         # Compute the total length for the target data (similar to the test method)
         self.target_total_content_length = sum(len(section['content']) for section in self.target_data['plan'])
         self.target_total_sections_count = len(self.target_data["plan"])
@@ -1334,12 +1321,12 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         return self.document.get_state()  # Return initial state
 
     def close(self):
-        with open(self.log_path, 'a') as log_file:
-            print(f"Environment closed at {datetime.now()}\n") # TODO: log it
+        # with open(self.log_path, 'a') as log_file:
+        #     print(f"Environment closed at {datetime.now()}\n") # TODO: log it
         self.document.reset()
         self.has_reset_once = False
         self.state = None
-        print("Environment internal states reset and closed.") # TODO: log it
+        # print("Environment internal states reset and closed.") # TODO: log it
 
     def step(
         self,
@@ -1348,7 +1335,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         reset_step: bool = False,
         completed_tasks: int = 0,
     ):
-        self.synthesis_manager.reset_method_calls_counters() # we want to count method calls for a step only
+        self.synthesis_manager.reset_method_calls_counters()  # we want to count method calls for a step only
         if not self.has_reset_once:
             print("Environment has not been reset yet - resetting now !")
             self.reset()
@@ -1378,3 +1365,4 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
 
         document_state += ">>>"
         return document_state
+    

@@ -1,28 +1,14 @@
-from typing import List
-from sklearn.metrics.pairwise import cosine_similarity
+from primitives.swe_primitives.find_buggy_code import find_buggy_code
+from datasets import load_dataset
+from env.SWEBench.env import SWEBenchEnvironment, SWEManager, SWEProblem
 
-class SimilarityCalculator:
-    def __init__(self, min_cosine_similarity: float, target_plan_embedding: List[float]):
-        self.min_cosine_similarity = min_cosine_similarity
-        self.target_plan_embedding = target_plan_embedding
+dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take3", split='train')
+dataset = dataset.select(range(1, 2))
+for data in dataset:
+    problem = SWEProblem.parse_obj(data)
+    env = SWEBenchEnvironment(problem)
+    bot = SWEManager(target_dir="env/SWEBench/repos/scikit-learn")
 
-    def normalized_cosine_similarity(self, a: List[float], b: List[float], min_cs: float = None) -> float:
-        if min_cs is None:
-            min_cs = self.min_cosine_similarity
-        return (cosine_similarity([a], [b])[0][0] - min_cs) / (1 - min_cs)
+    find_buggy_code(bot, env, problem)
 
-    def calculate_similarity(self, plan_embedding: List[float]):
-        plan_embedding_similarity = self.normalized_cosine_similarity(
-            plan_embedding, self.target_plan_embedding, self.min_cosine_similarity
-        )
-        print("self.min_plan_cosine_similarity", self.min_cosine_similarity)
-        print("plan_embedding_similarity", plan_embedding_similarity)
-        return plan_embedding_similarity
-
-# Example usage:
-target_embedding = [0.1, 0.2, 0.3, 0.4]
-plan_embedding = [0.2, 0.1, 0.4, 0.3]
-min_cos_sim = 0.5
-
-calculator = SimilarityCalculator(min_cosine_similarity=min_cos_sim, target_plan_embedding=target_embedding)
-similarity = calculator.calculate_similarity(plan_embedding)
+    break

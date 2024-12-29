@@ -2,10 +2,6 @@ import inspect
 import pickle
 import random
 import string
-import traceback
-import contextlib
-import ast
-import types
 import time
 from zipfile import error
 from config import *
@@ -16,25 +12,39 @@ from typing import Dict
 from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, smart_print, smart_input
 
 import os
-import io
 import uuid
 import re
-import shutil
-import hashlib
-
-from datetime import datetime
+import sys
 import socket
-
+import json
+import difflib
+import openai
+from datetime import datetime
+from typing import Dict
+from datasets import load_dataset
 from langchain_core.runnables import Runnable
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.ai import AIMessage
 from langchain_core.messages.system import SystemMessage
-
 from langchain_openai import ChatOpenAI
+from config import *
+from env.env import EnvironmentManager, validate_function_code
+from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, smart_print, smart_input
+from env.IR_CPS_TechSynthesis.env import *
+from env.SWEBench.env import *
 
-import json
-import difflib
+
+dataset_repo = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take50", split='train')
+
+def get_row_by_instance_id(instance_id):
+     for row in dataset_repo:
+        if row['instance_id'] == instance_id:
+            return row
+     return None
+instance_id= "astropy__astropy-14365"
+repo=get_row_by_instance_id(instance_id)
+
 import torch
 import gc
 from transformers import PreTrainedModel
@@ -47,164 +57,15 @@ if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_UR
 
 UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
 UnifiedVectorDB.es_url = elastic_url_port
-UnifiedVectorDB.es_user = elastic_user
-UnifiedVectorDB.es_password = elastic_password
+# UnifiedVectorDB.es_user = elastic_user
+# UnifiedVectorDB.es_password = elastic_password
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
 
 
-embedding_function = "text-embedding-ada-002" if embedding_function is None else embedding_function  #"Alibaba-NLP/gte-base-en-v1.5" UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
+embedding_function = "text-embedding-ada-002"  #"Alibaba-NLP/gte-base-en-v1.5" UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
 reset_db_indices = False  # Set to True after changing embeddings
 
 HumanLLMMonitor.use_websocket = True
-
-
-class Environment:
-    def __init__(self, temp_root_dir: str = None, data_dir: str = "data"):
-        self.temp_root_dir = temp_root_dir if temp_root_dir else os.path.join(os.getcwd(), "temp")
-        self.data_dir = data_dir
-        self.current_temp_dir = None
-        self.last_unique_id_backup = None
-        # create "backups" directory were saved states will be stored
-        if not os.path.exists(os.path.join(self.temp_root_dir, "backups")):
-            os.makedirs(os.path.join(self.temp_root_dir, "backups"))
-        # Environment.reset(self) # Moving reset to the first call to __init__ to avoid multiple reset when class is subclassed
-
-    def reset(self, backup_previous_temp_dir=True):
-        if self.current_temp_dir is not None:
-            Environment.close(self, backup_previous_temp_dir)
-        # create a new temp directory in temp_root_dir named with a uuid
-        self.current_temp_dir = os.path.join(self.temp_root_dir, str(uuid.uuid4()))
-        os.makedirs(self.current_temp_dir)
-        # create a write only link to the data directory in the temp directory
-        os.symlink(os.path.abspath(self.data_dir), os.path.join(self.current_temp_dir, "data"),
-                   target_is_directory=True)
-
-    def step(self, action_code, context={}):
-        # Memorize current directory and switch to temporary directory
-        current_dir = os.getcwd()
-        os.chdir(self.current_temp_dir)
-
-        # Ensure `result` is set in the code
-        if not re.search(r'\bresult\s*=', action_code.strip().splitlines()[-1]):
-            helper = "\nresult = locals().get('_', True)"
-        else:
-            helper = ""
-
-        # Setup for capturing stdout and stderr
-        stdout, stderr = io.StringIO(), io.StringIO()
-
-        try:
-            # Execute code with redirected stdout and stderr
-            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-                exec(action_code + helper, context)
-            # Safely evaluate and retrieve result
-            exec_result = ast.literal_eval(repr(context.get('result', True)))
-            no_runtime_error = True
-        except Exception as e:
-            # Format traceback and include captured output for clarity
-            error_traceback = ''.join(traceback.format_exception(None, e, e.__traceback__))
-            exec_result = f"Execution failed. Error: {e}\nTraceback:\n{error_traceback}\nStdout:\n{stdout.getvalue()}\nStderr:\n{stderr.getvalue()}"
-            no_runtime_error = False
-        finally:
-            # Restore original directory
-            os.chdir(current_dir)
-
-        return no_runtime_error, exec_result
-
-    def close(self, backup_previous_temp_dir=True):
-        # move temp directory and its content including the data link to backups directory
-        if backup_previous_temp_dir:
-            shutil.move(self.current_temp_dir, os.path.join(self.temp_root_dir, "backups"))
-        else:
-            shutil.rmtree(self.current_temp_dir)
-
-    def backup_state(self, unique_id: str = None):
-        # copy all the temp directory (excluding data directory) into a folder named by unique_id into backups directory
-        if unique_id is None:
-            self.last_unique_id_backup = unique_id = str(uuid.uuid4())
-        if self.get_state(unique_id) != self.get_state():
-            shutil.copytree(self.current_temp_dir, os.path.join(self.temp_root_dir, "backups", unique_id),
-                            ignore=shutil.ignore_patterns('data'))
-        return unique_id
-
-    def restore_state(self, unique_id):
-        from_folder = os.path.join(self.temp_root_dir, "backups", unique_id)
-        if not os.path.exists(from_folder): return "Restore state folder not found"
-        if self.get_state(unique_id) != self.get_state():
-            # copy all the content of the backup directory into the temp directory (excluding data directory)
-            self.reset(backup_previous_temp_dir=False)
-            # copy all the content of the backup directory into the temp directory which already contains the data directory
-            shutil.copytree(from_folder, self.current_temp_dir, ignore=shutil.ignore_patterns('data'),
-                            dirs_exist_ok=True)
-            return "State restored"
-        else:
-            return "State identical to backup folder"
-
-    def restore_last_state(self):
-        if self.last_unique_id_backup:
-            self.restore_state(self.last_unique_id_backup)
-            return "Last state restored"
-        else:
-            return "No last state to restore"
-
-    def get_state(self, unique_id=None, extended_comparison=False):
-        # return a dictionary containing the content of the temp directory
-        state = {}
-        state_folder = self.current_temp_dir if unique_id is None else os.path.join(self.temp_root_dir, "backups",
-                                                                                    unique_id)
-        if not os.path.exists(state_folder):
-            return "No state found"
-        for root, dirs, files in os.walk(state_folder):
-            for file in files:
-                file_path = os.path.join(root, file)
-                with open(file_path, "rb") as f:
-                    file_content = f.read()
-                if extended_comparison:
-                    file_stat = os.stat(file_path)  # Capture file's metadata
-                    state[file_path] = {"hash": hashlib.sha256(file_content).hexdigest(), "mtime": file_stat.st_mtime}
-                else:
-                    state[file_path] = hashlib.sha256(file_content).hexdigest()
-        # convert the dictionary into a string useful for comparison and analysis by language models
-        state_text = "Files directory content: " + (json.dumps(state) if state.keys().__len__() > 0 else "empty")
-        return state_text
-
-    def get_score(self):
-        # indicate that automatic scoring is not set, then ask the user to provide a score between 0 and 1, we ensure that the score is a float between 0 and 1
-        score = None
-        while score is None:
-            try:
-                score = float(input("No automatic get_score set, please provide a score between 0 and 1: "))
-                if score < 0 or score > 1:
-                    score = None
-            except ValueError:
-                pass
-        return {'score (top:1, worst:0)': score}
-
-    def set_score_function(self, score_function_code: str):
-        local_scope = {'self': self}
-        func_name = re.search(r'def (\w+)\(', score_function_code).group(1)
-        if validate_function_code(score_function_code, func_name, local_scope):
-            self.get_score = types.MethodType(local_scope[func_name], self)
-
-    def set_state_function(self, state_function_code: str):
-        local_scope = {'self': self}
-        func_name = re.search(r'def (\w+)\(', state_function_code).group(1)
-        if validate_function_code(state_function_code, func_name, local_scope):
-            self.get_state = types.MethodType(local_scope[func_name], self)
-
-
-class EnvironmentManager:
-    def __init__(self, env_type="default", **kwargs):
-        if env_type == "techsynthesis":
-            from env.IR_CPS_TechSynthesis.env import VoyagerEnvIR_CPS_TechSynthesis
-            # pass to VoyagerEnvIR_CPS_TechSynthesis all the args from the EnvironmentManager
-            self.env = VoyagerEnvIR_CPS_TechSynthesis(**kwargs)
-        else:
-            self.env = Environment()
-        self.env.reset()
-
-    def get_environment(self):
-        return self.env
 
 
 def apply_special_criteria(agent, special_criteria, available_locals=None):
@@ -235,7 +96,7 @@ def apply_special_criteria(agent, special_criteria, available_locals=None):
                 if agent_name != class_name and agent_name not in ['all', '']: continue
             if hasattr(agent, key):
                 setattr(agent, key, value)
-                print(f"Special criteria applied to {agent}'s class property: {key} = {value}")
+              
             elif key in available_locals:
                 new_params[key] = value
                 print(f"Special criteria applicable to {agent}'s local variables: {key} = {value}")
@@ -289,7 +150,7 @@ class TaskIdentificationAgent:
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
                  premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, automation=None, model_choice=None,
                  criteria=None, params_user_message=None, temperature_min=0., temperature_max=1.,
-                 num_parallel_inferences=1, fixed_coach=False, special_criteria=None):
+                 num_parallel_inferences=1, agcoach_num_parallel_inferences=1, fixed_coach=False, special_criteria=None):
         self.additional_check_list = None
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
@@ -304,7 +165,8 @@ class TaskIdentificationAgent:
 
         kw_common_args = apply_criteria_and_prepare_monitor_args(self, special_criteria, locals())
 
-        self.human_llm_identify_best_task = HumanLLMMonitor( **kw_common_args)  #,output_schema="identify_best_task.schema.py")
+        #self.criteria = criteria, self.params_user_message = params_user_message, self.temperature_min = temperature_min, self.temperature_max = temperature_max
+        self.human_llm_identify_best_task: HumanLLMMonitor = HumanLLMMonitor(**kw_common_args)#,output_schema="identify_best_task.schema.py")
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
@@ -322,6 +184,7 @@ class TaskIdentificationAgent:
         envs_status = "\n".join([env.get_state() for env in self.envs])
         few_shots = self.human_llm_identify_best_task.get_multiple_few_shots(
             few_shots_params=self.params_user_message)
+        print(few_shots)
         self.human_llm_identify_best_task.user_message_few_shots = self.params_user_message
 
         # User message template
@@ -339,7 +202,17 @@ class TaskIdentificationAgent:
         if hasattr(self, 'log_user_message') and self.log_user_message:
             with open(self.log_user_message, "a") as f:
                 f.write("Coach -- identify_best_task:<<\n" + user_message + "\n>>\n\n")
-
+                
+        original_stdout = sys.stdout
+        sys.stdout = open('system_debug.txt', 'w') 
+        # print(self.problem_prompts_subdir + 'identify_best_task')
+        sys.stdout=original_stdout 
+        
+        original_stdout = sys.stdout
+        sys.stdout = open('user_message.txt', 'w') 
+        # print(user_message)
+        sys.stdout=original_stdout  
+        
         task = self.human_llm_identify_best_task.CallHumanLLM(
             system_prompt_template=self.problem_prompts_subdir + 'identify_best_task',
             user_message=user_message,
@@ -347,6 +220,7 @@ class TaskIdentificationAgent:
             model_choice=self.model_choice,
             stream_output=True
         )
+        
         return task
 
     def expand_criteria_aligned(self, criteria):
@@ -390,7 +264,7 @@ class CodingAgent:
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
                  db_collection_success="successful_tasks", db_collection_failed="failed_tasks", skip_rounds=0,
                  llmORchains_list=None, automation=None, model_choice=None, special_criteria=None, temperature_min=0.,
-                 temperature_max=1., num_parallel_inferences=2):
+                 temperature_max=1., num_parallel_inferences=1, primitives_dir=None):
         #super().__init__(llm)
         self.additional_check_list = None
         self.name = self.__class__.__name__
@@ -423,6 +297,7 @@ class CodingAgent:
             for key, value in self.additional_check_list.items():
                 self.human_llm_code_task.add_inference_check(key, value)
         # "CodingAgent#additional_check_list": [(check_name, check_function), ...]
+        self.primitives_dir = primitives_dir
 
     def parse_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None,
                                 automatic_tests=True, output_id=None):
@@ -444,7 +319,7 @@ class CodingAgent:
         error = None
         while retry > 0:
             try:
-                if language == "py":  # Python case
+                if language == "py":  # Python caset
                     if code is None:
                         # Match Python code blocks
                         code_pattern = re.compile(r"```python(.*?)```", re.DOTALL)
@@ -572,17 +447,14 @@ class CodingAgent:
         error_patches, _ = HumanLLMMonitor.get_agent_data(self.name, 'error_patches', metadata_filter=metadata)
         error_patches = error_patches if error_patches else []
 
-        primitives = self.get_primitives()
+        primitives = self.get_primitives(self.primitives_dir)
         parsed_code = getattr(self, 'parsed_code', None) if parsed_code is None else parsed_code
         current_skip_rounds = self.human_llm_code_task.skip_rounds  # save the initial value to align it for code validation
 
         if isinstance(parsed_code, dict) and parsed_code["program_code"] not in self.processed_codes:
             self.processed_codes.add(parsed_code["program_code"])
-        elif skip_already_processed or not isinstance(parsed_code,
-                                                      dict):  # This logic speedup because the same code should have the same score BUT only on the same problem & state
+        elif skip_already_processed or not isinstance(parsed_code, dict):  # This logic speedup because the same code should have the same score BUT only on the same problem & state
             return None
-
-        #smart_print(f"************ Code parsed result ************\n{parsed_code}\n************************".replace("\\n", "\n"), self.name, "run_tests_on_code RESULT")
 
         # Set initial state before running tests or runnable code
         no_runtime_errors, exec_results = [], []
@@ -610,8 +482,7 @@ class CodingAgent:
                 matching_tests = [test for doc_id, test in parsed_code["tests"] if doc_id == env.id] if parsed_code[
                     "tests"] else [parsed_code['runnable_code']]
                 if not matching_tests:
-                    no_runtime_error, exec_result = False, f"Error: no test found for given id {env.id}" if parsed_code[
-                        "tests"] else f"Error: no runnable code found nor tests"
+                    no_runtime_error, exec_result = False, f"Error: no test found for given id {env.id}" if parsed_code["tests"] else f"Error: no runnable code found nor tests"
                 else:
                     # Concatenate common code with program and tests or runnable code
                     code_to_run = common_code + parsed_code["program_code"] + "\n" + "\n".join(matching_tests)
@@ -619,10 +490,8 @@ class CodingAgent:
                                 "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
                     no_runtime_error, exec_result = env.step(code_to_run)
                     if no_runtime_error:
-                        smart_print("TEST SUCCESSFUL", custom_agent if custom_agent else self.name,
-                                    "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
-                        smart_print(env.get_state(extended=True), custom_agent if custom_agent else self.name,
-                                    "CODE_RESULT", optional=False, column_id=output_id)
+                        smart_print("TEST SUCCESSFUL", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                        smart_print(env.get_state(), custom_agent if custom_agent else self.name, "CODE_RESULT", optional=False, column_id=output_id)
                     while not no_runtime_error and current_skip_rounds <= 0:
                         smart_print("\033[31mCODE ERROR\033[0m: " + exec_result,
                                     custom_agent if custom_agent else self.name,
@@ -649,7 +518,7 @@ class CodingAgent:
                             # if in websocket, then get from self.human_llm_code_task.premium_llm
                             if HumanLLMMonitor.use_websocket:
                                 edited_code = self.human_llm_code_task.temp_inference_result_content
-                                print(f"EDITED CODE: {edited_code}")
+                              
                             else:
                                 edited_code = _visual_input(parsed_code["program_code"], filetype="py",
                                                             message_type="fix_error", agent_name=self.name,
@@ -699,52 +568,53 @@ class CodingAgent:
                             column_id=output_id)
                         # If no runtime error, store the error and diff
                         if no_runtime_error:
-                            smart_print(env.get_state(extended=True), custom_agent if custom_agent else self.name,
-                                        "CODE_RESULT", optional=False, column_id=output_id)
+                            smart_print(env.get_state(), custom_agent if custom_agent else self.name, "CODE_RESULT", optional=False, column_id=output_id)
                             diff = difflib.unified_diff(prev_code.splitlines(), edited_code.splitlines(), lineterm='')
                             diff_text = '\n'.join(diff)
                             # Avoid duplicates: check if the error and diff combination already exists
                             if (exec_result, diff_text) not in error_patches:
                                 error_patches.append((exec_result, diff_text))
                                 # Store updated error_patches
-                                HumanLLMMonitor.add_agent_data(self.name, 'error_patches', error_patches,
-                                                               metadata=metadata)
+                                HumanLLMMonitor.add_agent_data(self.name, 'error_patches', error_patches, metadata=metadata)
 
-            # Append the results for each environment
             no_runtime_errors.append(no_runtime_error)
             exec_results.append(exec_result)
+
         # Calculate total time taken  # Added line
         total_execution_time = time.time() - start_time
-
         # Return combined results
-        result = (parsed_code, all(no_runtime_errors), exec_results, [env.get_score() for env in self.envs],
-                  [env.get_state(extended=False) for env in self.envs], total_execution_time)
+        if isinstance(self.envs[0], SWEBenchEnvironment):
+            scores = [env.get_score(parsed_code["program_code"]) for env in self.envs]
+        else:
+            scores = [env.get_score() for env in self.envs]
+        result = (parsed_code, all(no_runtime_errors), exec_results, scores, [env.get_state() for env in self.envs], total_execution_time)
 
         if restore_state:
             for env in self.envs:
                 env.restore_last_state()
-
         return result
 
-
-    def get_primitives(self):
+    def get_primitives(self, path_folder):
         primitives = []
-        # Add the pipelines folder for the primitives
-        if self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/":
-            path_folder = "pipelines/pipelines"
-        else:
-            path_folder = "primitives/generate_primitives"
         folder_path = os.path.join(os.path.dirname(__file__), path_folder)
         # Utiliser os.listdir pour ne pas parcourir les sous-répertoires
+
         for file in os.listdir(folder_path):
             if file.endswith(".py"):
                 smart_print(f"File load: {file}", "CodingAgent", "Files loaded", optional=True)
                 file_path = os.path.join(folder_path, file)
                 with open(file_path, "r") as f:
                     primitives.append(f.read())
+        with open('primitives_checking.txt', 'w') as file:
+          sys.stdout = file  # Redirect standard output to the file
+
+        sys.stdout = sys.__stdout__                    
         return primitives
 
     def code_task_and_run_test(self, refined_task):
+
+        print('Starting code_task_and_run_test')
+
         def flatten_and_pair(nested_list):
             def flatten(nested):
                 flat_list = []
@@ -798,11 +668,13 @@ class CodingAgent:
         previous_codes = previous_codes if previous_codes else []
         error_patches = flatten_and_pair(error_patches) if error_patches else []
 
-        env_states = "\n".join([env.get_state(extended=False) for env in self.envs])
-        primitives = "\n".join(self.get_primitives())
+        env_states = "\n".join([env.get_state() for env in self.envs])
+        primitives = "\n".join(self.get_primitives(self.primitives_dir))
         successful_tasks = "\n".join(HumanLLMMonitor.get_learnt_tasks())
         failed_tasks = "\n".join(HumanLLMMonitor.get_failed_tasks())
         validation_response_um = "\n".join(HumanLLMMonitor.get_validation_results())
+
+        # print("Primitives: ", primitives)
 
         previous_attempts = ""
         for errors_list, scores_list, codes_list in zip(previous_errors, previous_scores, previous_codes):
@@ -850,6 +722,7 @@ class CodingAgent:
         # Ajouter temperature seulement si l'attribut temperature existe dans l'instance
         if hasattr(self, 'temperature'):
             kwargs["temperature_max"] = self.temperature
+        
 
         # Appeler la méthode avec les arguments sous forme de **kwargs
         codes = self.human_llm_code_task.CallHumanLLM(**kwargs)
@@ -1004,6 +877,8 @@ class CapitalizationAgent:
                 self.human_llm_generate_function_description.add_inference_check(key, value)
 
     def capitalize_successful_tasks(self, task_description: str, parsed_code: str) -> None:
+
+        print('Starting capitalize_successful_tasks')
         import socket, uuid, datetime
 
         function_name = parsed_code.get("main_function_name",
@@ -1032,6 +907,7 @@ class CapitalizationAgent:
                                                                                                                 "\n"),
                 self.name, "capitalize_successful_tasks SUCCESS", optional=True)
         else:
+            function_name = parsed_code.get("main_function_name", parsed_code.get("main_function", {}).get("name", "unknown"))
             # save function program_code in a file under the functions directory and add to the function signature the generated dosctring
             function_file_path = os.path.join("functions", function_name + ".py")
             tool_description = str(self.generate_tool_description(function_name, parsed_code["program_code"]))
@@ -1079,8 +955,7 @@ class CapitalizationAgent:
             docstring_matches = docstring_pattern.findall(tool_description)
             docstring = docstring_matches[0] if docstring_matches else f'"""{tool_description}"""'
             # use regex to add docstring to the function parsed_code["main_function_name"] after the def line in parsed_code["program_code"]
-            parsed_code["program_code"] = re.sub(r"(def " + function_name + "\(.*?\):)", r'\1\n    ' + docstring,
-                                                 parsed_code["program_code"], count=1)
+            parsed_code["program_code"] = re.sub(r"(def " + function_name + "\(.*?\):)", r'\1\n    ' + docstring, parsed_code["program_code"], count=1)
             function_file.write(parsed_code["program_code"])
 
         # Open file in VSCode if necessary
@@ -1094,15 +969,19 @@ class CapitalizationAgent:
         # Serialize entry for logging
         serialized_entry = json.dumps({
             "time": datetime.datetime.now().isoformat(),
-            ("class_name" if (
-                    self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/") else "main_function_name"): function_name,
+            ("class_name" if (self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/") else "main_function_name"): function_name,
             "program_code": parsed_code["program_code"],
             "tool_description": tool_description,
             "task_description": task_description,
         }, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
 
+        with open('inspection/results.pkl', 'wb') as f:
+            pickle.dump(serialized_entry, f)
+        
+        print('Adding learnt task')
+
         # Add to vector database with tags
-        tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": HumanLLMMonitor.step_id}
+        tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": int(HumanLLMMonitor.step_id)}
         HumanLLMMonitor.add_learnt_task(serialized_entry, tags)
 
     def capitalize_failed_tasks(self, task_description: str, parsed_code: str) -> None:
@@ -1206,7 +1085,7 @@ class CapitalizationAgent:
 class PlannerAgent:
     def __init__(self, default_llm_choice, envs, premium_llm_choice=None, problem_prompts_subdir=None,
                  skip_rounds=0, llmORchains_list=None, automation=None, model_choice=None, special_criteria=None,
-                 num_parallel_inferences=1, system_prompt_path=None):
+                 num_parallel_inferences=1, primitives_dir=None, system_prompt_path=None):
         # Define necessary class variables
         self.name = self.__class__.__name__
         self.last_user_message = None
@@ -1225,46 +1104,123 @@ class PlannerAgent:
         kw_common_args = apply_criteria_and_prepare_monitor_args(self, special_criteria, locals())
 
         self.human_llm_planner = HumanLLMMonitor(**kw_common_args)
-        self.coding_agent = CodingAgent( default_llm_choice=self.llm, envs=self.envs, premium_llm_choice=None, problem_prompts_subdir=self.problem_prompts_subdir, skip_rounds=self.skip_rounds, llmORchains_list=self.llmORchains_list, automation=self.automation, model_choice=self.model_choice, special_criteria=None, num_parallel_inferences=1)
+        self.coding_agent = CodingAgent( default_llm_choice=self.llm, primitives_dir=primitives_dir, envs=self.envs, premium_llm_choice=None, problem_prompts_subdir=self.problem_prompts_subdir, skip_rounds=self.skip_rounds, llmORchains_list=self.llmORchains_list, automation=self.automation, model_choice=self.model_choice, special_criteria=None, num_parallel_inferences=1)
+        self.special_criteria = special_criteria
+        self.primitives_dir = primitives_dir
 
     def plan(self, question: str, reuse_prompt=None):
         self.last_user_message = question
 
         # Retrieve learnt tasks (functions/code)
+        print("Getting the learnt tasks...")
         learnt_tasks = HumanLLMMonitor.get_learnt_tasks(k=30)
+        # print(learnt_tasks)
         if not learnt_tasks:
             smart_print("No learnt tasks are available to answer the question.", agent_name=self.name)
+            print("No learnt tasks are available to answer the question.")
             return "no code available"
 
         # Prepare the code snippets string
         code_snippets = "\n\n".join(learnt_tasks)
+
+        # if self.envs:
+        #     if isinstance(self.envs[0], SWEBenchEnvironment):
+        #         question = f"Solve the SWE bench problem {self.envs[0].swe_data.instance_id} by finding buggy files, generating patch, applying patch and running tests. Current state of the solution is:\n{self.envs[0].get_state()}.\nOn the basis of current state, provide the best code that shoud be executed next"
+        
+        # print(question)
+
+        print("Got the learnt tasks")
+
+        prebuilt_code = ""
+        for learnt_task in learnt_tasks:
+            loaded = json.loads(learnt_task)
+            prebuilt_code += loaded['program_code'] + "\n"
 
         # Prepare the prompt for the LLM
         prompt_path = reuse_prompt if reuse_prompt else self.system_prompt_path
         prompt_template = HumanLLMMonitor.load_prompt(prompt_path) if prompt_path else (
             "You are a helpful assistant that selects the best functions to answer the user's question.\n"
             "Available code snippets:\n{code_snippets}\n\n"
-            "Please generate the python code that will best answer the question using available questions.")
-            # PROMPT (and code processing) SHOULD BE UPDATED to :
-            # - enable to decide to learn specific tasks/tools/functions if needed
-            # - use @step decoartor on functions to organize a step-by-step execution with possible parallelism-dependencies + remedies-fallback...
-            # - use "past plan" with the last failed plan to improve the current plan
-            # - use data declaration and input/output data workflow management to monitor data for complex problems
-            # - use "reflexion" to update next steps if needed based on previous step result
-            # - use a better "tool" selection management
-            # - allow to create datasets or knowledge bases to use for learning or code in further solving steps
-            # - allow to use a kind of empty HumanLLM agent for "manual" steps or "manual" LLM task learning
+            "Please reuse these functions to create a new function that solves the user query.\n"
+            "If multiple functions do exactly the same thing, choose the most efficient one.\n"
+            "Don't re write the existing functions but only provide a new function that re uses these functions. Also execute that function at the end\n Your new function should also take bot as parameter"
+            "Assume that bot, problem, and env will be automatically set as global variables.\n"
+            "Only provide python code. Don't include any introductory or explanatory text\n"
+            # "Provide full code and also execute the selected function with bot parameter"
+        )
         prompt = prompt_template.format(question=question, code_snippets=code_snippets)
 
         user_message_content = f"User's question:\n{question}"
 
         selected_code = self.human_llm_planner.CallHumanLLM(original_input_messages=[SystemMessage(content=prompt), HumanMessage(content=user_message_content)]) #, automation=self.automation)
         if selected_code:
-            # Execute the code on the environments and handle errors
+            selected_code = prebuilt_code + "\n" + selected_code
+            
             result = self.execute_code_on_envs(selected_code)
-            smart_print(f"Code execution result: {result}", agent_name=self.name)
+            if result:
+                parsed_code, success, exec_results, scores, states, total_execution_time = result
+                if success:
+                    # smart_print("The code was successfully executed on all environments.", agent_name=self.name)
+                    print("Program code: ", parsed_code['program_code'])
+                    print("Main function: ", parsed_code['main_function']['name'])
+                    for env in self.envs:
+                        no_runtime_error, exec_result = env.step(f"{prebuilt_code + parsed_code['program_code']}\n{parsed_code['main_function']['name']}(bot)")
+                        if no_runtime_error:
+                            smart_print(f"Executed successfully for environment {env.id}", agent_name=self.name)
+                        else:
+                            smart_print(f"Error in environment {env.id}: {exec_result}", agent_name=self.name)
+                else:
+                    smart_print("Failed to execute the code.", agent_name=self.name)
         else:
             smart_print("No code was selected by the LLM.", agent_name=self.name)
+
+        # if selected_code:
+        #     # Execute the code on the environments and handle errors
+        #     print("Executing the selected code on the environments...")
+        #     result = self.execute_code_on_envs(selected_code)
+        #     if result:
+        #         parsed_code, success, _, _, _, _ = result
+        #         if success:
+        #             # The code was successfully verified; we can now execute it
+        #             code_to_run = parsed_code['program_code']
+        #             exec_locals = {}
+        #             try:
+        #                 env = self.envs[0]  # Assuming there is only one environment
+        #                 if isinstance(env, SWEBenchEnvironment):
+        #                     print("Executing code on SWEBench environment")
+        #                     print("Code to run:", code_to_run)
+        #                     no_runtime_error, exec_result = env.step(f"{code_to_run}\n{parsed_code['main_function']['name']}(bot)")
+        #                     if no_runtime_error:
+        #                         print(f"Executed successfully for environment {env.id}")
+        #                         smart_print(f"Executed successfully for environment {env.id} with output {exec_result}", agent_name=self.name)
+        #                     else:
+        #                         print(f"Error in environment {env.id}: {exec_result}")
+        #                         smart_print(f"Error in environment {env.id}: {exec_result}", agent_name=self.name)
+        #                 else:
+        #                     # Execute the code in a secure context
+        #                     exec(code_to_run, globals(), exec_locals)
+        #                     main_function_name = parsed_code['main_function']['name']
+        #                     if main_function_name in exec_locals:
+        #                         # Iterate over each environment
+        #                         for env in self.envs:
+        #                             bot = env.synthesis_manager  # Or env.bot if the bot is an attribute of the environment
+        #                             # Call the main function with the appropriate parameters
+        #                             exec_locals[main_function_name](bot)
+        #                             answer = bot.document.document_content.sections_list
+        #                             temp = ""
+        #                             for item in answer:
+        #                                 temp += item.title + "\n" + item.content + "\n"
+        #                             smart_print(f"Response for document {bot.document.title} (Id: {env.id}): {temp}", agent_name=self.name)
+        #                     else:
+        #                         smart_print("The main function was not found in the selected code.", agent_name=self.name)
+        #             except Exception as e:
+        #                 smart_print(f"Error during code execution: {e}", agent_name=self.name)
+        #         else:
+        #             smart_print("The code failed the tests and will not be executed.", agent_name=self.name)
+        #     else:
+        #         smart_print("Failed to execute the code.", agent_name=self.name)
+        # else:
+        #     smart_print("No code was selected by the LLM.", agent_name=self.name)
 
     def execute_code_on_envs(self, code_str):
         # Use the parse_ai_generated_code method to analyze the code
@@ -1276,6 +1232,10 @@ class PlannerAgent:
 
         if parse_success:
             parsed_code = parsed_code_or_error
+            smart_print("Code parsed successfully", agent_name=self.name)
+            return parsed_code, True, None, None, None, None
+
+            # print("Parsed code: ", parsed_code)
             # Use the run_tests_on_code method to verify the code
             result = self.coding_agent.run_tests_on_code( message="", parsed_code=parsed_code, skip_already_processed=False, output_id=None, restore_state=True, custom_agent=self.name)
 
@@ -1299,22 +1259,33 @@ class PlannerAgent:
             smart_print(f"Error during code parsing: {error_message}", agent_name=self.name)
             return None
 
+    def call_llm_with_similar_method(self, prompt, use_premium_llm=False, temperature=0.2):
+        """
+        Calls the LLM inspired by the CallHumanLLM method, without using concurrent.futures or multiple inferences.
+        """
+        # Define the LLM function to use
+        llm_function = self.llmORchains_list.get('premium_llm' if use_premium_llm else 'default_llm')
 
-def validate_function_code(code, function_name, local_scope=None, compile_test_only=False):
-    if local_scope is None:
-        local_scope = {}
-    try:
-        compiled_code = compile(code, '<string>', 'exec')
-        if compile_test_only:
-            return True
-        exec(compiled_code, globals(), local_scope)
-        func = local_scope.get(function_name)
-        if func is None or not callable(func):
-            raise ValueError(f"Function {function_name} is not defined or not callable.")
-        return func
-    except Exception as e:
-        print(f"Error setting {function_name} function: {e}")
-        return None
+        if not llm_function:
+            smart_print("No LLM is available to perform the call.", agent_name=self.name)
+            return ""
+
+        # Prepare the input messages for the LLM
+        system_message = SystemMessage(content="")
+        user_message = HumanMessage(content=prompt)
+        llm_input_messages = [system_message, user_message]
+
+        # Configure the LLM with the desired temperature
+        llm = llm_function.with_config(configurable={"llm_temperature": temperature})
+
+        # Call the LLM
+        try:
+            response = llm.invoke(llm_input_messages)
+            llm_output = response.content if hasattr(response, 'content') else str(response)
+            return llm_output.strip()
+        except Exception as e:
+            smart_print(f"Error during LLM call: {e}", agent_name=self.name)
+            return ""
 
 
 def extract_function_code(task_content, function_name, current_function_code=None):
@@ -1363,11 +1334,13 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               automation=None, allow_custom_score_state_functions=False,
                               params_user_message=None, max_execution_time=900, special_criteria=None,
                               temperature_max=1,
-                              agcoach_num_parallel_inferences=2, fixed_coach=False, return_array=False,
-                              agcoding_num_parallel_inferences=2,
-                              continue_each_loop=False, unique_id=None, functions_to_import=None,
+                              agcoach_num_parallel_inferences=1, fixed_coach=False, return_array=False,
+                              agcoding_num_parallel_inferences=1,
+                              continue_each_loop=False,unique_id=None, primitives_dir=None, functions_to_import=None,
                               embedding_function=None):
     scores = None
+
+    print("Starting learning loop...")
 
     if params_user_message is None and automation is None:
         params_user_message = {
@@ -1375,7 +1348,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             'num': [2, 3, 2],
             'format': ["json", "Jinja2", "Markdown"]
         }
-        smart_print(unique_id, "orchestrate_agents", "XP_unique_id", optional=True)
+        # smart_print(unique_id, "orchestrate_agents", "XP_unique_id", optional=True)
 
     time_end = time.time() + max_execution_time
 
@@ -1404,7 +1377,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     print(f"Automation: {automation}")
 
     # Pour chaque agent, tester si saved_task['agent_name'] est égal a eux, si non => automation = 'skip_once', si oui => automation = saved_task['before_after']
-    agent_taskreco = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
+    agent_taskreco: TaskIdentificationAgent = TaskIdentificationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                              problem_prompts_subdir=problem_prompts_subdir,
                                              premium_llm_by_default=agtask_premium_llm_by_default,
                                              skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list,
@@ -1413,10 +1386,12 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                              model_choice=(
                                                  model_choice[
                                                      'taskreco' if 'taskreco' in model_choice else 'coach'] if type(
-                                                     model_choice) == dict else model_choice),
-                                             criteria=params_user_message, temperature_max=temperature_max,
-                                             num_parallel_inferences=agcoach_num_parallel_inferences,
-                                             fixed_coach=fixed_coach, special_criteria=special_criteria)
+                                                 model_choice) == dict else model_choice),
+                                             criteria=params_user_message,
+            temperature_max=temperature_max,
+            num_parallel_inferences=agcoach_num_parallel_inferences,
+                                             fixed_coach=fixed_coach, 
+            special_criteria=special_criteria)
 
     agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                problem_prompts_subdir=problem_prompts_subdir, skip_rounds=agcoding_skip_rounds,
@@ -1425,8 +1400,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                model_choice=(
                                    model_choice['coding' if 'coding' in model_choice else 'coder'] if type(
                                        model_choice) == dict else model_choice), special_criteria=special_criteria,
-                               num_parallel_inferences=agcoding_num_parallel_inferences)
-
+                              
+                               num_parallel_inferences=agcoding_num_parallel_inferences, primitives_dir=primitives_dir)
     agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                        skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list,
                                        automation=automation['critic'] if isinstance(automation, dict) else automation,
@@ -1454,8 +1429,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
 
     # Global learn loop
     while continue_identifying_tasks and time.time() < time_end:
-        HumanLLMMonitor.step_id = str(uuid.uuid4())
-        display_vram_info()
+        HumanLLMMonitor.step_id = str(random.randint(0, 1000000))
+        # HumanLLMMonitor.step_id = str(uuid.uuid4())
         task = agent_taskreco.identify_best_task()
 
         # Handle multiple-tasks case
@@ -1559,7 +1534,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                     f"total_score_weighted_with_stats: {total_score_weighted_with_stats}; scores['percentage_no_runtime_error']: {scores['percentage_no_runtime_error']}; scores['best_score_without_validation']: {scores['best_score_without_validation']}; validated_score_avg: {validated_score_avg}")
             # add total_score_weighted_with_stats to total_scores
             total_scores.append(total_score_weighted_with_stats)
-        else:
+        
             total_scores.append(0)
 
     # print status of: continue_identifying_tasks and time.time() < time_end
@@ -1624,20 +1599,26 @@ def run_planner(*args, **kwargs):  # NEW VERSION
     if kwargs.get('functions_to_import') is not None:
         # Imports the functions with the regex pattern given from functions directory into the elastic database
         functions = import_functions_from_directory(kwargs.get('functions_to_import'))
+        print("Imported functions:", type(functions))
         for function in functions.items():
+            # print("Function:", function)
             serialized_entry = json.dumps({
                 "time": datetime.now().isoformat(),
-                "class_name": function[0],
+                "main_function_name": function[0],
                 "program_code": function[1],
                 "tool_description": "",
                 "task_description": "",
             }, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
             tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": HumanLLMMonitor.step_id}
-            HumanLLMMonitor.add_learnt_task(serialized_entry, tags)
-
+            print("Adding learnt task:", HumanLLMMonitor.add_learnt_task(serialized_entry, tags))
+        
+    # return
     smart_print(str(kwargs.get('max_execution_time')), "orchestrate_agents", "time_end")
 
     successful_tasks = HumanLLMMonitor.get_learnt_tasks()
+
+    print("Successful tasks:", len(successful_tasks))
+
     successful_tasks_list = [task for task in successful_tasks]
     print(f"Successful tasks: {successful_tasks_list}")
     # Add the pipelines folder for the primitives
@@ -1671,8 +1652,7 @@ def run_planner(*args, **kwargs):  # NEW VERSION
     problem_prompts_subdir = kwargs.get('problem_prompts_subdir')
     if problem_prompts_subdir is None:
         # Get the list of subdirectories in the 'prompts' directory
-        problem_prompts_subdirs = [name for name in os.listdir("prompts") if
-                                   os.path.isdir(os.path.join("prompts", name))]
+        problem_prompts_subdirs = [name for name in os.listdir("prompts") if os.path.isdir(os.path.join("prompts", name))]
         default_subdir = problem_prompts_subdirs[0] if problem_prompts_subdirs else ""
         choice = smart_input("Enter a capital letter for subdirectory (leave empty for default): " + "; ".join(
             f"\n[{i}] {subdir}" for i, subdir in zip(string.ascii_uppercase, problem_prompts_subdirs)) + " ?",
@@ -1680,12 +1660,43 @@ def run_planner(*args, **kwargs):  # NEW VERSION
         problem_prompts_subdir = problem_prompts_subdirs[ord(choice) - 65] if choice and choice.isupper() and ord(
             choice) - 65 in range(len(problem_prompts_subdirs)) else default_subdir
 
+    question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ", agent_name='PlannerAgent').capitalize()
     # Initialize test environments if not provided
+    question_command = question
     test_environments = kwargs.get('test_environments')
     if test_environments is None:
-        env_type = "default"
-        manager = EnvironmentManager(env_type)
-        test_environments = [manager.get_environment()]
+        pattern = r'\b[\w-]+__[\w-]+-\d+\b'
+        instance_ids = re.findall(pattern, question)
+        if instance_ids:
+            problem_prompts_subdir = "SWE_Synthesis"
+            primitives_dir = "primitives/swe_primitives"
+            dataset = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take3", split='train')
+            test_environments = []
+            for instance_id in instance_ids:
+                instance_id = instance_id.lower()
+                print(instance_id)
+                problem = None
+                for data in dataset:
+                    if data['instance_id'] == instance_id:
+                        problem = data
+                        print('Problem set found.')
+                        break
+                if problem is not None:
+                    print('Creating SWE Environment.')
+                    test_environments.append(SWEBenchEnvironment(swe_data=SWEProblem.parse_obj(problem)))
+                else:
+                    raise ValueError("Invalid instance ID.")
+        else:
+            print('No instance ID detected.')
+            env_type = "default"
+            problem_prompts_subdir = "IR_CPS_TechSynthesis"
+            primitives_dir = "primitives/generate_primitives"
+            manager = EnvironmentManager(env_type)
+            test_environments = [manager.get_environment()]
+    
+    kwargs['test_environments'] = test_environments
+    kwargs['problem_prompts_subdir'] = problem_prompts_subdir
+    kwargs['primitives_dir'] = primitives_dir
 
     # Initialize the PlannerAgent with the correct parameters
     planner = PlannerAgent(
@@ -1698,30 +1709,25 @@ def run_planner(*args, **kwargs):  # NEW VERSION
         skip_rounds=kwargs.get('skip_rounds', 0),
         model_choice=kwargs.get('model_choice'),
         num_parallel_inferences=kwargs.get('agcoach_num_parallel_inferences', 1),
+        primitives_dir=primitives_dir,
         special_criteria=kwargs.get('special_criteria')
     )
 
     # Ask the user to formulate their question using smart_input
-    performance = None
-    question = "learn" if automation else smart_input(
-        "Please formulate your question, or launch the learning loop by just sending the message 'learn' (or exit with q/e/quit/exit): ",
-        agent_name='PlannerAgent').capitalize()
-
     smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
-    while question.lower().strip() not in ['q', 'quit', 'e', 'exit']:
-        if question.lower().strip() in ['learn']:
-            performance = run_4agents_learning_loop(*args, **kwargs)
+    while question not in ['q', 'Q', 'quit', 'Quit', 'QUIT', 'e', 'E', 'exit', 'Exit', 'EXIT']:
+        # if question in ['LEARN', 'learn', 'Learn','SWE','LearnSwe','learnSwe']:
+        if "learn" in question_command.lower():
+            # User wants to use the learning loop
+            run_4agents_learning_loop(*args, **kwargs)
         else:
             temp = planner.plan(question)
             if temp == "no code available":
-                performance = run_4agents_learning_loop(*args, **kwargs)
-
-        question = "e" if automation else smart_input("Please formulate your question (or exit with q/e/quit/exit): ",
-                                                      agent_name='PlannerAgent')
-
+                run_4agents_learning_loop(*args, **kwargs, unique_id=unique_id)
+        question = smart_input("Please formulate your question (or exit with q/e/quit/exit): ", agent_name='PlannerAgent')
         smart_print(f"Question: {question.capitalize()}", agent_name='PlannerAgent')
 
-    return performance
+    return
 
 
 def get_success_value_in_text(text):
@@ -1762,8 +1768,7 @@ def get_highest_score_index(score_array, mode='total'):
 
     return highest_index
 
-
-def coding_and_validation_loop(agent_coding, agent_validation, task_description, max_attempts,
+def coding_and_validation_loop(agent_coding: CodingAgent, agent_validation: ValidationAgent, task_description, max_attempts,
                                extra_manual_validation_to_capitalize=True, continue_even_if_successful=True,
                                automation=None, end_time=None):
     metadata = {'step_id': HumanLLMMonitor.step_id}
@@ -1809,24 +1814,19 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
         current_skip_rounds = agent_validation.human_llm_validate_code.skip_rounds
         for index, (parsed_code, no_runtime_error, exec_result, scores, env_states, times) in enumerate(results):
             agent_validation.human_llm_validate_code.skip_rounds = current_skip_rounds  # to prevent skip_rounds decreased multiple times by multiple calls of HumanLLMMonitor
-            smart_print(
-                f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace(
-                    "\\n", "\n"), "coding_and_validation_loop", "coding_and_validation_loop RESULT")
+            smart_print(f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace("\\n", "\n"), "coding_and_validation_loop", "coding_and_validation_loop RESULT")
             validation_agent_feedback = agent_validation.validate_code(parsed_code["program_code"], no_runtime_error,
                                                                        exec_result, task=task_description,
-                                                                       scores=scores, env_states=env_states)
-            smart_print("Agent validation 'feedback' currently only support 1 feedback", "coding_and_validation_loop",
-                        "coding_and_validation_loop WARNING")
+                                                                       scores=scores, env_states=env_states, human_evaluation_required=True)
+            smart_print("Agent validation 'feedback' currently only support 1 feedback", "coding_and_validation_loop","coding_and_validation_loop WARNING")
             validation_agent_feedback = validation_agent_feedback[0]
             afb = validation_agent_feedback.content.replace('\\n', '\n')
-            smart_print("#" * 20 + f"\nAgent validation feedback: {afb}", "coding_and_validation_loop",
-                        "coding_and_validation_loop RESULT")
+            smart_print("#" * 20 + f"\nAgent validation feedback: {afb}", "coding_and_validation_loop", "coding_and_validation_loop RESULT")
 
             if extra_manual_validation_to_capitalize:
                 validated = (smart_input(
                     "#" * 20 + f"\nADD THIS FUNCTION TO LIBRARY ? Please enter 'yes' if this a success and you want to add this function to library, 'no' if this failed: ",
-                    "coding_and_validation_loop").lower() in [
-                                 "yes", "y", True])
+                    "coding_and_validation_loop").lower() in ["yes", "y", True])
             else:
                 validated = get_success_value_in_text(afb) in ["yes", "y", True]
             if validated:
@@ -1878,8 +1878,7 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
                 smart_print("Max attempts reached. Trying a new task.", "coding_and_validation_loop", "VALIDATION_INFO")
 
     # Calculate metrics over all attempts
-    percentage_no_runtime_error = (sum(1 for _, no_runtime_error, _, _, _, _ in all_results if no_runtime_error) / len(
-        all_results)) if all_results else 0
+    percentage_no_runtime_error = (sum(1 for _, no_runtime_error, _, _, _, _ in all_results if no_runtime_error) / len(all_results)) if all_results else 0
     best_score_without_validation = (
         max(max(sum(scores.values()) / len(scores) if len(scores) > 0 else 0 for scores in score_dict) for
             _, _, _, score_dict, _, _ in all_results)) if len(
@@ -1934,7 +1933,6 @@ def coding_and_validation_loop(agent_coding, agent_validation, task_description,
 
     return None, "failed", all_scores  # If no successful code was selected, return failure
 
-
 def sanitized_task_name(task):
     # Implement task name sanitization logic
     return task
@@ -1949,11 +1947,9 @@ class PrintPromptRunnable(Runnable):
         smart_print("\033[31m" + formatted_prompt + "\033[0m")
         return input_msg
 
-
 class ExtractMessage(Runnable):
     def invoke(self, input_msg, config):
         return "\n".join(getattr(message, 'content', message) for message in getattr(input_msg, 'messages', input_msg))
-
 
 def format_prompt(messages):
     prompt_str = ""
@@ -2060,6 +2056,7 @@ def display_vram_info():
 
 if __name__ == "__main__":
     import argparse
+    import pickle
 
     # Handle command line arguments
     parser = argparse.ArgumentParser(description="Run the learning loop with optional WebSocket settings")
@@ -2092,7 +2089,7 @@ if __name__ == "__main__":
     time.sleep(1)  # Adjust if necessary
 
     # Initialize the default and premium LLMs
-    #from langchain_groq import ChatGroq
+    # from langchain_groq import ChatGroq
     llmORchains_list = {
         "default_llm": ChatOpenAI(
             model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False,
@@ -2107,23 +2104,30 @@ if __name__ == "__main__":
     }
 
     # Set the documents to test/validate as a list of environments
-    documents = [{'id': "cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
-                  'title': "Complex QA and language models hybrid architectures, Survey",
-                  'context': "This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
-                  'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"},
-                 {'id': "42252c6c-12f3-4edf-9045-8acd69bc3356",
-                  'title': "Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
-                  'context': "This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
-                  'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
+    # documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
+    #             'title':"Complex QA and language models hybrid architectures, Survey",
+    #         'context':"This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
+    #         'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"},
+    #         { 'id':"42252c6c-12f3-4edf-9045-8acd69bc3356",
+    #             'title':"Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
+    #         'context':"This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
+    #         'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
 
-    envs = []
-    for doc in documents:
-        env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
-                                 target_file_path=doc['target_file_path'], id=doc['id'],
-                                 llm=llmORchains_list["default_llm"]).get_environment()
-        envs.append(env)
+    # documents = [{
+    #     "instance_id": "django__django-14855",
+    #     "text": '''You will be provided with a partial code base and an issue statement explaining a problem to resolve. <issue> Wrong URL generated by get_admin_url for readonly field in custom Admin Site Description When a model containing a ForeignKey field is viewed (or edited) in a custom Admin Site, and that ForeignKey field is listed in readonly_fields, the url generated for the link is /admin/... instead of /custom-admin/.... This appears to be caused by the following line in django.contrib.admin.helpers get_admin_url: url = reverse(url_name, args=[quote(remote_obj.pk)]) Other parts of the admin use the current_app keyword parameter to identify the correct current name of the Admin Site. (See django.contrib.admin.options.ModelAdmin response_add as just one example) I have been able to correct this specific issue by replacing the above line with: url = reverse( url_name, args=[quote(remote_obj.pk)], current_app=self.model_admin.admin_site.name ) However, I don't know if there are any side effects and I have not yet run the full suite of tests on this. Mostly looking for feedback whether I'm on the right track. </issue> <code> [start of README.rst] 1 ====== 2 Django 3 ====== 4 5 Django is a high-level Python web framework that encourages rapid development 6 and clean, pragmatic design. Thanks for checking it out. 7 8 All documentation is in the "``docs``" directory and online at 9 https://docs.djangoproject.com/en/stable/. If you're just getting started, 10 here's how we recommend you read the docs: 11 12 * First, read ``docs/intro/install.txt`` for instructions on installing Django. 13 14 * Next, work through the tutorials in order (``docs/intro/tutorial01.txt``, 15 ``docs/intro/tutorial02.txt``, etc.). 16 17 * If you want to set up an actual deployment server, read 18 ``docs/howto/deployment/index.txt`` for instructions. 19 20 * You'll probably want to read through the topical guides (in ``docs/topics``) 21 next; from there you can jump to the HOWTOs (in ``docs/howto``) for specific 22 problems, and check out the reference (``docs/ref``) for gory details. 23 24 * See ``docs/README`` for instructions on building an HTML version of the docs. 25 26 Docs are updated rigorously. If you find any problems in the docs, or think 27 they should be clarified in any way, please take 30 seconds to fill out a 28 ticket here: https://code.djangoproject.com/newticket 29 30 To get more help: 31 32 * Join the ``#django`` channel on ``irc.libera.chat``. Lots of helpful people 33 hang out there. See https://web.libera.chat if you're new to IRC. 34 35 * Join the django-users mailing list, or read the archives, at 36 https://groups.google.com/group/django-users. 37 38 To contribute to Django: 39 40 * Check out https://docs.djangoproject.com/en/dev/internals/contributing/ for 41 information about getting involved. 42 43 To run Django's test suite: 44 45 * Follow the instructions in the "Unit tests" section of 46 ``docs/internals/contributing/writing-code/unit-tests.txt``, published online at 47 https://docs.djangoproject.com/en/dev/internals/contributing/writing-code/unit-tests/#running-the-unit-tests 48 49 Supporting the Development of Django 50 ==================================== 51 52 Django's development depends on your contributions. 53 54 If you depend on Django, remember to support the Django Software Foundation: https://www.djangoproject.com/fundraising/ 55 [end of README.rst] [start of django/contrib/admin/helpers.py] 1 import json 2 3 from django import forms 4 from django.contrib.admin.utils import ( 5 display_for_field, flatten_fieldsets, help_text_for_field, label_for_field, 6 lookup_field, quote, 7 ) 8 from django.core.exceptions import ObjectDoesNotExist 9 from django.db.models.fields.related import ( 10 ForeignObjectRel, ManyToManyRel, OneToOneField, 11 ) 12 from django.forms.utils import flatatt 13 from django.template.defaultfilters import capfirst, linebreaksbr 14 from django.urls import NoReverseMatch, reverse 15 from django.utils.html import conditional_escape, format_html 16 from django.utils.safestring import mark_safe 17 from django.utils.translation import gettext, gettext_lazy as _ 18 19 ACTION_CHECKBOX_NAME = '_selected_action' 20 21 22 class ActionForm(forms.Form): 23 action = forms.ChoiceField(label=_('Action:')) 24 select_across = forms.BooleanField( 25 label='', 26 required=False, 27 initial=0, 28 widget=forms.HiddenInput({'class': 'select-across'}), 29 ) 30 31 32 checkbox = forms.CheckboxInput({'class': 'action-select'}, lambda value: False) 33 34 35 class AdminForm: 36 def __init__(self, form, fieldsets, prepopulated_fields, readonly_fields=None, model_admin=None): 37 self.form, self.fieldsets = form, fieldsets 38 self.prepopulated_fields = [{ 39 'field': form[field_name], 40 'dependencies': [form[f] for f in dependencies] 41 } for field_name, dependencies in prepopulated_fields.items()] 42 self.model_admin = model_admin 43 if readonly_fields is None: 44 readonly_fields = () 45 self.readonly_fields = readonly_fields 46 47 def __repr__(self): 48 return ( 49 f'<{self.__class__.__qualname__}: ' 50 f'form={self.form.__class__.__qualname__} ' 51 f'fieldsets={self.fieldsets!r}>' 52 ) 53 54 def __iter__(self): 55 for name, options in self.fieldsets: 56 yield Fieldset( 57 self.form, name, 58 readonly_fields=self.readonly_fields, 59 model_admin=self.model_admin, 60 **options 61 ) 62 63 @property 64 def errors(self): 65 return self.form.errors 66 67 @property 68 def non_field_errors(self): 69 return self.form.non_field_errors 70 71 @property 72 def media(self): 73 media = self.form.media 74 for fs in self: 75 media = media + fs.media 76 return media 77 78 79 class Fieldset: 80 def __init__(self, form, name=None, readonly_fields=(), fields=(), classes=(), 81 description=None, model_admin=None): 82 self.form = form 83 self.name, self.fields = name, fields 84 self.classes = ' '.join(classes) 85 self.description = description 86 self.model_admin = model_admin 87 self.readonly_fields = readonly_fields 88 89 @property 90 def media(self): 91 if 'collapse' in self.classes: 92 return forms.Media(js=['admin/js/collapse.js']) 93 return forms.Media() 94 95 def __iter__(self): 96 for field in self.fields: 97 yield Fieldline(self.form, field, self.readonly_fields, model_admin=self.model_admin) 98 99 100 class Fieldline: 101 def __init__(self, form, field, readonly_fields=None, model_admin=None): 102 self.form = form # A django.forms.Form instance 103 if not hasattr(field, "__iter__") or isinstance(field, str): 104 self.fields = [field] 105 else: 106 self.fields = field 107 self.has_visible_field = not all( 108 field in self.form.fields and self.form.fields[field].widget.is_hidden 109 for field in self.fields 110 ) 111 self.model_admin = model_admin 112 if readonly_fields is None: 113 readonly_fields = () 114 self.readonly_fields = readonly_fields 115 116 def __iter__(self): 117 for i, field in enumerate(self.fields): 118 if field in self.readonly_fields: 119 yield AdminReadonlyField(self.form, field, is_first=(i == 0), model_admin=self.model_admin) 120 else: 121 yield AdminField(self.form, field, is_first=(i == 0)) 122 123 def errors(self): 124 return mark_safe( 125 '\n'.join( 126 self.form[f].errors.as_ul() for f in self.fields if f not in self.readonly_fields 127 ).strip('\n') 128 ) 129 130 131 class AdminField: 132 def __init__(self, form, field, is_first): 133 self.field = form[field] # A django.forms.BoundField instance 134 self.is_first = is_first # Whether this field is first on the line 135 self.is_checkbox = isinstance(self.field.field.widget, forms.CheckboxInput) 136 self.is_readonly = False 137 138 def label_tag(self): 139 classes = [] 140 contents = conditional_escape(self.field.label) 141 if self.is_checkbox: 142 classes.append('vCheckboxLabel') 143 144 if self.field.field.required: 145 classes.append('required') 146 if not self.is_first: 147 classes.append('inline') 148 attrs = {'class': ' '.join(classes)} if classes else {} 149 # checkboxes should not have a label suffix as the checkbox appears 150 # to the left of the label. 151 return self.field.label_tag( 152 contents=mark_safe(contents), attrs=attrs, 153 label_suffix='' if self.is_checkbox else None, 154 ) 155 156 def errors(self): 157 return mark_safe(self.field.errors.as_ul()) 158 159 160 class AdminReadonlyField: 161 def __init__(self, form, field, is_first, model_admin=None): 162 # Make self.field look a little bit like a field. This means that 163 # {{ field.name }} must be a useful class name to identify the field. 164 # For convenience, store other field-related data here too. 165 if callable(field): 166 class_name = field.__name__ if field.__name__ != '<lambda>' else '' 167 else: 168 class_name = field 169 170 if form._meta.labels and class_name in form._meta.labels: 171 label = form._meta.labels[class_name] 172 else: 173 label = label_for_field(field, form._meta.model, model_admin, form=form) 174 175 if form._meta.help_texts and class_name in form._meta.help_texts: 176 help_text = form._meta.help_texts[class_name] 177 else: 178 help_text = help_text_for_field(class_name, form._meta.model) 179 180 if field in form.fields: 181 is_hidden = form.fields[field].widget.is_hidden 182 else: 183 is_hidden = False 184 185 self.field = { 186 'name': class_name, 187 'label': label, 188 'help_text': help_text, 189 'field': field, 190 'is_hidden': is_hidden, 191 } 192 self.form = form 193 self.model_admin = model_admin 194 self.is_first = is_first 195 self.is_checkbox = False 196 self.is_readonly = True 197 self.empty_value_display = model_admin.get_empty_value_display() 198 199 def label_tag(self): 200 attrs = {} 201 if not self.is_first: 202 attrs["class"] = "inline" 203 label = self.field['label'] 204 return format_html('<label{}>{}{}</label>', flatatt(attrs), capfirst(label), self.form.label_suffix) 205 206 def get_admin_url(self, remote_field, remote_obj): 207 url_name = 'admin:%s_%s_change' % ( 208 remote_field.model._meta.app_label, 209 remote_field.model._meta.model_name, 210 ) 211 try: 212 url = reverse(url_name, args=[quote(remote_obj.pk)]) 213 return format_html('<a href="{}">{}</a>', url, remote_obj) 214 except NoReverseMatch: 215 return str(remote_obj) 216 217 def contents(self): 218 from django.contrib.admin.templatetags.admin_list import _boolean_icon 219 field, obj, model_admin = self.field['field'], self.form.instance, self.model_admin 220 try: 221 f, attr, value = lookup_field(field, obj, model_admin) 222 except (AttributeError, ValueError, ObjectDoesNotExist): 223 result_repr = self.empty_value_display 224 else: 225 if field in self.form.fields: 226 widget = self.form[field].field.widget 227 # This isn't elegant but suffices for contrib.auth's 228 # ReadOnlyPasswordHashWidget. 229 if getattr(widget, 'read_only', False): 230 return widget.render(field, value) 231 if f is None: 232 if getattr(attr, 'boolean', False): 233 result_repr = _boolean_icon(value) 234 else: 235 if hasattr(value, "__html__"): 236 result_repr = value 237 else: 238 result_repr = linebreaksbr(value) 239 else: 240 if isinstance(f.remote_field, ManyToManyRel) and value is not None: 241 result_repr = ", ".join(map(str, value.all())) 242 elif ( 243 isinstance(f.remote_field, (ForeignObjectRel, OneToOneField)) and 244 value is not None 245 ): 246 result_repr = self.get_admin_url(f.remote_field, value) 247 else: 248 result_repr = display_for_field(value, f, self.empty_value_display) 249 result_repr = linebreaksbr(result_repr) 250 return conditional_escape(result_repr) 251 252 253 class InlineAdminFormSet: 254 """ 255 A wrapper around an inline formset for use in the admin system. 256 """ 257 def __init__(self, inline, formset, fieldsets, prepopulated_fields=None, 258 readonly_fields=None, model_admin=None, has_add_permission=True, 259 has_change_permission=True, has_delete_permission=True, 260 has_view_permission=True): 261 self.opts = inline 262 self.formset = formset 263 self.fieldsets = fieldsets 264 self.model_admin = model_admin 265 if readonly_fields is None: 266 readonly_fields = () 267 self.readonly_fields = readonly_fields 268 if prepopulated_fields is None: 269 prepopulated_fields = {} 270 self.prepopulated_fields = prepopulated_fields 271 self.classes = ' '.join(inline.classes) if inline.classes else '' 272 self.has_add_permission = has_add_permission 273 self.has_change_permission = has_change_permission 274 self.has_delete_permission = has_delete_permission 275 self.has_view_permission = has_view_permission 276 277 def __iter__(self): 278 if self.has_change_permission: 279 readonly_fields_for_editing = self.readonly_fields 280 else: 281 readonly_fields_for_editing = self.readonly_fields + flatten_fieldsets(self.fieldsets) 282 283 for form, original in zip(self.formset.initial_forms, self.formset.get_queryset()): 284 view_on_site_url = self.opts.get_view_on_site_url(original) 285 yield InlineAdminForm( 286 self.formset, form, self.fieldsets, self.prepopulated_fields, 287 original, readonly_fields_for_editing, model_admin=self.opts, 288 view_on_site_url=view_on_site_url, 289 ) 290 for form in self.formset.extra_forms: 291 yield InlineAdminForm( 292 self.formset, form, self.fieldsets, self.prepopulated_fields, 293 None, self.readonly_fields, model_admin=self.opts, 294 ) 295 if self.has_add_permission: 296 yield InlineAdminForm( 297 self.formset, self.formset.empty_form, 298 self.fieldsets, self.prepopulated_fields, None, 299 self.readonly_fields, model_admin=self.opts, 300 ) 301 302 def fields(self): 303 fk = getattr(self.formset, "fk", None) 304 empty_form = self.formset.empty_form 305 meta_labels = empty_form._meta.labels or {} 306 meta_help_texts = empty_form._meta.help_texts or {} 307 for i, field_name in enumerate(flatten_fieldsets(self.fieldsets)): 308 if fk and fk.name == field_name: 309 continue 310 if not self.has_change_permission or field_name in self.readonly_fields: 311 form_field = empty_form.fields.get(field_name) 312 widget_is_hidden = False 313 if form_field is not None: 314 widget_is_hidden = form_field.widget.is_hidden 315 yield { 316 'name': field_name, 317 'label': meta_labels.get(field_name) or label_for_field( 318 field_name, 319 self.opts.model, 320 self.opts, 321 form=empty_form, 322 ), 323 'widget': {'is_hidden': widget_is_hidden}, 324 'required': False, 325 'help_text': meta_help_texts.get(field_name) or help_text_for_field(field_name, self.opts.model), 326 } 327 else: 328 form_field = empty_form.fields[field_name] 329 label = form_field.label 330 if label is None: 331 label = label_for_field(field_name, self.opts.model, self.opts, form=empty_form) 332 yield { 333 'name': field_name, 334 'label': label, 335 'widget': form_field.widget, 336 'required': form_field.required, 337 'help_text': form_field.help_text, 338 } 339 340 def inline_formset_data(self): 341 verbose_name = self.opts.verbose_name 342 return json.dumps({ 343 'name': '#%s' % self.formset.prefix, 344 'options': { 345 'prefix': self.formset.prefix, 346 'addText': gettext('Add another %(verbose_name)s') % { 347 'verbose_name': capfirst(verbose_name), 348 }, 349 'deleteText': gettext('Remove'), 350 } 351 }) 352 353 @property 354 def forms(self): 355 return self.formset.forms 356 357 @property 358 def non_form_errors(self): 359 return self.formset.non_form_errors 360 361 @property 362 def media(self): 363 media = self.opts.media + self.formset.media 364 for fs in self: 365 media = media + fs.media 366 return media 367 368 369 class InlineAdminForm(AdminForm): 370 """ 371 A wrapper around an inline form for use in the admin system. 372 """ 373 def __init__(self, formset, form, fieldsets, prepopulated_fields, original, 374 readonly_fields=None, model_admin=None, view_on_site_url=None): 375 self.formset = formset 376 self.model_admin = model_admin 377 self.original = original 378 self.show_url = original and view_on_site_url is not None 379 self.absolute_url = view_on_site_url 380 super().__init__(form, fieldsets, prepopulated_fields, readonly_fields, model_admin) 381 382 def __iter__(self): 383 for name, options in self.fieldsets: 384 yield InlineFieldset( 385 self.formset, self.form, name, self.readonly_fields, 386 model_admin=self.model_admin, **options 387 ) 388 389 def needs_explicit_pk_field(self): 390 return ( 391 # Auto fields are editable, so check for auto or non-editable pk. 392 self.form._meta.model._meta.auto_field or not self.form._meta.model._meta.pk.editable or 393 # Also search any parents for an auto field. (The pk info is 394 # propagated to child models so that does not need to be checked 395 # in parents.) 396 any(parent._meta.auto_field or not parent._meta.model._meta.pk.editable 397 for parent in self.form._meta.model._meta.get_parent_list()) 398 ) 399 400 def pk_field(self): 401 return AdminField(self.form, self.formset._pk_field.name, False) 402 403 def fk_field(self): 404 fk = getattr(self.formset, "fk", None) 405 if fk: 406 return AdminField(self.form, fk.name, False) 407 else: 408 return "" 409 410 def deletion_field(self): 411 from django.forms.formsets import DELETION_FIELD_NAME 412 return AdminField(self.form, DELETION_FIELD_NAME, False) 413 414 def ordering_field(self): 415 from django.forms.formsets import ORDERING_FIELD_NAME 416 return AdminField(self.form, ORDERING_FIELD_NAME, False) 417 418 419 class InlineFieldset(Fieldset): 420 def __init__(self, formset, *args, **kwargs): 421 self.formset = formset 422 super().__init__(*args, **kwargs) 423 424 def __iter__(self): 425 fk = getattr(self.formset, "fk", None) 426 for field in self.fields: 427 if not fk or fk.name != field: 428 yield Fieldline(self.form, field, self.readonly_fields, model_admin=self.model_admin) 429 430 431 class AdminErrorList(forms.utils.ErrorList): 432 """Store errors for the form/formsets in an add/change view.""" 433 def __init__(self, form, inline_formsets): 434 super().__init__() 435 436 if form.is_bound: 437 self.extend(form.errors.values()) 438 for inline_formset in inline_formsets: 439 self.extend(inline_formset.non_form_errors()) 440 for errors_in_inline_form in inline_formset.errors: 441 self.extend(errors_in_inline_form.values()) 442 [end of django/contrib/admin/helpers.py] [start of django/contrib/admin/models.py] 1 import json 2 3 from django.conf import settings 4 from django.contrib.admin.utils import quote 5 from django.contrib.contenttypes.models import ContentType 6 from django.db import models 7 from django.urls import NoReverseMatch, reverse 8 from django.utils import timezone 9 from django.utils.text import get_text_list 10 from django.utils.translation import gettext, gettext_lazy as _ 11 12 ADDITION = 1 13 CHANGE = 2 14 DELETION = 3 15 16 ACTION_FLAG_CHOICES = ( 17 (ADDITION, _('Addition')), 18 (CHANGE, _('Change')), 19 (DELETION, _('Deletion')), 20 ) 21 22 23 class LogEntryManager(models.Manager): 24 use_in_migrations = True 25 26 def log_action(self, user_id, content_type_id, object_id, object_repr, action_flag, change_message=''): 27 if isinstance(change_message, list): 28 change_message = json.dumps(change_message) 29 return self.model.objects.create( 30 user_id=user_id, 31 content_type_id=content_type_id, 32 object_id=str(object_id), 33 object_repr=object_repr[:200], 34 action_flag=action_flag, 35 change_message=change_message, 36 ) 37 38 39 class LogEntry(models.Model): 40 action_time = models.DateTimeField( 41 _('action time'), 42 default=timezone.now, 43 editable=False, 44 ) 45 user = models.ForeignKey( 46 settings.AUTH_USER_MODEL, 47 models.CASCADE, 48 verbose_name=_('user'), 49 ) 50 content_type = models.ForeignKey( 51 ContentType, 52 models.SET_NULL, 53 verbose_name=_('content type'), 54 blank=True, null=True, 55 ) 56 object_id = models.TextField(_('object id'), blank=True, null=True) 57 # Translators: 'repr' means representation (https://docs.python.org/library/functions.html#repr) 58 object_repr = models.CharField(_('object repr'), max_length=200) 59 action_flag = models.PositiveSmallIntegerField(_('action flag'), choices=ACTION_FLAG_CHOICES) 60 # change_message is either a string or a JSON structure 61 change_message = models.TextField(_('change message'), blank=True) 62 63 objects = LogEntryManager() 64 65 class Meta: 66 verbose_name = _('log entry') 67 verbose_name_plural = _('log entries') 68 db_table = 'django_admin_log' 69 ordering = ['-action_time'] 70 71 def __repr__(self): 72 return str(self.action_time) 73 74 def __str__(self): 75 if self.is_addition(): 76 return gettext('Added “%(object)s”.') % {'object': self.object_repr} 77 elif self.is_change(): 78 return gettext('Changed “%(object)s” — %(changes)s') % { 79 'object': self.object_repr, 80 'changes': self.get_change_message(), 81 } 82 elif self.is_deletion(): 83 return gettext('Deleted “%(object)s.”') % {'object': self.object_repr} 84 85 return gettext('LogEntry Object') 86 87 def is_addition(self): 88 return self.action_flag == ADDITION 89 90 def is_change(self): 91 return self.action_flag == CHANGE 92 93 def is_deletion(self): 94 return self.action_flag == DELETION 95 96 def get_change_message(self): 97 """ 98 If self.change_message is a JSON structure, interpret it as a change 99 string, properly translated. 100 """ 101 if self.change_message and self.change_message[0] == '[': 102 try: 103 change_message = json.loads(self.change_message) 104 except json.JSONDecodeError: 105 return self.change_message 106 messages = [] 107 for sub_message in change_message: 108 if 'added' in sub_message: 109 if sub_message['added']: 110 sub_message['added']['name'] = gettext(sub_message['added']['name']) 111 messages.append(gettext('Added {name} “{object}”.').format(**sub_message['added'])) 112 else: 113 messages.append(gettext('Added.')) 114 115 elif 'changed' in sub_message: 116 sub_message['changed']['fields'] = get_text_list( 117 [gettext(field_name) for field_name in sub_message['changed']['fields']], gettext('and') 118 ) 119 if 'name' in sub_message['changed']: 120 sub_message['changed']['name'] = gettext(sub_message['changed']['name']) 121 messages.append(gettext('Changed {fields} for {name} “{object}”.').format( 122 **sub_message['changed'] 123 )) 124 else: 125 messages.append(gettext('Changed {fields}.').format(**sub_message['changed'])) 126 127 elif 'deleted' in sub_message: 128 sub_message['deleted']['name'] = gettext(sub_message['deleted']['name']) 129 messages.append(gettext('Deleted {name} “{object}”.').format(**sub_message['deleted'])) 130 131 change_message = ' '.join(msg[0].upper() + msg[1:] for msg in messages) 132 return change_message or gettext('No fields changed.') 133 else: 134 return self.change_message 135 136 def get_edited_object(self): 137 """Return the edited object represented by this log entry.""" 138 return self.content_type.get_object_for_this_type(pk=self.object_id) 139 140 def get_admin_url(self): 141 """ 142 Return the admin URL to edit the object represented by this log entry. 143 """ 144 if self.content_type and self.object_id: 145 url_name = 'admin:%s_%s_change' % (self.content_type.app_label, self.content_type.model) 146 try: 147 return reverse(url_name, args=(quote(self.object_id),)) 148 except NoReverseMatch: 149 pass 150 return None 151 [end of django/contrib/admin/models.py] [start of django/contrib/admin/sites.py] 1 import re 2 from functools import update_wrapper 3 from weakref import WeakSet 4 5 from django.apps import apps 6 from django.conf import settings 7 from django.contrib.admin import ModelAdmin, actions 8 from django.contrib.admin.views.autocomplete import AutocompleteJsonView 9 from django.contrib.auth import REDIRECT_FIELD_NAME 10 from django.core.exceptions import ImproperlyConfigured 11 from django.db.models.base import ModelBase 12 from django.http import ( 13 Http404, HttpResponsePermanentRedirect, HttpResponseRedirect, 14 ) 15 from django.template.response import TemplateResponse 16 from django.urls import NoReverseMatch, Resolver404, resolve, reverse 17 from django.utils.decorators import method_decorator 18 from django.utils.functional import LazyObject 19 from django.utils.module_loading import import_string 20 from django.utils.text import capfirst 21 from django.utils.translation import gettext as _, gettext_lazy 22 from django.views.decorators.cache import never_cache 23 from django.views.decorators.common import no_append_slash 24 from django.views.decorators.csrf import csrf_protect 25 from django.views.i18n import JavaScriptCatalog 26 27 all_sites = WeakSet() 28 29 30 class AlreadyRegistered(Exception): 31 pass 32 33 34 class NotRegistered(Exception): 35 pass 36 37 38 class AdminSite: 39 """ 40 An AdminSite object encapsulates an instance of the Django admin application, ready 41 to be hooked in to your URLconf. Models are registered with the AdminSite using the 42 register() method, and the get_urls() method can then be used to access Django view 43 functions that present a full admin interface for the collection of registered 44 models. 45 """ 46 47 # Text to put at the end of each page's <title>. 48 site_title = gettext_lazy('Django site admin') 49 50 # Text to put in each page's <h1>. 51 site_header = gettext_lazy('Django administration') 52 53 # Text to put at the top of the admin index page. 54 index_title = gettext_lazy('Site administration') 55 56 # URL for the "View site" link at the top of each admin page. 57 site_url = '/' 58 59 enable_nav_sidebar = True 60 61 empty_value_display = '-' 62 63 login_form = None 64 index_template = None 65 app_index_template = None 66 login_template = None 67 logout_template = None 68 password_change_template = None 69 password_change_done_template = None 70 71 final_catch_all_view = True 72 73 def __init__(self, name='admin'): 74 self._registry = {} # model_class class -> admin_class instance 75 self.name = name 76 self._actions = {'delete_selected': actions.delete_selected} 77 self._global_actions = self._actions.copy() 78 all_sites.add(self) 79 80 def __repr__(self): 81 return f'{self.__class__.__name__}(name={self.name!r})' 82 83 def check(self, app_configs): 84 """ 85 Run the system checks on all ModelAdmins, except if they aren't 86 customized at all. 87 """ 88 if app_configs is None: 89 app_configs = apps.get_app_configs() 90 app_configs = set(app_configs) # Speed up lookups below 91 92 errors = [] 93 modeladmins = (o for o in self._registry.values() if o.__class__ is not ModelAdmin) 94 for modeladmin in modeladmins: 95 if modeladmin.model._meta.app_config in app_configs: 96 errors.extend(modeladmin.check()) 97 return errors 98 99 def register(self, model_or_iterable, admin_class=None, **options): 100 """ 101 Register the given model(s) with the given admin class. 102 103 The model(s) should be Model classes, not instances. 104 105 If an admin class isn't given, use ModelAdmin (the default admin 106 options). If keyword arguments are given -- e.g., list_display -- 107 apply them as options to the admin class. 108 109 If a model is already registered, raise AlreadyRegistered. 110 111 If a model is abstract, raise ImproperlyConfigured. 112 """ 113 admin_class = admin_class or ModelAdmin 114 if isinstance(model_or_iterable, ModelBase): 115 model_or_iterable = [model_or_iterable] 116 for model in model_or_iterable: 117 if model._meta.abstract: 118 raise ImproperlyConfigured( 119 'The model %s is abstract, so it cannot be registered with admin.' % model.__name__ 120 ) 121 122 if model in self._registry: 123 registered_admin = str(self._registry[model]) 124 msg = 'The model %s is already registered ' % model.__name__ 125 if registered_admin.endswith('.ModelAdmin'): 126 # Most likely registered without a ModelAdmin subclass. 127 msg += 'in app %r.' % re.sub(r'\.ModelAdmin$', '', registered_admin) 128 else: 129 msg += 'with %r.' % registered_admin 130 raise AlreadyRegistered(msg) 131 132 # Ignore the registration if the model has been 133 # swapped out. 134 if not model._meta.swapped: 135 # If we got **options then dynamically construct a subclass of 136 # admin_class with those **options. 137 if options: 138 # For reasons I don't quite understand, without a __module__ 139 # the created class appears to "live" in the wrong place, 140 # which causes issues later on. 141 options['__module__'] = __name__ 142 admin_class = type("%sAdmin" % model.__name__, (admin_class,), options) 143 144 # Instantiate the admin class to save in the registry 145 self._registry[model] = admin_class(model, self) 146 147 def unregister(self, model_or_iterable): 148 """ 149 Unregister the given model(s). 150 151 If a model isn't already registered, raise NotRegistered. 152 """ 153 if isinstance(model_or_iterable, ModelBase): 154 model_or_iterable = [model_or_iterable] 155 for model in model_or_iterable: 156 if model not in self._registry: 157 raise NotRegistered('The model %s is not registered' % model.__name__) 158 del self._registry[model] 159 160 def is_registered(self, model): 161 """ 162 Check if a model class is registered with this `AdminSite`. 163 """ 164 return model in self._registry 165 166 def add_action(self, action, name=None): 167 """ 168 Register an action to be available globally. 169 """ 170 name = name or action.__name__ 171 self._actions[name] = action 172 self._global_actions[name] = action 173 174 def disable_action(self, name): 175 """ 176 Disable a globally-registered action. Raise KeyError for invalid names. 177 """ 178 del self._actions[name] 179 180 def get_action(self, name): 181 """ 182 Explicitly get a registered global action whether it's enabled or 183 not. Raise KeyError for invalid names. 184 """ 185 return self._global_actions[name] 186 187 @property 188 def actions(self): 189 """ 190 Get all the enabled actions as an iterable of (name, func). 191 """ 192 return self._actions.items() 193 194 def has_permission(self, request): 195 """ 196 Return True if the given HttpRequest has permission to view 197 *at least one* page in the admin site. 198 """ 199 return request.user.is_active and request.user.is_staff 200 201 def admin_view(self, view, cacheable=False): 202 """ 203 Decorator to create an admin view attached to this ``AdminSite``. This 204 wraps the view and provides permission checking by calling 205 ``self.has_permission``. 206 207 You'll want to use this from within ``AdminSite.get_urls()``: 208 209 class MyAdminSite(AdminSite): 210 211 def get_urls(self): 212 from django.urls import path 213 214 urls = super().get_urls() 215 urls += [ 216 path('my_view/', self.admin_view(some_view)) 217 ] 218 return urls 219 220 By default, admin_views are marked non-cacheable using the 221 ``never_cache`` decorator. If the view can be safely cached, set 222 cacheable=True. 223 """ 224 def inner(request, *args, **kwargs): 225 if not self.has_permission(request): 226 if request.path == reverse('admin:logout', current_app=self.name): 227 index_path = reverse('admin:index', current_app=self.name) 228 return HttpResponseRedirect(index_path) 229 # Inner import to prevent django.contrib.admin (app) from 230 # importing django.contrib.auth.models.User (unrelated model). 231 from django.contrib.auth.views import redirect_to_login 232 return redirect_to_login( 233 request.get_full_path(), 234 reverse('admin:login', current_app=self.name) 235 ) 236 return view(request, *args, **kwargs) 237 if not cacheable: 238 inner = never_cache(inner) 239 # We add csrf_protect here so this function can be used as a utility 240 # function for any view, without having to repeat 'csrf_protect'. 241 if not getattr(view, 'csrf_exempt', False): 242 inner = csrf_protect(inner) 243 return update_wrapper(inner, view) 244 245 def get_urls(self): 246 # Since this module gets imported in the application's root package, 247 # it cannot import models from other applications at the module level, 248 # and django.contrib.contenttypes.views imports ContentType. 249 from django.contrib.contenttypes import views as contenttype_views 250 from django.urls import include, path, re_path 251 252 def wrap(view, cacheable=False): 253 def wrapper(*args, **kwargs): 254 return self.admin_view(view, cacheable)(*args, **kwargs) 255 wrapper.admin_site = self 256 return update_wrapper(wrapper, view) 257 258 # Admin-site-wide views. 259 urlpatterns = [ 260 path('', wrap(self.index), name='index'), 261 path('login/', self.login, name='login'), 262 path('logout/', wrap(self.logout), name='logout'), 263 path('password_change/', wrap(self.password_change, cacheable=True), name='password_change'), 264 path( 265 'password_change/done/', 266 wrap(self.password_change_done, cacheable=True), 267 name='password_change_done', 268 ), 269 path('autocomplete/', wrap(self.autocomplete_view), name='autocomplete'), 270 path('jsi18n/', wrap(self.i18n_javascript, cacheable=True), name='jsi18n'), 271 path( 272 'r/<int:content_type_id>/<path:object_id>/', 273 wrap(contenttype_views.shortcut), 274 name='view_on_site', 275 ), 276 ] 277 278 # Add in each model's views, and create a list of valid URLS for the 279 # app_index 280 valid_app_labels = [] 281 for model, model_admin in self._registry.items(): 282 urlpatterns += [ 283 path('%s/%s/' % (model._meta.app_label, model._meta.model_name), include(model_admin.urls)), 284 ] 285 if model._meta.app_label not in valid_app_labels: 286 valid_app_labels.append(model._meta.app_label) 287 288 # If there were ModelAdmins registered, we should have a list of app 289 # labels for which we need to allow access to the app_index view, 290 if valid_app_labels: 291 regex = r'^(?P<app_label>' + '|'.join(valid_app_labels) + ')/$' 292 urlpatterns += [ 293 re_path(regex, wrap(self.app_index), name='app_list'), 294 ] 295 296 if self.final_catch_all_view: 297 urlpatterns.append(re_path(r'(?P<url>.*)$', wrap(self.catch_all_view))) 298 299 return urlpatterns 300 301 @property 302 def urls(self): 303 return self.get_urls(), 'admin', self.name 304 305 def each_context(self, request): 306 """ 307 Return a dictionary of variables to put in the template context for 308 *every* page in the admin site. 309 310 For sites running on a subpath, use the SCRIPT_NAME value if site_url 311 hasn't been customized. 312 """ 313 script_name = request.META['SCRIPT_NAME'] 314 site_url = script_name if self.site_url == '/' and script_name else self.site_url 315 return { 316 'site_title': self.site_title, 317 'site_header': self.site_header, 318 'site_url': site_url, 319 'has_permission': self.has_permission(request), 320 'available_apps': self.get_app_list(request), 321 'is_popup': False, 322 'is_nav_sidebar_enabled': self.enable_nav_sidebar, 323 } 324 325 def password_change(self, request, extra_context=None): 326 """ 327 Handle the "change password" task -- both form display and validation. 328 """ 329 from django.contrib.admin.forms import AdminPasswordChangeForm 330 from django.contrib.auth.views import PasswordChangeView 331 url = reverse('admin:password_change_done', current_app=self.name) 332 defaults = { 333 'form_class': AdminPasswordChangeForm, 334 'success_url': url, 335 'extra_context': {**self.each_context(request), **(extra_context or {})}, 336 } 337 if self.password_change_template is not None: 338 defaults['template_name'] = self.password_change_template 339 request.current_app = self.name 340 return PasswordChangeView.as_view(**defaults)(request) 341 342 def password_change_done(self, request, extra_context=None): 343 """ 344 Display the "success" page after a password change. 345 """ 346 from django.contrib.auth.views import PasswordChangeDoneView 347 defaults = { 348 'extra_context': {**self.each_context(request), **(extra_context or {})}, 349 } 350 if self.password_change_done_template is not None: 351 defaults['template_name'] = self.password_change_done_template 352 request.current_app = self.name 353 return PasswordChangeDoneView.as_view(**defaults)(request) 354 355 def i18n_javascript(self, request, extra_context=None): 356 """ 357 Display the i18n JavaScript that the Django admin requires. 358 359 `extra_context` is unused but present for consistency with the other 360 admin views. 361 """ 362 return JavaScriptCatalog.as_view(packages=['django.contrib.admin'])(request) 363 364 def logout(self, request, extra_context=None): 365 """ 366 Log out the user for the given HttpRequest. 367 368 This should *not* assume the user is already logged in. 369 """ 370 from django.contrib.auth.views import LogoutView 371 defaults = { 372 'extra_context': { 373 **self.each_context(request), 374 # Since the user isn't logged out at this point, the value of 375 # has_permission must be overridden. 376 'has_permission': False, 377 **(extra_context or {}) 378 }, 379 } 380 if self.logout_template is not None: 381 defaults['template_name'] = self.logout_template 382 request.current_app = self.name 383 return LogoutView.as_view(**defaults)(request) 384 385 @method_decorator(never_cache) 386 def login(self, request, extra_context=None): 387 """ 388 Display the login form for the given HttpRequest. 389 """ 390 if request.method == 'GET' and self.has_permission(request): 391 # Already logged-in, redirect to admin index 392 index_path = reverse('admin:index', current_app=self.name) 393 return HttpResponseRedirect(index_path) 394 395 # Since this module gets imported in the application's root package, 396 # it cannot import models from other applications at the module level, 397 # and django.contrib.admin.forms eventually imports User. 398 from django.contrib.admin.forms import AdminAuthenticationForm 399 from django.contrib.auth.views import LoginView 400 context = { 401 **self.each_context(request), 402 'title': _('Log in'), 403 'app_path': request.get_full_path(), 404 'username': request.user.get_username(), 405 } 406 if (REDIRECT_FIELD_NAME not in request.GET and 407 REDIRECT_FIELD_NAME not in request.POST): 408 context[REDIRECT_FIELD_NAME] = reverse('admin:index', current_app=self.name) 409 context.update(extra_context or {}) 410 411 defaults = { 412 'extra_context': context, 413 'authentication_form': self.login_form or AdminAuthenticationForm, 414 'template_name': self.login_template or 'admin/login.html', 415 } 416 request.current_app = self.name 417 return LoginView.as_view(**defaults)(request) 418 419 def autocomplete_view(self, request): 420 return AutocompleteJsonView.as_view(admin_site=self)(request) 421 422 @no_append_slash 423 def catch_all_view(self, request, url): 424 if settings.APPEND_SLASH and not url.endswith('/'): 425 urlconf = getattr(request, 'urlconf', None) 426 try: 427 match = resolve('%s/' % request.path_info, urlconf) 428 except Resolver404: 429 pass 430 else: 431 if getattr(match.func, 'should_append_slash', True): 432 return HttpResponsePermanentRedirect('%s/' % request.path) 433 raise Http404 434 435 def _build_app_dict(self, request, label=None): 436 """ 437 Build the app dictionary. The optional `label` parameter filters models 438 of a specific app. 439 """ 440 app_dict = {} 441 442 if label: 443 models = { 444 m: m_a for m, m_a in self._registry.items() 445 if m._meta.app_label == label 446 } 447 else: 448 models = self._registry 449 450 for model, model_admin in models.items(): 451 app_label = model._meta.app_label 452 453 has_module_perms = model_admin.has_module_permission(request) 454 if not has_module_perms: 455 continue 456 457 perms = model_admin.get_model_perms(request) 458 459 # Check whether user has any perm for this module. 460 # If so, add the module to the model_list. 461 if True not in perms.values(): 462 continue 463 464 info = (app_label, model._meta.model_name) 465 model_dict = { 466 'model': model, 467 'name': capfirst(model._meta.verbose_name_plural), 468 'object_name': model._meta.object_name, 469 'perms': perms, 470 'admin_url': None, 471 'add_url': None, 472 } 473 if perms.get('change') or perms.get('view'): 474 model_dict['view_only'] = not perms.get('change') 475 try: 476 model_dict['admin_url'] = reverse('admin:%s_%s_changelist' % info, current_app=self.name) 477 except NoReverseMatch: 478 pass 479 if perms.get('add'): 480 try: 481 model_dict['add_url'] = reverse('admin:%s_%s_add' % info, current_app=self.name) 482 except NoReverseMatch: 483 pass 484 485 if app_label in app_dict: 486 app_dict[app_label]['models'].append(model_dict) 487 else: 488 app_dict[app_label] = { 489 'name': apps.get_app_config(app_label).verbose_name, 490 'app_label': app_label, 491 'app_url': reverse( 492 'admin:app_list', 493 kwargs={'app_label': app_label}, 494 current_app=self.name, 495 ), 496 'has_module_perms': has_module_perms, 497 'models': [model_dict], 498 } 499 500 if label: 501 return app_dict.get(label) 502 return app_dict 503 504 def get_app_list(self, request): 505 """ 506 Return a sorted list of all the installed apps that have been 507 registered in this site. 508 """ 509 app_dict = self._build_app_dict(request) 510 511 # Sort the apps alphabetically. 512 app_list = sorted(app_dict.values(), key=lambda x: x['name'].lower()) 513 514 # Sort the models alphabetically within each app. 515 for app in app_list: 516 app['models'].sort(key=lambda x: x['name']) 517 518 return app_list 519 520 def index(self, request, extra_context=None): 521 """ 522 Display the main admin index page, which lists all of the installed 523 apps that have been registered in this site. 524 """ 525 app_list = self.get_app_list(request) 526 527 context = { 528 **self.each_context(request), 529 'title': self.index_title, 530 'subtitle': None, 531 'app_list': app_list, 532 **(extra_context or {}), 533 } 534 535 request.current_app = self.name 536 537 return TemplateResponse(request, self.index_template or 'admin/index.html', context) 538 539 def app_index(self, request, app_label, extra_context=None): 540 app_dict = self._build_app_dict(request, app_label) 541 if not app_dict: 542 raise Http404('The requested admin page does not exist.') 543 # Sort the models alphabetically within each app. 544 app_dict['models'].sort(key=lambda x: x['name']) 545 context = { 546 **self.each_context(request), 547 'title': _('%(app)s administration') % {'app': app_dict['name']}, 548 'subtitle': None, 549 'app_list': [app_dict], 550 'app_label': app_label, 551 **(extra_context or {}), 552 } 553 554 request.current_app = self.name 555 556 return TemplateResponse(request, self.app_index_template or [ 557 'admin/%s/app_index.html' % app_label, 558 'admin/app_index.html' 559 ], context) 560 561 562 class DefaultAdminSite(LazyObject): 563 def _setup(self): 564 AdminSiteClass = import_string(apps.get_app_config('admin').default_site) 565 self._wrapped = AdminSiteClass() 566 567 def __repr__(self): 568 return repr(self._wrapped) 569 570 571 # This global object represents the default admin site, for the common case. 572 # You can provide your own AdminSite using the (Simple)AdminConfig.default_site 573 # attribute. You can also instantiate AdminSite in your own code to create a 574 # custom admin site. 575 site = DefaultAdminSite() 576 [end of django/contrib/admin/sites.py] </code> I need you to solve this issue by generating a single patch file that I can apply directly to this repository using git apply. Please respond with a single patch file in the following format. <patch> --- a/file.py +++ b/file.py @@ -1,27 +1,35 @@ def euclidean(a, b): - while b: - a, b = b, a % b - return a + if b == 0: + return a + return euclidean(b, a % b) def bresenham(x0, y0, x1, y1): points = [] dx = abs(x1 - x0) dy = abs(y1 - y0) - sx = 1 if x0 < x1 else -1 - sy = 1 if y0 < y1 else -1 - err = dx - dy + x, y = x0, y0 + sx = -1 if x0 > x1 else 1 + sy = -1 if y0 > y1 else 1 - while True: - points.append((x0, y0)) - if x0 == x1 and y0 == y1: - break - e2 = 2 * err - if e2 > -dy: + if dx > dy: + err = dx / 2.0 + while x != x1: + points.append((x, y)) err -= dy - x0 += sx - if e2 < dx: - err += dx - y0 += sy + if err < 0: + y += sy + err += dx + x += sx + else: + err = dy / 2.0 + while y != y1: + points.append((x, y)) + err -= dx + if err < 0: + x += sx + err += dy + y += sy + points.append((x, y)) return points </patch>''',
+    #     "repo": "django/django",
+    #     "base_commit": "475cffd1d64c690cdad16ede4d5e81985738ceb4",
+    #     "problem_statement": "Wrong URL generated by get_admin_url for readonly field in custom Admin Site Description When a model containing a ForeignKey field is viewed (or edited) in a custom Admin Site, and that ForeignKey field is listed in readonly_fields, the url generated for the link is /admin/... instead of /custom-admin/.... This appears to be caused by the following line in django.contrib.admin.helpers get_admin_url: url = reverse(url_name, args=[quote(remote_obj.pk)]) Other parts of the admin use the current_app keyword parameter to identify the correct current name of the Admin Site. (See django.contrib.admin.options.ModelAdmin response_add as just one example) I have been able to correct this specific issue by replacing the above line with: url = reverse( url_name, args=[quote(remote_obj.pk)], current_app=self.model_admin.admin_site.name ) However, I don't know if there are any side effects and I have not yet run the full suite of tests on this. Mostly looking for feedback whether I'm on the right track.",
+    #     "hints_text": '''Hey Ken, yes seems right. Good spot. Looks like this should have been part of b79088306513d5ed76d31ac40ab3c15f858946ea for #31181 (which was Django 3.2) ​here. However, I don't know if there are any side effects and I have not yet run the full suite of tests on this. Mostly looking for feedback whether I'm on the right track. I ran your suggestion against most of the usual suspects admin_* tests without issue so... Would you like to prepare a patch? Looks like setting up the test case is the most of it... Thanks! I'll be happy to try - but I'm not likely to be able to get to it before the weekend. (I don't know how "urgent" you consider it.) If it can sit that long, I'll see what I can do. (First "real patch" and all that - want to make sure I do it reasonably right.) Hey Ken. Super thanks! Since it's a bug in a new feature it's marked as release blocker and will be backported to Django 3.2. We'll target ​3.2.8, which is slated for the beginning of October. If it gets close to that and you've not had time we can pick it up. Reach out on the Forum if you'd like input at all. 🙂 Thanks! (And Welcome Aboard! ⛵️) Heyy folks, I wanted to assign the ticket to myself and fix the issue, instead it assigned the ownership to me. Apologies Changes ownership again. I found out that changes got accepted, sorry for the inconvenience caused. Hi Abhijith — just to confirm, according to the discussion Ken is currently working on this ticket, so let's give him a window to do that before re-assigning it. Thanks! (I think that's the conclusion you came to, but just double-checking so you don't both work on the same ticket at the same time.)'''
+    # }]
 
-    problem_subdir = "IR_CPS_TechSynthesis" if 'saved_task' not in globals() else saved_task['type_tache']
+    # envs = []
+    # for doc in documents:
+    #     env = SWEBenchEnvironment(SWEProblem.parse_obj(doc))
+    #     envs.append(env)
+
+    envs=None
 
     if 'saved_task' in globals():
         special_criteria["all#saved_task"] = saved_task
@@ -2135,14 +2139,15 @@ if __name__ == "__main__":
         automatic = None
     else:
         automation_global = "full_auto" if automatic else None
-
+   
     # Run the planner agent
+    envs = None
     run_planner(default_llm_key="default_llm",
                 premium_llm_key="premium_llm",
                 llmORchains_list=llmORchains_list,
                 test_environments=envs,
                 manual_validation_to_capitalize=False,
-                problem_prompts_subdir=problem_subdir,
+                problem_prompts_subdir="SWE_Synthesis",  
                 max_coding_attempts=4,
                 include_code=False,
                 selected_successful_functions=[],
@@ -2153,8 +2158,12 @@ if __name__ == "__main__":
                 agcoding_skip_rounds=0,  # Auto-test: 4
                 agvalidation_skip_rounds=0,  # Auto-test: 4
                 agcapitalize_skip_rounds=0,
+                agcoding_num_parallel_inferences=1,
+                agcoach_num_parallel_inferences=1,
                 unique_id=unique_id,
-                functions_to_import=".*",
+                # functions_to_import=".*",
+                functions_to_import=None,
+                
                 special_criteria=special_criteria,
                 automation=automatic,
                 model_choice={"coach": "default_llm", "coder": "premium_llm", "critic": "default_llm",
