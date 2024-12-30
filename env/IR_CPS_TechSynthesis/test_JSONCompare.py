@@ -114,7 +114,7 @@ class TestSynthesisManagerLoading(unittest.TestCase):
         for section in data["plan"]:
             target_total_content_length += len(section["content"])
 
-        # print(document.document_content.title + " => " + data["title"])
+        print(document.document_content.title + " => " + data["title"])
 
         # Load sections from the JSON data
         for plan in data["plan"]:

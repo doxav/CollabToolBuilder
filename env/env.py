@@ -49,7 +49,7 @@ class Environment:
 
         try:
             # Execute code with redirected stdout and stderr
-            # print(context)
+            print(f"Code execution contect: <<<{context}>>>")
             with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                 exec(action_code + helper, context)
             print(f"Stdout:\n{stdout.getvalue()}\nStderr:\n{stderr.getvalue()}")

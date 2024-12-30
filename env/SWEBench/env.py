@@ -14,6 +14,9 @@ from env.env import Environment
 import ast
 from langchain.prompts import ChatPromptTemplate
 from langchain.output_parsers import PydanticOutputParser
+from datasets import load_dataset
+
+dataset_repo = load_dataset(path="ahsanirfan961/swe-bech-lite-bm25-13k-take50", split='train')
 
 class SWEProblem(BaseModel):
     instance_id: str
@@ -30,16 +33,36 @@ class SWEBenchEnvironment(Environment):
     swe_temp_path = "env/SWEBench/temp"
 
     def __init__(self,
-        swe_data: SWEProblem,   
+        swe_data: SWEProblem = None,   
         llm = None,
         id: str = None,
-        reset_env: bool = False,  
+        reset_env: bool = False,
+        instance_id: str = None,
         ):
         super().__init__()
-        
+
+        # init self.swe_data
+        if instance_id:
+            instance_id = instance_id.lower()
+            print(instance_id)
+            problem = None
+            for data in dataset_repo:
+                if data['instance_id'] == instance_id:
+                    problem = data
+                    print('Problem set found.')
+                    break
+            if problem is not None:
+                print('Creating SWE Environment.')
+                self.swe_data = SWEBenchEnvironment(swe_data=SWEProblem.parse_obj(problem))
+            else:
+                raise ValueError("Invalid instance ID.")
+        elif swe_data:
+            self.swe_data = swe_data
+        else:
+            raise ValueError("No data to initialize problem (no swe_data, no instance_id).")
+                
         self.id = str(uuid.uuid4()) if id is None else id
         SWEBenchEnvironment.llm_model = llm
-        self.swe_data = swe_data
         self.reset_env = reset_env
         self.swe_manager = SWEManager(target_dir=f"env/SWEBench/repos/{self.swe_data.repo.split('/')[-1]}") 
         self.setup_repo()

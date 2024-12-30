@@ -298,7 +298,7 @@ class SynthesisManager:
             Section(**section)
             return True
         except TypeError as e:
-            # print(e)
+            print(e)
             return False
 
     @method_call_counter
@@ -378,7 +378,7 @@ class SynthesisManager:
             # URL for EPO scraping
             # encode query string
             url = 'https://worldwide.espacenet.com/patent/search?q=' + query.replace(' ', '%20')
-            # print(url)
+            print(url)
             driver.get(url)
 
             # Wait until the search results are loaded
@@ -392,7 +392,7 @@ class SynthesisManager:
             except Exception as e:
                 # print error
                 error = str(e.message) if hasattr(e, 'message') else str(e)
-                # print(f'EPO SELENIUM scraping failed with error code: {error}')
+                print(f'EPO SELENIUM scraping failed with error code: {error}')
                 soup = None
             driver.quit()
 
@@ -1092,7 +1092,7 @@ class SynthesisManager:
         output_check = ''
         for section in self.target_data['plan']:
             output_check += section['section'] + " /"
-        # print(output_check)
+        print(output_check)
         # Compute the total length for the target data (similar to the test method)
         self.target_total_content_length = sum(len(section['content']) for section in self.target_data['plan'])
         self.target_total_sections_count = len(self.target_data["plan"])
@@ -1326,7 +1326,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         self.document.reset()
         self.has_reset_once = False
         self.state = None
-        # print("Environment internal states reset and closed.") # TODO: log it
+        print("Environment internal states reset and closed.") # TODO: log it
 
     def step(
         self,
