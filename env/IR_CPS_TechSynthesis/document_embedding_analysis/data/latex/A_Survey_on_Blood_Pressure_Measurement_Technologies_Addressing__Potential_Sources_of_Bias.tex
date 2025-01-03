@@ -1,0 +1,1387 @@
+%  LaTeX support: latex@mdpi.com 
+%  For support, please attach all files needed for compiling as well as the log file, and specify your operating system, LaTeX version, and LaTeX editor.
+
+%=================================================================
+% \documentclass[journal,article,pdftex,moreauthors]{Definitions/mdpi} 
+\documentclass[journal,article,moreauthors]{Definitions/mdpi} 
+% \documentclass[journal,article]{Definitions/mdpi} 
+
+
+%--------------------
+% Class Options:
+%--------------------
+%----------
+% journal
+%----------
+% Choose between the following MDPI journals:
+% acoustics, actuators, addictions, admsci, adolescents, aerobiology, aerospace, agriculture, agriengineering, agrochemicals, agronomy, ai, air, algorithms, allergies, alloys, analytica, analytics, anatomia, animals, antibiotics, antibodies, antioxidants, applbiosci, appliedchem, appliedmath, applmech, applmicrobiol, applnano, applsci, aquacj, architecture, arm, arthropoda, arts, asc, asi, astronomy, atmosphere, atoms, audiolres, automation, axioms, bacteria, batteries, bdcc, behavsci, beverages, biochem, bioengineering, biologics, biology, biomass, biomechanics, biomed, biomedicines, biomedinformatics, biomimetics, biomolecules, biophysica, biosensors, biotech, birds, bloods, blsf, brainsci, breath, buildings, businesses, cancers, carbon, cardiogenetics, catalysts, cells, ceramics, challenges, chemengineering, chemistry, chemosensors, chemproc, children, chips, cimb, civileng, cleantechnol, climate, clinpract, clockssleep, cmd, coasts, coatings, colloids, colorants, commodities, compounds, computation, computers, condensedmatter, conservation, constrmater, cosmetics, covid, crops, cryptography, crystals, csmf, ctn, curroncol, cyber, dairy, data, ddc, dentistry, dermato, dermatopathology, designs, devices, diabetology, diagnostics, dietetics, digital, disabilities, diseases, diversity, dna, drones, dynamics, earth, ebj, ecologies, econometrics, economies, education, ejihpe, electricity, electrochem, electronicmat, electronics, encyclopedia, endocrines, energies, eng, engproc, entomology, entropy, environments, environsciproc, epidemiologia, epigenomes, est, fermentation, fibers, fintech, fire, fishes, fluids, foods, forecasting, forensicsci, forests, foundations, fractalfract, fuels, future, futureinternet, futurepharmacol, futurephys, futuretransp, galaxies, games, gases, gastroent, gastrointestdisord, gels, genealogy, genes, geographies, geohazards, geomatics, geosciences, geotechnics, geriatrics, grasses, gucdd, hazardousmatters, healthcare, hearts, hemato, hematolrep, heritage, higheredu, highthroughput, histories, horticulturae, hospitals, humanities, humans, hydrobiology, hydrogen, hydrology, hygiene, idr, ijerph, ijfs, ijgi, ijms, ijns, ijpb, ijtm, ijtpp, ime, immuno, informatics, information, infrastructures, inorganics, insects, instruments, inventions, iot, j, jal, jcdd, jcm, jcp, jcs, jcto, jdb, jeta, jfb, jfmk, jimaging, jintelligence, jlpea, jmmp, jmp, jmse, jne, jnt, jof, joitmc, jor, journalmedia, jox, jpm, jrfm, jsan, jtaer, jvd, jzbg, kidneydial, kinasesphosphatases, knowledge, land, languages, laws, life, liquids, literature, livers, logics, logistics, lubricants, lymphatics, machines, macromol, magnetism, magnetochemistry, make, marinedrugs, materials, materproc, mathematics, mca, measurements, medicina, medicines, medsci, membranes, merits, metabolites, metals, meteorology, methane, metrology, micro, microarrays, microbiolres, micromachines, microorganisms, microplastics, minerals, mining, modelling, molbank, molecules, mps, msf, mti, muscles, nanoenergyadv, nanomanufacturing,\gdef\@continuouspages{yes}} nanomaterials, ncrna, ndt, network, neuroglia, neurolint, neurosci, nitrogen, notspecified, %%nri, nursrep, nutraceuticals, nutrients, obesities, oceans, ohbm, onco, %oncopathology, optics, oral, organics, organoids, osteology, oxygen, parasites, parasitologia, particles, pathogens, pathophysiology, pediatrrep, pharmaceuticals, pharmaceutics, pharmacoepidemiology,\gdef\@ISSN{2813-0618}\gdef\@continuous pharmacy, philosophies, photochem, photonics, phycology, physchem, physics, physiologia, plants, plasma, platforms, pollutants, polymers, polysaccharides, poultry, powders, preprints, proceedings, processes, prosthesis, proteomes, psf, psych, psychiatryint, psychoactives, publications, quantumrep, quaternary, qubs, radiation, reactions, receptors, recycling, regeneration, religions, remotesensing, reports, reprodmed, resources, rheumato, risks, robotics, ruminants, safety, sci, scipharm, sclerosis, seeds, sensors, separations, sexes, signals, sinusitis, skins, smartcities, sna, societies, socsci, software, soilsystems, solar, solids, spectroscj, sports, standards, stats, std, stresses, surfaces, surgeries, suschem, sustainability, symmetry, synbio, systems, targets, taxonomy, technologies, telecom, test, textiles, thalassrep, thermo, tomography, tourismhosp, toxics, toxins, transplantology, transportation, traumacare, traumas, tropicalmed, universe, urbansci, uro, vaccines, vehicles, venereology, vetsci, vibration, virtualworlds, viruses, vision, waste, water, wem, wevj, wind, women, world, youth, zoonoticdis 
+% For posting an early version of this manuscript as a preprint, you may use "preprints" as the journal. Changing "submit" to "accept" before posting will remove line numbers.
+
+%---------
+% article
+%---------
+% The default type of manuscript is "article", but can be replaced by: 
+% abstract, addendum, article, book, bookreview, briefreport, casereport, comment, commentary, communication, conferenceproceedings, correction, conferencereport, entry, expressionofconcern, extendedabstract, datadescriptor, editorial, essay, erratum, hypothesis, interestingimage, obituary, opinion, projectreport, reply, retraction, review, perspective, protocol, shortnote, studyprotocol, systematicreview, supfile, technicalnote, viewpoint, guidelines, registeredreport, tutorial
+% supfile = supplementary materials
+
+%----------
+% submit
+%----------
+% The class option "submit" will be changed to "accept" by the Editorial Office when the paper is accepted. This will only make changes to the frontpage (e.g., the logo of the journal will get visible), the headings, and the copyright information. Also, line numbering will be removed. Journal info and pagination for accepted papers will also be assigned by the Editorial Office.
+
+%------------------
+% moreauthors
+%------------------
+% If there is only one author the class option oneauthor should be used. Otherwise use the class option moreauthors.
+
+%---------
+% pdftex
+%---------
+% The option pdftex is for use with pdfLaTeX. Remove "pdftex" for (1) compiling with LaTeX & dvi2pdf (if eps figures are used) or for (2) compiling with XeLaTeX.
+
+%=================================================================
+% MDPI internal commands - do not modify
+\firstpage{1} 
+\makeatletter 
+\setcounter{page}{\@firstpage} 
+\makeatother
+\pubvolume{1}
+\issuenum{1}
+\articlenumber{0}
+\pubyear{2023}
+\copyrightyear{2023}
+%\externaleditor{Academic Editor: Firstname Lastname}
+\datereceived{ } 
+\daterevised{ } % Comment out if no revised date
+\dateaccepted{ } 
+\datepublished{ } 
+%\datecorrected{} % For corrected papers: "Corrected: XXX" date in the original paper.
+%\dateretracted{} % For corrected papers: "Retracted: XXX" date in the original paper.
+\hreflink{https://doi.org/} % If needed use \linebreak
+%\doinum{}
+%\pdfoutput=1 % Uncommented for upload to arXiv.org
+
+%=================================================================
+% Add packages and commands here. The following packages are loaded in our class file: fontenc, inputenc, calc, indentfirst, fancyhdr, graphicx, epstopdf, lastpage, ifthen, float, amsmath, amssymb, lineno, setspace, enumitem, mathpazo, booktabs, titlesec, etoolbox, tabto, xcolor, colortbl, soul, multirow, microtype, tikz, totcount, changepage, attrib, upgreek, array, tabularx, pbox, ragged2e, tocloft, marginnote, marginfix, enotez, amsthm, natbib, hyperref, cleveref, scrextend, url, geometry, newfloat, caption, draftwatermark, seqsplit
+% cleveref: load \crefname definitions after \begin{document}
+
+\usepackage{natbib,graphicx}
+
+%=================================================================
+% Please use the following mathematics environments: Theorem, Lemma, Corollary, Proposition, Characterization, Property, Problem, Example, ExamplesandDefinitions, Hypothesis, Remark, Definition, Notation, Assumption
+%% For proofs, please use the proof environment (the amsthm package is loaded by the MDPI class).
+%=================================================================
+% Full title of the paper (Capitalized)
+\Title{A Survey on Blood Pressure Measurement Technologies: Addressing Potential Sources of Bias}
+
+% MDPI internal command: Title for citation in the left column
+\TitleCitation{A Survey on Blood Pressure Measurement Technologies: Addressing Potential Sources of Bias}
+
+% Author Orchid ID: enter ID or remove command
+\newcommand{\orcidauthorA}{0000-0002-6703-0226}
+\newcommand{\orcidauthorB}{0000-0003-4688-7965} 
+\newcommand{\orcidauthorC}{0000-0002-5709-201X} 
+\newcommand{\orcidauthorD}{0000-0003-4913-6825} 
+
+
+\Author{Seyedeh~Somayyeh~Mousavi $^{1} $\orcidA{}, Matthew~A.~Reyna$^{1}$\orcidB{}
+, Gari~D.~Clifford$^{1,2} $\orcidC{} and Reza Sameni $^{1}$* \orcidD{}}
+
+%\longauthorlist{yes}
+
+% MDPI internal command: Authors, for metadata in PDF
+\AuthorNames{Seyedeh~Somayyeh~Mousavi, Matthew~A.~Reyna, Gari~D.~Clifford and Reza Sameni}
+
+% MDPI internal command: Authors, for citation in the left column
+\AuthorCitation{Mousavi, S.; Reyna, M.; Clifford, G.; Sameni, R}
+% If this is a Chicago style journal: Lastname, Firstname, Firstname Lastname, and Firstname Lastname.
+
+% Affiliations / Addresses (Add [1] after \address if there is only one affiliation.)
+\address{%
+$^{1}$ \quad  Department of Biomedical Informatics, Emory
+University, GA, USA;  seyedeh.somayyeh.mousavi@emory.edu, matthew@dbmi.emory.edu, gari@dbmi.emory.edu, rsameni@dbmi.emory.edu\\
+$^{2}$ \quad  Biomedical Engineering Department, Georgia Institute of Technology, GA, USA}
+
+% Contact information of the corresponding author
+\corres{Corresponding author: Reza Sameni; \url{rsameni@dbmi.emory.edu}}
+
+% Current address and/or shared authorship
+%\firstnote{Current address: Affiliation 3.} 
+%\secondnote{These authors contributed equally to this work.}
+% The commands \thirdnote{} till \eighthnote{} are available for further notes
+
+%\simplesumm{} % Simple summary
+
+%\conference{} % An extended version of a conference paper
+
+% Abstract (Do not insert blank lines, i.e. \\) 
+\abstract{Regular blood pressure (BP) monitoring in clinical and ambulatory settings plays a crucial role in the prevention, diagnosis, treatment, and management of cardiovascular diseases. Recently, the widespread adoption of ambulatory BP measurement devices has been driven predominantly by the increased prevalence of hypertension and its associated risks and clinical conditions. Recent guidelines advocate for regular BP monitoring as part of regular clinical visits or even at home. This increased utilization of BP measurement technologies has brought up significant concerns, regarding the accuracy of reported BP values across settings. In this survey, focusing mainly on cuff-based BP monitoring technologies, we highlight how BP measurements can demonstrate substantial biases and variances due to factors such as measurement and device errors, demographics, and body habitus. With these inherent biases, the development of a new generation of cuff-based BP devices which use artificial-intelligence (AI) has significant potential. We present future avenues where AI-assisted technologies can leverage the extensive clinical literature on BP-related studies together with the large collections of BP records available in electronic health records. These resources can be combined with machine learning approaches, including deep learning and Bayesian inference, to remove BP measurement biases and to provide individualized BP-related cardiovascular risk indexes. }
+
+% Keywords
+\keyword{blood pressure; cuff-based blood pressure; bias in blood pressure; machine learning; individualized medicine; demographics} 
+
+% The fields PACS, MSC, and JEL may be left empty or commented out if not applicable
+%\PACS{J0101}
+%\MSC{}
+%\JEL{}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Only for the journal Diversity
+%\LSID{\url{http://}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Only for the journal Applied Sciences
+%\featuredapplication{Authors are encouraged to provide a concise description of the specific application or a potential application of the work. This section is not mandatory.}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Only for the journal Data
+%\dataset{DOI number or link to the deposited data set if the data set is published separately. If the data set shall be published as a supplement to this paper, this field will be filled by the journal editors. In this case, please submit the data set as a supplement.}
+%\datasetlicense{License under which the data set is made available (CC0, CC-BY, CC-BY-SA, CC-BY-NC, etc.)}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Only for the journal Toxins
+%\keycontribution{The breakthroughs or highlights of the manuscript. Authors can write one or two sentences to describe the most important part of the paper.}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Only for the journal Encyclopedia
+%\encyclopediadef{For entry manuscripts only: please provide a brief overview of the entry title instead of an abstract.}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Only for the journal Advances in Respiratory Medicine
+%\addhighlights{yes}
+%\renewcommand{\addhighlights}{%
+
+%\noindent This is an obligatory section in “Advances in Respiratory Medicine”, whose goal is to increase the discoverability and readability of the article via search engines and other scholars. Highlights should not be a copy of the abstract, but a simple text allowing the reader to quickly and simplified find out what the article is about and what can be cited from it. Each of these parts should be devoted up to 2~bullet points.\vspace{3pt}\\
+%\textbf{What are the main findings?}
+% \begin{itemize}[labelsep=2.5mm,topsep=-3pt]
+% \item First bullet.
+% \item Second bullet.
+% \end{itemize}\vspace{3pt}
+%\textbf{What is the implication of the main finding?}
+% \begin{itemize}[labelsep=2.5mm,topsep=-3pt]
+% \item First bullet.
+% \item Second bullet.
+% \end{itemize}
+%}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%\setcounter{section}{-1} %% Remove this when starting to work on the template.
+\section{Introduction}\label{sec:introduction}
+% \textcolor{red}{[FIGURE CAPTIONS NOT EDITED YET]}
+% Hypertension 
+In 2021, the World Health Organization (WHO) reported that 32\% of the world’s mortality is related to cardiovascular diseases (CVDs) \citep{who}. In 2020, CVDs were the leading cause of death in the United States, surpassing cancer and COVID-19 \citep{ahmad2021leading}. Strokes and heart attacks are the leading causes of CVD-related mortalities \citep{who,LeonardiBee2002, Lawes2004}, and hypertension is the most significant risk factor for CVDs \citep{Vasan2001, Zhou2017, Guyenet2006}. Hypertension, rarely shows early symptoms before causing severe damage to organs such as the heart, blood vessels, brain, eyes, and kidneys \citep{Brenner1988}. Therefore, it is known as the ``silent killer'' \citep{mukkamala2015toward, kalehoff2020story}. Monitoring the blood pressure (BP) is one of the effective and widely accessible methods for diagnosing and reducing CVD prevalence \citep{rastegar2020non}. Abnormal BP is even more critical and life endangering for vulnerable populations, including the elderly and pregnant women.
+
+BP is measured manually and automatically in medical centers. Most commercial BP devices use a \textit{cuff} --- a non-elastic fabric commonly wrapped around the arm --- to apply sufficient external pressure on the artery wall to temporarily block the blood flow and to measure the BP when the arterial BP and the monitored external pressure are balanced. Over the decades, cuff-based BP devices have evolved from manual mercury-based devices to the current ones based on pressure sensors and automatic electronic measurements \citep{Tholl2004}. 
+
+Cuff-based BP devices have passed the test of time, due to their simple operation, low-cost, availability and ease of interpretation \citep{worldtechnical}. Automatic and portable BP devices have also enabled out-of-clinic ambulatory BP monitoring by patients and their families. Although ambulatory BP is not always as accurate as in-clinic measurements, it can be acquired more frequently, reduces clinic visits and costs, increases patients' satisfaction and overcomes their clinical environment stress, which leads to the so-called \textit{white-coat} hypertension \citep{van2019validation, Pickering2006}. Specifically, the latest guidelines advise patients with gestational and chronic hypertension to repeat BP measuring at home \citep{van2019validation}. 
+
+Hypertension diagnosis and the treatment of many other diseases are based on the accurate measurement of the BP. It is therefore critical to assess the accuracy of BP values reported in ambulatory and in-clinic settings \citep{ding2016continuous, Sewell2016-lp}. However, most users are unaware or neglectful of the standard BP measurement protocols that should be followed during BP acquisition to acquire accurate BP values. Therefore, BP measurements --- even in clinical settings --- can be significantly biased and variant due to the measurement circumstances (beyond the patient's physiological factors). This results in misinterpretations of BP readings and hampers the reliability of this vital sign for clinical diagnosis.
+%Nonstandard BP measurements result in errors in interpretation 
+
+%This explanation raises an essential question of whether BP measurement devices are accurate enough. In other words, whether the reported BP values by these devices are close to the actual ones. The patient's care quality may be inappropriate due to inaccurate and misleading BP values because the physician's diagnosis and drug prescriptions are precisely related to them.
+
+%In this context, the term ``bias'' refers to the (average) difference between the actual and reported BP values.
+
+In recent years, many studies have focused on the notion of bias and its significance in different areas of biomedical research, including bias in false beliefs about the biological differences between various races \citep{Hoffman2016-km}, pain assessment and treatment recommendations \citep{Lee2019-fm}, medical equipment \citep{Valbuena2022-gw}, racial biases in algorithmic diagnosis \citep{Obermeyer2019-cb}, performance metrics in algorithmic diagnosis \citep{Reyna2022-on}, and reducing bias in machine learning (ML) for medical applications \citep{Vokinger2021-td}.
+
+In this survey, we focus on potential sources of biases in BP measurement, which can influence BP-based diagnosis of hypertensive and hypotensive patients. %%%For this reason, it is crucial to identify the main bias factors and prevent their propagation. Developing cuff-less BP measurement technologies is entirely related to cuff-based devices. This goal needs the identification of the potential sources of biases.
+%%%In this study, we aim to investigate BP technologies with a new viewpoint on the bias concept and the potential sources of bias that can influence reported BP values.
+We will focus on the most popular commercial cuff-based devices, which are currently the most accurate and popular BP devices used for in- and out-patients. They are also used for calibration of cuff-less BP devices. We have conducted a broad literature survey in terms of the various factors that can potentially impact BP measurements, including patient-related factors, BP acquisition session circumstances and device-related factors. The paper is organized as follows: Section~\ref{sec: BP_review} reviews the biophysics of the BP. Section~\ref{sec: BP_techs} classifies BP measurement methods. Section~\ref{sec: cuff-based} investigates different validation standards and reviews various commercial BP technologies and their operation principles. 
+Section~\ref{sec: BP_tech_biases} presents potential sources of bias in BP technologies from different perspectives. Section~\ref{sec: Future} details future perspectives for using machine learning techniques for individualized BP assessment and bias correction. Section~\ref{sec: conclusion} concluded this study and discusses the impact and limitations of the study.
+
+%//////////////////////////////////////////
+\section{A Review of the blood pressure physiology}
+\label{sec: BP_review}
+Vital signs and physiological measurements are proxies for assessing the fundamental body functions. The BP is one of the important clinical parameters measured from the body, together with the vital signs \citep{Magder2018-vy}. A regulated BP guarantees timely and adequate supply of blood \citep{M9}, which is essential for the blood functions: 1) transportation of nutrients, waste, hormones, oxygen and carbon dioxide; 2) regulation of osmotic pressures, temperature, and pH; and 3) protection against infections via white blood cells, antibodies and clots (to prevent excessive blood loss during injuries).
+
+% Healthcare providers routinely monitor four main vital signs \citep{M1}. BP is frequently measured with other vital signs, although it is not considered one of them. Nevertheless, it is one of the most commonly measured clinical parameters, and its values are decisive in physicians' decisions \citep{Magder2018-vy}.
+
+% BP values are significant because blood is composed of elements, including cells and cell fragments, suspended in plasma. Blood is the only fluid connective tissue in the body that has three critical functions: (1) material transportation (such as nutrients, waste, hormones, $\text{O}_{2}$ and $\text{CO}_{2}$), (2) regulation (like osmotic pressures, temperature, and PH) and (3) protection (such as white blood cells and antibodies that protect against foreign molecules and diseases and clot to prevent excessive blood loss). Various molecules, including proteins, nutrients, and metabolic wastes, are dissolved in plasma and transported between multiple organs. Blood returns to the heart's right atrium through the venous system after passing through the organs. The continuous supply of blood is a vital process in the body \citep{M9}. 
+
+\subsection{Blood pressure definition}
+Blood flows across the body due to the pressure difference in the arterial system \citep{mousavi2018designing}. The BP assesses the mechanical function of the heart (as a pump). It is the force per unit area of the arterial system, commonly measured in millimeters of mercury (mmHg). In healthy subjects, the heart contracts between 60 to 100 times per minute, resulting in a pulsatile and almost periodic pressure wave in the arterial system. The pressure wave's maximum is during \textit{systole}, when cardiac contraction exerts its maximum pressure to the blood and arterial walls. This is when blood is pumped from the heart into the arteries. The lowest pressure corresponds to \textit{diastole}, when the heart is at rest \citep{M5}. %%%As explained, blood flow in the arteries is pulsatile.
+Therefore, the arterial BP fluctuates between the maximum and minimum levels and damp down to zero through the end of the arterial circulation system, Fig.~\ref{Fig: BP_meaning} \citep{bettsanatomy}. %This feature defines three different BP values as follows \citep{mousavi2018designing}:
+%%%BP is the generated force by the heart that blood needs to pass through the arteries during each heart pumping. It uses force to push blood into the human arteries, tissues, and cells \citep{mousavi2018designing}. Therefore, BP is the force of blood circulation in the arteries. This process happens 60 to 100 times per minute.
+ % In other words, blood moves from higher pressure levels to lower ones. In healthy people, each heartbeat sends a pressure wave to the arterial system. The wave reaches its peak during systole when cardiac contraction exerts pressure on the blood and causes the arterial wall to expand. The highest pressure is recorded when blood is pumped from the heart into the arteries, and the lowest is related to the diastolic stage when the heart is at rest \citep{M5}. As explained, blood flow in the arteries is pulsatile. Therefore, it has a waveform, and arterial BP fluctuates between the maximum and minimum levels, as shown in Fig.~\ref{Fig: BP} \citep{bettsanatomy}. This feature defines three different BP values as follows \citep{mousavi2018designing}:
+Throughout this work we will study the following BP parameters:
+\begin{itemize}
+\item\textit{Systolic blood pressure (SBP)}, or the maximum pressure inside the arteries during cardiac contraction;
+\item\textit{Diastolic blood pressure (DBP)}, or the minimum atrial pressure during cardiac rest;
+\item\textit{Mean Arterial Pressure (MAP)}, which is an empirical weighted average of SBP and DBP, to approximate the average BP over the cardiac cycle using only its maximum and minimum values \citep{Vlachopoulos2011-kp}:
+\begin{equation}
+\text{MAP}=\frac{\text{SBP}+2\times\text{DBP}}{3}
+\label{Eq: Map}
+\end{equation}
+where the higher weight of the DBP empirically accounts for the asymmetry of the continuous BP (see Fig.~\ref{Fig: KORTOKOFF}).
+\end{itemize}
+
+\begin{figure}[tb]
+\centering
+\includegraphics[trim={3cm 2cm 3cm 1cm},clip,width=1\textwidth]{Images/bp_meaning.pdf}
+\caption{The systolic, diastolic, mean arterial, pulse pressures, and the overall blood pressure at different blood vessel points; adopted from \citep{bettsanatomy}, by OpenStax College (CC-BY-3.0)}‌\label{Fig: BP_meaning}
+\end{figure}
+
+\subsection{Factors impacting the blood pressure}
+%\textcolor{red}{@Somayyeh, please summarize this section as much as possible. Just keep the aspects that are directly related to BP measurement bias.}
+  
+Arterial BP values are subjective, and depend on many factors, including physics and physiology of the body; body position; brain activities; digestive activities; muscle activities; nerval stimulations; environmental factors (air temperature and audio noise level); smoking; alcohol and coffee consumption; and medications \citep{M10, M1}. There are also various biological factors that impact the BP \citep{desaix2013anatomy}, including:
+\subsubsection{Cardiac output} Cardiac output is the amount of blood that is pumped into the ventricles by the heart. BP and flow increase when factors such as sympathetic stimulation, epinephrine and norepinephrine, thyroid hormones, and increased calcium ion levels increase cardiac output (heart rate, stroke volume, or both). Conversely, factors that decrease heart rate, stroke volume, or both, such as parasympathetic stimulation, increased or decreased levels of potassium ions, decreased calcium levels, anoxia, and acidosis, will decrease cardiac output \citep{desaix2013anatomy, M10}.
+
+\subsubsection{Compliance} Compliance is the ratio of the change in volume to the change in the pressure applied to a vessel \citep{Glasser1997-ll}. Arterial compliance has a direct relationship with its efficiency. There is an inverse relationship between BP and compliance of blood vessels. When vascular diseases cause artery stiffening, compliance decreases and the heart works harder to push blood through the stiffened arteries, resulting in an increase in the BP
+\citep{desaix2013anatomy}.
+
+\subsubsection{Blood volume} The total amount of blood in the body directly affects blood flow and pressure. If blood volume decreases due to bleeding, dehydration, vomiting, severe burns, or certain medications, BP and flow also decrease. However, the body's regulatory mechanisms are efficient in controlling BP, and symptoms may not appear until 10-20\% of blood volume is lost. Hypovolemia can be treated with intravenous fluid replacement, but the underlying cause must also be addressed. Intravenous fluid replacement is typically part of the treatment. Hypovolemia can be treated with intravenous fluid replacement, but the underlying cause must also be addressed to restore homeostasis in these patients \citep{desaix2013anatomy, M12}.
+
+\subsubsection{Blood viscosity} Blood viscosity is the fluids' thickness (resistance to blood flow). Blood viscosity is inversely proportional to flow and directly proportional to resistance. As a result, any factor that increases the blood viscosity raises the resistance and lowers the flow. In contrast, factors that decrease viscosity increases flow and lowers the resistance. Blood viscosity typically does not vary over short time intervals. Plasma proteins and the formed elements are the two primary factors influencing blood viscosity. Any condition that affects the number of plasma constituents, such as red blood cells, can change viscosity \citep{desaix2013anatomy}. Since the liver produces most plasma proteins, liver impairments or dysfunctions such as hepatitis, cirrhosis, alcohol damage and drug toxicity can also alter the viscosity and decrease the blood flow \citep{Letcher1981-qq}.
+
+\subsubsection{Blood vessel length and diameter} The vessels' resistance and lengths are directly related. Longer vessels have more resistance and a lower flow. A higher surface area of the vessel makes it harder for blood to flow through it. Similarly, shorter vessels have a smaller resistance, resulting in a higher flow. The length of blood vessels grows with age, but they tend to stabilize and remain constant in length during adulthood under normal physiological conditions \citep{M10, desaix2013anatomy}.
+%Additionally, the distribution of vessels is different across all tissues. In general, amputation and mass loss are the only reasons for losing the length of vessels. In this way, weight loss has several significant advantages because it reduces the heart's duty to overcome the resistance for many miles of vessels \citep{M10, desaix2013anatomy}. 
+The diameter of blood vessels differs depending on their type and can change throughout the day in response to chemical and neural signals. Unlike vessel length, vessel diameter is inversely related to resistance. Intuitively, a vessel with a larger diameter allows blood to flow with less friction and resistance (even with the same blood volume), because the blood has less contact with the vessel walls. \citep{desaix2013anatomy, Jeppesen2007-az}.
+% \begin{enumerate}[leftmargin=*]
+%     \item \textit{Cardiac output}, or 
+%     \item \textit{Compliance}, which is 
+%     \item \textit{Blood volume}, or 
+%     \item \textit{Blood viscosity}, is 
+%     \item \textit{Blood vessel length and diameter}. 
+% \end{enumerate}
+\subsection{Blood pressure norms}
+In 2018, the Journal of the American Heart Association (AHA) published guidelines for the prevention, detection, evaluation, and management of BP \citep{Whelton2018}. Table \ref{Tab: BPcategory}
+lists the BP ranges for adults in four categories. BP values for children and adolescents are generally lower than for adults, and they gradually rise with age \citep{azegami2021blood}. Hypertension (abnormally high BP) is characterized by a continuous elevation of BP values above the normal range. On the other hand, hypotension (abnormally low BP) occurs when BP values are below normal ranges. Hypotension can happen due to a sudden blood loss or a decrease in blood volume, and hypertension is linked to an increased risk of various forms of CVDs \citep{Whelton2018}: 
+  
+\begin{table}[tb]
+    \begin{adjustwidth}{-\extralength}{0cm}
+    %\captionsetup{belowskip=0pt,aboveskip=0pt}
+    \caption{Blood pressure norms based on the health status of an adult \citep{Whelton2018}}\label{Tab: BPcategory}
+    \begin{center}
+    \begin{tabularx}{\textwidth}{p{5cm}CCC}
+        \toprule
+        \textbf{BP category} & \textbf{SBP (mmHg)} & 
+        &
+        \textbf{DBP (mmHg)} \\
+        \midrule
+        \textbf{Normal BP} & $<$120 & {AND} & $<$80 \\
+        \hline
+        \textbf{Elevated} & 120--129 & {AND} & $<$80 \\
+        \hline
+        \textbf{High BP (Hypertension) Stage1} & 130--139 & {OR} & 80--89 \\
+        \hline
+        \textbf{High BP (Hypertension) Stage2} & $\geq$140 & {OR} & $\geq$90 \\
+        \bottomrule
+    \end{tabularx}
+    \end{center}
+    \end{adjustwidth}
+\end{table}
+
+%//////////////////////////////////////////
+\section{Blood pressure measurement methods}\label{sec: BP_techs}
+% BP is measured by different methods, which can be categorized into different groups like the person's location when the BP is measured (home, medical center), the number of BP measurements during the day (once or more), and the measurement place of BP at the body (such as legs, wrists, ankles). In one of the critical categories, they are classified based on invasive and noninvasive. In the following, these methods will be explained in detail.
+BP readings are also impacted by the measurement technology, measurement setup, patient conditions and time. We will study these factors in the sequel.
+
+\subsection{Invasive blood pressure measurement}
+\label{sec:invasive_BP_measurement}
+%%%Invasive measurement of BP is associated with damage to the body.
+In this type of measurement, a catheter (a thin tube utilized to administer drugs, fluids, or gases into or out of a patient's body) is inserted into a vessel and measures the arterial BP using a pressure transducer consisting of a delicate and sensitive diaphragm. The transducer's resistance varies with the slightest pressure changes, allowing for the detection of BP fluctuations \citep{ding2016continuous}. This technique is utilized to record and monitor changes in BP \citep{Cole2007-rx}.
+
+In modern healthcare facilities, disposable pressure transducers are commonly utilized for more precise and continuous measurement of BP in specialized settings, such as cardiac catheterization labs, intensive care units (ICUs), and operating rooms. Although pressure transducers can measure intracranial and intra-abdominal pressures, they are most frequently used for invasive monitoring of arterial and venous BP. Invasive methods of monitoring BP can be generally classified into two categories \citep{M15}: \textit{Intravascular:} where the pressure sensor is inserted into the vessel at the tip of the catheter; \textit{Extra vascular:} where the pressure sensor is located outside the vessel and along the catheter's end.
+
+\subsection{Noninvasive blood pressure measurement}
+Noninvasive BP measurement techniques determine the BP without any physical injury to the body. This technique is classified into two groups: cuff-based and cuff-less methods. Cuff-less methods are still in the developmental stage and are commonly not common in clinical studies. Therefore, the scope of the current survey is on cuff-based methods.
+
+%\subsubsection{BP measurement using a cuff}
+% All cuff-based commercial BP technologies have a manometer (digital or analog), a pressure pump (manual or automatic), and a cuff. The fundamental of all measurements in these devices is to apply sufficient pressure to prevent blood flow in the artery. First of all, the pressure of the cuff is zero (Fig. \ref{Fig: CUFF-BASED} (Stage 1)). Then, owing to cuff inflation, its pressure is higher than the BP. So, there is no blood flow (Fig. \ref{Fig: CUFF-BASED} (Stage 2)). Next, the cuff deflation is started, and cuff pressure is slowly reduced until there is very little blood flow. At this moment, the pressure of the cuff is equal to SBP (Fig. \ref{Fig: CUFF-BASED} (Stage 3)). Again, the cuff pressure reduction continues until the blood moves through the artery very easily. The cuff pressure at this time is equal to the DBP (\ref{Fig: CUFF-BASED} (Stage 4)). There are different ways to measure BP using the cuff. The main difference between them is the identification of the moments that the cuff pressure is equal to SBP and DBP \citep{mousavi2018designing}.
+
+All commercially available cuff-based BP measurement technologies consist of a manometer (digital or analog), a pressure pump (manual or automatic), and a cuff. The basic principle of these devices is to apply sufficient pressure to the extremities (arm, wrist or leg) to temporarily block the blood flow through the artery. The cuff is then slowly deflated and the pressure is reduced until the blood begins to flow through the artery. At this point, the pressure in the cuff is close to the SBP --- the peak of BP  (Fig.~\ref{Fig: KORTOKOFF}). Since the BP oscillates through the cardiac cycle, it repeatedly falls below the external pressure, which results in repeated obstruction of blood flow (which can be heard through a stethoscope or sensed via a measurement device). The cuff pressure is then further reduced until blood flows through the artery with no obstruction, where the pressure in the cuff drops below the DBP, and no further sounds are heard by the physician (or sensed by the automatic analysis hardware/software). In Fig.~\ref{Fig: KORTOKOFF}, we can see how the actual and reported BP values can deviate, especially for the DBP.
+
+% \begin{figure*}[tb]
+% \centering
+% \includegraphics[width=\textwidth]{CUFF_BASED_Process2}
+% \caption{Blood pressure measurement using cuff-based devices has different stages. In the basic state, the cuff pressure is zero (Stage 1). Then, due to cuff inflation, its pressure exceeds the blood pressure, resulting in no blood flow (Stage 2). Next, cuff deflation initiates, and its pressure is slowly reduced until there is very little blood flow. At this point, the cuff pressure is equal to systolic blood pressure (Stage 3). The cuff pressure continues to decrease until blood moves very easily in the artery, with the current cuff pressure equal to diastolic blood pressure (Stage 4). Finally, the cuff pressure decreases until it returns to Stage 1.
+% }\label{Fig: CUFF-BASED}
+% \end{figure*}
+
+There are various methods to identify the moments when the cuff pressure is equal to SBP and DBP. The main difference between these methods lies in their ability to detect the external-internal pressure balance points accurately \citep{mousavi2018designing}. These methods are:
+\subsubsection{Auscultatory} This method dates back to the late 18th century and remains the gold standard for validating novel BP measurement methods \citep{Kumar2021-em}. It is based on Korotkoff sounds, which are produced by the turbulent flow of blood through the compressed artery. As the cuff pressure is slowly released, the artery begins to open and its pressure exceeds the cuff pressure. The pressure that the manometer displays when the first Korotkoff sound is heard corresponds to the systolic BP. As the cuff pressure reduces, the blood flows turbulently in the artery, and the sound continues until the pressure of the cuff reaches the lowest arterial pressure. At this moment, the Korotkoff sound disappears, and the corresponding manometer pressure is the distolic BP, as shown in Fig. \ref{Fig: KORTOKOFF} \citep{Kumar2021-em,peter2014review}. 
+
+\begin{figure}[tb]
+\centering
+\includegraphics[trim={2in 1in 2.5in 1.5in},clip,width=\columnwidth]{Images/Cuff_based_BP_profile}
+\caption{Auscultatory method measures blood pressure based on Korotkoff sounds. Notice the difference between the actual and reported systolic/diastolic blood pressures; adapted from \citep{desaix2013anatomy} (CC-BY-3.0)}\label{Fig: KORTOKOFF}
+\end{figure}
+
+Initially, BP was measured using mercury sphygmomanometers, but the toxicity of mercury led to the adoption of aneroid sphygmomanometers, which use a mechanical pressure gauge that is calibrated to display the pressure readings. The precision of the aneroid sphygmomanometer depends on the operator's proficiency in auscultation and use of a stethoscope, and visual acuity \citep{Kumar2021-em}. More recently, hybrid sphygmomanometers automate the detection of Korotkoff sounds and the display of the SBP, DSP and pulse rate on digital monitors \citep{lim2022blood}. To note, aneroid sphygmomanometers have varying accuracy across manufacturers. Over the past decade, surveys have been conducted to assess the accuracy of these devices. The results demonstrate that the BP readings from various manufacturers have significant deviations ranging from 1 to 44\,\% \citep{Yarows2001, Canzanello2001, Mion1998, Kumar2021-em}. Additionally, using a small gauge to read the pressure is another potential source of bias in these devices \citep{Kumar2021-em}. Therefore, mercury sphygmomanometers still remain popular in clinical settings.
+
+\subsubsection{Oscillometric} This method is currently the most popular technology for automated BP measurement devices \citep{worldtechnical}. Using a pressure sensor, it measures the pulsatile BP in the artery during cuff inflation and deflation \citep{rastegar2020non}. In this technology, the transducer detects the small variations in arterial pressure oscillations or the intra-cuff pressure, produced by the changes in pulse volume due to the heartbeats \citep{worldtechnical}. The oscillations begin when the cuff pressure exceeds the systolic BP and continues until it is lower than the diastolic BP. A microcontroller is used to control the inflating process, reading the analog output signal of the pressure sensor and its digitization. The micro-variations of the sensed pressure is filtered and pre-processed to obtain the mean arterial pressure as defined in \eqref{Eq: Map} \citep{worldtechnical}. Due to the indirect nature of this approach, the measured pressure value requires calibration to be mapped to the actual systolic and diastolic BPs. The microcontroller displays the measured BPs on a local screen \citep{Kumar2021-em}.
+
+Some of the advantages of the oscillometric method include \citep{Kumar2021-em, worldtechnical}: 1) ease of use for patients (placement and removal of the cuff); 2) ease of calibration (commonly via a button on the device); 3) portability; 4) use with minimal training. The negative aspect of this method is that commercial oscillometric devices use different (and commonly proprietary) algorithms to estimate BP from the measurements \citep{ogedegbe2010principles}. This results in an intrinsic source of bias in BP measurement from different manufacturers.
+
+\subsubsection{Ultrasound} This technique is based on the Doppler effect \citep{worldtechnical}. Similar to the previous methods, cuff inflation blocks the blood flow in the artery. Then, as the cuff deflates, the arterial wall starts to move at the systolic BP, and produces a Doppler phase shift in the reflected ultrasound. As the arterial motion decreases and reaches its endpoint), the cuff pressure at that moment is considered as the diastolic BP \citep{Kumar2021-em}. The detection of the onset and offset of arterial wall motions is performed by processing the Doppler reflection by a local (digital) processor.
+
+%//////////////////////////////////////////
+\section{Cuff-based blood pressure measurement technologies}\label{sec: cuff-based}
+As with all medical equipment, BP measurement devices must meet regulatory requirements and standards. In this section, the essential BP measurement and validation standards of commercial cuff-based BP monitors are reviewed.%%%relevant to BP measurement devices, well-known commercial cuff-based devices, and standard BP measurement conditions in acquisition sessions.
+
+\subsection{BP measurement device standards}
+There are different standards for validating BP measurement devices. In 1987, the Association for the Advancement of Medical Instrumentation (AAMI) published the first standard for non-invasive BP medical devices \citep{association1987american}. In 1990, the British Hypertension Society (BHS) set another clinical protocol for validating these devices, which includes many of the AAMI standards \citep{gervsak2009procedure}, \citep{stergiou2018universal}. These parallel standards continued until 2018 when the AAMI, the European Society of Hypertension (ECH) and the
+International Organization for Standardization (IOS) published a universal protocol named ``single universal standard'', also  referred by the ISO 81060-2:2018/Amd 1:2020 on ``non-invasive sphygmomanometers'', \citep{ISO81060-2:2018/Amd.1:2020, worldtechnical}. The unified standard facilitated the validation and comparison of measurements made by BP devices manufactured globally.
+
+As part of this standard, manufacturers are required to collect a database of measurements from at least 85 individuals at least three times per individual. Therefore, at least 255 records are required to validate BP devices \citep{mousavi2018designing}. Moreover, the mean absolute error between the recorded BP values and the reference technology should be less than 5\,mmHg, and the standard deviation of the multiple measurements should be less than 8\,mmHg. The standard also identifies whether the BP measurement devices have cumulative absolute error into three groups of less than 5\,mmHg, between at least 5\,mmHg but less than 10\,mmHg, and at least 10\,mmHg but less 15\,mmHg. Devices will pass the certification test if at least 85 percent of the reported results based on the noted criteria are less than 10\,mmHg \citep{worldtechnical}. The reference BP measurement technology is the invasive BP measurement techniques (Section \ref{sec:invasive_BP_measurement}), but it is also acceptable to compare the BP results with any non-invasive measurement method with a maximum error of 1\,mmHg \citep{worldtechnical}.
+
+\subsection{Commercial cuff-based BP measurement devices}
+%%% I integrated the following paragraph in previous sections.
+%%%% The mercury sphygmomanometer is still used in clinical settings and is regarded as the gold standard for BP measurements despite its toxicity. The medical professional's vision and hearing abilities determine the accuracy of the mercury and aneroid sphygmomanometer BP readings \citep{rastegar2020non}. Therefore, trained personnel are required to measure. Aneroid sphygmomanometers' accuracy alters from manufacturer to manufacturer. In the last ten years, some hospitals have conducted surveys to assess the accuracy of these devices. The reported results demonstrate these devices have significant inaccuracies ranging from 1 to 44 percent. Additionally, using a small dial to read the pressure is another cause of the bias in these devices \citep{Kumar2021-em}.
+
+Commercial BP devices may be categorized into three groups: ambulatory BP monitors (ABPM), office BP (OBP) monitors, and home BP monitors (HBPM).
+
+The ABPM or BP Holter is a portable monitor that is carried by individuals with hypertension (or those who are at a higher risk of developing hypertension) for a period of 24 or 48 hours, while engaging in their regular daily activities and during sleep. Based on the physician's required settings, the device measures the patient's BP at specific time intervals, e.g. 15 or 30 minutes. After the required period, the patient returns to the clinical center, the device is taken off the patient, and the BP data is transferred to the computer or cloud and analyzed by software \citep{mousavi2018designing}. ABPM is most commonly used for detecting non-dipping BP patterns, which refer to a phenomenon where an individual's BP fails to exhibit the normal nocturnal decrease during sleep, potentially indicating an elevated risk of cardiovascular issues \citep{hassler2005circadian}.
+
+OBP is the most common type of BP measurement devices for clinical use. Its accuracy is critical (especially in emergency and surgical units), where physicians make essential real-time decisions from the BP and other vital signs values. In these situations, the physician may not have adequate time to repeat BP measurement (as advised by BP reading standards). These devices have two types. These BP devices are either integrated into bedside monitors or are used as discrete devices similar to the HBPM type.
+
+\subsection{Standard blood pressure measurement conditions}
+Several guidelines have been published to improve the accuracy of BP measurement devices by standardizing BP acquisition procedures. Although there are different recommendations in different countries and organizations, they typically address the same fundamental issues \citep{Wagner2012-id}. Fig.~\ref{Fig: principle} illustrates the basic principles of BP measurement \citep{Stergiou2021-fl}. The following are some of the common items for BP measurement guidelines: 
+\begin{itemize}
+    \item To maintain a stable BP measurement environment, it is recommended to refrain from opening and closing windows and doors. \citep{Kumar2021-em}.
+    \item The temperature and relative humidity of the BP measurement environment should be in the range of 15–25\,$^{\circ}$C and 20–85\,\%, respectively \citep{Kumar2021-em}. 
+    \item BP should be measured in a quiet environment \citep{Liu2022-xk, Stergiou2021-fl}.
+    \item The patient should not smoke, eat or drink at least 30 minutes before measuring \citep{Stergiou2021-fl}. 
+    \item The patient should have adequate rest time before the measurement to stabilize the BP.
+    \item The patient should not speak and should remain quiet during the measurement \citep{Stergiou2021-fl}.
+    \item The patient should sit on a chair with back and arm supports and without crossing legs \citep{Liu2022-xk}.
+    \item The patient's arm should be placed and remain at the same level as the heart throughout BP measurement \citep{Kumar2021-em}.
+    \item An appropriate cuff should be used for measuring according to AHA guidelines (Table~\ref{Tab:cuffsizeAHA}) \citep{Kumar2021-em}.
+    \item The antecubital fossa (the area between the anatomical arm and the forearm) should be 2-3\,cm above the lower end of the cuff \citep{muntner2019measurement}. 
+    \item During the measurement, the patient's leg should remain flat on the floor \citep{Stergiou2021-fl}.
+    \item Measuring BP should be done using direct contact of the cuff with the upper part of the arm (not over sleeves) \citep{Liu2022-xk}. 
+    \item It is recommended to take three BP measurements with one-minute intervals in-between. The average of the results should be reported as the BP values \citep{Stergiou2021-fl, Liu2022-xk}.
+\end{itemize}
+% revised:
+% \begin{itemize}
+%     \item Avoid opening and closing windows and doors during BP measurement \citep{Kumar2021-em}.
+%     \item Maintain temperature 15–25\,$^{\circ}$C and humidity 20–85\,\% for BP measurement \citep{Kumar2021-em}. 
+%     \item Measure BP in silence \citep{Liu2022-xk, Stergiou2021-fl}.
+%     \item Patients should avoid smoking, eating, or drinking 30 minutes prior \citep{Stergiou2021-fl}. 
+%     \item Ensure patient rests before the measurement.
+%     \item Keep patient silent during measurement \citep{Stergiou2021-fl}.
+%     \item Patient should sit with back and arm support without crossed legs \citep{Liu2022-xk}.
+%     \item Keep patient's arm level with the heart during measurement \citep{Kumar2021-em}.
+%     \item Use the correct cuff as per AHA guidelines (Table~\ref{Tab: cuffsizeAHA}) \citep{Kumar2021-em}.
+%     \item Ensure the antecubital fossa is 2-3\,cm above the cuff's lower end \citep{muntner2019measurement}. 
+%     \item Patient's leg should stay flat on the floor \citep{Stergiou2021-fl}.
+%     \item Cuff should contact the upper arm directly, not over sleeves \citep{Liu2022-xk}. 
+%     \item Take three BP readings at one-minute intervals and report the average \citep{Stergiou2021-fl, Liu2022-xk}.
+% \end{itemize}
+
+% Define custom column types
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+
+\begin{table}[tb]
+\caption{AHA Recommendation for the Appropriate Cuff Size per Patient \citep{Kumar2021-em}}\label{Tab:cuffsizeAHA}
+\centering
+\begin{tabularx}{\textwidth}{r C{3.5cm} C{3.5cm} C{3.5cm}}
+\toprule
+\textbf{Cuff} & \textbf{Arm Circumference (cm)} & \textbf{Bladder Width (cm)} & \textbf{Bladder Length (cm)} \\
+\midrule
+\textbf{Newborn} & $<$ 6 & 3 & 6 \\\hline
+\textbf{Infant}  & 6-15 & 5 & 15 \\\hline
+\textbf{Child} & 16-21 & 8 & 21 \\\hline
+\textbf{Small Adult} & 22-26 & 10 & 24 \\\hline
+\textbf{Adult} & 27-34 & 13 & 30 \\\hline
+\textbf{Large Adult} & 35-52 & 20 & 42 \\\hline
+\textbf{Adult Thigh} & 45-52 & 20 & 42 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+
+\begin{figure}[tb]
+\centering
+\includegraphics[trim={1cm 2cm 5cm 0.5cm},clip,width=0.7\textwidth]{Images/position_BP2}
+\caption{The basic principles and important standards of blood pressure measurement; adapted from \citep{Stergiou2021-fl}. See STRIDE-BP (\url{https://stridebp.org/}) for validated electronic cuff-based blood pressure devices.}\label{Fig: principle}
+\end{figure}
+
+%//////////////////////////////////////////
+\section{Potential sources of bias in blood pressure technologies} \label{sec: BP_tech_biases}
+Patient positions or acquisition circumstances that do not meet the measurement guidelines may potentially result in BP measurement biases (over or under-estimation) and misdiagnosis \citep{Wagner2012-id,kallioinen2017sources, ogedegbe2010principles}. We will study the potential sources of biases under three categories \citep{mancia20132013, ogedegbe2010principles}.
+
+\subsection{Biases related to blood pressure measurement devices}
+The BP measurement device is the first source of measurement bias. BP devices comprise of the main measurement unit and the consumable parts, as detailed below.
+
+\subsubsection{Main blood pressure measurement unit} 
+Biases related to the main BP measurement unit are known as systematic errors. Manufacturers report the acceptable range of measurement errors in the user's manual of BP measurement devices. Measurements falling outside of this range are considered unacceptable, indicating that the device needs calibration. Therefore, they require maintenance and regular calibration to identify and reduce measurement uncertainties to an acceptable level. Medical instruments comprise numerous electro-mechanical elements that undergo natural aging and wearing and are impacted by microscopic airborne contaminants that accumulate on their sensitive electronic elements and sensors. These effects change the electro-mechanical characteristics of the devices (even if they are not used), and result in a gradual drift from their nominal operating point. At a system's level, the deviations of the device elements contribute to measurement biases. It should be highlighted that the effect of device aging is not identical to the failure of the elements or the device. Therefore, even though a BP device may appear new or be fully functional, it may deviate from the original calibration point. Hence, the regular calibration of medical devices is an essential requirement that should not be compromised. %%% \citep{yayan2020key}
+To note, systematic errors, such as the changes in the cuff deflation rate \citep{Yong1987-gn}, are not mitigated by averaging, as they tend to drift the reported values by a constant bias (unknown to the user) \citep{speechly2007sphygmomanometer}. The identification and correction of systematic errors is performed by reference instruments that have been well-maintained and calibrated by medical instrumentation experts.
+
+Another source of systematic error is the software/algorithm used for BP calculation from the pressure sensor measurements. The lack of calculation calibration for the electronic pressure sensors can result in systemic errors \citep{speechly2007sphygmomanometer, turner2004effects}. For example, in automatic BP measurement devices, the rate of cuff inflation and deflation is significant, because the isometric exercise involved in inflating the cuff causes a temporary elevation of about 10\,mmHg. Although this only takes around 20\,s, if the cuff is deflated too quickly, the pressure may not have returned to baseline, resulting in a falsely high systolic pressure \citep{ogedegbe2010principles}. Other biasing factors include sensor accuracy and the software/firmware logic \citep{Kumar2021-em}. Moreover, the cuff's deflation or `bleed rate' is assumed to be a consistent rate when the algorithm calculates the systolic and diastolic pressures \citep{Kumar2021-em}, which may not hold in practice.
+
+The WHO regularly publishes and updates guidelines for standard practices to ensure that healthcare providers are cognizant of calibration requirements and potential biases to provide quality healthcare \citep{yayan2020key}. The process of calibrating medical equipment is different for each device. Most devices have built-in mechanisms for calibration. 
+Manufacturers also advise regular maintenance based on the rate of utilization. 
+Automatically calibrated devices can be used within predefined tolerances, beyond which they should be returned to the manufacturer for technical inspection or be disposed.
+
+\subsubsection{Consumables of blood pressure measurement devices}
+%A list of the components required for measurement should be available to guarantee the devices' usability. They may include batteries, rubber tubing, hoses, fittings, and various cuff sizes \citep{worldtechnical}. 
+%Each can be important if they are not in a convenient condition. For instance, weak batteries are one of the most common causes of bias. The cuff needs sufficient power to inflate and stop the blood flow. Consequently, when the person whose BP is being measured has a higher systolic pressure, the cuff requires more power. If the batteries are weak, they cannot provide enough power to inflate the cuff, which causes systemic errors. In this situation, an error code is displayed on the device's screen. So it is better to replace the device's batteries to avoid measuring errors. Also, the tube should not have.
+All BP devices have consumable components that require regular replacement. This includes batteries, rubber tubing, hoses, fittings, and the cuffs \citep{worldtechnical}. For example, since the BP device consumes variable power throughout the inflation-deflation cycle, weak batteries may result in erroneous BP values. Worn cuffs and rubber tubing with weak elasticity also impact the reported BP values. Consumable parts of BP devices should therefore be replaced according to the manufacturers' recommended timelines.
+
+\subsection{Subject-specific biases} BP values can significantly fluctuate across subjects \citep{pickering2005recommendations}. In the following section, we list some of the most important sources of subject-specific bias.
+
+\subsubsection{Demographic features} 
+Demographic features such as sex, age, race, and genetic background have physiological and anatomical impacts that influence BP measurements. 
+
+Sex is a prominent factor that influences the BP \citep{Reckelhoff2018, Sandberg2012}. Generally, males tend to have higher BP levels, which can be associated to differences in hormonal activities and anatomical differences between male and female bodies \citep{Sandberg2012, Reckelhoff2001-td}. A notable study involving 32,833 individuals (54\% women) was conducted over a span of four decades, ranging from ages 5 to 98 years \citep{Ji2020}. The study showed that women exhibited a steeper increase in BP measurements compared to men, starting as early as the third decade of life and continuing throughout their lifespan \citep{Ji2020}. Table~\ref{Tab: sex} presents a compilation of studies reporting BP values based on sex. 
+
+\begin{table}[tb]
+\caption{The results of studies reporting blood pressure values based on sex. N is the number of patients, and summaries of SBP and DBP include mean $\pm$ standard deviation.}\label{Tab: sex}
+\begin{center}
+\begin{tabular}{rccccccc}
+\toprule
+\textbf{Ref.} & \textbf{Total N} & \multicolumn{3}{c}{\begin{tabular}{@{}c@{}} \textbf{Male} 
+\end{tabular} }  
+&  \multicolumn{3}{c}{\textbf{Female} } 
+\\\hline
+ &   &  N & SBP & DBP  & N & SBP & DBP
+\\\hline
+\citep{Somani2018-cr} & 20 & 10 & 126.0$\pm$8.0 & 73.0$\pm$5.0 & 10 & 122.0$\pm$5.0 & 73.0$\pm$5.0
+ \\\hline
+\citep{Somani2018-cr} & 26 & 13 & 117.0$\pm$5.0 & 65.0$\pm$7.0 & 13 & 103.0$\pm$6.0 & 62.0$\pm$8.0
+\\\hline
+\citep{olatunji2011water} & 37 & 22 & 121.2$\pm$9.7 & 73.7$\pm$8.5 & 15 & 117.4$\pm$13.9 & 74.8$\pm$12.2
+\\\hline
+\citep{kho2006acute} & 39 & 24 & 122.9$\pm$13.2 & 82.6$\pm$10.1 & 15 & 110.5$\pm$8.8 & 74.5$\pm$7.3
+\\\hline
+\citep{Papakonstantinou2016-mj} & 40 & 20 & 128.2$\pm$12.3 & 83.3$\pm$5.8 & 20 & 117.0$\pm$14.4 & 75.5$\pm$12.3
+\\\hline
+\citep{Monnard2017-je} & 45 & 23 & 119.0$\pm$9.5 & 76.0$\pm$4.7 & 22 & 111.0$\pm$4.6  & 72.0$\pm$4.6
+\\\hline
+\citep{helfer2001does} & 55 &  26 & 129.1$\pm$9.1 & 64.2$\pm$8.3 & 29 & 108.0$\pm$9.8 & 61.7$\pm$6.7
+\\\hline
+\citep{harshfield1989race} & 92 & 55 & 105.6$\pm$10.3 & 58.5$\pm$9.3 & 37 & 103.4$\pm$11.8  & 56.9$\pm$8.9
+\\\hline
+\citep{harshfield1989race} & 107 & 42  & 114.3$\pm$12.2 & 62.5$\pm$13.3 & 65 & 100.3$\pm$10.0  & 63.6$\pm$10.9
+\\\hline
+\citep{costa2018gender} & 122 & 52 & 137.0$\pm$20.0 & 86.0$\pm$12.0 & 70 & 145.0$\pm$26.0  & 87.0$\pm$15.0
+\\\hline
+\citep{Ki2013-ai} & 141 & 117 & 128.8$\pm$10.4 & 81.3$\pm$5.3 & 24 & 126.0$\pm$11.8  & 77.6$\pm$7.4
+\\\hline
+\citep{Wang2006-jk} & 312 & 142 & 116.3$\pm$9.9 & 66.4$\pm$7.1 & 170 & 112.3$\pm$8.3 & 66.5$\pm$6.8
+\\\hline
+\citep{Wang2006-jk} & 351 & 184 & 113.7$\pm$9.0 & 64.5$\pm$6.6 & 167 & 109.8$\pm$7.5 & 64.1$\pm$5.9
+\\\hline
+\citep{Song2016-ho} & 806 & 237 & 120.6$\pm$12.9 & 77.9$\pm$8.7 & 569 & 112.7$\pm$12.3 & 71.7$\pm$8.4
+\\\hline
+\citep{lan2012prevalence} & 1030 & 614  & 123.3$\pm$12.3 & 77.3$\pm$8.2  & 416 & 117.1$\pm$10.6 & 73.9$\pm$7.1
+\\\hline
+\citep{privvsek2018epidemiological} & 1298 & 638  & 127.4$\pm$14.0 & 77.7$\pm$10.5 & 660 & 124.4$\pm$15.7  & 
+74.5$\pm$9.7
+\\\hline
+\citep{cui2002genes} & 1378 & 664 & 122.0$\pm$10.5 & 72.0$\pm$9.4 & 714 & 113.0$\pm$9.9 & 68.2$\pm$8.6
+\\\hline
+\citep{cui2002genes} & 1534 & 767  & 132.0$\pm$16.4 & 83.1$\pm$9.3  & 767 & 126.0$\pm$16.1 & 78.9$\pm$9.2
+\\\hline
+\citep{vallee2019relationship} & 2105 & 945  & 132.0$\pm$18.0 & 79.0$\pm$11.0 & 1160 & 122.0$\pm$18.0  & 
+75.0$\pm$10.0
+\\\hline
+\citep{Giggey2011-ri} & 2442 & 1577 & 129.7$\pm$19.2 & 80.9$\pm$10.6 & 865 & 123.2$\pm$20.9 & 76.5$\pm$10.3
+\\\hline
+\citep{bourgeois2017associations} & 2849 & 1505  & 124.6$\pm$15.5 & 73.8$\pm$15.5 & 1344 & 120.0$\pm$18.3  & 71.2$\pm$14.6
+\\\hline
+\citep{bourgeois2017associations} & 3654 & 1915  & 120.0$\pm$21.8 & 70.5$\pm$17.5 & 1739 & 115.0$\pm$20.8  & 68.2$\pm$16.6
+\\\hline
+\citep{bourgeois2017associations} & 6485 & 3379 & 121.7$\pm$23.2 & 72.9$\pm$17.4 & 3106 & 117.8$\pm$22.2  & 70.4$\pm$16.7
+\\\hline
+\citep{pan1986role} & 33599 & 19704  & 138.7$\pm$18.4 & 81.3 $\pm$11.5 & 13895 & 132.1$\pm$19.3 & 77.4 $\pm$11.6
+\\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+Age is another significant demographic feature. Arterial stiffness is known to increase with age, arterial compliance reduces, and pulse pressure increases \citep{muntner2019measurement}. Elderly individuals may experience systolic hypertension, characterized by elevated SBP without a rise in DBP. This condition, commonly known as ``pseudohypertension'', has been linked to a decline in arterial distensibility, which can lead to bias and inaccurately high BP readings, as the external cuff pressure reduces on the artery \citep{muntner2019measurement}. Carrico et al.\ have examined the relationship between age, sex, and BP in a group comprising 965 men and 1114 women \citep{carrico2013predictive}. Their findings indicate that overall BP values increase with age, but decrease again after approximately 70 years of age. In most age groups, BP is higher in males than in females, but both sexes have similar BP until their teenage years. However, after about 70 years of age, females' SBP values surpass those of males, while their DBP values remain approximately the same.
+
+There has also been a significant interest in examining health measures across racial groups. Numerous studies have examined the relationship between BP and race \citep{Jones2006, hardy2021racial}. These studies have found that specific diseases are more common in certain racial groups, suggesting a potential link between race and hypertension prevalence \citep{Cooper1998, fryar2017hypertension}. For instance, Staessen et al. \citep{staessen1997nocturnal} showed that Asian populations have a higher rate of non-dipping than European populations, indicating possible variations in BP patterns among different races. Furthermore, individuals of African American descent have been observed to have higher rates of hypertension, cardiovascular, and cerebrovascular morbidity and mortality compared to those of European descent \citep{mayet1998ethnic}. This suggests that race (or more accurately genetic factors) may play a significant role in hypertension susceptibility. Another possible explanation is that the experiences of some social groups, including but not limited to the medical care that the groups receive, affect their BP. Most likely, the higher prevalence of hypertension in African Americans has multiple sources including genetic, socioeconomic, systemic, and other factors. Table~\ref{Tab: Race} summarizes a group of studies that have compared BP values based on race. 
+
+\begin{table}
+\caption{The summarized results of studies reporting blood pressure values across race. N is the number of patients, and summaries of SBP and DBP include mean $\pm$ standard deviation.}\label{Tab: Race}
+
+\begin{center}
+\begin{tabular}{rcccc}
+\toprule
+\textbf{Ref.} & \textbf{N}   &\textbf{Race} & \textbf{SBP} & \textbf{DBP} \\
+\hline
+\citep{harshfield1989race} & 199 & Black & 105.7$\pm$10.9 & 63.2$\pm$11.9 \\
+ &  & White & 104.7$\pm$10.9 & 57.9$\pm$9.1 \\
+\hline
+\citep{mayet1998ethnic} & 245 & White hypertensive & 145.0$\pm$18.3 & 92.0$\pm$10.7 \\
+ &  & Black hypertensive & 142.0$\pm$14.9 & 93.0$\pm$10.8
+ \\
+\hline
+\citep{Wang2006-jk} & 663 & European Americans & 111.8$\pm$8.3 & 64.3$\pm$6.2 \\
+ &  & African Americans & 114.1$\pm$9.0 & 66.4$\pm$6.9 \\
+\hline
+\citep{bourgeois2017associations} & 6503 & Non-Hispanic Black & 122.4$\pm$16.9 & 72.5$\pm$21.3 \\
+ &  & Mexican American & 117.6$\pm$30.2 & 69.4$\pm$24.1 \\
+\hline
+\citep{bourgeois2017associations} & 9334 & Non-Hispanic White & 119.8$\pm$32.2 & 71.7$\pm$24.1 \\
+ &  & Non-Hispanic Black & 122.4$\pm$16.9 & 72.5$\pm$21.3 \\\hline
+\citep{bourgeois2017associations} & 10139 & Non-Hispanic White & 119.8$\pm$32.2 & 71.7$\pm$24.1 \\
+ &  & Mexican American & 117.6$\pm$30.2 & 69.4$\pm$24.1 \\
+ \bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+
+\subsubsection{Subject-wise factors}
+Height and weight are two essential factors influencing BP values. Studies have shown that taller individuals tend to have lower SBP and higher DBP than shorter individuals \citep{bourgeois2017associations}. The body mass index (BMI) --- weight divided by the squared height (kg/m$^2$) --- can be used as a compound factor for BP assessment \citep{he2000blood, jena2018relationship}. Table \ref{Tab: BMI} presents the findings from various studies that have reported BP values based on BMI, overall showing a positive correlation between BP and BMI \citep{neter2003influence, Neter2003}.
+
+\begin{table}[tb]
+%\captionsetup{belowskip=0pt,aboveskip=0pt}
+\centering
+\caption{The results of studies reporting blood pressure values based on BMI}\label{Tab: BMI}
+\small{
+\begin{tabular}{rcccc}
+\toprule
+\textbf{Ref.} & \textbf{N} & \textbf{BMI} &\textbf{SBP} &\textbf{DBP} \\
+%\midrule
+\hline
+\citep{Tibana2013-ve} & 13 & 30.7$\pm$4.2 & 124.7$\pm$13.0 & 82.4$\pm$10.1
+\\\hline
+\citep{Karatzi2013-yr} & 17  & 24.3$\pm$2.4 & 115.4$\pm$6.2 & 68.5$\pm$5.4
+\\\hline
+\citep{Fantin2016-bt} & 21  & 23.9$\pm$3.3 & 115.4$\pm$13.5 & 71.2$\pm$9.4
+\\\hline
+\citep{Papakonstantinou2016-mj} & 40 & 23.6$\pm$3.5 & 122.6$\pm$14.4 & 79.4$\pm$10.3
+\\\hline
+\citep{Kayrak2010-lk} & 45 & 29.8$\pm$4.7 & 174.0$\pm$14.1 & 95.8$\pm$11.5
+\\\hline
+\citep{Monnard2017-je} & 45 & 22.6$\pm$2.6 & 115.0$\pm$6.7 & 74.0$\pm$6.7
+\\\hline
+\citep{cunha2017acute} & 50 & 28.6$\pm$3.9 & 133.9$\pm$12.3 & 66.4$\pm$9.7
+\\\hline
+\citep{Netea2003} & 57 & 25.7$\pm$4.4 & 135.7$\pm$24.8 & 79.5$\pm$9.7
+\\\hline
+\citep{Kayrak2010-lk} & 70 & 30.6$\pm$5.6 & 168.3$\pm$18.4 & 83.4$\pm$9.4
+\\\hline
+\citep{talukder2016effect} & 88 & 22.0$\pm$4.4 & 108.0$\pm$10.0 & 65.0$\pm$9.0
+\\\hline
+\citep{Xu2019-rx} & 100 & 23.7$\pm$2.9 & 132.9$\pm$16.5 & 80.0$\pm$10.4
+\\\hline
+\citep{Azar2016-eg} & 165 & 21.3$\pm$4.1 & 112.0$\pm$10.0 & 67.0$\pm$9.0
+\\\hline
+\citep{talukder2016effect} & 194 & 26.0$\pm$5.0 & 120.3$\pm$15.8 & 76.4$\pm$11.3
+\\\hline
+\citep{krzesinski2016diagnostic} & 280 & 28.7$\pm$4.2 & 143.8$\pm$14.3 & 92.4$\pm$9.5
+\\\hline
+\citep{Li2019-ax} & 287 & 25.0$\pm$3.9 & 139.2$\pm$16.9 & 74.6$\pm$12.0
+\\\hline
+\citep{Wang2006-jk} & 312 & 24.0$\pm$7.0 & 114.1$\pm$9.0 & 66.4$\pm$6.9
+\\\hline
+\citep{Wang2006-jk} & 351 & 22.0$\pm$5.0 & 111.8$\pm$8.3 & 64.3$\pm$6.2
+\\\hline
+\citep{Walker2019-oe} & 389  & 29.4$\pm$5.7 & 121.1$\pm$16.3 & 53.8$\pm$4.8
+\\\hline
+\citep{Widlansky2007-ih} & 500 & 27.9$\pm$5.3 & 123.0$\pm$17.0 & 70.0$\pm$11.0
+\\\hline
+\citep{Widlansky2007-ih} & 599 & 28.1$\pm$5.1 & 128.0$\pm$18.0 & 72.0$\pm$12.0
+\\\hline
+\citep{privvsek2018epidemiological} & 638 & 27.5$\pm$3.5 & 127.4$\pm$14.0 & 77.7$\pm$10.5
+\\\hline
+\citep{privvsek2018epidemiological} & 660 & 27.3$\pm$5.2 & 124.4$\pm$15.7 & 74.5$\pm$9.7
+\\\hline
+\citep{Widlansky2007-ih} & 733 & 28.0$\pm$5.2 & 122.0$\pm$17.0 & 69.0$\pm$11.0
+\\\hline
+\citep{Widlansky2007-ih} & 735 & 28.2$\pm$5.5 & 124.0$\pm$18.0 & 71.0$\pm$11.0
+\\\hline
+\citep{Song2016-ho} & 806  & 23.7$\pm$3.0 & 115.0$\pm$13.0 & 73.5$\pm$8.9
+\\\hline
+\citep{Walker2019-oe} & 833 & 27.5$\pm$4.7 & 124.3$\pm$9.5 & 68.5$\pm$6.1
+\\\hline
+\citep{Walker2019-oe} & 927 & 27.3$\pm$5.6 & 117.1$\pm$14.3 & 53.9$\pm$4.6
+\\\hline
+\citep{vallee2019relationship} & 945 & 26.1$\pm$4.4 & 132.0$\pm$18.0 & 79.0$\pm$11.0 \\
+\hline
+\citep{Walker2019-oe} & 1030 & 30.8$\pm$6.3 & 138.1$\pm$18.6 & 71.9$\pm$8.6
+\\\hline
+\citep{vallee2019relationship} & \text{1160} & 25.7$\pm$5.2 & 122.0$\pm$18.0& 75.0$\pm$10.0 \\
+\hline
+\citep{privvsek2018epidemiological} & 1298 & 27.4$\pm$4.5 & 125.9$\pm$14.9 & 76.1$\pm$10.2
+\\\hline
+\citep{bourgeois2017associations} & 1344 & 30.0$\pm$7.3 & 120.0$\pm$18.3 & 71.2$\pm$14.6
+\\\hline
+\citep{cui2002genes} & 1378 & 23.4$\pm$3.5 & 112.5$\pm$10.1 & 70.0$\pm$8.9
+\\\hline
+\citep{bourgeois2017associations} & 1505 & 27.1$\pm$7.7 & 124.6$\pm$15.5 & 73.8$\pm$15.5
+\\\hline
+\citep{cui2002genes} & 1534 & 26.5$\pm$3.9 & 129.0$\pm$16.2 & 81.0$\pm$9.2
+\\\hline
+\citep{Walker2019-oe} & 1559 & 28.8$\pm$5.2 & 137.2$\pm$16.4 & 71.8$\pm$8.3
+\\\hline
+\citep{bourgeois2017associations} & 1739 & 28.6$\pm$8.3 & 115.0$\pm$20.8 & 68.2$\pm$16.6
+\\\hline
+\citep{bourgeois2017associations} & 1915 & 27.7$\pm$8.7 & 120.0$\pm$21.8 & 70.5$\pm$17.5
+\\\hline
+\citep{barba2006body} & 1937 & 19.2$\pm$3.8 & 96.5$\pm$13.3 & 60.6$\pm$9.4
+\\\hline
+\citep{barba2006body} & 1968 & 19.5$\pm$3.9 & 97.5$\pm$13.2 & 61.3$\pm$9.0
+\\\hline
+\citep{vallee2019relationship} & \text{2105} & \text{25.9$\pm$5.1} & 127.0$\pm$19.0 & 77.0$\pm$11.0 \\
+\hline
+\citep{Sano2020-zk} & 2423  & 24.3$\pm$3.3 & 154.7$\pm$16.2 & 90.1$\pm$11.9
+\\\hline
+\citep{Giggey2011-ri} & 2442  & 24.9$\pm$3.6 & 127.4$\pm$20.1 & 79.4$\pm$10.7
+\\\hline
+\citep{bourgeois2017associations} & 3106 & 26.9$\pm$11.1 & 117.8$\pm$22.2 & 70.4$\pm$16.7
+\\\hline
+\citep{bourgeois2017associations} & 3379 & 27.5$\pm$5.8 & 121.7$\pm$23.2 & 72.9$\pm$17.4
+\\\hline
+\citep{Li2019-ax} & 6887  &  25.7$\pm$4.4 & 134.3$\pm$20.2 & 79.6$\pm$11.6
+\\\hline
+\citep{Li2019-ax} & 12624  & 25.5$\pm$4.4 & 131.9$\pm$23.1 & 79.7$\pm$11.9
+\\\hline
+\citep{Li2019-ax} & 17921  & 25.6$\pm$4.4 & 133.1$\pm$22.4 & 79.9$\pm$11.8
+\\\hline
+\citep{Zheng2021-tq} & 32710 & 23.6$\pm$3.3 & 123.6$\pm$19.8 & 78.9$\pm$12.4
+\\\hline
+\citep{Kang2020-mq} & 417907 & 23.8$\pm$3.6 & 128.1$\pm$19.0 & 76.1$\pm$10.4
+\\\hline
+\citep{Lewington2012-iv} & 506673 & 23.7$\pm$3.4 & 131.0$\pm$21.0 & 78.0$\pm$11.0
+\\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\subsubsection{Individual-wise background medical conditions}
+Accurate interpretation of BP measurements should consider patient-specific conditions and comorbid factors, which can directly or indirectly influence BP readings. Often, the inherent biological rhythms in the disease process and their potential clinical implications are overlooked or inadequately considered when treating hypertensive patients \citep{hassler2005circadian}. In the following section, we discuss several situations where these considerations play a significant role.
+
+Healthy individuals typically show BP variations throughout the day, rising during daytime and dropping at night \citep{Ohkubo2002}. Most people have nighttime BP readings 10--20\% lower than daytime. However, some experience a non-dipping pattern where nighttime BP drops by less than 10\% \citep{routledge2007nondipping}. About 25\% of hypertensive individuals with unknown causes exhibit this non-dipping pattern \citep{Pickering2001}.
+
+The \textit{``white-coat effect''}, caused by the medical environment and physician presence, can elevate a patient's clinic BP \citep{ogedegbe2010principles}. This effect often results in higher SBP and DBP compared to baseline ambulatory BP \citep{kallioinen2017sources}. Table~\ref{Tab: enviro} summarizes studies comparing BP measurements in settings like home and office.
+
+\begin{table*}[tb]
+\caption{The results of studies reporting blood pressure values based on the measuring environment}\label{Tab: enviro}
+\begin{center}
+\begin{tabular}{rccccccc}
+\toprule
+\textbf{Ref.} & \textbf{N} & \multicolumn{3}{c}{\begin{tabular}{@{}c@{}} \textbf{Home} 
+\end{tabular} }  
+&  \multicolumn{3}{c}{\textbf{Clinic} } 
+%\midrule
+\\\hline
+ &   &  N & SBP & DBP  & N & SBP & DBP
+\\\hline
+\citep{Ragot2000-ym} & 454 & 199  & 144.0$\pm$18.0 & 88.6$\pm$10.0 & 255 & 160.0$\pm$13.0 & 99.7$\pm$4.0
+\\\hline
+\citep{Asayama2022-ft} & 574 & 287 & 125.7$\pm$8.4 & 72.9$\pm$8.6 & 287 & 139.2$\pm$16.9 & 74.6$\pm$12.0
+\\\hline
+\citep{Sano2020-zk} & 4846 & 2423  & 152.4$\pm$3.1 & 89.7$\pm$9.3  & 2423 & 154.7$\pm$16.2 & 90.1$\pm$11.9
+\\\hline
+\citep{Li2019-ax} & 13774 & 6887 & 127.3$\pm$18.1 & 76.2$\pm$9.9 & 6887 & 134.3$\pm$20.2 & 79.6$\pm$11.6 
+\\\hline
+\citep{Li2019-ax} & 35842 & 17921 & 129.1$\pm$18.6 & 76.9$\pm$9.8 & 17921 & 133.1$\pm$22.4 & 79.9$\pm$11.8
+\\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table*}
+
+Pregnancy-related hemodynamic changes can affect BP readings. While many automated BP device types exist, few are calibrated for pregnant women, including those with hypertensive disorders \citep{van2019validation}. Nearly 10\% of pregnant women face high BP, risking both the fetus(es) and the mother. Those with gestational diabetes or preeclampsia are especially at risk \citep{Wagner2012-id, Katebi2022, Katebi2023}.
+
+Obesity correlates with high BP in both children and adults. For each BMI unit increase, SBP and DBP rise by 0.56 and 0.54\,mmHg, respectively, in obese children \citep{he2000blood}. Table~\ref{Tab: obes} presents studies examining the impact of obesity on children's BP values.
+
+% pregnant women
+%Almost ten percent of pregnant women have high BP, which can hurt both the fetus and the mother \citep{muntner2019measurement}. Permanents with gestational diabetes or Preeclampsia are the high-risk groups \citep{Wagner2012-id}.
+%Pregnant women's altered hemodynamics are thought to cause differences in BP readings compared to the not pregnant population. While there are a lot of automated BP devices, only a few have been proven accurate for pregnant women with or without hypertensive disorders \citep{van2019validation}.
+
+% DIABETIC
+%It is necessary to keep DBP and SBP below 80 mmHg and 130 mmHg, respectively, to protect the kidneys from damage due to high BP in the diabetics' population and people with kidney disease \citep{Wagner2012-id}.
+
+% obese patients
+%Obesity has a direct relationship with high BP in both children and adult populations. Table \ref{Tab: obes} illustrates the results of studies that investigate the effect of obesity on BP values in the children population. The SBP and DBP of obese children increased by an average of 0.56 and 0.54 mmHg for each 1-unit increase in BMI. \citep{he2000blood}.
+
+\begin{table}[tb]
+%\captionsetup{belowskip=0pt,aboveskip=0pt}
+\caption{The results of studies investigating the effect of obesity on blood pressure values in the child population}\label{Tab: obes}
+\begin{center}
+\begin{tabular}{rcccccc}
+\toprule
+\textbf{Ref.} &\textbf{BP} & \textbf{Sex} & \multicolumn{2}{c}{\begin{tabular}{@{}c@{}} \textbf{Obese group} 
+\end{tabular} }  
+&  \multicolumn{2}{c}{\textbf{Non obese group}} 
+%\midrule
+\\\hline
+ &  & &  N & Mean$\pm$SD  & N & Mean$\pm$SD
+\\\hline
+\citep{he2000blood} & SBP &  Boys &  330 & 96.0$\pm$13.3  & 331 &90.0$\pm$10.6
+\\
+ & SBP &  Girls &  253 & 95.0$\pm$13.2  & 251 & 90.0$\pm$11.5
+\\\hline
+\citep{he2000blood} & DBP &  Boys &  330 & 60.0$\pm$10.7  & 331 &60.0$\pm$9.5
+\\ 
+& DBP &  Girls &  253 & 60.0$\pm$11.0  & 251 & 60.0$\pm$10.0
+\\\hline
+ \citep{barba2006body} & SBP &  Boys &  420 & 103.3$\pm$14.8 & 1034 & 94.2$\pm$11.8 
+ \\
+ & SBP &  Girls &  401 & 100.7$\pm$14.1  & 1050 &93.5$\pm$11.8
+\\\hline
+\citep{barba2006body} & DBP &  Boys &  420 & 64.4$\pm$9.8  & 1034 & 59.6$\pm$8.7
+ \\
+& DBP &  Girls &  401 & 63.0$\pm$9.3  & 1050 & 58.8$\pm$9.2 
+\\\hline
+\citep{jena2018relationship} & SBP &  Boys &  80 & 103.0$\pm$13.0 & 143 & 98.0$\pm$11.0 
+ \\
+ & SBP &  Girls &  28 & 99.0$\pm$14.0 & 144 & 94.0$\pm$11.0
+\\\hline
+\citep{jena2018relationship} & DBP &  Boys &  80 & 57.0$\pm$9.0 & 143 & 55.0$\pm$6.0
+ \\
+& DBP &  Girls & 28 & 55.0$\pm$11.0 & 144 & 50.0$\pm$6.0 
+ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\subsubsection{Eating, drinking, and smoking}
+Eating, drinking, and smoking habits can significantly influence our BP values \citep{Forman2009, Buckman2015-ew, Azar2016-eg}. Studies indicate that eating has both short-term and long-term effects on BP levels \citep{Appel1997}.
+
+Postprandial (post-meal) BP initially rises due to increased activity, but later drops, particularly due to decreased total peripheral resistance from visceral vasodilation \citep{Kawano2010}. This reduction is pronounced in elderly, hypertensive individuals, and those with autonomic failure \citep{Jansen1987}. High-carbohydrate meals cause a larger BP decrease than high-fat ones. While the exact mechanism for post-meal hypotension remain unclear, impacting factors might include impaired baroreceptor reflexes, insulin-induced vasodilation, and the release of vasodilatory gastrointestinal polypeptides \citep{Sidery1993}. This BP decrease peaks around 1 hour post-meal and can last over 2 hours, influencing diurnal BP changes especially in elderly subjects with hypertension \citep{Kawano2010}. Furthermore, BP effects from alcohol, caffeine, and nicotine vary by dose and individual \citep{kallioinen2017sources}.
+
+For long-term impacts of eating habits on BP, guidelines primarily recommend lifestyle and dietary changes to manage hypertension, emphasizing reduced salt intake. Adding potassium-rich foods like nuts, fruits and vegetables to the diet can enhance BP control \citep{burnier2019should}. Table~\ref{Tab: eating} summarizes studies on the impacts of eating, drinking, and smoking on BP.
+
+\begin{table}[tb]
+%\captionsetup{belowskip=0pt,aboveskip=0pt}
+\caption{Summarized results of studies investigating the impact of eating, drinking, or smoking on blood pressure values. ``B.'' denotes before and ``A.'' denotes after each activity}\label{Tab: eating}
+\begin{center}
+\small{\begin{tabularx}{\textwidth}{rcccc}
+\toprule
+\textbf{Ref.} & \textbf{N} &\textbf{Conditions} & \textbf{SBP} & \textbf{DBP} \\
+\hline
+\citep{Nishiwaki2017-ud} & 11 & B. drinking AF200\textsuperscript{a} &  120.0$\pm$9.9 &  69.0$\pm$3.3 \\ 
+& & 90 min. A. drinking AF200 & 123$\pm$6.6 & 74.0$\pm$3.3 
+\\\hline
+\citep{Nishiwaki2017-ud} & 11 & B. drinking B350\textsuperscript{d} &  123.0$\pm$6.6 &  71.0$\pm$6.6 \\ 
+& & 90 min. A. drinking B350 & 123.0$\pm$9.9 & 76.0$\pm$13.2 
+\\\hline
+\citep{McMullen2011-qu} & 12 & B. drinking placebo &  133.5$\pm$14.1 &  86.4$\pm$8.7 \\ 
+& & A. drinking placebo & 131.5$\pm$11.8 & 82.9$\pm$8.4 
+\\\hline
+\citep{McMullen2011-qu} & 12 & B. drinking C67\textsuperscript{f} &  127.6$\pm$9.1 &  81.9$\pm$6.7 \\ 
+& & A. drinking C67 & 135.6$\pm$10.1 & 84.7$\pm$6.0 
+\\\hline
+\citep{McMullen2011-qu} & 12 & B. drinking C133\textsuperscript{g} &  126.9$\pm$11.1 &  81.4$\pm$7.7 \\ 
+& & A. drinking C133 & 137.6$\pm$14.1 & 86.5$\pm$8.2 
+\\\hline
+\citep{McMullen2011-qu} & 12 & B. drinking C200\textsuperscript{h} &  127.5$\pm$10.2 &  81.1$\pm$5.5 \\ 
+& & A. drinking C200 & 132.7$\pm$10.7 & 83.5$\pm$8.2 
+\\\hline
+\citep{Carter2011-aw} & 15 & Pre-treatment of alcohol &  120.0$\pm$11.6 &  64.0$\pm$7.7 \\ 
+& & Post-treatment of alcohol & 124.0$\pm$15.5 & 69.0$\pm$ 7.7 
+\\\hline
+\citep{Carter2011-aw} & 15 & Pre-treatment of placebo &  117.0$\pm$7.7 &  64.0$\pm$11.6 \\ 
+& & Post-treatment of placebo & 123.0$\pm$7.7 & 71.0$\pm$7.7 
+\\\hline
+\citep{Fantin2016-bt} & 18 & B. drinking alcohol\textsuperscript{e} & 110.3$\pm$12.0 &  80.0$\pm$8.0 \\ 
+& & A. drinking alcohol & 109.5$\pm$11.4 & 76.2$\pm$7.1 
+\\\hline
+\citep{Nowak2019-si} & 22 & B. drinking Noni juice & 119.6$\pm$8.3 &  77.0$\pm$6.6 \\ 
+& & A. drinking Noni juice & 113.6$\pm$8.5 & 72.0$\pm$4.8
+\\\hline
+\citep{Nowak2019-si} & 22 & B. drinking chokeberry juice & 125.6$\pm$14 & 84.0$\pm$9.8 \\ 
+& & A. drinking chokeberry juice & 124.3$\pm$16.1 &81.0$\pm$9.9
+\\\hline
+\citep{Nowak2019-si} & 22 & B. consuming energy drink & 119.2$\pm$14.8 & 73.9$\pm$8.4 \\ 
+& & A. consuming energy drink & 124.8$\pm$14.1 & 84.8$\pm$9.9
+\\\hline
+\citep{Nowak2019-si} & 22 & B. drinking water & 124.3$\pm$13.5 & 77.7$\pm$9.2 \\ 
+& & A. drinking water & 124.0$\pm$11.4 & 75.8$\pm$8.0
+\\\hline
+\citep{luqmanexperimental} & 35 & B. drinking STING\textsuperscript{j} & 123.0$\pm$14.9 & 78.7$\pm$10.5 \\ 
+& & A. drinking STING & 123.7$\pm$14.5 & 78.2$\pm$9.8
+\\\hline
+\citep{olatunji2011water} & 37 & B. drinking 50\,ml water & 119.6$\pm$11.5 & 74.1$\pm$10.1 \\ 
+& & A. drinking 50\,ml water & 122.5$\pm$11.6 & 77.3$\pm$7.7 
+\\\hline
+\citep{olatunji2011water} & 37 & B. drinking 500\,ml water & 116.9$\pm$8.6 & 73.8$\pm$10.0 \\ 
+& & A. drinking 500\,ml water & 125.8$\pm$8.8 & 76.8$\pm$10.7
+\\\hline
+\citep{kho2006acute} & 39 & B. non-tobacco smoking & 120.0$\pm$13.5 & 78.9$\pm$10.1 \\ 
+& & 65 min. A. non-tobacco smoking & 125.8$\pm$8.8 & 76.6$\pm$6.9
+\\\hline
+\citep{kho2006acute} & 39 & B. tobacco smoking & 118.6$\pm$12.8 & 79.7$\pm$9.2 \\ 
+& & 65 min. A. tobacco smoking & 116.9$\pm$12.4 & 80.0$\pm$8.9
+\\\hline
+\citep{Papakonstantinou2016-mj} & 40 & B. drinking 200\,ml cold espresso & 116.7$\pm$9.7 & 75.3$\pm$7.1 \\ 
+& & A. drinking 200\,ml cold espresso & 120.0$\pm$11.1 & 79.5$\pm$9.1
+\\\hline
+\citep{Papakonstantinou2016-mj} & 40 & B. drinking 200\,ml filter coffee & 118.2$\pm$12.3 & 77.1$\pm$8.5 \\ 
+& & A. drinking 200\,ml filter coffee & 121.2$\pm$10.6 & 79.1$\pm$6.7
+\\\hline
+\citep{Papakonstantinou2016-mj} & 40 & B. drinking 200\,ml cold inst. coffee & 116.7$\pm$12.3 & 77.3$\pm$8.5 \\ 
+& & A. drinking 200\,ml cold inst. coffee & 121.3$\pm$11.4 & 79.6$\pm$7.3
+\\\hline
+\citep{Papakonstantinou2016-mj} & 40 & B. drinking 200\,ml hot inst. coffee & 118.5$\pm$10.5 & 78.2$\pm$9.3 \\ 
+& & A. drinking 200\,ml hot inst. coffee & 122.6$\pm$11.8 & 80.2$\pm$8.7
+\\\hline
+\citep{luqmanexperimental} & 60 & B. drinking STING\textsuperscript{i} & 121.2$\pm$14.3 & 77.4$\pm$9.6 \\ 
+& & A. drinking STING & 126.5$\pm$14.1 & 81.0$\pm$9.0
+\\\hline
+\citep{Buckman2015-ew} & 72 & Pre beverage of juice & 117.0$\pm$13.1 & 79.8$\pm$10.1 \\ 
+& & Post beverage of juice & 125.9$\pm$13.2 & 85.4$\pm$9.6
+\\\hline
+\citep{Buckman2015-ew} & 72 & Pre beverage of placebo & 126.2$\pm$19.2 & 83.5$\pm$13.9 \\ 
+& & Post beverage of placebo & 130.7$\pm$18.2 & 85.7$\pm$12.9
+\\\hline
+\citep{Buckman2015-ew} & 72 & Pre beverage of alcohol & 116.9$\pm$13.5 & 80.1$\pm$8.7 \\ 
+& & Post beverage of alcohol & 113.2$\pm$12.6 & 79.9$\pm$9.7
+\\\hline
+\citep{Azar2016-eg} & 194 & B. water-pipe smoking & 120.3$\pm$15.8 & 76.4$\pm$11.3 \\ 
+& & 15 min. A. water-pipe smoking & 121.1$\pm$16.1 & 77.1$\pm$10.8
+\\
+\bottomrule
+\end{tabularx}}
+\end{center}
+\noindent{\footnotesize{
+\textsuperscript{a} 200\,ml of alcohol-free beer; \textsuperscript{b} 350\,ml of alcohol-free beer; \textsuperscript{c} 200\,ml of beer; \textsuperscript{d} 350\,ml of beer; \textsuperscript{e} 2 glasses (2 × 125\,ml) of red wine (12\% of ethanol); \textsuperscript{f} 67\,mg of caffeine; \textsuperscript{g} 133\,mg of caffeine; \textsuperscript{h} 200\,mg of caffeine; \textsuperscript{i} a single dose (500\,ml) of energy drink; \textsuperscript{j} a 2-glasses (500\,ml) of plain water
+}}
+\end{table}
+%########################################################
+\subsubsection{Circadian rhythm}
+The circadian clock significantly affects CVD risk factors like heart rate and BP \citep{Morris2012}. It has been linked to two mechanisms: the central clock in the hypothalamic suprachiasmatic nucleus (SCN) and the peripheral clock in most body tissues and organs \citep{Richards2012}. Environmental factors, like physical exercise, can also impact and align circadian rhythms, especially in skeletal muscle \citep{hower2018circadian}.
+
+BP displays daily rhythmic fluctuations, peaking in the early morning and dipping around midnight. Boivin et al.\ \citep{Boivin2014-ss} examined BP changes in the morning and evening among 52 controlled hypertensive patients. BP was measured six times both in the morning and evening, three times before and after resting. Each session was nine minutes with a minute between measurements and five minutes of rest. The study found significant BP differences between morning and evening, around 5\,mmHg for DBP and 8\,mmHg for SBP.
+
+Psychological and physical activities also contribute to BP fluctuations, with higher values commonly observed during work hours and lower values at home. While several neurohormonal systems follow a circadian rhythm with a morning peak, the sympathetic nervous system appears to be the primary determinant of these BP circadian variations. However, this principle can be reversed for individuals with specific job roles, such as shift workers \citep{hassler2005circadian}.
+
+Table \ref{Tab: cardiac} provides a comparative analysis of studies exploring the effects of the circadian clock on BP values.
+
+% Results of Studies Investigating the Impact of Eating, Drinking, or Smoking on BP Values
+\begin{table}[tb]
+\caption{Results of studies investigating the impact of the circadian clock on blood pressure values}\label{Tab: cardiac}
+\begin{center}
+\begin{tabular}{rccc}
+\toprule
+\textbf{Ref.} & \textbf{N} & \textbf{Mean daytime BP}  & \textbf{Mean nighttime BP}\\
+& & SBP / DBP & SBP / DBP
+\\
+%\midrule
+\hline
+\text{\citep{mayet1998ethnic}}&46&(149.0$\pm$18.3)/(95.0$\pm$10.7)&(132.0$\pm$21.7)/(81.0$\pm$13.5)\\
+\hline
+\text{\citep{mayet1998ethnic}}&46&(145.0$\pm$14.9)/(95.0$\pm$11.5)& (136.0$\pm$17.6)/(86.0$\pm$11.5)\\
+\hline
+\text{\citep{krzesinski2016diagnostic}}&280&(144.7$\pm$11.9)/(91.0$\pm$8.6)&(128.2$\pm$12.9)/(77.8$\pm$9.0)\\
+\hline
+\text{\citep{Wang2006-jk}}&312&(119.5$\pm$8.8)/(72.5$\pm$6.6)&(108.7$\pm$9.3)/(60.4$\pm$7.2)\\
+\hline
+\text{\citep{Wang2006-jk}}&351&(117.7$\pm$8.1)/(70.9$\pm$6.4)&(105.9$\pm$8.4)/(57.7$\pm$6.1)\\
+\hline
+\text{\citep{Li2019-ax}}&17921&(129.3$\pm$15.1)/(78.8$\pm$9.3)&(112.9$\pm$15.6)/(65.1$\pm$9.6)\\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+
+\subsection{Biases related to the acquisition session}
+There are specific guidelines for BP measurement, violation of which can lead to inaccurate readings. We subsequently explore often-overlooked factors during BP acquisition that can introduce bias and compromise measurement reliability.
+
+\subsubsection{Seasonal variations and ambient temperature} 
+%%%Seasonal fluctuations in SBP and DBP have been reported in the literature, with the highest values observed during winter and the lowest during summer \citep{Park2019}. This seasonal variation has been reported in both home and ambulatory BP monitoring, as well as clinic BP measurements \citep{Sega1998}. While a direct relationship between BP and ambient temperature lacks conclusive evidence, the consistent patterns across seasons suggest a potential correlation \citep{Jansen2001-xl}. Further research conducted by Yang et al.\ reinforces these findings, demonstrating the fluctuation of BP values across different months of the year \citep{Yang2015-rc}. This study involved collecting BP data from 23,040 individuals with prior cardiovascular disease between 2004 and 2008 in China, with results reported independent of the year. Specifically, the mean of monthly BP values represents the average BP values for all participants in a given month. The winter months (December, January, and February) showed the highest BP values, while the summer months (July and August) displayed the lowest. Table \ref{Tab: TEM} presents a comprehensive overview of studies comparing BP values based on environmental temperature. It is important to note that temperature can also have short-term effects on BP values, emphasizing the need for timely protective measures during cold weather to maintain stable BP levels and to reduce the risk of BP-related diseases \citep{Xu2019-rx}.
+
+Seasonal BP fluctuations, with peaks in winter and troughs in summer, have been reported in both home and clinic measurements \citep{Park2019, Sega1998}. Although the direct link between BP and ambient temperature has not been conclusively established, consistent seasonal patterns suggest a correlation \citep{Jansen2001-xl}. Yang et al.'s research on 23,040 individuals in China found BP values to be highest in winter (December--February) and lowest in summer (July--August) \citep{Yang2015-rc}. Table~\ref{Tab: TEM} summarizes studies comparing BP values by environmental temperature. The short-term impact of temperature on BP underscores the importance of protective measures in colder weather to maintain stable BP and reduce BP-related disease risks \citep{Xu2019-rx}.
+
+\begin{table}[tb]
+%\captionsetup{belowskip=0pt,aboveskip=0pt}
+\caption{Results of studies investigating the impact of ambient temperature on blood pressure values}\label{Tab: TEM}
+\begin{center}
+\begin{tabular}{rcccc}
+\toprule
+\textbf{Ref.} & \textbf{N} & \textbf{Temp. ($^{\circ}$C)} &\textbf{SBP} &\textbf{DBP} \\ 
+%\midrule
+\hline
+\citep{Jansen2001-xl} & 19 & 7.5$\pm$0.7 &118.0$\pm$7.8 & 65.0$\pm$6.1 \\ 
+\hline
+\citep{Jansen2001-xl} & 20 & 14.8$\pm$1.3 & 116.0$\pm$6.3 & 64.0$\pm$5.4 \\  
+\hline
+\citep{Jansen2001-xl} & 20 & 2.0$\pm$0.4& 121.0$\pm$7.6 &  65.0$\pm$6.3 \\  
+\hline
+\citep{Jansen2001-xl} & 20 & -3.4$\pm$3.0& 125.0$\pm$18.0 &  67.0$\pm$5.8 \\ 
+\hline
+\citep{Wu2015-dj} & 39 & 25.0 &117.0&65.0 \\  
+\hline
+\citep{Wu2015-dj} & 39 & 17.6 & 117.0& 66.0 \\  
+\hline
+\citep{Wu2015-dj} & 39 & 22.7 & 122.0& 65.0 \\  
+\hline
+\citep{Wu2015-dj} & 39 & 21.6 & 119.0& 65.0 \\
+\hline
+\citep{Xu2019-rx} & 100 & 15.7$\pm$8.7 &132.9$\pm$16.5 &80.0$\pm$10.4 \\ 
+\hline
+\citep{Kim2012-oi} & 327 & 31.5$\pm$1.0 &133.7$\pm$24.5 &81.7$\pm$15.4 \\
+\hline
+\citep{Widlansky2007-ih} & 500 & 25$\pm$1 &123.0$\pm$17.0 & 70.0$\pm$11.0 \\
+\hline
+\citep{Widlansky2007-ih} & 599 & 24$\pm$1 &128.0$\pm$18.0 & 72.0$\pm$12.0 \\  
+\hline
+\citep{Widlansky2007-ih} & 733 & 26$\pm$1 &122.0$\pm$17.0 & 69.0$\pm$11.0 \\  
+\hline
+\citep{Widlansky2007-ih} & 755 & 25$\pm$1 &124.0$\pm$18.0 & 71.0$\pm$11.0 \\  
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+%\begin{figure*}[tb]
+%\centering
+%\includegraphics[width=\textwidth]{Temp}
+%\caption{The hourly temperature and blood pressure exposure-response curve with a five-hour cumulative lag (Adopted from \citep{Xu2019-rx}). The data is related to 100 participants (55 men and 45 women)}\label{Fig: temp}
+%\end{figure*}
+
+\subsubsection{Cuff position} 
+The brachial artery is commonly used for BP measurement \citep{muntner2019measurement, Bilo2017}. While wrist and finger monitors have become popular, SBP and DBP values differ across the arterial tree \citep{ogedegbe2010principles}. Fig.~\ref{Fig: BPpoints} depicts the influence of various body points on BP as blood flows through different arteries when upright. Table~\ref{Tab: place} summarizes studies comparing BP across different body points.
+
+\begin{figure}[tb]
+\centering
+\includegraphics[trim={8cm 4cm 15cm 3cm},clip,width=.5\columnwidth]{Images/BPpoints4}
+\caption{Schematic showing blood pressure variations across arterial sites (carotid, brachial, radial, femoral, posterior tibial) influenced by distance from the heart, artery type, and gravity in a standing position \citep{Hinghofer-Szalkay2011-hu, Al-Qatatsheh2020-fh}.}\label{Fig: BPpoints}
+\end{figure}
+
+\begin{table}[tb]
+\caption{Summary of studies investigating the impact of body points on recorded blood pressure values}\label{Tab: place}
+\begin{center}
+\begin{tabular}{rcccc}
+\toprule
+\textbf{Ref.} & \textbf{N}  &\textbf{Measuring place} & \textbf{SBP} & \textbf{DBP} \\
+\hline
+\citep{Kayrak2010-lk} & 45 & Upper Arm & 174.0$\pm$14.1 & 95.8$\pm$11.5 \\
+ & & Wrist &  163.8$\pm$25.4  & 94.4$\pm$11.5 
+\\\hline
+\citep{Kayrak2010-lk} & 70 & Upper Arm & 168.3$\pm$18.4 & 83.4$\pm$9.4 \\
+ & & Wrist &  159.2$\pm$18.5  & 83.2$\pm$10.5 
+\\\hline
+\citep{sareen2012comparison} & 250 & Arm & 127.7$\pm$15.7 & 80.7$\pm$11.2 \\
+ & & Leg &  143.0$\pm$22.2  & 75.7$\pm$11.9 
+\\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+\subsubsection{Body position} 
+%%%%%Body position has a significant impact on BP readings. Guidelines recommend the sitting position with the back supported by the back of the chair during BP measurement \citep{mancia20132013}, and it is  essential to consider this factor when reporting BP values. Several researches have extensively studied this issue and their findings consistently indicate that BP values are higher in the sitting position compared to the supine position \citep{krzesinski2016diagnostic, privvsek2018epidemiological, Netea2003}. The DBP of individuals who sit straight up may be up to 6.5 mmHg higher than those who sit back \citep{ogedegbe2010principles}. Regardless of whether BP is measured in the seated or supine position, it is recommended to position the BP cuff at the level of the patient's right atrium for accurate measurements \citep{muntner2019measurement}. Table~\ref{Tab: bodyposition} provides a summary of research comparing BP values in different body positions during measurements.
+
+Body position significantly affects BP readings. Guidelines suggest measuring BP in a seated position with back support \citep{mancia20132013}. Research indicates BP values are higher when seated compared to lying down \citep{krzesinski2016diagnostic, privvsek2018epidemiological, Netea2003}. Specifically, sitting upright can increase DBP by up to 6.5\,mmHg compared to leaning back \citep{ogedegbe2010principles}. For accurate measurements, the BP cuff should be at the level of the patient's right atrium, regardless of position \citep{muntner2019measurement}. Table~\ref{Tab: bodyposition} summarizes studies on BP values in various body positions.
+
+\begin{table}[tb]
+%\captionsetup{belowskip=0pt,aboveskip=0pt}
+\caption{Results of studies investigating blood pressure values in different positions of the subject during measurement}\label{Tab: bodyposition}
+\begin{center}
+\begin{tabular}{rcccc}
+\toprule
+\textbf{Ref.} & \textbf{N} &\textbf{Body position} & \textbf{SBP} & \textbf{DBP} \\
+%\midrule
+\hline
+\citep{McMullen2011-qu} & 12  & Supine & 116.2$\pm$11.7 &  68.1$\pm$6.6 \\                                      & & Upright & 133.5$\pm$14.1 & 86.4 $\pm$8.7
+\\\hline
+\citep{Netea2003} & 57 & Sitting & 135.7$\pm$24.8 &  79.5$\pm$9.7 \\                                      & & Supine & 141.3$\pm$25.5 & 84.6 $\pm$10.5
+\\\hline
+\citep{ecser2007effect} & 157 & Sitting & 102.8$\pm$11.4 &  65.7$\pm$8.2 \\                                      & & Standing & 99.9$\pm$10.2 & 66.0$\pm$8.7\\                                      & & Supine & 107.9$\pm$10.7 & 66.9$\pm$9.6\\                                      & & Supine; legs crossed & 107.0$\pm$8.6 & 66.7$\pm$7.3
+\\\hline
+\citep{Chachula2020-nl} & 229 &Supine & 129.8$\pm$27.5 & 72.5$\pm$14.5 \\ 
+
+& &Beach chair & 114.6$\pm$24.8 &  64.6$\pm$11.2  
+\\\hline
+\citep{netea1998does} & 245 & Sitting & 136.7$\pm$21.9 &
+86.0$\pm$14
+\\ & & Supine &135.5$\pm$20.3  &83.5$\pm$12.5 
+\\\hline
+\citep{cicolini2011differences} & 250 & Supine & 139.3$\pm$14.0 & 80.1$\pm$9.1 \\ 
+& &Fowler’s & 138.1$\pm$13.8 & 81.9$\pm$9.4\\ 
+& & Sitting & 137.2$\pm$13.7 & 83.0$\pm$9.6\\\hline
+\citep{privvsek2018epidemiological} & 1298 & Sitting & 125.9$\pm$14.9 & 76.1$\pm$10.2
+\\ & & Supine &  124.7$\pm$14.1 & 71.7$\pm$ 9.0
+\\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\subsubsection{Arm position}
+%%%The proper positioning of the subject's arm is crucial during BP measurements, and it should ideally be placed on a flat surface or supported by an armrest at heart level \citep{Netea2003, ogedegbe2010principles, Adiyaman2006}. When the arm is moved from a horizontal to a vertical position, the pressure gradually increases by 5 to 6 mmHg due to hydrostatic pressure changes \citep{ogedegbe2010principles}. Mariotti et al.\ investigated the significance of correct arm positioning and postural hypotension\footnote{Postural hypotension is blood pressure drop when a subject goes from lying down to sitting up, or from sitting to standing position}, during BP measurements \citep{Mariotti1987}. The study examined 181 subjects, including hypertensives on treatment, untreated hypertensives, and normotensives. BP measurements were taken in both supine and standing positions, with the arm either at the patient's side or passively supported at heart level. Incorrect arm positioning in the standing position led to overestimated BP values, with readings being higher when the individuals' arms were at their sides compared to the supported position. For a comprehensive overview, Table~\ref{Tab: Arm position} presents the results of studies comparing BP values in different arm positions.
+
+Proper arm positioning during BP measurements is vital, with the arm ideally supported at heart level on a flat surface \citep{Netea2003, ogedegbe2010principles, Adiyaman2006}. Shifting the arm from horizontal to vertical can raise the pressure by 5-6\,mmHg due to hydrostatic changes \citep{ogedegbe2010principles}. Mariotti et al.\ explored the effects of arm positioning and postural hypotension during BP assessments \citep{Mariotti1987}, finding that incorrect arm positioning while standing resulted in overestimated BP readings. Table~\ref{Tab: Arm position} summarizes studies on BP values considering different arm positions.
+
+\begin{table}[tb]
+%\captionsetup{belowskip=0pt,aboveskip=0pt}
+\caption{Results of studies investigating the impact of arm position on blood pressure values}\label{Tab: Arm position}
+\begin{center}
+\begin{tabular}{rcccc}
+\toprule
+\textbf{Ref.} & \textbf{N} & \textbf{Arm position} & \textbf{SBP} & \textbf{DBP} \\
+\hline
+\citep{Netea2003} & 57  & Arm high (at heart level) & 
+137.4$\pm$29.0 &  78.2$\pm$14.4\\
+                 &     & Arm low (on the bed)      &
+142.1$\pm$28.0 & 82.1$\pm$13.4\\
+\hline
+\citep{netea1999arm} & 69  & Arm high (at heart level) & 
+133.3$\pm$20.7 &  77.7$\pm$9.9\\
+                 &     & Arm low (on chair arm-rest)  &
+143.0$\pm$19.9 &  88.6$\pm$9.1\\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\subsubsection{Leg position}
+Proper leg positioning during BP measurements is crucial according to guidelines \citep{FosterFitzpatrick1999}. Studies show that crossed-leg positions yield higher BP readings than uncrossed legs or sitting with feet flat \citep{adiyaman2007effect, kallioinen2017sources}. Table~\ref{Tab: Leg position} provides a summary of studies on BP values with varying leg positions, emphasizing the importance of standardized leg positioning for accurate measurements.
+
+\begin{table}[tb]
+\caption{Results of studies investigating the impact of leg position on blood pressure values }\label{Tab: Leg position}
+\begin{center}
+\begin{tabular}{rcccc}
+\toprule
+\textbf{Ref.} & \textbf{N} &\textbf{Leg position} & \textbf{SBP} & \textbf{DBP} \\
+\hline
+\citep{Foster-Fitzpatrick1999-us} & 100 & Uncrossed & 146.5$\pm$18.6 & 80.9$\pm$11.2
+\\
+& & Crossed & 155.6$\pm$19.3 & 84.9$\pm$11.6  
+\\\hline
+\citep{Pinar2004-nq} & 238  & Uncrossed & 145.3$\pm$20.3 & 86.4$\pm$10.8
+\\ & & Crossed & 153.6$\pm$20.2 & 92.1$\pm$11.2 
+\\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\subsubsection{Left vs right arm}
+Clinical settings often show BP reading differences between the left and right arms \citep{fred2013accurate}. Guidelines suggest measuring BP in both arms on the first visit, using the arm with higher readings thereafter \citep{muntner2019measurement}. Conditions like coarctation of the aorta or upper-extremity arterial obstruction can cause significant BP variations between arms \citep{muntner2019measurement}. Table~\ref{Tab: LRarm} summarizes studies comparing BP measurements in both arms.
+
+\begin{table}[tb]
+%\captionsetup{belowskip=0pt,aboveskip=0pt}
+\caption{Results of studies investigating the difference blood pressure values between right and left arms}\label{Tab: LRarm}
+\begin{center}
+\begin{tabular}{rccc}
+\toprule
+\textbf{Ref.} & \textbf{N} &\textbf{Right arm} & \textbf{Left arm}\\
+%\midrule
+\hline
+\citep{Netea2003} & 57 &  SBP: 138.3$\pm$29.2 & SBP: 137.4$\pm$29.0
+\\ & & DBP: 77.8$\pm$13.7 & DBP:78.2$\pm$14.4 
+\\\hline
+\citep{netea1999arm} & 69  &SBP: 133.3$\pm$20.7 & SBP: 131.8$\pm$19.1\\ && DBP: 77.7$\pm$9.9 & DBP: 78.0$\pm$9.9 
+\\\hline
+\citep{lane2002inter} & 400  &  SBP: 131.2$\pm$21.0 & SBP: 129.4$\pm$21.2
+\\ && DBP: 76.8$\pm$11.9 & DBP: 77.1$\pm$12.6  
+\\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\subsubsection{Cuff size and tightness}
+Using the correct cuff size is vital for accurate BP measurement \citep{bur2000accuracy}. Small cuffs can overestimate pressure, which is a frequent error \citep{Palatini2018, ogedegbe2010principles}. Larger cuffs tend to report lower BP values \citep{kallioinen2017sources}. For children, cuff size selection is challenging. The BHS suggests three sizes: 4$\times$13\,cm, 8$\times$18\,cm, and 12$\times$35\,cm (adult cuff) based on arm circumference \citep{ogedegbe2010principles}.
+
+In obese individuals, selecting the right cuff size is essential to ensure the brachial artery is accurately compressed, yielding reliable BP readings \citep{muntner2019measurement}. Many obese individuals have tronco-conical arms, further complicating accurate BP measurement \citep{Palatini2018}. For these patients, conical cuffs can offer more accurate BP readings \citep{muntner2019measurement}. Table~\ref{Tab: Cuff SIZE} presents studies exploring the influence of cuff size on BP readings.
+
+When measuring BP, the cuff should be securely placed around the upper arm without any clothing interference, ensuring even snugness from top to bottom. The tightness can be gauged by fitting one finger easily and two fingers with comfort between the cuff's top and bottom. Achieving the correct cuff tightness is vital for reliable and consistent BP readings \citep{muntner2019measurement}.
+
+\begin{table}[tb]
+%\captionsetup{belowskip=0pt,aboveskip=0pt}
+\caption{Results of studies investigating the effect of arm position on blood pressure values}\label{Tab: Cuff SIZE}
+\begin{center}
+\begin{tabular}{rcccc}
+\toprule
+\textbf{Ref.} & \textbf{N} &\textbf{Cuff size (cm)} & \textbf{SBP} & \textbf{DBP} \\
+%\midrule
+\hline
+\citep{Bakx1997-pf} & 130  &  13 $\times$ 36 & 125.1$\pm$19.2 & 75.4$\pm$12.4\\ 
+& &  16 $\times$ 23 & 123.7$\pm$19.7 & 74.4$\pm$13.2\\ 
+&  &  13 $\times$ 23 & 127.2$\pm$19.2 & 77.0$\pm$12.8
+\\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\subsubsection{Rest period before measuring BP}
+Studies have investigated the effects of rest durations before taking BP measurements. Their findings indicate that not resting sufficiently before a measurement can lead to elevated SBP and DBP readings. A rest period ranging from 10 to 16 minutes showed a modest decrease in SBP and a slight drop in DBP \citep{Nikolic2013, SALA2006}. However, the exact duration of rest needed to compensate the effects of prior physical activity remains uncertain. More research is needed to specify the ideal rest period for precise BP readings \citep{kallioinen2017sources}. A summary of studies exploring the influence of rest durations on BP measurements can be found in Table~\ref{Tab: rest}.
+
+\begin{table}[tb]
+%\captionsetup{belowskip=0pt,aboveskip=0pt}
+\caption{Results of studies investigating the effect of resting before measuring BP}\label{Tab: rest}
+\begin{center}
+\begin{tabular}{rcccc}
+\toprule
+\textbf{Ref.} & \textbf{N} & \textbf{Before resting} & \textbf{After resting} & \textbf{Resting Time}\\
+\hline
+\citep{Boivin2014-ss} & 52 & SBP: 127.9$\pm$12.0 & SBP: 121.5$\pm$10.9 & 5 minute\\ & & DBP: 78.0$\pm$8.7 & DBP: 76.0$\pm$9.0 & 
+\\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\subsubsection{Number of measurements}
+For many individuals, the first BP reading taken in a clinical setting tends to be higher than the readings that follow. Research has explored this pattern by conducting three consecutive BP measurements \citep{muntner2019measurement}. Findings indicated that when only the first measurement was considered, approximately 35\% of adults exhibited an SBP range of 140--159\,mmHg and a DBP range of 90--99\,mmHg. However, when the average of all three measurements was taken into account, most participants registered SBP/DBP values below the 140/90\,mmHg benchmark \citep{muntner2019measurement}. Thus, relying exclusively on the initial reading can result in over-diagnosing hypertension, emphasizing the necessity of multiple readings to ensure an accurate diagnosis \citep{MANCIA1983}.
+
+\subsubsection{Clothing}
+Healthcare professionals are advised to measure BP by fully exposing the cuff on the upper arm. However, it is a common practice to measure BP by rolling up the sleeve or placing the cuff over sleeves. Table~\ref{Tab: Clothing} presents the findings from various studies that have examined the impact of clothing on BP values, demonstrating a bias in the BP readings due to clothing. 
+\begin{table}[tb]
+%\captionsetup{belowskip=0pt,aboveskip=0pt}
+\caption{Results of studies investigating the impact of wearing clothing on the arm during blood pressure measurements on reported values}\label{Tab: Clothing}
+\begin{center}
+\begin{tabular}{rclcc}
+\toprule
+\textbf{Ref.} & \textbf{N}  &\textbf{Measuring place} & \textbf{SBP} & \textbf{DBP} \\
+\hline
+\citep{Ki2013-ai} & 141 & Sleeved & 128.5$\pm$10.6 & 80.7$\pm$6.3 \\
+& & Rolled sleeves & 128.3$\pm$11.1 & 80.9$\pm$6.3 \\
+& & Bare arm & 128.4$\pm$10.8 & 80.8$\pm$6.0 
+\\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+%\item\textbf{Talking during the measurement}
+%\item\textbf{Interval between repeated measurements}
+%\temm\textbf{Cold exposure}
+\section{Cuff-less blood pressure technologies}
+Significant efforts have been made to develop novel and versatile methods for measuring BP. Traditional BP measurement techniques involving cuffs have several inherent limitations \citep{peter2014review}, such as: (1) time-consuming procedures; (2) patient discomfort due to frequent cuff inflation, as seen in ABPM devices used for recording BP during the day and night \citep{Pickering2008}; (3) impracticality for continuous BP measurement in specific medical settings such as heart surgical units and acute burns cases; (4) the necessity of allowing sufficient time between successive BP measurements to enable the blood vessels beneath the cuff to return to their baseline state and to prevent vessel collapse due to cuff pressure. To address these limitations, cuff-less BP measurement methods have been introduced, which can be categorized into three groups \citep{mousavi2018designing, Sharma2017-ng, rastegar2020non}: tonometry, volume clamps, and pulse wave velocity. These innovative approaches offer the potential to overcome the drawbacks associated with traditional cuff-based BP measurement techniques, paving the way for more efficient and patient-friendly BP monitoring solutions.
+
+The pulse wave velocity (PWV) method of measuring BP was invented by Moens and Korteweg \citep{Cole2007-rx}. They defined a fundamental relationship between vascular elasticity and pulse wave velocity in the artery, known as the Moens-Korteweg equation\citep{geddes2013handbook,peter2014review}:
+\begin{equation}\label{Eq: Moens-Korteweg}
+\text{PWV} = \sqrt{\frac{E\cdot h}{\rho\cdot D}}
+\end{equation}
+where $h$ represents the thickness of the vessel wall, $\rho$ is the blood density, and $D$ is the vessel's inner diameter. The parameter $E$ denotes Young's modulus of elasticity, which indicates the vessel wall's elasticity. Geddes empirically defined $E$ as follows \citep{peter2014review}:
+\begin{equation}\label{Eq: Geddes}
+E = E_{0}e^{\alpha \cdot \text{BP}}
+\end{equation}
+where $E_{0}$ represents the modulus of elasticity at a pressure of 0\,mmHg, $\alpha$ is a constant related to the vessel (typically ranging from 0.016 to 0.018 mmHg$^{-1}$), $e$ is the Euler number, and $\text{BP}$ is the blood pressure. The Moens-Korteweg equation and Geddes' formulation are fundamental in enabling the utilization of PWV as a valuable and non-invasive method for assessing BP and vascular elasticity. Combining \eqref{Eq: Moens-Korteweg} and \eqref{Eq: Geddes} leads to a compact relation between $\text{BP}$ and $\text{PWV}$:
+\begin{equation}\label{Eq: M-K3}
+\text{BP}= \frac{1}{\alpha}\ln\frac{\rho \cdot D \cdot \text{PWV}^2}{h\cdot E_{0}}
+\end{equation}
+
+Several methods are used to measure PWV. Pulse transit time $\text{(PTT)}$ is the most well-known indirect method of calculating PWV \citep{mukkamala2015toward}. The relationship between PTT and PWV is defined as follows \citep{peter2014review}:
+
+\begin{equation}\label{Eq: PPTandPWV}
+\text{PWV}=\displaystyle\frac{d}{\text{PTT}}
+\end{equation}
+$d$ is the distance between the heart and a specific location where the blood flows, and $\text{PTT}$ is the time it takes for the blood pulse to propagate the distance $d$. $\text{PTT}$ is calculated using different sensors and bio-signals, including \citep{Mukkamala2018-fi}: photoplethysmography (PPG) and the output signal of the Hall sensor \citep{Nam2013-ez}; PPG signal and modulated magnetic signature of the blood \citep{zhang2016mechanism}; PPG and ballistocardiography \citep{chen2013noninvasive}; PPG and impedance plethysmography \citep{liu2017cuffless}; PPG and electrocardiography \citep{chen2019non}; One or two PPG recordings \citep{mousavi2019blood}.
+
+The parameter $d$ is not easy to find (accurately) in practice. Therefore $\text{PWV}$ and subsequently $\text{BP}$ in \eqref{Eq: PPTandPWV} are not accurately found. To address this challenge, cuff-less BP monitoring devices are increasingly integrating artificial-intelligence (AI) algorithms to learn crucial and complex features of the cardiovascular system \citep{ding2016continuous, rastegar2020non}. Ongoing research focuses on exploring how to extract the most relevant features from signals like PTT to model the cardiovascular system and to predict BP values effectively. However, it is essential to acknowledge that these studies are still in the prototype stage and must be validated on large cohorts to meet medical standards, before being used in clinical settings \citep{rastegar2020non}. Nonetheless, advances in this domain are promising for enhancing BP monitoring and improving patient care.
+
+% In developing cuff-less methods, databases containing cuff-based BP values are commonly used as reference to demonstrate their ``substantial equivalency'' with an existing technology, as required for regulatory clearances such as the FDA 510(k) premarket approval \citep{510k,alpert2014public, donawa2010continuing,alpert2017can}. However, if all the standard requirements detailed in previous sections are not adequately considered during the acquisition of the cuff-based BP, the models used for calibrating the novel technologies may train with biased BP recordings, significantly influencing the long-term reliability of the new technologies. As a result, the final error associated with the model's output will be a combination of errors due to its performance in the training stages, and the bias related to the reference cuff-based BP measurement process. Consequently, this can lead to drifts of the predicted BP from the actual values and an increased standard deviation between the actual and estimated BP values. It is crucial to address and mitigate this bias in order to achieve accurate and reliable BP measurements using novel cuff-less technologies. Further research and development efforts are necessary to improve the performance and reliability of these technologies.
+
+When developing cuff-less methods, cuff-based BP databases are typically used as references to demonstrate their ``substantial equivalency'' with an existing technology, as required for regulatory clearances like FDA 510(k) premarket approval \citep{510k,alpert2014public, donawa2010continuing,alpert2017can}. If standard requirements are not met during cuff-based BP acquisition, the calibration models for new technologies will train with biased recordings. This affects the long-term reliability of these technologies, potentially causing deviations between predicted and actual BP values. It is essential to address these biases for accurate measurements with cuff-less technologies, warranting further research to enhance their performance and reliability.
+
+%\section{Limitations}\label{sec:limitations}
+%\textcolor{red}{@Somayyeh, please revise the limitations section. The language is mostly from your previous edit, where it was in the discussion section. You can just make it to the point and mention what the limitations of our survey was. Another option is to make it shorter and merge it into the conclusion section.}\textcolor{blue}{I did my best to follow your recommendation, but I'm not entirely sure. I revised this session and attempted to shorten it.}
+%Studying bias in BP technologies is crucial to prevent potential harm to patients from prescription drugs and treatments. However, medical experts often overlook this critical issue.. Identifying biases in biology-related systems, like humans, poses notable challenges. The study encountered two primary limitations:
+
+%Firstly, despite our efforts to identify potential sources of biases in cuff-based BP technologies, we could only address a portion of them in the previous sections. The complexity of the human body, particularly cardiovascular function and BP regulation implies the existence of numerous unknown potential sources of biases. Additionally, many articles from various sources and online databases did not explicitly mention the term "bias" in BP measurement devices and focused on different issues,such as discrepancies in reported BP values between the left and right arms. Though we tried to cover the most significant potential sources of biases, we might have inadvertently overlooked some relevant papers. Additionally, our reporting of BP study results focused on popular criteria, such as mean error and standard deviation.
+
+%Secondly, investigating complicated systems and evaluating the effect of each variable necessitates keeping all other related factors constant, which proved challenging in this study. For example, when researchers reported on the effect of body position on BP values, we lacked information about the situation and conditions of other potential sources of biases. Additionally, measuring BP from all participants at a specific time throughout the study was impractical due to logistical constraints, making it difficult to maintain stable states for all participants.
+
+\section{Future perspectives: Using machine learning for bias removal and individualized BP level risk assessment}\label{sec: Future}
+In our study, we investigated BP and various measurement and subject-wise factors that impact the accurate collection and interpretation of BP. However, given the vast BP literature, it is unfeasible to comprehensively examine every potential source of bias. To note, as of July 31, 2023, PubMed alone reports 676,855 incidences of the keyword ``blood pressure'' in its databases (obtained using the Entrez Direct (EDirect) Linux tools from the NCBI \citep{EntrezDirect}). In addition, there are billions of encounters of BP records on electronic health records (EHRs) worldwide. The one-by-one investigation of these rich resources is infeasible. We propose that future research can leverage machine learning and natural language processing techniques (especially the recent advances in large language models) to mine these massive data- and literature-driven resources in a more systematic manner. This can result in more conclusive findings regarding individual-wise BP-related risk factors across different demographic groups. Open source codes for BP-related studies is another requirement. Schwenck et al.\ recently released a versatile open-source BP analysis and visualization toolkit in R \citep{Schwenck2022}. Beyond visualization tools, rigorous statistical frameworks and models are required for building machine learning pipelines. In the sequel, we propose a stochastic framework that can be used in future research to use machine learning algorithms in BP-related studies.
+
+\subsection{A machine learning framework for BP bias analysis}
+The problem of BP measurement can be formulated as
+\begin{equation}
+    y_k = \text{BP}_k + e_k
+\label{eq:BP_data_model}    
+\end{equation}
+where $y_k$ are the reported BP values in different trials/sessions, $\text{BP}_k$ is the `true' BP value, and $e_k$ denotes the total measurement errors attributed to nonstandard devices or measurement errors. Both the BP and its error can be considered random variables, with presumed (time-variant) distributions. With this data model, the problem of accurate BP measurement and bias removal can be formulated as a classical estimation problem that could be addressed using standard techniques such as least squares, maximum likelihood or Bayesian estimation, where the latter two benefit from prior distributions of the BP and measurement errors.
+
+$e_k$ is device and technology dependent. Complying with standard BP measurement techniques and averaging over multiple trials ($k=1, \ldots, K$) can mitigate the impact of this term, resulting in a more accurate measurement of the BP.
+
+Even with accurate measurements ($e_k\approx 0$), $\text{BP}_k$ is a random variable, which fluctuates over time and across trial. A comprehensive machine learning framework should benefit from the demographic-specific distributions of $\text{BP}_k$, namely:
+\begin{equation}
+    f(\text{BP}_k|\mathbf{p})
+\end{equation}
+which is the conditional distribution of the BP (SBP, DBP, or both) given all the demographic and comorbid factors parameterized by the vector $\mathbf{p}$ (sex, race, age, background medical conditions, comorbidities, etc.).
+
+We propose that our current survey of the BP literature --- and more systematic future surveys that could benefit from massive EHR registries combined with NLP technologies for BP literature survey --- can be used to estimate $f(\text{BP}_k|\mathbf{p})$ across different demographic factors. As proof of concept, graphical representations of the BP data across sex and BMI, from Tables~\ref{Tab: sex} and \ref{Tab: BMI}, are shown in Fig.~\ref{Fig:GenderandBP} and Fig.~\ref{Fig: BMIandBP}, respectively. In Fig.~\ref{Fig:GenderandBP}, each ellipse corresponds to an individual study from the studied literature, where each ellipse is centered at the mean SBP and DBP, and the horizontal and vertical radii of the ellipses equal the standard deviation of the reported SBP and DBP, respectively. Similar elliptic shapes can be constructed from massive EHR data, while controlling over individualized and demographic factors. For multi-site studies this information can be used to construct multi-modal distributions of $f(\text{BP}_k|\mathbf{p})$. For instance, assuming that the reported BP values follows a Normal distribution (which is an accurate assumption for population-wide studies), the multi-site data can be effectively modeled using Gaussian mixture models (GMMs) to capture underlying clusters or sub-populations \citep{reynolds2009gaussian}. The heatmaps in Figs.~\ref{Fig:MaleandBP}, and \ref{Fig:FemaleandBP}, \ref{Fig: HEATMAP_SBP_BMI} and \ref{Fig: HEATMAP_DBP_BMI} correspond to GMM distributions fitted over the ensemble of the hereby studied BP reports across sex and BMI.
+
+An interesting observation in these figures is that while the literature on BP merely report the mean and standard deviation of SBP and DBP as independent random variables, there is a trend of correlation between SBP and DBP, which is neglected in the BP literature. BP data from EHR can additionally be used to identify the correlations between SBP and DBP.
+
+Future research can integrate these distributions and the data model in \eqref{eq:BP_data_model} to provide Bayesian estimates of the BP on a subject-wise bases. These distributions can also be integrated with EHR data and clinical outcomes to train machine learning technologies that quantify the risk of hypertension and BP-related complications of individuals across different demographics (see Fig.~\ref{Fig: CorrectedBP}), resulting in more accurate assessment of BP-based diagnoses \citep{Praveen2018}. With such a technology, we anticipate that we will be able to phrase a patient's BP-associated risk with such terms: \textit{``A 55-yr-old Hispanic female with a body mass index of 34.2, a consistent in-clinic cuff-based systolic BP $>$ 129\,mmHg, a diastolic BP $>$ 85\,mmHg while sitting, and a history of diabetes is 15\% at risk of stroke in the next 12 years (p-value $<$ 0.05)''}.
+
+%\section{Future of blood pressure monitoring: Using machine learning for bias removal and individualized BP level risk assessment}\label{sec: Future0}
+
+%This section of the paper delves into innovative ideas for the future of BP monitoring technologies, with a primary focus on applying ML algorithms to address bias removal and individualized BP level risk assessment. The underlying ideas behind this approach stem from two important and intriguing issues uncovered during the conduct of this project.
+
+%Firstly, BP, as the subject of interest, is a continuous stochastic signal summarized based on two deterministic values. Its stochastic nature arises from various factors, leading to biased BP values due to individual-specific conditions and nonstandard measurement setups. Maintaining constancy in all related factors during investigations is crucial, but this was not fully achieved in this and previous studies. For example, researchers reporting on the effect of body position on BP lack crucial information about other potential sources of biases. Moreover, adherence to standard BP measurement guidelines, including patient position, pre-measurement resting requirements, and averaging over repeated measurements, is often lacking, even in clinics \citep{ecser2007effect, Netea2003, SALA2006}. Additionally, many existing BP technologies and standards were established decades ago, primarily based on studies involving predominantly White and genetically homogeneous populations. These clinical standards continue to be globally utilized without considering individual-specific conditions like sex, age, race, height, weight, medical history, or comorbidities like diabetes. However, research increasingly indicates the influence of race and genetics on BP \citep{GeneticVariants2011, Perez_Alday2022-de, Cooper1998, harshfield1989race, Liu2022-xk}. The standard ranges for BP indicate a patient's percentile in the stochastic distribution within a population. While they serve as guidelines for identifying at-risk patients, they do not consider clinical outcomes, comorbidities, or demographic factors, making them inconclusive for diagnostic purposes. To address these issues, we propose a fundamental shift in how we report BP transitioning from a deterministic frame to a stochastic frame. This approach allows for a more accurate assessment of patients' risk of BP-related complications and aligns with the ultimate goal of comprehending the underlying stochastic nature of BP measurement. 
+
+%Secondly, the scientific literature on BP is extensive, with thousands of published research studies reporting aggregated BP values from hundreds of millions of individuals as part of their vital signs. These studies cover a wide range of comorbid and demographic factors across different cohorts. For example, PubMed alone has recorded 670,957 incidences of the keyword "blood pressure" in its databases of published research. However, it is essential to note that not all these incidences correspond to quantitative data. In the previous part of our paper, we presented BP values in tables based on different sources of bias, but these tables were limited to specific groups that reported their information using mean and standard deviation as statistical measures. As a result, we are motivated to explore online searching algorithms to extract valuable yet overlooked data. Our goal is to retrieve more comprehensive and diverse data from the existing literature, enabling a broader and more insightful analysis of BP trends and associated factors. Integrating this additional data will enhance our understanding of BP dynamics and contribute to the advancement of more effective BP monitoring technologies in the future.
+
+%In the following section, we will explore future works that involve formulating the problem of accurate BP measurement as an optimal estimation problem:
+%\begin{equation}
+%    y_k(t) = \text{BP}_k(t) + e_k(t)
+%\end{equation}
+%Where $y_k(t)$ is the reported BP values, $\text{BP}_k$ is the true BP values at time $t$ for an individual subject with index $k$ considering subject-specific biases, $e_k(t)$ denotes the sum of all BP measurement biases attributed to nonstandard devices or acquisition sessions. Both BP and bias can be modeled as stochastic processes with presumed distributions. To address this problem, several ML and stochastic solutions, such as maximum likelihood and Bayesian models, can be employed. However, solving this equation requires knowledge of the distribution of relevant factors. In the case study, we show how we can build the relevant distribution.
+
+%Therefore, we can assume, $\text{BP}_k(t)\sim\mathcal{N}(\mu_k, \sigma_k)$ and $e_k(t)\sim\mathcal{N}(\eta, \delta)$, independent from $\text{BP}_k$. 
+%$\text{BP}_k(t)\sim\mathcal{N}(\eta_k, v_k)$ and $e_k(t)\sim\mathcal{N}(\eta, v)$,
+% \textbf{Example:} BP values can fluctuate due to various factors during the different measurements. Let's consider the case of a male individuals whose average BP values fall into the normal classification as shown in Table \ref{Tab: BPcategory}. In more detail, the distribution for SBP and DBP are ${N}(110,10)$ and ${N}(80,5)$, respectively. For the purpose of this scenario, we assume that the only reason for bias is the use of a non-calibrated BP device. The manufacturer of this device reports a fixed BP bias of $\eta$ = 10 mmHg.
+
+% Equation \ref{Eq: Percentage of error} describes the impact of the error on the percentage of misreported BP. 
+% \begin{align}\label{Eq: Percentage of error}
+% \Pr[L\leq \text{BP} \leq L + \eta] &= \int_{L}^{L + \eta} \frac{1}{\sqrt{2\pi}\sigma} \exp\left(-\frac{(x-\mu)^2}{2\sigma^2}\right) \,\mathrm dx \\
+% &= \frac12\left(\operatorname{erf}\frac{L+\eta-\mu}{\sqrt{2}\sigma} - \operatorname{erf}\frac{L-\mu}{\sqrt{2}\sigma}\right)
+% \end{align}
+% $L$ is the specified BP value we want to calculate the probability of its wrong reporting. We consider the $L$ values of SBP and DBP equal to 125 and 85, respectively. Therefore, the probability of their misreporting is 1.7 and 0.9 percent, respectively.
+
+%\textbf{Example 2:} Now, we want to investigate the effect of bias in classifying people based on the BP norm in a small group that includes 500 participants. In measuring BP without any biases (Ideal situation), the distribution of people according to the table \ref{Tab: BPcategory} is 200, 200, and 100 subjects in Elevated, Hypertension (stage1), and Hypertension (stage1) groups, respectively. The mentioned potential sources of biases can influence BP values and lead to the wrong classification. For example, if we model all probable biases by $e_k(t)\sim\mathcal{N}(0, 5)$, this lead to an increase in the number of patients with Elevated or Hypertension (stage 2) groups. Fig.~\ref{Fig: systemicerror} shows the population distribution in different categories according to the basic situation, over-reads by 5 mmHg and under-reads by 5 mmHg. As a result, patients can be under-treated due to the wrong consequence, which wastes the time and money of people and maybe can result in their death \citep{Kumar2021-em}.
+
+%We present graphical representations of the data from Table \ref{Tab: sex} and \ref{Tab: BMI} through Fig.\ref{Fig: GenderandBP} and Fig.\ref{Fig: BMIandBP}, respectively. In Fig.\ref{Fig: GenderandBP}, each ellipse in the graph corresponds to an individual study, where the center of each ellipse is determined by the mean SBP and mean DBP values. The horizontal and vertical axes of each ellipse represent the standard deviation of SBP and DBP, respectively. To further analyze the data, we make two key assumptions:
+%(1) BP values follow a Gaussian distribution, with the reported mean and standard deviation values reflecting this distribution.
+%(2) From a population-wide standpoint, the data can be effectively modeled using Gaussian mixture models (GMMs) to capture underlying clusters or subpopulations \citep{reynolds2009gaussian}. These assumptions provide a comprehensive understanding of BP value distributions across different subpopulations, facilitating pattern identification and insights. The figures show heatmaps that map the Gaussian distribution to a Gaussian mixture model, enabling a deeper understanding of the data's underlying structure. By employing GMMs, we can identify different clusters or subgroups within the population based on BP values, aiding in comprehending the complexity of BP patterns and advancing personalized healthcare approaches.
+
+\begin{figure}[tb]
+  \begin{adjustwidth}{-\extralength}{0cm}
+  \centering
+  \hfill
+  \begin{subfigure}{0.25\columnwidth}
+   \includegraphics[width=1\columnwidth]{Images/Male_BP_Differentcolors1.pdf}
+    \caption{Male}
+    \label{Fig:MaleandBP}
+  \end{subfigure}%
+  \hfill
+  \begin{subfigure}{0.25\columnwidth}
+   \includegraphics[width=1\columnwidth]{Images/Female_BP_Differentcolors1.pdf}
+    \caption{Female}
+    \label{Fig:FemaleandBP}
+  \end{subfigure}%
+  \hfill
+  \begin{subfigure}{0.25\columnwidth}
+   \includegraphics[width=1\columnwidth]{Images/SBP_DBP_MALE.pdf}
+    \caption{Male GMM}
+    \label{Fig:MaleGMM}
+  \end{subfigure}%
+  \hfill
+  \begin{subfigure}{0.25\columnwidth}
+   \includegraphics[width=1\columnwidth]{Images/SBP_DBP_FEMALE.pdf}
+    \caption{Female GMM}
+    \label{Fig:FemaleGMM}
+  \end{subfigure}
+  \hfill
+  \caption{Comparison of male (Fig.~\ref{Fig:MaleandBP}) vs. female (Fig.~\ref{Fig:FemaleandBP}) blood pressure values from various studies. Each ellipse represents a study, centered on the mean SBP and DBP with horizontal and vertical radii as the corresponding standard deviations. Gaussian mixture model (GMM) distributions are fitted over these reports in Figs.~\ref{Fig:MaleGMM} and \ref{Fig:FemaleGMM}.}
+  \label{Fig:GenderandBP}
+  \end{adjustwidth}
+\end{figure}
+
+% \begin{figure*}[tb]
+% \centering
+% \begin{subfigure}{0.4\linewidth}
+%   %\includegraphics[width=\linewidth]{Images/Heatmap_BP_vs_M.png}
+%   \includegraphics[trim={0in 0in 0 0.1in},clip,width=.9\linewidth]{Images/SBP_DBP_MALE.png}
+%   \caption{Male}
+%   \label{Fig:MaleandBP}
+% \end{subfigure}%
+% \begin{subfigure}{0.4\linewidth}
+%   %\includegraphics[width=\linewidth]{Images/Heatmap_BP_vs_F.png}
+%   \includegraphics[trim={0in 0in 0 0.1in},clip,width=.9\linewidth]{Images/SBP_DBP_FEMALE.png}
+%   \caption{Female}
+%   \label{Fig:FemaleandBP}
+% \end{subfigure}
+% \caption{Gaussian mixture model (GMM) distributions fitted over the ensemble of the studied blood pressure reports of Fig.~\ref{Fig: GenderandBP} across male and female}\label{Fig: heatmap_sex}
+% \end{figure*}
+
+\begin{figure}[tb]
+\begin{adjustwidth}{-\extralength}{0cm}
+\centering
+%\begin{subfigure}{0.125\linewidth}
+%  \includegraphics[width=.98\linewidth]{Images/Legend_BMI.pdf}
+  %\centering
+%  \caption{Legend}
+%  \label{Fig: Legend_BMI}
+%\end{subfigure}
+  \hfill
+\begin{subfigure}{0.25\columnwidth}
+\includegraphics[width=1\columnwidth]{Images/BMI_DBP_Differentcolors2.pdf}
+  \caption{DBP vs BMI}
+  \label{Fig: DBP_vs_BMI}
+\end{subfigure}%
+  \hfill
+\begin{subfigure}{0.25\columnwidth}
+  \includegraphics[width=1\columnwidth]{Images/BMI_SBP_Differentcolors2.pdf}
+  \caption{SBP vs BMI}
+  \label{Fig: SBP_vs_BMI}
+\end{subfigure}
+  \hfill
+\begin{subfigure}{0.25\columnwidth}
+  \includegraphics[width=1\columnwidth]{Images/BMI_DBP2.pdf}
+  \caption{DBP vs BMI}
+  \label{Fig: HEATMAP_DBP_BMI}
+\end{subfigure}%
+  \hfill
+\begin{subfigure}{0.25\columnwidth}
+  \includegraphics[width=1\columnwidth]{Images/BMI_SBP2.pdf}\caption{SBP vs BMI}
+  \label{Fig: HEATMAP_SBP_BMI}
+\end{subfigure}
+  \hfill
+\caption{Comparison of blood pressure values by BMI from various studies. Each ellipse represents a study, centered on mean BMI and BP with horizontal and vertical radii as their respective standard deviations.}
+\label{Fig: BMIandBP}
+\end{adjustwidth}
+\end{figure}
+
+
+% \begin{figure*}[tb]
+% \centering
+% \begin{subfigure}{0.4\linewidth}
+%   \includegraphics[trim={0in 0in 0 0.3in},clip,width=.9\linewidth]{Images/BMI_DBP.png}
+%   \caption{DBP}
+%   \label{Fig: HEATMAP_DBP_BMI}
+% \end{subfigure}%
+% \begin{subfigure}{0.4\linewidth}
+%   \includegraphics[trim={0in 0in 0 0.9in},clip,width=.9\linewidth]{Images/BMI_SBP.png}  \caption{SBP}
+%   \label{Fig: HEATMAP_SBP_BMI}
+% \end{subfigure}
+% \caption{Gaussian mixture models (GMMs) distributions fitted over the ensemble of the blood pressure-related studies reporting SBP/DBP and BMI}\label{Fig: heatmap_BMI}
+% \end{figure*}
+
+%We propose a hypothesis that natural language processing (NLP) can systematically search and parse the text of publications to retrieve population-wide BP statistics, including the number of subjects, mean and standard deviations of SBP and DBP, as well as comorbid factors and demographics. By addressing the need for heterogeneous BP datasets, this approach can benefit BP-based clinical decision-making. Additionally, there are vast databases of ambulatory and clinical BP in Electronic Health Records (EHR) that remain underutilized and unstudied in the clinical literature. Combining these BP data can lead to heterogeneous distributions of BP across various demographics and comorbid factors. Utilizing this information, AI models can be developed to learn thresholds and decision criteria for distinguishing between BP values and predicting the risks of clinical outcomes. We hypothesize that AI models can effectively learn the thresholds and decision criteria for BP values and provide risks of actual clinical outcomes.
+
+%In summary, we believe that our innovative approach has the potential to revolutionize the current standards for diagnosing BP-related complications, leading to more accurate and effective clinical decisions and improved patient outcomes. The proposed AI technology combines population-wide and individualized BP studies to identify and correct measurement biases in BP data and estimate patients' risk of BP-related complications. This approach enables personalized BP devices for each subject, resulting in reported BP values that closely align with the actual values. Fig.~\ref{Fig: CorrectedBP} illustrates the use of ML-based BP diagnosis algorithms. Additionally, developing special BP devices with specific built-in sensors to detect ambient temperature and noise levels during measurement \citep{Wagner2012-id} can gather additional valuable information. As progress in materials science and fabrication methods continues, the utilization of various sensors for healthcare issues will gain significant attention \citep{Al-Qatatsheh2020-fh}. With these advancements, we anticipate significant improvements in BP monitoring technologies, leading to better patient care and outcomes.
+
+\begin{figure}[tb]
+\begin{adjustwidth}{-\extralength}{0cm}
+\centering
+% \includegraphics[width=0.95\textwidth]{Images/CorrectedBP.png}
+\includegraphics[trim={1cm 2cm 1cm 1cm},clip,width=1.3\textwidth]{Images/BP-monitoring-perspective.pdf}
+%\caption{%\textcolor{red}{@Somayyeh, the figure details need an edit. Change ``External inputs'' to ``demographics''; change ``internal inputs'' to ``environmental factors''. Add a factor to the ML box indicating ``population-wide priors'' and add a factor to the measurement unit indicating ``measurement noise''. To the output unit, add ``corrected BP values with estimated risk factor''. Overall, it should match the ML vision that we are proposing. It's also slightly crowded. You can omit the unnecessary images. Also, add the source of this image to the Overleaf project, so that you can make future changes whenever needed.}\textcolor{blue}{Corrected}
+\caption{The future of blood pressure (BP) monitoring. AI-assisted and ML-based algorithms are anticipated to be integrated in the new generation of cuff-based BP measurement devices to detect bias, correct BP measurements, and provide individualized BP-related risk-factors.}\label{Fig: CorrectedBP}
+\end{adjustwidth}
+\end{figure}
+
+
+\section{Conclusion}\label{sec: conclusion}
+BP is a crucial vital sign for monitoring health and clinical decision making. In recent years, the adoption of cuff-based BP technologies has surged, primarily driven by the growing popularity of ambulatory and home-based BP monitoring and its widespread use in medical centers and hospitals. Accurate BP values are essential, as any discrepancies between reported and actual BP measurements can lead to misinterpretations and mis-treatments. In this study, we highlighted the notion of ``bias'' and the factors that may result in bias in cuff-based BP monitoring across various social groups. The survey demonstrated how reported BP values can be diverse due to individualized and demographic factors, or become inaccurate due to a failure to adhere to BP measurement standards. Given these limitations, the development of a new generation of cuff-based BP devices supported by artificial-intelligence (AI) and machine learning (ML) techniques is highly demanded. Integrating AI and ML techniques into these devices is a promising approach to identify and correct bias and to customize normal and abnormal BP ranges on an individualized level; thereby improving the accuracy of BP measurements and clinical decision-making. In conclusion, addressing the issue of bias in cuff-based BP devices is essential for advancing patient care and ensuring reliable BP data for medical decision-making. Developing ML-based devices that can detect and correct bias will undoubtedly be a valuable contribution to the field, enhancing the overall effectiveness and reliability of BP monitoring systems. By focusing on improving BP monitoring precision, we can significantly improve patient outcomes.
+
+\section*{Author Contributions}
+
+\section*{Funding}
+This research received no external funding. 
+
+\section*{Institutional Review Board Statement}
+The Emory University IRB has approved this study under the study protocol number STUDY00006568.
+
+\section*{Informed Consent Statement}
+Not applicable.
+
+\section*{Data Availability Statement}
+Not applicable.
+
+\section*{Conflicts of Interest}
+The authors declare no conflict of interest.
+
+%//////////////////////////////////////////
+\reftitle{References}
+
+% \bibliographystyle{IEEEtran}
+% \bibliographystyle{apalike2}
+% \bibliographystyle{natbib}
+\bibliography{References}
+\end{document}

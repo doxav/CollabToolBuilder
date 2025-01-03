@@ -1,0 +1,239 @@
+\begin{thebibliography}{99999999}
+
+
+\bibitem[Ad98]{Ad98} J.\,D.\,Adler: {\it Refined anisotropic K-types and supercuspidal
+representations}, Pacific J. Math.~\textbf{185}(1), 1--32, 1998.
+
+\bibitem[Ana73]{Ana73} S.\,Anantharaman: {\it Sch\'emas en groupes: espaces homog\`enes et espaces alg\'ebriques sur une base de dimension $1$}, Sur les groupes alg\'ebriques, Soc. Math. France, Paris (1973), pp. 5-79. Bull. Soc. Math. France, M\'em. \textbf{33}.
+
+\bibitem[And01]{And01}Y.\, André: {\it Différentielles non commutatives et théorie de Galois différentielle ou aux différences. } Ann. Sci. École Norm. Sup. (4) 34 (2001), no. 5, 685–739. 
+
+
+\bibitem[Ar69]{artin69}M. Artin,
+{\it Algebraic approximation of structures over complete local rings}. 
+Inst. Hautes \'Etudes Sci. Publ. Math.   \textbf{36} (1969) 23 -- 58. 
+
+
+\bibitem[Ar74]{Ar74} M.\,Artin: {\it Versal deformations and algebraic stacks},
+Invent. Math.~\textbf{27}, 165--189, 1974.
+
+
+\bibitem[ADØ21]{ADO21} A.\,Asok, A.\,Dubouloz, P.\,Østvær: { \it Geometric models for algebraic suspensions}, Int. Math. Res. Not. IMRN 2023.
+
+
+\bibitem[AØ21]{AO21} A. Asok and P. A. {\O}stv{\ae}r, \emph{$\mathbb{A}^1$-homotopy Theory and Contractible Varieties: A Survey}, In Neumann, Frank and  Pal, Ambrus (Ed.), Homotopy Theory and Arithmetic Geometry - Motivic and Diophantine Aspects. Springer. 
+
+
+\bibitem[AH19]{AH19} E.\,Arasteh Rad, U.\,Hartl:{\it Uniformizing the Moduli Stacks of Global $\bbG$-Shtukas},  Int. Math. Res. Not. IMRN 2021, no. 21, 16121–16192.
+
+\bibitem[AZ55]{abhyankar-zariski55} S. S. Abhyankar and O. Zariski, {\it Splitting of valuations in extensions of local domains}. Proc. Natl. Acad. Sci. USA,  41 (1955), 84--90.
+
+\bibitem[Be90]{Be90}V.\,Berkovich: {\it
+Spectral theory and analytic geometry over non-Archimedean fields.}
+Mathematical Surveys and Monographs, 33. American Mathematical Society, Providence, RI, 1990. 
+
+
+\bibitem[BO78]{berthelot-ogus78} P. Berthelot and A. Ogus, {\it Notes on crystalline cohomology}, Princeton University Press, Princeton, N.J.; University of Tokyo Press, Tokyo, 1978.
+
+\bibitem[BK93]{BK93} C.\,J.\,Bushnell, Ph.\,C.\,Kutzko:
+{\it The admissible dual of $\GL(N)$ via compact open subgroups}, Annals of Mathematics Studies \textbf{129}, Princeton University Press, 1993.
+
+\bibitem[BK98]{BK98}  C.\,J.\,Bushnell, Ph.\,C. \, Kutzko: {\it Smooth representations of reductive p-adic groups: structure theory via types.} Proc. London Math. Soc. (3) 77 (1998), no. 3, 582–634.
+
+
+
+\bibitem[BLR90]{BLR90} S.\,Bosch, W.\,L\"utkebohmert and M.\,Raynaud: {\it N\'eron models},  Ergebnisse der Mathematik und ihrer Grenzgebiete (3) \textbf{21}, Berlin, New York: Springer-Verlag.
+
+%\bibitem[BS68]{BS68} A.\,Borel, T.\,Springer: {\it Rationality properties of linear algebraic groups II}, T\^{o}hoku Math.~Journ.~\textbf{20} (1968), no. 3, 443--497. 
+
+
+
+\bibitem[BT72]{BT72} F.\, Bruhat, J.\, Tits: {\it Groupes r\'eductifs sur un corps local.}, Publ. Math., Inst. Hautes Étud. Sci. 41, 5-251 (1972). 
+
+\bibitem[BT84]{BT84} F.\, Bruhat, J.\, Tits: {\it Groupes r\'eductifs sur un corps local II. Sch\'ema en groupes. Existence d'une donn\'ee radicielle valu\'ee}, Inst. Hautes \'Etudes Sci. Publ. Math. \textbf{60} (1984), 197--376. 
+
+
+\bibitem[CK10]{csima-kottwitz10} N.  Csima and R. Kottwitz, {\it Comodules for   Some simple $\mathcal O$-forms of $\mathbb G_m$}. Michigan Math. J. 59 (2010), 179--188. 
+
+\bibitem[Da67]{Da67} E.\, Davis: {\it Ideals of the principal class, R-sequences and a certain monoidal transformation.} Pacific J. Math. 20 (1967), 197–205.
+
+\bibitem[DH18]{duong-hai18} N. D. Duong and P. H. Hai,  { \it Tannakian duality over Dedekind ring and applications},
+Math. Z. 288 (2018), 1103--1142.
+
+\bibitem[DM82]{deligne-milne82} P. Deligne and  J. S. Milne,  {\it Tannakian categories}. In 
+Lecture Notes in Mathematics, 900, Springer-Verlag, Berlin-New York, 1982.
+
+\bibitem[DHdS18]{duong-hai-dos_santos18} N. D.\,Duong, P. H.\,Hai, J. P.\, dos Santos:
+{\it On the structure of affine flat group schemes over discrete valuation
+rings, I}. Ann. Sc. Norm. Super. Pisa Cl. Sci. (5) 18 (2018), no. 3,
+977--1032.
+
+
+\bibitem[Du05]{Du05} A. Dubouloz: {\it Quelques remarques sur la notion de modification affine.} 
+https://arxiv.org/abs/math/0503142, 2005.
+
+\bibitem[DF18]{DF18} A.\, Dubouloz, J.\,Fasel: {\it Families of $\bbA^1$-contractible affine threefolds. }
+Algebr. Geom. 5 (2018), no. 1, 1–14. 
+
+\bibitem[DPØ19]{DP019} A. \, Dubouloz, S.\, Pauli,  P.\, Østvær: {\it $\bbA ^1$-contractibility of affine modifications. } Internat. J. Math. 30 (2019), no. 14.
+
+
+\bibitem[Fu98]{Ful98} W. Fulton, \emph{Intersection theory}, Second edition. Ergebnisse der Mathematik und ihrer Grenzgebiete. 3. Folge. A Series of Modern Surveys in Mathematics [Results in Mathematics and Related Areas. 3rd Series. A Series of Modern Surveys in Mathematics], 2. Springer-Verlag, Berlin, 1998. 
+
+
+\bibitem[EGA]{EGA} A.\,Grothendieck:
+{\it {\'E}l{\'e}ments de G{\'e}om{\'e}trie Alg{\'e}brique},
+Publ. Math. IH{\'E}S 4, 1960-1967. (written in collaboration with J. Dieudonné)
+
+\bibitem[HdS21]{hai-dos_santos21} P. H.\,Hai, J. P.\, dos Santos:
+{\it On the structure of affine flat group schemes over discrete
+valuation rings, II}. Int. Math. Res. Not. IMRN 2021, no. 12, 9375--9424. 
+
+\bibitem[HdS23]{hai-dos_santos23} P. H. Hai and J. P. dos Santos, \textit{
+Finite torsors on projective schemes defined over a discrete valuation ring
+}. Alg. Geom.     10 (1) (2023) 1--40.
+
+\bibitem[Ho77]{Ho77} R.\,Howe: {\it Tamely ramified supercuspidal representations of $Gl_n$},  {Pacific J. Math. \textbf{73} (1977), no. 2, 437--460}.
+
+
+\bibitem[Ha50]{Ha50} H.\,Hasse: {\it Vorlesungen über Zahlentheorie.} (German) Die Grundlehren der mathematischen Wissenschaften in Einzeldarstellungen mit besonderer Berücksightigung der Anwendungsgebiete. Band LIX. Springer-Verlag, Berlin-Göttingen-Heidelberg, 1950.
+
+\bibitem[Ha80]{Ha80} H.\,Hasse: {\it Number theory.} Translated from the third German edition and with a preface by Horst Günter Zimmer. Grundlehren der Mathematischen Wissenschaften [Fundamental Principles of Mathematical Sciences], 229. Springer-Verlag, Berlin-New York, 1980. 
+ 
+\bibitem[He10]{He10} J.\,Heinloth: {\it Uniformization of $\calG$-bundles}, Math. Ann. \textbf{347} (2010), no. 3, 499--528.
+
+\bibitem[He1913]{He1913} Kurt\,Hensel: {\it Zahlentheorie}, Berlin und Leipzig, 1913
+
+\bibitem[HKØ16]{HKO16} M.\,Hoyois,  A.\, Krishna, P.\,Østvær:{\it  
+ $\bbA ^1$-contractibility of Koras-Russell threefolds. }
+Algebr. Geom. 3 (2016), no. 4, 407–423. 
+
+
+\bibitem[Ja03]{jantzen03}J. C. Jantzen, {\it Representations of Algebraic Groups}. Math. Surveys Monogr. 
+Soc., Providence, RI.  2003. 
+
+\bibitem[Ka94]{Ka94} S.\, Kaliman: {\it Exotic analytic structures and Eisenman intrinsic measures.} Israel J. Math. 88 (1994), no. 1-3, 411–423.
+
+\bibitem[KP22]{KP22} T. Kaletha, G. Prasad: {\it Bruhat-Tits Theory: A New Approach}, New Mathematical Monographs, Series Number 44, 2022
+
+
+\bibitem[KZ99]{KZ99}S.\,Kaliman, M.\,Zaidenberg: {\it
+Affine modifications and affine hypersurfaces with a very transitive automorphism group.}
+Transform. Groups 4 (1999), no. 1, 53–95. 
+
+
+
+\bibitem[KR97]{KR97} M. Koras and P. Russell, \emph{Contractible threefolds and $\mathbb{C}^*$-actions on $\mathbb{C}^3$}, J. of Algebraic Geom. 6 (1997), 671-695.
+
+
+\bibitem[Li02]{liu02}Q. Liu, {\it Algebraic Geometry and Arithmetic Curves}, Oxford Graduate Texts in Mathematics, Vol. 6, 2002.
+
+
+\bibitem[ML96]{ML96} L. Makar-Limanov, \emph{On the hypersurface $x+x^2y+z^2+t^3=0$ in $\mathbb{C}^4$ or a $\mathbb{C}^3$ -like threefold which is not $\mathbb{C}^3$}, Israel J. Math. 96 (1996), 419-429.
+
+
+\bibitem[Ma19o]{Ma19o} A.\,Mayeux: {\it Comparison of Bushnell-Kutzko and Yu’s constructions of supercuspidal
+representations}, Oberwolfach report 44/2019, New Developments in Representation Theory of p-adic Groups, organizers J.\,Fintzen, W.\,T. Gan, S.\,Takeda.
+
+\bibitem[Ma19t]{Ma19t} A.\,Mayeux: {\it On the constructions of supercuspidal representations}, PhD thesis, Universit\'e de Paris,  2019
+
+
+\bibitem[Ma22]{Ma22} A.\,Mayeux: {\it Bruhat-Tits theory from Berkovich's point of view. Analytic filtrations}, Ann. H. Lebesgue 5 (2022) 813-839.
+
+\bibitem[Ma23a]{Ma23a} A.\,Mayeux: {\it Algebraic Magnetism}, https://arxiv.org/pdf/2203.08231.pdf, 2023
+
+
+\bibitem[Ma23c]{Ma23c} A.\,Mayeux: {\it Dilatations of categories}, https://arxiv.org/abs/2305.11303, 2023
+
+\bibitem[Ma23d]{Ma23d} A.\,Mayeux: {\it Multi-centered dilatations and congruent isomorphisms}, https://arxiv.org/abs/2303.07712, 2023
+
+
+\bibitem[MRR20]{MRR20}  A.\,Mayeux,  T.\,Richarz,  M.\,Romagny:  {\it N\'eron blowups and low-degree cohomological applications}, Algebr. Geom. (2023)
+
+\bibitem[MY22]{MY22} A.\,Mayeux, Y. Yamamoto: {\it Comparing Bushnell-Kutzko and Sécherre's constructions of types for GLN and its inner forms with Yu's construction}, https://arxiv.org/abs/2112.12367 (2022)
+
+
+\bibitem[MV99]{MV99} F. Morel and V. Voevodsky, \emph{$\mathbb{A}^1$-homotopy theory of schemes}, Inst. Hautes \'Etudes Sci. Publ. Math., (90):45-143 (2001), 1999.
+
+\bibitem[Mo91]{Mo91} L.\,Morris: {\it Tamely ramified supercuspidal representations of classical
+groups. I. Filtrations}, Annales scientifiques de l'E.N.S. 4e s\'erie, tome 24, no 6 (1991), p. 705-738.
+
+\bibitem[MJ11]{MJ11} L. Moser-Jauslin, \emph{Automorphism groups of Koras- Russell threefolds of the first kind}, CRM Proc. Lecture Notes, 54, Amer. Math. Soc., Providence, RI, 2011.
+
+
+\bibitem[MP94]{MP94} A.\,Moy, G.\,Prasad: {\it Unrefined minimal K-types for $p$-adic groups}, Invent. Math. \textbf{116} (1994), 393--408.
+
+\bibitem[MP96]{MP96} A.\,Moy, G.\,Prasad: {\it Jacquet functors and unrefined minimal {$K$}-types}, Comment. Math. Helv., 98--121 1996.
+
+\bibitem[Ner64]{Ner64} A.\,N\'eron: {\it Mod\`eles minimaux des
+vari\'et\'es ab\'eliennes sur les corps locaux et globaux},
+Inst. Hautes \'Etudes Sci. Publ. Math. No. 21 (1964), 128 pp.
+
+\bibitem[No1884]{No1884} Max Noether, {\it Rationale Ausf\"uhrung der Operationen in der Theorie der
+algebraischen Functionen}. Math. Ann.  23, 1884,  311--358.
+
+
+\bibitem[Nor76]{nori76}M. V. Nori, \emph{On the representations of the fundamental group}, Compositio Math. 33 (1976), no. 1, 29--41.
+
+\bibitem[PR84]{PR84} G.\,Prasad, M.\,S.\,Raghunathan:
+{\it Topological central extensions of semisimple groups over local fields},
+Ann. of Math. \textbf{119} (1984), 143--201.
+
+\bibitem[PY06]{PY06} G.\,Prasad, J.\,-K.\,Yu; {\it On quasi-reductive group schemes},
+J. Algebraic Geom. \textbf{15} (2006), 507--549. With an appendix by Brian Conrad.
+
+\bibitem[PZ13]{PZ13} G.\,Pappas, X.\,Zhu: {\it Local models of Shimura varieties and a conjecture of Kottwitz}, Invent.\,Math.\,\textbf{194} (2013), 147--254.
+
+
+\bibitem[Ray66]{Ray66} M.\,Raynaud: {\it Mod\`eles de N\'eron},
+C. R. Acad. Sci. Paris S\'er. A-B 262 (1966), A345--A347.
+
+\bibitem[RTW10]{RTW10} B.\,Rémy, A.\,Thuillier, A.\,Werner: {\it Bruhat-Tits theory from Berkovich's point of view. I. Realizations and compactifications of buildings} ,  Ann. Sci. Éc. Norm. Supér. (4) 43 (2010), no. 3.
+
+\bibitem[Ro96]{Ro96} M. Rost, \emph{Chow groups with coefficients}. Doc. Math. 1 (1996), No. 16, 319-393.
+
+
+
+\bibitem[S72]{saavedra72} N. Saavedra,  {\it Cat\'egories Tannakiennes}. Lecture Notes in Mathematics, 265. Berlin:
+Springer, 1972.
+
+
+
+\bibitem[dS09]{dos_santos09}J. P. dos Santos, {\it The behaviour of the differential Galois group on the generic and special fibres: a Tannakian
+approach}. J. Reine Angew. Math. 637, 63--98 (2009) 
+
+
+
+\bibitem[Sec04]{Sec04} V.\,S\'{e}cherre: {\it Repr\'{e}sentations lisses de {${\rm GL}(m,D)$}. {I}. {C}aract\`eres simples}, Bull. Soc. Math. France,  2004. 
+
+\bibitem[Se68]{serre68}J.-P. Serre, {\it Groupe de Grothendieck des sch\'emas en groupes r\'eductifs d\'eploy\'es}, Inst.
+Hautes \'Etudes Sci. Publ. Math. 34 (1968), 37--52.
+
+\bibitem[SGA3]{SGA3} M.\,Demazure, A.\,Grothendieck: {\it S\'eminaire de G\'eom\'etrie Alg\'ebrique du Bois Marie - 1962-64 - Sch\'emas en groupes - (SGA 3)}, Lecture notes in mathematics \textbf{151} (1970), Berlin; New York: Springer-Verlag. pp. xv+564.
+
+
+
+\bibitem[StP]{stacks-project} The {Stacks project authors}: {\it The Stacks Project}, \href{https://stacks.math.columbia.edu}{https://stacks.math.columbia.edu}, (2022).
+
+
+\bibitem[Th87]{thomason87} R. W. Thomason, {\it Equivariant Resolution, Linearization, and Hilbert's Fourteenth Problem over Arbitrary Base Schemes}. Adv. Math. 65, 1987, 16--34. 
+
+
+\bibitem[Wa79]{waterhouse79}W. C. Waterhouse, \emph{Introduction to affine group schemes}. 
+Grad. Texts in Math., 66. Springer-Verlag, New York-Berlin, 1979.
+
+\bibitem[WW80]{WW80} W.\,C.\,Waterhouse, B.~Weisfeiler: {\it One-dimensional affine group schemes}, J.~Algebra \textbf{66} (1980), 550--568.
+
+\bibitem[Yu01]{Yu01} J.-K.\,Yu: {\it Construction of tame supercuspidal representations},
+J. Amer. Math. Soc.~\textbf{14} (2001), no. 3, 579--622.
+
+\bibitem[Yu15]{Yu15} J.-K.\,Yu: {\it Smooth models associated to concave functions in Bruhat-
+Tits theory}, Autour des sch\'emas en groupes. Vol. III, 227--258, Panor. Synth\`eses \textbf{47}, Soc. Math. France, Paris, 2015. 
+
+\bibitem[Za00]{Zai00}  M. G. Zaidenberg, \emph{Exotic algebraic structures on affine spaces}, Algebra i Analiz, 11:5 (1999), 3-73; St. Petersburg Math. J., 11:5 (2000), 703-760.
+
+\bibitem[Za43]{Za43} O.\, Zariski: {\it  Foundations of a general theory of birational correspondences,} Trans. Amer. Math. Soc. 53 (1943).
+
+
+
+\end{thebibliography}
