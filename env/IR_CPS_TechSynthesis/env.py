@@ -1156,8 +1156,11 @@ class SynthesisManager:
                 self.min_plan_titles_cosine_similarity = cosine_similarity([dumb_embedding], [self.target_plan_titles_embedding])[0][0]
                 self.min_plan_contents_cosine_similarity = cosine_similarity([dumb_embedding], [self.target_plan_contents_embedding])[0][0]
                 self.min_plan_cosine_similarity = cosine_similarity([dumb_embedding], [self.target_plan_embedding])[0][0]
-                self.min_plan_resources_cosine_similarity = cosine_similarity([dumb_embedding], [self.target_plan_resources_embedding])[0][0]
-                self.min_resources_cosine_similiarty = cosine_similarity([dumb_embedding], [self.target_resource_embedding])[0][0]
+                if len(dumb_embedding) == 1536:
+                    self.min_plan_resources_cosine_similarity = cosine_similarity([dumb_embedding], [self.target_plan_resources_embedding])[0][0]
+                    self.min_resources_cosine_similiarty = cosine_similarity([dumb_embedding], [self.target_resource_embedding])[0][0]
+                else:
+                    raise ValueError("Resource embedding currently only supports OpenAI ada-002 of 1536 length")
             else:
                 self.min_plan_titles_cosine_similarity = self.min_plan_contents_cosine_similarity = self.min_plan_cosine_similarity = self.min_resources_cosine_similiarty = self.min_plan_resources_cosine_similarity = min_cosine_similarity
         else:
@@ -1169,11 +1172,10 @@ class SynthesisManager:
             raise ValueError("Please set target_file_path using set_targetJSON_comparison method")
 
         if not hasattr(self, 'target_data'):
-            section_embedding_key, content_embedding_key, plan_embedding_key = "content_embedding_2", "section_embedding_2", "plan_embedding_2"
             self.set_targetJSON_comparison(self.target_file_path,
-                                           target_section_title_embedding_label=section_embedding_key,
-                                           target_section_content_embedding_label=content_embedding_key,
-                                           target_plan_embedding_label=plan_embedding_key)
+                                           target_section_title_embedding_label=target_section_title_embedding_label,
+                                           target_section_content_embedding_label=target_section_content_embedding_label,
+                                           target_plan_embedding_label=target_plan_embedding_label)
             self.document.update_plan_embedding()
         elif not hasattr(self.document.document_content, 'sections_list_title_embedding'):
             self.document.update_plan_embedding()
@@ -1358,7 +1360,8 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         return VoyagerEnvIR_CPS_TechSynthesis.llm_model.invoke([SystemMessage(content=""), HumanMessage(content=prompt)]).content
 
     def get_score(self):
-        distance = self.synthesis_manager.get_distance_to_targetJSON()
+        embed_id = "1" if self.document.embedding_model_name == "text-embedding-ada-002" else "2"
+        distance = self.synthesis_manager.get_distance_to_targetJSON(target_section_title_embedding_label="section_embedding_"+embed_id, target_section_content_embedding_label="content_embedding_"+embed_id, target_plan_embedding_label="plan_embedding_"+embed_id)
         return {'plan/titles similarity (top:1, worst:0)': distance['plan_titles_embedding_similarity'],
                 'sections contents similarity (top:1, worst:0)': distance['plan_contents_embedding_similarity'],
                 'sections resources similarity (top:1, worst:0)': distance['plan_resources_embedding_similarity'],
@@ -1409,7 +1412,8 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         document_state += f"> Current table of content:\n{table_of_content if len(table_of_content) > 0 else 'Empty'}\n"
         document_state += f"> Current resources: {resources_observation if len(resources_observation) > 0 else 'Empty'}\n"
         if extended:
-            distance_to_targetJSON = self.synthesis_manager.get_distance_to_targetJSON()
+            embed_id = "1" if self.document.embedding_model_name == "text-embedding-ada-002" else "2"
+            distance_to_targetJSON = self.synthesis_manager.get_distance_to_targetJSON(target_section_title_embedding_label="section_embedding_"+embed_id, target_section_content_embedding_label="content_embedding_"+embed_id, target_plan_embedding_label="plan_embedding_"+embed_id)
             events_action_counts = self.synthesis_manager.get_count_method_calls()
             document_state += f"1. sections titles progress: {distance_to_targetJSON['plan_titles_embedding_similarity']}\n"
             document_state += f"2. sections content progress: {distance_to_targetJSON['plan_contents_embedding_similarity']}\n"

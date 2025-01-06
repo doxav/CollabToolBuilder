@@ -27,13 +27,17 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.ai import AIMessage
 from langchain_core.messages.system import SystemMessage
+from langchain_core.messages.base import BaseMessage
 from langchain_openai import ChatOpenAI
+from langgraph.graph import StateGraph
+from langgraph.graph import END, START
 from config import *
 from env.env import EnvironmentManager, validate_function_code
 from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, smart_print, smart_input
 from env.IR_CPS_TechSynthesis.env import *
 from env.SWEBench.env import *
 
+from typing import TypedDict, Sequence
 
 import torch
 import gc
@@ -53,7 +57,7 @@ UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "no
 
 
 embedding_function = "text-embedding-ada-002"  #"Alibaba-NLP/gte-base-en-v1.5" UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
-reset_db_indices = False  # Set to True after changing embeddings
+reset_db_indices = True  # Set to True after changing embeddings
 
 HumanLLMMonitor.use_websocket = True
 
@@ -1328,6 +1332,13 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agcoding_num_parallel_inferences=1,
                               continue_each_loop=False,unique_id=None, primitives_dir=None, functions_to_import=None,
                               embedding_function=None):
+    unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+    if unique_id is not False and UnifiedVectorDB.unique_collection_id is None:
+        UnifiedVectorDB.set_unique_collection_id(unique_id)
+    # Initialize HumanLLMMonitor databases
+    HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function)
+    HumanLLMMonitor.check_init_class_db(force=True)
+
     scores = None
 
     print("Starting learning loop...")
@@ -1535,6 +1546,225 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     else:
         return max(total_scores)
 
+def run_4agents_learning_loop_graph(
+    default_llm_key,
+    premium_llm_key,
+    test_environments=None,
+    manual_validation_to_capitalize=True,
+    problem_prompts_subdir=None,
+    max_coding_attempts=4,
+    include_code=None,
+    selected_successful_functions=None,
+    selected_failed_functions=None,
+    agtask_premium_llm_by_default=True,
+    agtask_skip_rounds=0,
+    agcoding_skip_rounds=0,
+    agvalidation_skip_rounds=0,
+    agcapitalize_skip_rounds=0,
+    llmORchains_list=None,
+    model_choice=None,
+    automation=None,
+    allow_custom_score_state_functions=False,
+    params_user_message=None,
+    max_execution_time=900,
+    special_criteria=None,
+    temperature_max=1,
+    agcoach_num_parallel_inferences=1,
+    fixed_coach=False,
+    return_array=False,
+    agcoding_num_parallel_inferences=1,
+    continue_each_loop=False,
+    unique_id=None,
+    primitives_dir=None,
+    functions_to_import=None,
+    embedding_function=None
+):
+    unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+    if unique_id is not False and UnifiedVectorDB.unique_collection_id is None:
+        UnifiedVectorDB.set_unique_collection_id(unique_id)
+    # Initialize HumanLLMMonitor databases
+    HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function)
+    HumanLLMMonitor.check_init_class_db(force=True)
+
+    # Initialize state tracking
+    class AgentState(TypedDict):
+        task: str
+        code: dict  # Changed from str to dict to match parsed_code structure
+        validation: str
+        messages: Sequence[BaseMessage]
+        scores: dict
+        should_continue: bool
+        environments: list
+        total_scores: list
+        end_time: float
+
+    # Create agent nodes with proper initialization
+    def create_task_agent(state: AgentState) -> AgentState:
+        agent = TaskIdentificationAgent(
+            default_llm_key,
+            state["environments"],
+            premium_llm_choice=premium_llm_key,
+            problem_prompts_subdir=problem_prompts_subdir,
+            premium_llm_by_default=agtask_premium_llm_by_default,
+            skip_rounds=agtask_skip_rounds,
+            llmORchains_list=llmORchains_list,
+            automation=automation.get('taskreco') if isinstance(automation, dict) else automation,
+            model_choice=model_choice,
+            criteria=params_user_message,
+            temperature_max=temperature_max,
+            num_parallel_inferences=agcoach_num_parallel_inferences,
+            fixed_coach=fixed_coach,
+            special_criteria=special_criteria
+        )
+        task = agent.identify_best_task()
+        return {"task": task[0].content, **state}  # Extract content from first task
+
+    def create_coding_agent(state: AgentState) -> AgentState:
+        agent = CodingAgent(
+            default_llm_key,
+            state["environments"],
+            premium_llm_choice=premium_llm_key,
+            problem_prompts_subdir=problem_prompts_subdir,
+            skip_rounds=agcoding_skip_rounds,
+            llmORchains_list=llmORchains_list,
+            automation=automation.get('coder') if isinstance(automation, dict) else automation,
+            model_choice=model_choice,
+            special_criteria=special_criteria,
+            num_parallel_inferences=agcoding_num_parallel_inferences,
+            primitives_dir=primitives_dir
+        )
+        validation_agent = ValidationAgent(
+            default_llm_key,
+            state["environments"],
+            premium_llm_choice=premium_llm_key,
+            skip_rounds=agvalidation_skip_rounds,
+            llmORchains_list=llmORchains_list,
+            automation=automation.get('critic') if isinstance(automation, dict) else automation,
+            model_choice=model_choice,
+            special_criteria=special_criteria
+        )
+        
+        parsed_code, validation, scores = coding_and_validation_loop(
+            agent,
+            validation_agent,
+            state["task"],
+            max_coding_attempts,
+            manual_validation_to_capitalize,
+            automation=agent.human_llm_code_task.automation,
+            end_time=state["end_time"]
+        )
+        
+        return {
+            "code": parsed_code,
+            "validation": validation,
+            "scores": scores,
+            **state
+        }
+
+    def create_capitalization_agent(state: AgentState) -> AgentState:
+        agent = CapitalizationAgent(
+            default_llm_key,
+            premium_llm_choice=premium_llm_key,
+            skip_rounds=agcapitalize_skip_rounds,
+            problem_prompts_subdir=problem_prompts_subdir,
+            llmORchains_list=llmORchains_list,
+            automation=automation.get('capitalizer') if isinstance(automation, dict) else automation,
+            model_choice=model_choice,
+            special_criteria=special_criteria
+        )
+
+        if state["validation"] == "success":
+            agent.capitalize_successful_tasks(state["task"], state["code"])
+        else:
+            agent.capitalize_failed_tasks(state["task"], state["code"])
+
+        # Update total scores
+        if state["scores"]:
+            total_score = calculate_total_score(state["scores"])
+            state["total_scores"].append(total_score)
+
+        # Determine whether to continue
+        should_continue = continue_each_loop if agent.automation else get_user_continue_input()
+        
+        return {"should_continue": should_continue, **state}
+
+    def should_continue(state: AgentState) -> str:
+        if not state["should_continue"] or time.time() >= state["end_time"]:
+            return "end"
+        return "continue"
+
+    # Create workflow graph
+    workflow = StateGraph(AgentState)
+    
+    # Add nodes
+    workflow.add_node("task_coach", create_task_agent)
+    workflow.add_node("code_task", create_coding_agent)
+    workflow.add_node("capitalize", create_capitalization_agent)
+
+    # Add edges
+    workflow.add_edge("task_coach", "code_task")
+    workflow.add_edge("code_task", "capitalize")
+
+    # Add conditional edges
+    workflow.add_conditional_edges(
+        "capitalize",
+        should_continue,
+        {
+            "continue": "task_coach",
+            "end": END
+        }
+    )
+
+    # Set entry point
+    workflow.set_entry_point("task_coach")
+
+    # Compile graph
+    app = workflow.compile()
+
+    # Initialize state
+    initial_state = {
+        "messages": [],
+        "should_continue": True,
+        "environments": test_environments,
+        "total_scores": [],
+        "end_time": time.time() + max_execution_time
+    }
+
+    # Execute graph
+    result = app.invoke(initial_state)
+
+    # Return results based on return_array parameter
+    if return_array:
+        return result["total_scores"]
+    else:
+        return max(result["total_scores"]) if result["total_scores"] else 0
+
+def calculate_total_score(scores):
+    validated_score_avg = 0
+    if scores['validated_scores'] is not None:
+        for dic in scores['validated_scores']:
+            validated_score_avg += sum(dic.values())
+        validated_score_avg /= len(scores['validated_scores'])
+    
+    total_score = (
+        scores['percentage_no_runtime_error'] +
+        10 * scores['best_score_without_validation'] +
+        (20 * (1 + validated_score_avg) if scores['validated_scores'] else 0)
+    )
+    return total_score if total_score > 0 else 0
+
+def get_user_continue_input():
+    answer = smart_input(
+        'Do you want to:\n'
+        '- search for a new task after reseting to empty documents (Y/YES) ?\n'
+        '- search for a new task based based on the status of documents after applying '
+        'the task you just validated (N/NO/Enter) ?\n'
+        '- or just exit the program (E/EXIT) ?',
+        'orchestrate_agents',
+        message_type='VALIDATION_INFO'
+    ).strip().upper()
+    
+    return False if answer in ['E', 'EXIT'] else True
 
 def run_planner(*args, **kwargs):  # NEW VERSION
     def parse_learn_question(question):
@@ -1981,6 +2211,7 @@ if __name__ == "__main__":
 
     # Initialize the WebSocket server with port autodetection and proxy
     if not ('unique_id' in globals()):
+        from datetime import datetime
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
 
     unique_id = "TEST"
@@ -2019,7 +2250,7 @@ if __name__ == "__main__":
     for doc in documents:
         env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
                                  target_file_path=doc['target_file_path'], id=doc['id'],
-                                 llm=llmORchains_list["default_llm"]).get_environment()
+                                 llm=llmORchains_list["default_llm"], embedding_model_name=embedding_function).get_environment()
         envs_tech_synthesis.append(env)
 
     problem_subdir = "IR_CPS_TechSynthesis" if 'saved_task' not in globals() else saved_task['type_tache']
@@ -2054,12 +2285,14 @@ if __name__ == "__main__":
    
     # Run the planner agent
     envs_swe = None
-    run_planner(default_llm_key="default_llm",
+    
+    #run_planner(default_llm_key="default_llm",
+    run_4agents_learning_loop_graph(default_llm_key="default_llm",
                 premium_llm_key="premium_llm",
                 llmORchains_list=llmORchains_list,
-                test_environments={'tech_synthesis': envs_tech_synthesis},
+                test_environments=envs_tech_synthesis,
                 manual_validation_to_capitalize=False,
-                problem_prompts_subdir="SWE_Synthesis",  
+                problem_prompts_subdir="IR_CPS_TechSynthesis",  #SWE_Synthesis, IR_CPS_TechSynthesis
                 max_coding_attempts=4,
                 include_code=False,
                 selected_successful_functions=[],
@@ -2075,7 +2308,7 @@ if __name__ == "__main__":
                 unique_id=unique_id,
                 # functions_to_import=".*",
                 functions_to_import=None,
-                
+                primitives_dir="primitives",
                 special_criteria=special_criteria,
                 automation=automatic,
                 model_choice={"coach": "default_llm", "coder": "premium_llm", "critic": "default_llm",
