@@ -1625,15 +1625,15 @@ z-index: -1;
     </div>
     <div id="your-goal-section" style="font-size: small; margin-top: 10px; cursor: pointer;">
         <div><select id="button-visibility-selector">
+            <option value="ALL_SEND">ALL + force display of input/send</option>
             <option value="SESSION_3">SESSION 3 CHOICE & CONTEXT</option>
             <!--<option value="SESSION_1">SESSION 1 FOCUS SELECTION</option>-->
             <!--<option value="SESSION_2">SESSION 2 FOCUS TEXT FEEDBACK</option>-->
             <option value="ALL">ALL (no BUTTON FILTER)</option>
-            <option value="ALL_SEND">ALL + force display of input/send</option>
         </select>
         </div>
         <div id="your-goal-header" style="font-weight: bold;">[ HIDE/SHOW ]</div>
-        <div id="your-goal-content" style="display: block; margin-top: 5px;">
+        <div id="your-goal-content" style="display: none; margin-top: 5px;">
             Your GOAL: guide AI agents to make the most efficient function to create good research papers.
 
             <br><br>Steps in this loop are: 1. Task Identification > 2: Coding > 3: Validation > 4: Capitalization
@@ -1661,7 +1661,7 @@ z-index: -1;
         floatingDiv.style.bottom = "20px"; // Position from the bottom
         floatingDiv.style.right = "20px"; // Position from the right
         floatingDiv.style.transform = "none";
-    }, 5000);
+    }, 1000);
 
     // Toggle instructions visibility
     document.getElementById("your-goal-header").onclick = () => {

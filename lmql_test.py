@@ -134,15 +134,15 @@ def check_after(func):
 def humancontrol_lmql(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        print(f"Customize generation before executing query function: {func.__name__}")
+    #     print(f"Customize generation before executing query function: {func.__name__}")
 
-        # Display current values
-        print(f'Kwargs: {kwargs}' )
-        print(f'Args: {args}' )
-        print(f"Current constraints: {kwargs.get('where', 'None')}")
-        print(f"Current sub-query: {args[0] if args else 'None'}")
-        print(f"Current decoding algorithm: {kwargs.get('decoder', 'argmax')}")
-        print(f"Current temperature: {kwargs.get('temperature', 1.0)}")
+    #     # Display current values
+    #     print(f'Kwargs: {kwargs}' )
+    #     print(f'Args: {args}' )
+    #     print(f"Current constraints: {kwargs.get('where', 'None')}")
+    #     print(f"Current sub-query: {args[0] if args else 'None'}")
+    #     print(f"Current decoding algorithm: {kwargs.get('decoder', 'argmax')}")
+    #     print(f"Current temperature: {kwargs.get('temperature', 1.0)}")
 
         # Save the current state before modifications
         current_state = copy.deepcopy(kwargs)

@@ -17,7 +17,7 @@ import json
 from elasticsearch import Elasticsearch
 import requests
 from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
+from requests.packages.urllib3.util.retry import Retry # type: ignore
 
 from langchain_community.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
 from langchain_core.runnables import RunnableSequence, ConfigurableField
@@ -51,9 +51,7 @@ AGENT = ''
 import asyncio
 import websockets
 
-
-def smart_print(message: str, agent_name=None, message_type=None, append=False, column_id=None, column_max=None,
-                optional=False):
+def smart_print(message: str, agent_name=None, message_type=None, append=False, column_id=None, column_max=None, optional=False):
     global AgentDisplayManager, AGENT
     if 'IN_NOTEBOOK' not in globals():
         try:  # test if IN_NOTEBOOK
@@ -96,7 +94,7 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
                 from utils.jupyter_agents_display import AgentDisplayManager
             except:
                 print("AgentDisplayManager cannot be imported/initialized")
-                print(message)
+
                 return
         # create string with time of format HH:MM:SS
         time_str = datetime.now().strftime("%H:%M:%S")
@@ -115,7 +113,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
         try:  # test if IN_NOTEBOOK
             from IPython import get_ipython
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = get_ipython().__class__.__name__ == 'ZMQInteractiveShell'
-            print("Smart_print: Notebook mode =", IN_NOTEBOOK)
+
         except:
             globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = False
     else:
@@ -250,9 +248,7 @@ def is_vscode_installed():
         # FileNotFoundError means the code command is not in the PATH
         return False
 
-
-def _visual_input(initial_string="", filetype="md", agent_name=None, column_id=None, column_max=None,
-                  message_type=None):
+def _visual_input(initial_string="", filetype="md", agent_name=None, column_id=None, column_max=None, message_type=None):
     """
     Open a visual editor (VSCode or Tkinter) to interactively edit a given string or list.
 
@@ -281,9 +277,7 @@ def _visual_input(initial_string="", filetype="md", agent_name=None, column_id=N
         with open(file_path, 'w') as file:
             file.write(initial_string_serialized)
 
-        smart_print(f"Please edit and save the file opened in VSCode (Ctrl + W) when ready ({file_path})",
-                    optional=False, agent_name=agent_name, column_id=column_id, column_max=column_id,
-                    message_type=message_type)
+        smart_print(f"Please edit and save the file opened in VSCode (Ctrl + W) when ready ({file_path})", optional=False, agent_name=agent_name, column_id=column_id, column_max=column_id, message_type=message_type)
         # Step 3: Open the file in VSCode
         subprocess.run(["code", "--wait", file_path])
 
@@ -365,7 +359,6 @@ def _visual_input(initial_string="", filetype="md", agent_name=None, column_id=N
         else:
             return edited_string
 
-
 def list_prompt_variants(prompt_name, package_path="."):
     base_name = prompt_name.split("@")[0]
     pattern = f"{package_path}/prompts/{base_name}@*.txt"
@@ -379,8 +372,7 @@ def save_prompt(prompt_name, text, package_path="."):
     # if prompt_file_path_name exists, move existing file to prompt_file_path_name.timestamp (timestamp = datetime.now().isoformat())
     if f_exists(prompt_file_path_name):
         moved_file_path_name = prompt_file_path_name + datetime.now().strftime(".%H-%M-%S_%m-%d-%y")
-        smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}", "save_prompt",
-                    optional=True)
+        smart_print(f"Moving existing prompt file {prompt_file_path_name} to {moved_file_path_name}", "save_prompt", optional=True)
         f_move(prompt_file_path_name, moved_file_path_name)
 
     smart_print(f"Saving new prompt file {prompt_file_path_name}", "save_prompt", optional=True)
@@ -456,8 +448,7 @@ class UnifiedVectorDB:
                 print("Elasticsearch response:", response.text)
                 UnifiedVectorDB.db_connection_check_done = True
             except requests.exceptions.RequestException as e:
-                print(
-                    f"Error: {e}\nURL: {UnifiedVectorDB.es_url}\nCheck Elasticsearch and credentials. UnifiedVectorDB.es_user:{UnifiedVectorDB.es_user}, UnifiedVectorDB.es_password:{UnifiedVectorDB.es_password}")
+                print(f"Error: {e}\nURL: {UnifiedVectorDB.es_url}\nCheck Elasticsearch and credentials. UnifiedVectorDB.es_user:{UnifiedVectorDB.es_user}, UnifiedVectorDB.es_password:{UnifiedVectorDB.es_password}")
                 exit(1)
         elif UnifiedVectorDB.db_type == 'chroma':
             print("Chroma DB check is not yet implemented")
@@ -484,9 +475,8 @@ class UnifiedVectorDB:
         elif UnifiedVectorDB.db_type == 'elasticsearch':
             elastic_client = Elasticsearch(UnifiedVectorDB.es_url,
                                            http_auth=(UnifiedVectorDB.es_user,
-                                                      UnifiedVectorDB.es_password) if (
-                                                       UnifiedVectorDB.es_user not in [False, "", None]) else None,
-                                           verify_certs=False, ssl_show_warn=False)
+                                                      UnifiedVectorDB.es_password) if (UnifiedVectorDB.es_user not in [False, "", None]) else None,
+                                           verify_certs=True, ssl_show_warn=False)
             self.db = ElasticsearchStore(
                 index_name=self.collection_name,
                 embedding=embedding_function,
@@ -521,7 +511,6 @@ class UnifiedVectorDB:
             return self.db.similarity_search_with_score(query, k=k)
         elif UnifiedVectorDB.db_type == 'elasticsearch':
             return self.db.similarity_search_with_score(query, k=(k if k <= 50 else 50))  # k seems to crash when > 50
-
     # query( query_embeddings, query_texts, n_results, where, where_document, include)
     def query(self, query_text="", k=1, metadata_filter=None, metadata_filter_OR=False, custom_filter_chrome=None,
               custom_filter_es=None, sort_order=None):
@@ -568,8 +557,7 @@ class UnifiedVectorDB:
                 return self.db.similarity_search(query_text, k=(k if k <= 50 else 50),
                                                  custom_query=custom_query)  # k seems to crash when > 50
             else:
-                return self.db.similarity_search(query_text, k=(k if k <= 50 else 50),
-                                                 filter=custom_filter_es)  # k seems to crash when > 50
+                return self.db.similarity_search(query_text, k=(k if k <= 50 else 50), filter=custom_filter_es)  # k seems to crash when > 50
             # filter on AND conditions: filter=[{"match":{"metadata.function_name":function_name}}, {"match":{"metadata.agent_name":agent_name}}]
 
     def count(self):
@@ -626,9 +614,9 @@ class HumanLLMMonitor:
     stop_event = threading.Event()
 
     # Initialize vector databases for tasks
-    db_collection_success = "successful_tasks"
-    db_collection_failed = "failed_tasks"
-    reset_db_indices = False  # Set to True if you want to reset the database indices
+    db_collection_success="successful_tasks"
+    db_collection_failed="failed_tasks"
+    reset_db_indices = False # Set to True if you want to reset the database indices
     db_learnt_tasks = None
     db_failed_tasks = None
 
@@ -677,8 +665,7 @@ class HumanLLMMonitor:
         cls.common_vectordb.add_texts(texts=[serialized_data], metadatas=[tags])
 
     @classmethod
-    def get_agent_data(cls, agent_name=None, data_key=None, id_task=None, function_name=None, before_after=None,
-                       user_id=None,
+    def get_agent_data(cls, agent_name=None, data_key=None, id_task=None, function_name=None, before_after=None, user_id=None,
                        step_id=None, type_tache=None, score=None,
                        metadata_filter=None, sort_order=None, k=5, start_index=0, end_index=None):
         """Retrieves agent-specific data based on the agent name, data key, and additional metadata.
@@ -754,12 +741,13 @@ class HumanLLMMonitor:
             modif = False
             for i, task in enumerate(tasks):
                 if task.metadata["id_task"] == id_last_task and i + 1 < len(tasks):
-                    tasks = tasks[i + 1:]
+                    tasks = tasks[i+1:]
                     modif = True
                     break
             if not modif:
                 return "None"
         ret = []
+
 
         for task in tasks:
             ret += [{
@@ -787,7 +775,7 @@ class HumanLLMMonitor:
         return json.dumps(ret)
 
     @classmethod
-    def goto_task(cls, id_task: str, automatic: str = None, special_criteria: dict = None):
+    def goto_task(cls, id_task: str, automatic: str = None, special_criteria : dict =  None):
         """
         Retrieve the task from the database and start processing the task.
         Parameters:
@@ -802,7 +790,7 @@ class HumanLLMMonitor:
             'before_after': saved_task[0].metadata['before_after'],
             'agent_name': saved_task[0].metadata['agent_name'],
             'type_tache': saved_task[0].metadata['type_tache'],
-            'content': json.loads(saved_task[0].page_content),
+            'content': saved_task[0].page_content,
             'step_id': saved_task[0].metadata['step_id'],
             'date': saved_task[0].metadata['date']
         }
@@ -833,8 +821,7 @@ class HumanLLMMonitor:
             f.write("")
 
         # Execute the bash command with unbuffered output and capture its output
-        process = subprocess.Popen(['bash', '-c',
-                                    f'python3 -u learn.py --proxy --secret --pickle_name {filename} > ./goto_output/output_{id_task}_{HumanLLMMonitor.user_id}.log 2>&1'],
+        process = subprocess.Popen(['bash', '-c', f'python3 -u learn.py --proxy --secret --pickle_name {filename} > ./goto_output/output_{id_task}_{HumanLLMMonitor.user_id}.log 2>&1'],
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT,
                                    text=True)
@@ -883,19 +870,18 @@ class HumanLLMMonitor:
     @classmethod
     def check_init_class_db(cls, force=False):
         if cls.common_vectordb_embedding_function is None:
-            raise ValueError(
-                "embeddingfunction must be set to allow HumanLLMMonitor to manage tasks and other memories")
+            raise ValueError("embeddingfunction must be set to allow HumanLLMMonitor to manage tasks and other memories")
         if cls.db_learnt_tasks is None or force:
             cls.db_learnt_tasks = UnifiedVectorDB(
                 collection_name=cls.db_collection_success,
                 embedding_function=cls.common_vectordb_embedding_function,
-                persist_directory=cls.common_vectordb_persist_directory + cls.db_collection_success,
+                persist_directory=cls.common_vectordb_persist_directory+cls.db_collection_success,
                 reset_db_indices=cls.reset_db_indices)
         if cls.db_failed_tasks is None or force:
             cls.db_failed_tasks = UnifiedVectorDB(collection_name=cls.db_collection_failed,
-                                                  embedding_function=cls.common_vectordb_embedding_function,
-                                                  persist_directory=cls.common_vectordb_persist_directory + cls.db_collection_failed,
-                                                  reset_db_indices=cls.reset_db_indices)
+                embedding_function=cls.common_vectordb_embedding_function,
+                persist_directory=cls.common_vectordb_persist_directory+cls.db_collection_failed,
+                reset_db_indices=cls.reset_db_indices)
         # if cls.common_vectordb is None or force:
         #     cls.common_vectordb = UnifiedVectorDB(
         #         collection_name=cls.common_vectordb_collection_name,
@@ -944,6 +930,7 @@ class HumanLLMMonitor:
         if not few_shots_params:
             return ""
 
+
         all_formatted_examples = []
 
         for params in few_shots_params:
@@ -965,10 +952,10 @@ class HumanLLMMonitor:
                 separators = params["separators"]
             else:
                 separators = {
-                    "global_prefix": f"\n{params['sources']} tasks : <<",
-                    "global_suffix": ">>\n",
-                    "item_prefix": "\n|",
-                    "item_suffix": "|"
+                    "global_prefix" : f"\n{params['sources']} tasks : <<",
+                    "global_suffix" : ">>\n",
+                    "item_prefix" : "\n|",
+                    "item_suffix" : "|"
                 }
 
             if params['sources'] == "learnt":
@@ -1065,8 +1052,7 @@ class HumanLLMMonitor:
 
             formatted_examples.append(formatted_example)
 
-        item = ''.join(
-            [f"{separators['item_prefix']}{format_ex}{separators['item_suffix']}" for format_ex in formatted_examples])
+        item = ''.join([f"{separators['item_prefix']}{format_ex}{separators['item_suffix']}" for format_ex in formatted_examples])
 
         return f"{separators['global_prefix']}{item}{separators['global_suffix']}"
 
@@ -1104,8 +1090,7 @@ class HumanLLMMonitor:
     @classmethod
     def initialize_websocket_server(cls, port=6789, secret=None, proxy_enabled=False, unique_id=None):
         if cls.use_websocket and cls.websocket_server is None:
-            cls.websocket_server = WebsocketServer(port=port, secret=secret, proxy_enabled=proxy_enabled,
-                                                   unique_id=unique_id)
+            cls.websocket_server = WebsocketServer(port=port, secret=secret, proxy_enabled=proxy_enabled, unique_id=unique_id)
             cls.stop_event.clear()
             cls.ws_thread = threading.Thread(target=cls.run_websocket_server)
             cls.ws_thread.daemon = True  # Run the WebSocket server in a daemon thread
@@ -1186,7 +1171,7 @@ class HumanLLMMonitor:
 
         return prompt
 
-    def set_llmORchain(self, llm_name, is_premium=False, temperature=0.7):
+    def set_llmORchain(self, llm_name, is_premium=False, temperature=0.1):
         if llm_name in self.llmORchains_list:
             if is_premium:
                 self.premium_llm_name = llm_name
@@ -1216,7 +1201,7 @@ class HumanLLMMonitor:
                                 except ValueError as e:
                                     smart_print(
                                         f"Sub-step {key} in step {step} does not support temperature configuration: {e}",
-                                        self.agent_name, "set_llmORchain", optional=True)
+                                        self.agent_name,"set_llmORchain",optional=True)
                             modified_dict[key] = sub_step
                         step.steps__ = modified_dict
                         modified_steps.append(step)
@@ -1279,8 +1264,7 @@ class HumanLLMMonitor:
                     selected_llm_or_chain = selected_llm_or_chain.with_structured_output(self.output_schema)
                 else:
                     # If neither condition matches, `selected_llm_or_chain` is not modified
-                    smart_print(f"LLM/Chain '{llm_name}' does not support structured output", self.agent_name,
-                                optional=True)
+                    smart_print(f"LLM/Chain '{llm_name}' does not support structured output", self.agent_name, optional=True)
 
             # Set the LLM/Chain to the possibly modified or original one
             if is_premium:
@@ -1295,12 +1279,14 @@ class HumanLLMMonitor:
                 self.agent_name, optional=True)
             return False
 
-    def set_default_llmORchain(self, llm_name, temperature=0.7):
+    def set_default_llmORchain(self, llm_name, temperature=0.1):
         return self.set_llmORchain(llm_name, is_premium=False, temperature=temperature)
 
     def set_userid(self, user_id):
         HumanLLMMonitor.user_id = user_id
         print(f"Setting user_id to {user_id}")
+
+
 
     def set_premium_llmORchain(self, llm_name, temperature=0.7):
         return self.set_llmORchain(llm_name, is_premium=True, temperature=temperature)
@@ -1456,7 +1442,7 @@ class HumanLLMMonitor:
                 count_dict[action] = 0
             time_dict[action] += (time.time() - self.start_time)
             count_dict[action] += 1
-
+        
         # Track total time
         time_dict["TOTAL"] += (time.time() - self.menu_start_time)
         count_dict["TOTAL"] += 1
@@ -1484,7 +1470,7 @@ class HumanLLMMonitor:
         """
         if not directory:
             template_content = prompt_name
-        else:
+        else :
             prompt_path = os.path.join(directory, f"{prompt_name}.txt")
 
             try:
@@ -1676,7 +1662,7 @@ class HumanLLMMonitor:
 
             smart_print(before_menu + menu, self.agent_name, "BEFORE inference action MENU", optional=False)
             self.menu_start_time = time.time()
-            if self.automation == 'coach':
+            if self.automation=='coach':
                 llm_keys = list(self.llmORchains_list.keys())
                 if type(model_choice) == int:
                     # Model change from choice of optuna
@@ -2163,9 +2149,9 @@ class HumanLLMMonitor:
             else:
                 action = smart_input(
                     f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
-                    self.agent_name, optional=False, column_id=output_id - 1, column_max=outputs_count).upper()
+                    self.agent_name, optional=False, column_id=output_id-1, column_max=outputs_count).upper()
 
-            if self.temp_inference_result_content:  # if modified async, it is important in case of edition ("A") to keep the modified content
+            if self.temp_inference_result_content: # if modified async, it is important in case of edition ("A") to keep the modified content
                 inference_result_msg.content = self.temp_inference_result_content
 
             # ACTIONS processing
@@ -2197,11 +2183,9 @@ class HumanLLMMonitor:
             self.track_time_spent(action, mode='after')
 
             # check also that inference_result_msg is not of type str or int 
-            if self.temp_inference_result_content and not isinstance(inference_result_msg, str) and not isinstance(
-                    inference_result_msg, int):
+            if self.temp_inference_result_content and not isinstance(inference_result_msg, str) and not isinstance(inference_result_msg, int):
                 #inference_result_msg.content = f"{self.temp_inference_result_content}"
-                smart_print("ANSWER MODIFIED, NEW CHECKS REQUIRED BEFORE CONTINUING", self.agent_name,
-                            "code_task_and_run_test SystemMessage", column_id=output_id - 1, column_max=outputs_count)
+                smart_print("ANSWER MODIFIED, NEW CHECKS REQUIRED BEFORE CONTINUING", self.agent_name, "code_task_and_run_test SystemMessage", column_id=output_id-1, column_max=outputs_count)
                 #check_results = self.run_inference_checks(output_id - 1, inference_result_msg.content)
             elif action in [None, "", "E", "Z"]:
                 break  # E: Go back BEFORE inference to improve system prompt or add information to user message
@@ -2555,8 +2539,7 @@ class HumanLLMMonitor:
     def modifyAnswer(self, inference_result_msg, column_id=None):
         inference_result_msg.content = _visual_input(inference_result_msg.content)
         self.temp_inference_result_content = inference_result_msg.content
-        smart_print(f"***** ANSWER:\n{inference_result_msg.content}\n*************", self.agent_name, "NEW ANSWER",
-                    optional=True, column_id=column_id, column_max=self.num_parallel_inferences)
+        smart_print(f"***** ANSWER:\n{inference_result_msg.content}\n*************", self.agent_name, "NEW ANSWER", optional=True, column_id=column_id, column_max=self.num_parallel_inferences)
         return inference_result_msg.content
 
     def updateAnswer(self, answer, column_id=None):
@@ -2689,7 +2672,7 @@ class HumanLLMMonitor:
         print(f"Processing LLM output {counter} out of {len(llm_outputs)}")
         if len(llm_outputs) > 1:
             self.skip_rounds = init_skip_rounds
-            smart_print(f"ANSWER NUMBER #{counter - 1} ", self.agent_name, "POST INFERENCE", append=True, optional=True)
+            smart_print(f"ANSWER NUMBER #{counter-1} ", self.agent_name, "POST INFERENCE", append=True, optional=True)
 
         self.current_inference_context = {
             'function_name': inspect.stack()[1].function,
@@ -2714,14 +2697,12 @@ class HumanLLMMonitor:
     #    def CallHumanLLM(self, original_input_messages=None, llm_function=None, premium_llm_function=None, callable_system_message=None, system_prompt_template=None, user_message=None, return_message_content_only=True, function_calling=False, temperature=0.7, timeout_seconds=90, stream_output=True):
     def CallHumanLLM(self, original_input_messages=None, default_llm_function=None, premium_llm_function=None,
                      callable_system_message=None, system_prompt_template=None, user_message=None,
-                     return_message_content_only=True, function_calling=False, temperature_min=None,
-                     timeout_seconds=300,
+                     return_message_content_only=True, function_calling=False, temperature_min=None, timeout_seconds=300,
                      stream_output=False, use_default_llm=True, model_choice=None,
                      temperature_max=None, task_name=None):
         #if not self.selected_llm_or_chain: raise ValueError("No LLM or chain selected for use.")
         if temperature_min is None: temperature_min = self.temperature_min
         if temperature_max is None: temperature_max = self.temperature_max
-
         # Define a helper function to perform the LLM calls for parallel inference.
         def perform_llm_call(input_msg, use_premium, func_calling, temperature=None, stream_output=True, color_id=None):
             if use_premium:
@@ -3194,3 +3175,4 @@ class HumanLLMMonitor:
         smart_print(json.dumps(ret), self.agent_name, "CRITIC SUGGESTIONS", column_id=output_id,
                     optional=False)
         return ret
+

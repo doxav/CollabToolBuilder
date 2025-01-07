@@ -13,3 +13,10 @@ functions/*.py
 .idea
 prompts/IR_CPS_TechSynthesis/xp_*
 websocket*.txt
+mvenv/
+
+.venv/
+
+.venv/*
+
+websocketdata*

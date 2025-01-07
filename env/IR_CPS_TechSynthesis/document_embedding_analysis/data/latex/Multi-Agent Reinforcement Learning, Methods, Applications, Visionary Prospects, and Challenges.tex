@@ -1,0 +1,1364 @@
+%%
+%% This is file `sample-acmsmall.tex',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% samples.dtx  (with options: `acmsmall')
+%% 
+%% IMPORTANT NOTICE:
+%% 
+%% For the copyright see the source file.
+%% 
+%% Any modified versions of this file must be renamed
+%% with new filenames distinct from sample-acmsmall.tex.
+%% 
+%% For distribution of the original source see the terms
+%% for copying and modification in the file samples.dtx.
+%% 
+%% This generated file may be distributed as long as the
+%% original source files, as listed above, are part of the
+%% same distribution. (The sources need not necessarily be
+%% in the same archive or directory.)
+%%
+%% Commands for TeXCount
+%TC:macro \cite [option:text,text]
+%TC:macro \citep [option:text,text]
+%TC:macro \citet [option:text,text]
+%TC:envir table 0 1
+%TC:envir table* 0 1
+%TC:envir tabular [ignore] word
+%TC:envir displaymath 0 word
+%TC:envir math 0 word
+%TC:envir comment 0 0
+%%
+%%
+%% The first command in your LaTeX source must be the \documentclass command.
+\documentclass[acmsmall]{acmart}
+\newtheorem{theorem}{Theorem}
+\newtheorem{Definition}
+%% NOTE that a single column version is required for 
+%% submission and peer review. This can be done by changing
+%% the \doucmentclass[...]{acmart} in this template to 
+%% \documentclass[manuscript,screen]{acmart}
+%% 
+%% To ensure 100% compatibility, please check the white list of
+%% approved LaTeX packages to be used with the Master Article Template at
+%% https://www.acm.org/publications/taps/whitelist-of-latex-packages 
+%% before creating your document. The white list page provides 
+%% information on how to submit additional LaTeX packages for 
+%% review and adoption.
+%% Fonts used in the template cannot be substituted; margin 
+%% adjustments are not allowed.
+%%
+%% \BibTeX command to typeset BibTeX logo in the docs
+\AtBeginDocument{%
+  \providecommand\BibTeX{{%
+    \normalfont B\kern-0.5em{\scshape i\kern-0.25em b}\kern-0.8em\TeX}}}
+
+%% Rights management information.  This information is sent to you
+%% when you complete the rights form.  These commands have SAMPLE
+%% values in them; it is your responsibility as an author to replace
+%% the commands and values with those provided to you when you
+%% complete the rights form.
+\setcopyright{acmcopyright}
+
+% \copyrightyear{2023}
+% \acmYear{2023}
+% \acmDOI{aaa}
+
+
+%%
+%% These commands are for a JOURNAL article.
+% \acmJournal{JACM}
+% Manuscript submitted to ACM
+% \acmVolume{66}
+% \acmNumber{77}
+% \acmArticle{888}
+% \acmMonth{9}
+
+%%
+%% Submission ID.
+%% Use this when submitting an article to a sponsored event. You'll
+%% receive a unique submission ID from the organizers
+%% of the event, and this ID should be used as the parameter to this command.
+% \acmSubmissionID{123-A56-BU3}
+
+%%
+%% For managing citations, it is recommended to use bibliography
+%% files in BibTeX format.
+%%
+%% You can then either use BibTeX with the ACM-Reference-Format style,
+%% or BibLaTeX with the acmnumeric or acmauthoryear sytles, that include
+%% support for advanced citation of software artefact from the
+%% biblatex-software package, also separately available on CTAN.
+%%
+%% Look at the sample-*-biblatex.tex files for templates showcasing
+%% the biblatex styles.
+%%
+
+%%
+%% The majority of ACM publications use numbered citations and
+%% references.  The command \citestyle{authoryear} switches to the
+%% "author year" style.
+%%
+%% If you are preparing content for an event
+%% sponsored by ACM SIGGRAPH, you must use the "author year" style of
+%% citations and references.
+%% Uncommenting
+%% the next command will enable that style.
+%%\citestyle{acmauthoryear}
+
+%%
+%% end of the preamble, start of the body of the document source.
+\usepackage{bm}
+\usepackage{multirow}
+\usepackage{utfsym}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{longtable}
+\begin{document}
+
+\title{Multi-Agent Reinforcement Learning: Methods, Applications, Visionary Prospects, and Challenges}
+
+\author{Ziyuan Zhou}
+\author{Guanjun Liu} 
+\authornote{corresponding author}
+\affiliation{
+  \streetaddress{Department of Computer Science}
+  \institution{Tongji University}
+  \city{Shanghai}
+  \country{China}}
+\email{{ziyuanzhou ,liuguanjun}@tongji.edu.cn}
+
+\author{Ying Tang}
+	\affiliation{
+		\streetaddress{Department of Electrical and Computer Engineering}
+		\institution{Rowan University}
+		\city{Glassboro}
+		\state{New Jersey}
+		\country{USA}
+		\postcode{08028}
+	}
+	\email{tang@rowan.edu}
+
+
+%%
+%% By default, the full list of authors will be used in the page
+%% headers. Often, this list is too long, and will overlap
+%% other information printed in the page headers. This command allows
+%% the author to define a more concise list
+%% of authors' names for this purpose.
+\renewcommand{\shortauthors}{Z. Zhou, G. Liu and Y. Tang}
+% \renewcommand{\shortauthors}{aaa}
+%%
+%% The abstract is a short summary of the work to be presented in the
+%% article.
+\begin{abstract}
+% 多智能体强化学习是一种应用广泛的人工智能技术，但其可扩展性和非稳定性仍然是目前研究中需要解决的问题。同时，为了更好地应用于真实世界，还需要解决多智能体强化学习的安全性、鲁棒性、泛化性与道德约束等问题，提高其可信度。本文旨在提供一个应用与相关方法的综述，并指出未来十年的研究热点和前瞻性的研究方向。首先，本文总结了多智能体强化学习的基本概念与应用场景。其次，针对多智能体强化学习在实际应用中需要解决的安全性、鲁棒性、泛化性与道德约束等问题，本文提出了相应的研究方法和前瞻性的研究方向。特别是，在可信度方面，本文认为可信多智能体强化学习将成为未来十年的研究热点。此外，本文认为，要在现实社会中大范围应用多智能体强化学习技术，还需要将人类的活动考虑进去。因此，本文还分析了人机交互的多智能体强化学习所面临的挑战，并提出了相应的解决方法。本文的目标是将各种研究方法和应用场景汇集在一个统一的框架内，促进多智能体强化学习在人类社会中的应用，以便更好地服务于人类。
+Multi-agent reinforcement learning (MARL) is a widely used Artificial Intelligence (AI) technique. However, current studies and applications need to address its scalability, non-stationarity, and trustworthiness. This paper aims to review methods and applications and point out research trends and visionary prospects for the next decade. 
+First, this paper summarizes the basic methods and application scenarios of MARL. 
+Second, this paper outlines the corresponding research methods and their limitations on safety, robustness, generalization, and ethical constraints that need to be addressed in the practical applications of MARL.
+In particular, we believe that trustworthy MARL will become a hot research topic in the next decade. 
+In addition, we suggest that considering human interaction is essential for the practical application of MARL in various societies.
+Therefore, this paper also analyzes the challenges while MARL is applied to human-machine interaction. 
+%The goal of this paper is to  provide a comprehensive review  of various research approaches and application scenarios, promoting the application of MARL in human societies for better service to humans.
+\end{abstract}
+
+%%
+%% The code below is generated by the tool at http://dl.acm.org/ccs.cfm.
+%% Please copy and paste the code instead of the example below.
+%%
+\begin{CCSXML}
+<ccs2012>
+   <concept>
+       <concept_id>10002944.10011122.10002945</concept_id>
+       <concept_desc>General and reference~Surveys and overviews</concept_desc>
+       <concept_significance>500</concept_significance>
+       </concept>
+   <concept>
+       <concept_id>10010147.10010178.10010213.10010204</concept_id>
+       <concept_desc>Computing methodologies~Robotic planning</concept_desc>
+       <concept_significance>300</concept_significance>
+       </concept>
+   <concept>
+       <concept_id>10010583.10010750.10010769</concept_id>
+       <concept_desc>Hardware~Safety critical systems</concept_desc>
+       <concept_significance>500</concept_significance>
+       </concept>
+   <concept>
+       <concept_id>10002978.10003029</concept_id>
+       <concept_desc>Security and privacy~Human and societal aspects of security and privacy</concept_desc>
+       <concept_significance>100</concept_significance>
+       </concept>
+ </ccs2012>
+\end{CCSXML}
+
+\ccsdesc[500]{General and reference~Surveys and overviews}
+\ccsdesc[300]{Computing methodologies~Robotic planning}
+\ccsdesc[500]{Hardware~Safety critical systems}
+\ccsdesc[100]{Security and privacy~Human and societal aspects of security and privacy}
+
+%%
+%% Keywords. The author(s) should pick words that accurately describe
+%% the work being presented. Separate the keywords with commas.
+\keywords{Multi-agent Reinforcement Learning, Smart Transportation, Smart Education, Smart manufacturing, Unmanned Aerial Vehicles, Financial Trade, Network Security, Intelligent Information System, Robustness, Safety, Generalization, Ethical Constraint}
+
+% \received{26 March 2023}
+% \received[revised]{12 April 2023}
+% \received[accepted]{5 June 2023}
+
+%%
+%% This command processes the author and affiliation and title
+%% information and builds the first part of the formatted document.
+\maketitle
+
+\section{Introduction}
+\begin{table}
+\centering
+\caption{The difference between this paper and other related reviews.}
+\label{Tdiff}
+\begin{tabular}{|c|cccccc|}
+\hline
+\multirow{2}{*}{Work}    & \multicolumn{5}{c|}{Scope}   \\ \cline{2-6} 
+                         & \multicolumn{1}{c|}{SARL} & \multicolumn{1}{c|}{MARL} & \multicolumn{1}{c|}{Applications} & \multicolumn{1}{c|}{Trustworthy}  & \multicolumn{1}{c|}{Human} \\ \hline
+\cite{kapoor2018multi, Wong2022, hernandez2018multiagent} & \multicolumn{1}{c|}{\usym{2713}}  & \multicolumn{1}{c|}{\usym{2713}}    & \multicolumn{1}{c|}{\usym{2613}}            & \multicolumn{1}{c|}{\usym{2613}}    &\multicolumn{1}{c|}{ \usym{2613} }   \\ \hline
+
+\cite{9738819} & \multicolumn{1}{c|}{\usym{2713}}  & \multicolumn{1}{c|}{\usym{2713}}    & \multicolumn{1}{c|}{Future Internet}            & \multicolumn{1}{c|}{\usym{2613}}       &\multicolumn{1}{c|}{ \usym{2613} }   \\ \hline
+
+\cite{9043893} & \multicolumn{1}{c|}{\usym{2713}}  & \multicolumn{1}{c|}{\usym{2713}}    & \multicolumn{1}{c|}{\usym{2713}}            & \multicolumn{1}{c|}{\usym{2613}}      &\multicolumn{1}{c|}{ \usym{2613} }   \\ \hline
+
+\cite{wang2022model} & \multicolumn{1}{c|}{\usym{2613}}  & \multicolumn{1}{c|}{Model-based}    & \multicolumn{1}{c|}{\usym{2613}}            & \multicolumn{1}{c|}{\usym{2613}}     & \multicolumn{1}{c|}{\usym{2613}}    \\ \hline
+
+\cite{cui2022survey} & \multicolumn{1}{c|}{\usym{2713}}  & \multicolumn{1}{c|}{Large Population}    & \multicolumn{1}{c|}{\usym{2713}}            & \multicolumn{1}{c|}{\usym{2613}}      & \multicolumn{1}{c|}{\usym{2613}}   \\ \hline
+
+\cite{Zhang2021} & \multicolumn{1}{c|}{\usym{2713}}  & \multicolumn{1}{c|}{Decentralized}    & \multicolumn{1}{c|}{\usym{2613}}            & \multicolumn{1}{c|}{\usym{2613}}      & \multicolumn{1}{c|}{\usym{2613}}   \\ \hline
+
+\cite{zhu2022survey} & \multicolumn{1}{c|}{\usym{2713}}  & \multicolumn{1}{c|}{Communication}    & \multicolumn{1}{c|}{\usym{2613}}            & \multicolumn{1}{c|}{\usym{2613}}      & \multicolumn{1}{c|}{\usym{2613}}   \\ \hline
+
+\cite{grimbly2021causal} & \multicolumn{1}{c|}{\usym{2713}}  & \multicolumn{1}{c|}{Causal}    & \multicolumn{1}{c|}{\usym{2613}}            & \multicolumn{1}{c|}{\usym{2613}}      & \multicolumn{1}{c|}{\usym{2613}}   \\ \hline
+
+\cite{gu2022review} & \multicolumn{1}{c|}{\usym{2713}}  & \multicolumn{1}{c|}{\usym{2713}}    & \multicolumn{1}{c|}{\usym{2613}}            & \multicolumn{1}{c|}{Safety}      & \multicolumn{1}{c|}{\usym{2713}}   \\ \hline
+
+\cite{9536399} & \multicolumn{1}{c|}{\usym{2713}}  & \multicolumn{1}{c|}{\usym{2713}}    & \multicolumn{1}{c|}{\usym{2613}}            & \multicolumn{1}{c|}{Robustness}      & \multicolumn{1}{c|}{\usym{2613}}   \\ \hline
+
+\cite{9308468, electronics9091363, 10.1613/jair.1.14174} & \multicolumn{1}{c|}{\usym{2713}}  & \multicolumn{1}{c|}{\usym{2713}}    & \multicolumn{1}{c|}{\usym{2613}}            & \multicolumn{1}{c|}{Generalization}      & \multicolumn{1}{c|}{\usym{2613}}   \\ \hline
+
+\cite{trustRL} & \multicolumn{1}{c|}{Comprehensive}  & \multicolumn{1}{c|}{Brief}    & \multicolumn{1}{c|}{\usym{2613}}            & \multicolumn{1}{c|}{\usym{2713}}      & \multicolumn{1}{c|}{\usym{2713}}   \\ \hline
+
+Ours & \multicolumn{1}{c|}{Brief}  & \multicolumn{1}{c|}{Comprehensive}    & \multicolumn{1}{c|}{\usym{2713}}            & \multicolumn{1}{c|}{\usym{2713}}      & \multicolumn{1}{c|}{\usym{2713}}   \\ \hline
+
+\end{tabular}
+\end{table}
+
+Reinforcement Learning (RL) is extensively explored due to its tremendous potential in solving sequence decision tasks \cite{dqn,doubleq,duelq,ac, a3c,trpo,ppo,ddpg,REINFORCE}. Kaelbling et al. pointed out in 1996 \cite{1996Reinforcement} that RL will be widely used in game playing and robotics. Mnih et al.  \cite{dqn2013} propose Deep Reinforcement Learning (DRL) to combine reinforcement learning with reasoning ability and Deep Learning (RL) with representative capacity, and the performance of the trained agent outperformed that of human players in various Atari games.
+Silver et al. use RL to solve Go games in  2007\cite{2007Go} and propose AlphaGo leveraging deep neural networks and Monte Carlo tree search in 2016 \cite{2016AlphaGo}. In robotics, DRL also achieves outstanding developments such as quadrupedal movement  \cite{quadrupedal1, quadrupedal2}. The latest ChatGPT is well-known worldwide and makes use of RL-related technology. In the 20 years since DRL was proposed, there has been a continuous rise in research interest in games and robotics. Visionary applications of RL are summarized in \cite{1996Reinforcement}.
+
+
+Multi-Agent Reinforcement Learning (MARL) research is advancing significantly based on the issues of poor scalability and non-stationary and has shown remarkable success in a range of applications. We summarize the relevant research on MARL in nine domains, involved in engineering and science. 
+
+However, despite the impressive achievements, it is still necessary to construct trustworthy MARL to apply it to real-world tasks better. Consequently, one of the most critical topics we need to focus on in the next 10 to 20 years is \emph{how to establish a trustworthy MARL}. As stated in \cite{trustRL}, the intrinsic safety, robustness, and generalization of RL still need to improve, making it challenging to realize accurate general intelligence. 
+%这篇文章虽然总结了可信强化学习的相关研究，但是主要集中在单智能体领域。相比于单智能体强化学习，多智能体强化学习除了需要考虑个体策略可信外，还需要考虑团队交互策略的可靠性。随着智能体数量的增加，团队策略的复杂性也会增大，这增大了可信多智能体强化学习的研究难度。现在已经有一部分关于可信多智能体强化学习的研究，整体处于研究初期。为了促进该领域的发展，本文从四个方面对可信赖MARL进行了整体调查，包括
+While it mainly focuses on the single-agent domain. Compared to Single-agent Reinforcement Learning (SARL), MARL requires consideration not only of individual policy trustworthiness but also of the reliability of team interaction policies. As the number of agents increases, the complexity of team policies also increases, which increases the difficulty of researching trustworthy MARL. Currently, there is a portion of research on trustworthy MARL, but it is still in the early stages. To promote the development of this field, we conduct a comprehensive investigation of trustworthy multi-agent reinforcement learning from four aspects, including safety, robustness, generalization, and learning with ethical constraints.
+
+By integrating human aspects, it is necessary to take into consideration not just agent collaboration but also the interaction between intelligent physical information systems and human civilization. In relation to MARL for human-machine interaction, we present four challenges: non-Markovian due to human intervention, diversity of human behavior, complex heterogeneity, and scalability of multi-human and multi-machines.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.95\textwidth]{figs/outline.pdf}
+    \caption{The outline of this survey}
+    \label{outline}
+\end{figure}
+
+The difference between this paper and other related reviews are listed in Table \ref{Tdiff}. The outline of this paper is shown in Fig. \ref{outline}. The rest of this survey is organized as follows. In Section \ref{Preliminary}, we give a relevant definition of MARL and summarize typical research methods. Section \ref{Applications} shows the specific application scenarios of MARL. Section \ref{Visionary} summarizes the definition, related research, and limitations of trustworthy MARL. In Section \ref{Challenges}, we point out the challenges faced by human-compatible MARL. Section \ref{Conclusion} concludes the whole paper. 
+% 是什么 有什么用 难点 未来研究方向（需要解决的问题）
+\section{Methods} \label{Preliminary}
+%\textcolor{blue}{"AI Assisting Humans", "Humans Assisting AI"}
+% \subsection{Human-Cyber-Physical System}
+% \begin{figure}
+%     \centering
+%     \includegraphics{figs/HCPS.pdf}
+%     \caption{Caption}
+%     \label{hcps}
+% \end{figure}
+
+\subsection{Single-agent Reinforcement Learning}
+
+The RL agent aims to maximize the total discounted expected reward by trial-and-error interactions with the environment. Markov Decision Process (MDP) helps define models for sequential decisions.
+\begin{definition}[MDP]
+A Markov decision process can be formulated by a 5-tuple $\left<\mathcal{S}, \mathcal{A}, R, p, \gamma\right>$, where $\mathcal{S}$ is the environmental-state set, $\mathcal{A}$ is the space of agent actions, $R:\mathcal{S}\times\mathcal{A}\times\mathcal{S}\rightarrow\mathbb{R}$ is the reward obtained by the agent for transition to state $s’$ by doing action $a$ in state $s’$, $\mathbb R$ is the set of real numbers, $p: \mathcal{S}\times\mathcal{A}\rightarrow \Delta\left(\mathcal{S}\right)$ is the transition probability from state $s\in \mathcal{S}$ to state $s' \in \mathcal{S}$ given the action $a$, and $\gamma \in \left[0,1\right]$ is the discount factor over time. 
+\end{definition}
+Solving MDP is to learn a policy $\pi:\mathcal{S}\rightarrow \Delta\left(\mathcal{A}\right)$ that maximizes the expected reward over time, where $\Delta\left(\cdot\right)$ is the probability simplex. The state-action (Q-function) and value functions are as 
+\begin{equation} \label{q}
+    Q_{\pi}\left(s, a\right) = \mathbb E_{\pi}\left[\sum_{t=0}^\infty \gamma^tR\left(s_t,a_t,s_{t+1}|a_0 = a, s_0 = s\right)\right],
+\end{equation}
+\begin{equation} \label{v}
+    V_{\pi}\left(s\right) = \mathbb E_{\pi}\left[\sum_{t=0}^\infty \gamma^tR\left(s_t,a_t,s_{t+1}|s_0 = s\right)\right],
+\end{equation}
+where $R\left(s_t,a_t,s_{t+1}\right)$ is an immediate reward environment returned when the agent executes action $a_t$ at time step $t$ to make the state transit from $s_t$ to $s_{t+1}$.
+Many techniques to solve MDP are divided into value-based and policy-based methods. The most popular value-based method is Q-Learning \cite{sutton2018reinforcement} which approximates the optimal Q-function $Q_*$ by $\tilde Q$ and updates its value via TD as follows,
+\begin{equation} \label{uq}
+    \tilde Q\left(s_t,a_t\right)\leftarrow \tilde Q\left(s_t,a_t\right) + \alpha \left(R_t + \gamma \mathop {max}\limits_{a\in \mathcal{A}}\left(s_{t+1}, a\right) - \tilde Q\left(s_t,a_t\right)\right)
+\end{equation}
+where $\alpha$ is the learning rate. The optimal policy $\pi_*$ is derived from greedy action, i.e., $\pi_* = \mathop{arg} \mathop{max}\limits_a Q_*\left(s,a\right)$. Mnih et al. \cite{dqn2013, dqn} propose Deep Q-Network (DQN) combining deep neural networks with Q-Learning, which minimizes the following loss function:
+\begin{equation}
+    \mathcal{L}\left(\theta\right) = \mathbb E_{\left<s_t,a_t,R_t,s_{t+1}\right>\sim \mathcal D}\left[\left(R_t+\gamma \mathop{max}\limits_{a\in \mathcal{A}}Q_{\theta_{-}}\left(s_{t+1},a\right)-Q_{\theta}\left(s_t, a_t\right)\right)^2\right],
+\end{equation}
+where $\theta$ and $\theta_-$ are parameters of Q-Network and target network fitted by a mini-batch of tuples $\left<s_t,a_t,R_t,s_{t+1}\right>$ sampled from replay buffer $\mathcal D$. 
+
+The main idea of policy-based methods is to find optimal policy $\pi_*$ by searching policy space directly. Policy Gradient (PG) theorem \cite{sutton2018reinforcement} is as 
+\begin{equation}
+    \bigtriangledown_\theta \mathcal J\left(\theta\right)= \mathbb E_{s\sim \mu_{\pi_{\theta}}, a \sim \pi_\theta} \left[\bigtriangledown_\theta Q_{\pi_\theta}\left(s,a\right) \mathop{log} \pi_\theta \left(a|s\right)\right],
+\end{equation}
+where $\mu_{\pi_\theta}$ is the state occupancy measure under policy $\pi_\theta$. The Deterministic Policy Gradient (DPG) theorem is used in continuous action space, 
+\begin{equation}
+    \bigtriangledown_\theta \mathcal J\left(\theta\right) = \mathbb E_{s\sim \mu_{\pi_{\theta}}} \left[\bigtriangledown_\theta \pi_\theta \left(a|s\right) \bigtriangledown_a Q_{\pi_\theta}\left(s,a\right)|_{a=\pi_\theta \left(s\right)}\right].
+\end{equation}
+% 还需要一些相关介绍
+\subsection{Multi-agent Reinforcement Learning}
+Each agent in a Multi-Agent System (MAS) solves sequential decision problems via trial-and-error contact with the environment. However, it is more complex than a single-agent scenario because the next state and reward returned by the environment are based on all agents' joint actions, making the environment non-Markovian for any agent. Stochastic Game (SG) can be used to model multi-agent sequential decision problems.
+\begin{definition}[SG]
+    A Stochastic game can be represented as a tuple $$\left<N, \mathcal{S}, \mathcal A^1, \cdots, \mathcal A^N, R^1, \cdots, R^N, p,\gamma \right>,$$ where $N$ is the number of agents, $\mathcal S$ is the state set of the environment, $\mathcal A^i$ is the action space of the agent $i$, $R^i: \mathcal S \times \mathcal A^1 \times \cdots \times \mathcal A^N \times \mathcal S \rightarrow \mathbb R $ is the reward function of the agent $i$, $p:\mathcal S \times \mathcal A^1 \times \cdots \times \mathcal A^N  \rightarrow \Delta\left(\mathcal S\right)$ is the transition probability based on the joint action $\bm a$ and $\gamma \in \left[0,1\right]$ is the discount factor over time.
+\end{definition}
+The state-action and value functions in multi-agent scenarios are defined like Eqs. (\ref{q}) and (\ref{v}), respectively. 
+\begin{equation} \label{mq}
+    Q_{\pi^i,\pi^{-i}}\left(s, \bm a\right) = \mathbb E_{\pi^i,\pi^{-i}}\left[\sum_{t=0}^\infty \gamma^tR^i\left(s_t,\bm a_t,s_{t+1}|\bm a_0 = \bm a, s_0 = s\right)\right],
+\end{equation}
+\begin{equation} \label{mv}
+    V_{\pi^i,\pi^{-i}}\left(s\right) = \mathbb E_{\pi^i,\pi^{-i}}\left[\sum_{t=0}^\infty \gamma^tR^i\left(s_t,\bm a_t,s_{t+1}|s_0 = s\right)\right],
+\end{equation}
+where $\left(\pi^i,\pi^{-i}\right)$ is used to distinguish the policy between the agent $i$ and the other agents, similarly, we can use $\left(a^i, a^{-i}\right)$ to represent the joint action $\bm a$. The common solving SG can be divided into learning cooperation and learning communication according to whether communication between agents is involved in the execution process.
+% 根据执行过程中是否涉及到智能体间的通信，可以分为隐士通信学习与通信学习两类。
+\subsubsection{Learning cooperation}
+%学习合作通常采用集中训练分散执行的方式，在训练过程中使用全局信息或者通信信息，而在执行阶段，仅使用当前智能体的观测信息。
+The typical approach for learning cooperation involves centralized training and decentralized execution (CTDE), utilizing global or communication information during the training process while only using the observation information of the current agent during the execution phase. It also includes value-based \cite{iql, vdn, qmix, qtran, qplex} and policy-based \cite{maddpg,Liu_Wang_Hu_Hao_Chen_Gao_2020,Ryu_Shin_Park_2020,NEURIPS2021_65b9eea6} MARL methods. 
+
+\textbf{Value-based MARL: }
+The updated rule of Eq. (\ref{uq}) is suitable for the multi-agent scenario:
+\begin{equation}\label{maq}
+    \tilde Q^i\left(s_t, \bm a_t \right) \leftarrow \tilde {Q}^i\left(s_t, \bm a_t \right)+\alpha \left(R^i+\mathop{max}\limits_{a^i\in\mathcal A^i} \gamma\{\tilde Q^j\left(s_t, \bm a_t\right)\}_{j\in\{1,\dots,N\}}-\tilde Q^i\left(s_t,\bm a_t\right)\right).
+\end{equation}
+Tampuu et al. \cite{iql} first extend the DQN to the multi-agent scenario equipping an independent DQN for each agent, i.e., only considering the agent's interaction with the environment.  The experimental results demonstrate that this fully distributed training can produce good results for simple MAS but that it is difficult to converge for complex tasks and that there is a credit assignment issue. 
+Sunehag et al. \cite{vdn} overcome these issues by introducing a Value Decomposition Network (VDN) based on the CTDE. An optimal linear-valued decomposition is trained from the team reward function with VDN, and during execution, each agent uses an implicit value function based only on partial observations to make decisions. However, this decomposition is linear and can only apply to small-scale scenarios. 
+Rashid et al. \cite{qmix} use an end-to-end Q-Mixing Network (QMIX) to train decentralized policies following the advantages of VND. QMIX is a complex non-linear network that constrains the joint Q-function monotonic on the Q-function of each agent. This ensures the consistency of centralized and decentralized policies and simplifies the solution for maximizing the joint action-value function in offline policy learning.
+%VDN and QMIX can only handle a small fraction of decomposable MARL tasks due to the structural limitations of additivity and monotonicity in the decomposition process. 
+Son et al. \cite{qtran} develop an innovative MARL factorization technique called QTRAN that eliminates the structural restriction and uses a novel technique to convert the initial joint action-value function into a simple decomposition function. Although the decomposition of QTRAN is more complex computationally, it covers a broader range of MARL activities as compared to VDN and QMIX.
+An approximate QTRAN performs hard in complex domains with online data collecting and requires two extra soft regularizations \cite{NEURIPS2019_f816dc0a}. As a result, effective scalability is still a challenge for cooperative MARL. 
+Wang et al. \cite{qplex} use a duplex dueling network structure (QPLEX) to decompose the joint action-value function into an action-value function for each agent to address this challenge. It is made easier to learn action-value functions with a linear decomposition structure by reformulating the Individual-Global-Max (IGM) consistency as a restriction on the value range of the advantage function, which is a strong scalability value-based MARL technique.
+% 需要再补充点22 23的
+
+\textbf{Policy-based MARL: }The state of the environment is determined by the action of all agents in the multi-agent scenario. The value-based method is challenging to train due to the unstable environment, and the variance of the policy-based method gets more prominent as the number of agents increases. 
+Lowe et al. \cite{maddpg} proposed a variant of the actor-critic method in a multi-agent scenario - multi-agent deep deterministic policy gradient (MADDPG), which considers the action strategies of other agents in the process of reinforcement learning training for each agent, and Only individual information is considered during the testing phase. The multi-agent deterministic policy gradient can be written as 
+\begin{equation}\label{maddpg}
+    \bigtriangledown_{\theta^i} \mathcal J^i\left(\theta\right) = \mathbb E_{s\sim \mu_{\bm \pi_{\theta^i}}} \left[\bigtriangledown_{\theta^i} \mathop{log}\pi_{\theta^i} \left(a^i|s\right) \bigtriangledown_{a^i} Q_{\pi_{\theta^i}}\left(s,\bm a\right)|_{\bm a=\bm \pi_\theta \left(s\right)}\right].
+\end{equation}
+%Although MADDPG has achieved good results in some experimental environments, the estimation error of the critic network for the global action value increases exponentially with the increase in the number of agents, which makes MADDPG only suitable for environments with a small number of agents. In order to improve scalability, Iqbal et al. [38] introduced an attention mechanism in the critic network to learn the degree of attention to other agent information, that is, to dynamically select which agents to focus on at each time point during training. MAAC further improves performance in the domain of multi-agents with complex interactions. However, this soft attention mechanism will also assign weight to irrelevant agents. Liu et al. [39] proposed a network structure based on a two-stage attention mechanism - G2ANet by constructing a complete graph representing the relationship between two agents. The first stage is a complex attention mechanism; the purpose is to screen out inappropriate relevant edges, i.e., irrelevant agents; the second stage is a soft attention mechanism, which is used to learn the importance weights of edges. In this way, it can indicate whether there is a correlation between two agents and the degree of correlation. Ryu et al. [40] also used a graph to model the relationship between agents and used a hierarchical graph attention network to model the interaction between agents from both individuals and groups. HAMA realizes the strategy transfer between heterogeneous agents, and also has certain interpretability. To better adapt to changes in collaborative policies and take full advantage of centralized critics, Peng et al. [41] proposed a multi-agent policy gradient method with factorization - FACMAC. Compared with MADDPG, this method adds a centralized strategy gradient estimation to optimize the entire joint action space; compared with QMIX, the centralized critic network has no restrictions such as monotonicity. The FACMAC method can achieve better results in the environment of large-scale continuous joint action spaces.
+However, as the number of agents increases, the estimation error in the critic network also increases, making it difficult to scale MADDPG to larger environments. To address this limitation, researchers have proposed attention mechanisms that allow agents to focus dynamically on relevant information. For example, the MAAC \cite{maac}, G2ANet \cite{Liu_Wang_Hu_Hao_Chen_Gao_2020} and HAMA \cite{Ryu_Shin_Park_2020} algorithms use graph structures to model agent relationships and employ attention mechanisms to weigh their relevance. This approach has shown promising results in environments with a large number of agents. Another challenge in MAS is the need to adapt to changes in collaborative policies. 
+The FACMAC algorithm \cite{NEURIPS2021_65b9eea6} addresses this issue by incorporating a centralized strategy gradient estimation to optimize joint action spaces. This method has been shown to outperform MADDPG and QMIX in environments with large-scale continuous actions.
+
+\textbf{Mean-Field-based MARL: }
+The above methods are all based on the CTDE training framework, effectively addressing the problem of non-Markovian environments in fully decentralized training frameworks and the problem of high computational complexity in fully centralized training frameworks. However, existing MARL methods are usually limited to a small number of agents, and scalability remains a challenging issue. Yang et al. \cite{pmlr-v80-yang18d} propose mean-field reinforcement learning (MFRL), which approximates the interaction between individuals as the interaction between individuals and the average effect of the whole group or neighboring individuals and the convergence of Nash equilibrium solutions is analyzed. Ganapathi et al. \cite{10.5555/3398761.3398813} extended MFRL to multiple types of domains and proposed the MTMFQ method. Multiple types relax a core assumption in mean-field games, which is that all agents in the environment are using almost identical strategies and have the same goals. Then they further relaxed the assumption of MFRL and extended it to partially observable domains, assuming that agents can only observe information from a fixed neighborhood or from other agents based on random distances \cite{10.5555/3463952.3464019}. Zhang et al. \cite{DBLP:conf/ijcai/ZhangY0XL21} apply mean-field theory to the value function decomposition-based MARL framework and proposed the MFVDN method, which solves the problems of homogenous agents, limited representation, and inability to execute with local information decentralized in MFRL.
+
+\subsubsection{Learning communication}%通信学习则是让智能体学习何时通信，与哪些智能体通信以及通信哪些信息。
+The purpose of learning communication is for agents to learn when, with which agents, and what information to communicate, which can be categorized as reinforced and differentiable according to \cite{zhu2022survey}.
+
+\textbf{Reinforced: } 
+% Learning to communicate with deep multi-agent reinforcement learning (DIAL)
+Foerster et al. \cite{DIAL} use DQN with a recurrent network to handle partial observability called RIAL. %Despite the decentralized execution during the task, agents receive varied observations that result in distinct behaviors.
+% Multi-agent deep reinforcement learning with extremely noisy observations
+Kilinc et al. \cite{MADDPG-M} improve a DDPG algorithm enhanced by a communication medium including a concurrent learning mechanism that allows agents to decide if their private observations need to be shared with others. 
+% Event-triggered multi-agent reinforcement learning with communication under limited-bandwidth constraint
+To maximize communication efficiency, Huang et al. \cite{ETCNet} propose a network named ETCNet, that uses RL to find the optimal communication protocol within bandwidth constraints. The bandwidth is minimized due to messages being sent only when necessary. 
+% HAMMER: multi-level coordination of reinforcement learning agents via learned messaging.
+Gupta et al. \cite{gupta2021hammer} introduce a central agent observing every observation with multiple agents only receiving local observations and no communication. The central agent determines the message each agent needs to make better decisions based on global observations, avoiding central solving of the entire problem.
+
+\textbf{Differentiable:}
+% Learning to communicate with deep multi-agent reinforcement learning.
+% Learning multiagent communication with backpropagation
+Sukhbaatar et al. \cite{NIPS2016_55b1927f} develop a neural model CommNet that lets the agents communicate continuously for fully cooperative tasks. Agents learn both their policy and communication way during training. 
+% Multiagent bidirectionally-coordinated nets for learning to play starcraft combat games.
+To maintain effective communication, Peng et al. \cite{peng2017multiagent} propose a multi-agent Bidirectionally-Coordinated Network (BiCNet) with a vectorized actor-critic formulation. They demonstrate that BiCNet can learn advanced coordination methods without supervision.
+% Graph convolutional reinforcement learning.
+To learn abstract representations of the interaction of agents, Jiang et al. \cite{Jiang2020Graph} propose graph convolution RL that leverages graph convolution to adapt to the underlying dynamics of the graph, with relation kernels capturing the interaction of agents.  
+% Learning efficient multi-agent communication: An information bottleneck approach.
+Wang et al.\cite{pmlr-v119-wang20i} devise a novel approach entitled IMAC, which addresses the challenges of constrained-bandwidth communication in MARL. IMAC optimizes resource usage, minimizes needless connections, and allows smooth communication protocols and schedules. It uses low-entropy messages that stick to bandwidth limits and merges the information bottleneck principle with a weight-based scheduler to produce a practical protocol.
+% Learning correlated communication topology in multi-agent reinforcement learning.
+Using an attention mechanism is insufficient as it overlooks dynamic communication and the correlation between agents' connections. To tackle this issue, Du et al. \cite{10.5555/3463952.3464010} propose a method that utilizes a normalizing flow to encode the correlation between agents' interactions, allowing for direct learning of the dynamic communication topology. This methodology proves effective in cooperative navigation and adaptive traffic control tasks.
+% Multi-agent graph attention communication and teaming.
+Niu et al. \cite{10.5555/3463952.3464065} leverage a graph-attention mechanism to determine the most pertinent agent of messages and the most suitable means of delivery. %After rigorous testing, we discovered that MAGIC outperformed alternative methods, even in challenging scenarios such as the Google Research Football experiment. Furthermore, MAGIC demonstrated superior communication capabilities that led to a significant reduction in time expenditure by more than 25\%. This robust algorithm remains steadfast amidst unpredictable circumstances and remains effective even in larger-scale operations. In fact, we successfully implemented MAGIC in a robotic environment and obtained exceptional results.
+% Sparse discrete communication learning for multi-agent cooperation through backpropagation.
+%\cite{9341079} We observed that MARL with agent communication practices disregards the limitations imposed by real-world networks. Consequently, we devised a technique that uses backpropagation to teach agents how to communicate effectively and concisely within a MARL framework. Our approach aims to promote minimal communication while still producing optimal rewards for agents. To achieve this, we have incorporated a message-length penalty that discourages unnecessary talk by encouraging the use of shorter messages. Furthermore, we have introduced a variable-length message code to allow message-size adjustments without affecting the learning process. The effectiveness of our method was demonstrated in a successful robot navigation task, and we anticipate its potential to facilitate expert demonstrations for future applications.
+
+Overall, these algorithms aim to improve the scalability and non-stationary of MAS, allowing agents to learn from the experiences of other agents and achieve better performance in complex environments. 
+
+
+\section{Applications of Multi-agent Reinforcement Learning} \label{Applications}
+Through MARL, agents are able to learn and communicate with each other, thereby achieving more efficient task completion and better decision-making results. This method is widely used in engineering and science, for example, in smart transportation, unmanned aerial vehicles, intelligent information system, public health and intelligent medical diagnosis, smart manufacturing, financial trade, network security, smart education, and RL for science. 
+
+\subsection{Smart Transportation}
+\begin{table}[]
+\caption{Correspondence between smart transportation and RL methods.}
+\label{transportation}
+\centering
+\begin{tabularx}{\textwidth}{|XX|c|c|c|}
+\hline
+\multicolumn{2}{|c|}{Applications}                                                                   & Papers                             & Methods                          & SA/MA \\ \hline
+\multicolumn{1}{|X|}{\multirow{8}{=}{\centering Smart Transportation}} & \multirow{3}{=}{\centering Traffic light control} & \cite{7508798}                     & DQN-based \cite{dqn}             & SA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                      &                                        & \cite{9103316}                     & MADDPG-based \cite{maddpg}       & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                      &                                        & \cite{9681232}                     & Game theoretic                   & MA       \\ \cline{2-5} 
+\multicolumn{1}{|X|}{}                                      & \multirow{5}{=}{\centering Auto-driving}          & \cite{8638814}                     & Dynamic coordination graph       & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                      &                                        & \cite{pmlr-v155-zhou21a}           & Auto-driving simulation platform & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                      &                                        & \cite{10.1007/978-3-030-47358-7_7} & DQN-based \cite{dqn}             & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                      &                                        & \cite{9694460}                     & AC-based \cite{ac}     & SA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                      &                                        & \cite{zhou2022multi}               & AC-based \cite{a3c}    & MA       \\ \hline
+\end{tabularx}
+\end{table}
+% 交通灯控制 突发事件 如何控制 是否需要切换优先级 交通警察 
+
+% traffic signal timing via deep reinforcement learning
+% Multi-Agent Deep Reinforcement Learning for Urban Traffic Light Control in Vehicular Networks
+% A bi-hierarchical game-theoretic approach for network-wide traffic signal control using trip-based data
+
+% 自动驾驶
+Smart transportation makes use of advanced technologies like the Internet of Things (IoT) and AI to increase safety, improve transportation efficiency, and reduce its negative environmental effects.
+In MARL-based smart transportation, we describe two known scenarios: traffic light control and auto-driving  and present the role of humans in these intelligent systems. The correspondence between this application and RL methods is shown in Table \ref{transportation}.
+
+\textbf{Traffic light control:} Li et al. \cite{7508798} use DQN to obtain the optimal policy in sight of the variety of the control action and the state and demonstrate the potential of DRL in traffic light control. However, the control of traffic lights needs to consider the situation of multiple intersections. Wu et al. \cite{9103316} combine MADDPG with Long-short-term Memory (LSTM) for multi-intersection traffic light control coordination. The use of LSTM is appropriate to address the environmental instability forced on by partial observable states. They take into account both the cars and the pedestrians waiting to cross the street. Zhu et al. \cite{9681232} propose a Bi-hierarchical Game-theoretic (BHGT) to solve network-wide traffic signal control problems. They evaluate the state of the network-wide traffic based on the collection data of trips. The experiment shows that BHGT efficiently reduces the network-wide travel delay. 
+
+\textbf{Auto-driving:} Chao et al. \cite{8638814}  simulate the dynamic topography during vehicle interactions using a dynamic coordination graph and put forward two fundamental learning strategies to coordinate the driving actions for a fleet of vehicles. Additionally, they propose a number of extension mechanisms in order to adapt to the complex scenario with any number of vehicles.
+Zhou et al. \cite{pmlr-v155-zhou21a} build an autonomous driving simulation platform to realize more realistic and diverse interactions.
+Bhalla et al. \cite{10.1007/978-3-030-47358-7_7} propose two novel centralized training based on DQN and a memory block to execute decentralized, which achieve better cumulative reward in autonomous driving.
+Huang et al. \cite{9694460} propose a sample efficient DRL framework including imitative expert priors and RL. The agent learns expert policy from the prior human knowledge and is guided by minimizing the KL divergence between the policy of the agent and the imitative expert. 
+Zhou et al. \cite{zhou2022multi} propose a MARL framework composed of a brand-new local reward and scheme for sharing parameters for lane-changing decision makings.
+
+%Unfortunately, the majority of research on MARL-based smart transportation remains at the CPS level which ignores the priority of human control and intelligent algorithms. With the development of the economy and technology, both human behavior and city traffic are constantly changing.
+%When there is a traffic accident at an intersection or a huge rise of vehicles makes it difficult to manage issues like traffic jams through traffic signal control, humans are required to control traffic. When a self-driving car comes across a hazardous situation that hasn't been anticipated during training, it should hand back control to the human driver. 
+%How to define the decision priority for humans and agents in HCPS is an open problem. 
+% 不同城市的泛化性 人类行为的多样性 社会的变化 道路变化等人类社会的因素 当智能算法遇到无法处理的情况时 应该将控制权交还于人类 如何评估智能算法的能力 是一个很大的挑战
+As a system that involves both physical and digital components, it requires the active participation and cooperation of humans to achieve its full potential. Humans play a crucial role in the operation and management of systems for transportation, from designing and building infrastructure to using and maintaining vehicles to making decisions about routing and scheduling. Thus, the success of smart transportation ultimately depends on how well it can integrate and leverage the capabilities of both humans and machines in a seamless and effective manner. However, the current state of research on MARL-based smart transportation is without adequately address the decision priority between human control and intelligent algorithms. Given the continuously evolving nature of both human behavior and city traffic, situations such as traffic accidents and surges in vehicles can make it challenging to manage traffic jams solely through traffic signal control. In such scenarios, human intervention becomes necessary. Similarly, in instances where self-driving cars encounter hazardous situations that were not anticipated during training, relinquishing control to the human driver is critical. Defining the optimal decision priority between humans and agents remains an unresolved issue.
+
+% \subsection{Smart Grid}
+
+% \textbf{Energy management: }
+% Distributed optimization of solar micro-grid using multi agent reinforcement learning
+% A multi-agent based distributed energy management scheme for smart grid applications
+% Decentralized multi-agent based energy management of microgrid using reinforcement learning
+% Multi-agent hierarchical reinforcement learning for energy management
+% Multi-agent deep reinforcement learning based distributed control architecture for interconnected multi-energy microgrid energy management and optimization
+
+\subsection{Unmanned Aerial Vehicles}
+% Please add the following required packages to your document preamble:
+% \usepackage{multirow}
+\begin{table}[]
+\centering
+\caption{Correspondence between unmanned aerial vehicles and RL methods.}
+\label{uav}
+\begin{tabularx}{\textwidth}{|XX|c|c|c|}
+\hline
+\multicolumn{2}{|c|}{Applications}                                                                                & Papers                                                           & Methods                    & SA/MA \\ \hline
+\multicolumn{1}{|X|}{\multirow{9}{=}{\centering Unmanned Aerial Vehicles}} & \multirow{3}{=}{\centering Cluster control}                & \cite{maciel2019online}                                          & DQN-based \cite{dqn}       & SA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                          &                                                 & \cite{9001167}                                                   & DDPG-based \cite{ddpg}     & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                          &                                                 & \cite{9209079}                                                   & MADDPG-based \cite{maddpg} & MA       \\ \cline{2-5} 
+\multicolumn{1}{|X|}{}                                          & \multirow{4}{=}{\centering Environmental   monitoring}     & \cite{journals/corr/abs-1803-07250}                              & DQN-based \cite{dqn}       & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                          &                                                 & \cite{julian2019distributed}                                     & DQN-based \cite{dqn}       & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                          &                                                 & \cite{9172262}                                                   & TRPO-based \cite{trpo}     & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                          &                                                 & \cite{9453825}                                                   & DQN-based \cite{dqn}       & MA       \\ \cline{2-5} 
+\multicolumn{1}{|X|}{}                                          & \multirow{2}{=}{\centering Collaborative   transportation} & \cite{10.1007/978-981-19-2635-8_71,en15197426} & MAAC-based \cite{maac}     & MA       \\ \cline{3-5} 
+\multicolumn{1}{|c|}{}                                          &                                                 & \cite{9993797}                                                   & MADDPG-based \cite{maddpg} & MA       \\ \hline
+\end{tabularx}
+\end{table}
+%The unmanned aerial vehicles (UAVs) related field is another closely related to HCPS. As shown in Figure \ref{} the UAV with various sensors is the physical system, while the ground station and operator represent the human and computer systems.
+In MARL-based Unmanned Aerial Vehicles (UAVs) applications, we describe three known scenarios: cluster control \cite{maciel2019online,9001167,9209079,XU2020196,QIU2020515,xu_chen_2022,Xu2022}, environmental monitoring  \cite{journals/corr/abs-1803-07250,julian2019distributed,9172262, 9453825}, and collaborative transportation \cite{10.1007/978-981-19-2635-8_71,en15197426,9993797}. 
+The correspondence between this application and RL methods is shown in Table \ref{uav}.
+
+%集群控制
+% 通信 2020 Distributed Energy-Efficient Multi-UAV Navigation for Long-Term Communication Coverage by Deep Reinforcement Learning 
+% Designing a solution for multi-UAV navigation and communication using a distributed deep reinforcement learning algorithm to provide long-term communication coverage for ground mobile users. The proposed method maximizes the temporal average coverage score and geographical fairness of all considered points of interest and minimizes total energy consumption. The superiority of the proposed model is demonstrated through extensive simulations.
+\textbf{Cluster control:} Maciel-Pearson et al. \cite{maciel2019online} make use of DRL to improve the ability of UAVs to automatically navigate when the environments are various. The approach uses a double state-input strategy that combines positional information with feature maps from the current scene. This approach is tested and shown to outperform other DQN variants and has the ability to navigate through multiple unknown environments and extreme weather conditions. A two-stage RL method is proposed by Wang et al. \cite{9001167} for multi-UAV collision avoidance to address the issues of high variance and low reproducibility, where supervised training is in the first stage and policy gradient is in the next stage. Wang et al. \cite{9209079} propose a trajectory control method according to MARL, which introduced a low-complexity approach to optimize the offloading decisions of the user equipment given the trajectories of UAVs. The results show that the proposed approach has promising performance. 
+%Xu et al. \cite{XU2020196} propose an optimized multi-UAV cooperative path planning approach according to an improved grey wolf optimizer algorithm and optimization model. The improved algorithm is practical when it is used to generate paths for multi-UAVs with a better convergence speed and reduced path cost. 
+%Qiu and Duan \cite{QIU2020515} propose a UAV flocking control algorithm that uses distributed optimization to address an optimization problem with multi-objectives while ensuring flight safety. The algorithm is based on an improved multi-objective pigeon-inspired optimization algorithm and considers the limitations of onboard computing resources to coordinate UAVs to fly stably in complex environments. It is shown from experimental results that the algorithm is feasible and effective. Both \cite{xu_chen_2022} and \cite{Xu2022} propose the application of MARL in the intelligent combat of UAV clusters. They suggest a new framework that adopts the policy of centralized training with decentralized execution and uses an Actor-Critic network to select execution actions and make corresponding evaluations. %Additionally, they point out the need to achieve autonomous planning and cooperative completion of combat objectives in the current stage of program control for UAV cluster combat, as well as the trend towards intelligent development in UAV cluster combat.
+
+% 监测搜救
+\textbf{Environmental monitoring:} Pham et al. \cite{journals/corr/abs-1803-07250} propose a distributed MARL algorithm to achieve complete coverage of an unfamiliar area while minimizing overlapping fields of view.  Julian and Kochenderfer \cite{julian2019distributed}
+present two DRL approaches for controlling teams of UAVs to monitor wildfires. The approaches accommodate the problem with uncertainty and high dimensionality and allow the UAV to accurately track the wildfire expansions and outperform existing controllers. The approaches scale with different numbers of UAVs and generalize to various wildfire shapes.
+Walker et al. \cite{9172262} propose a method for indoor target-finding by combining Partially Observable MDP (POMDP) and DRL. The framework consists of two stages: planning and control. Global planning is done using an online POMDP solver, while local control is done using Deep RL. Mou et al. \cite{9453825} propose a hierarchical UAV swarm architecture based on the DRL algorithm for solving the 3D irregular terrain surface coverage problem. A geometric approach is used to divide the 3D terrain surface into weighted 2D patches. A coverage trajectory algorithm is designed for low-level follower UAVs to achieve specific coverage tasks within patches. For high-level leader UAVs, a swarm DQN algorithm is proposed to choose patches, which integrates Convolutional Neural Networks (CNNs) and mean embedding methods to address communication limitations. 
+
+% 搬运
+% 2023 MARL Sim2real Transfer: Merging Physical Reality With Digital Virtuality in Metaverse
+\textbf{Collaborative transportation: } Jeon et al. \cite{10.1007/978-981-19-2635-8_71} design a UAV logistics delivery service environment using Unity to evaluate MADRL-based models, and Jo \cite{en15197426} propose a fusion-multi-actor-attention-critic (F-MAAC) model based on the MAAC. It is shown from the results that F-MAAC outperformed MAAC in terms of the total number of deliveries completed during a specific period and the total number of deliveries completed over the same distance.
+Our previous work \cite{9993797} develops a virtual platform for multi-UAVs collaborative transport using AirSim \cite{10.1007/978-3-319-67361-5_40} and proposed recurrent-MADDPG with domain randomization technique to achieve MARL sim2real transfer.
+
+By utilizing MARL, UAV systems can make autonomous decisions and collaborations in various scenarios, leading to more efficient task completion. However, existing works do not consider the command and interaction between ground workstations and operators for UAV systems, and the robustness and safety of MARL are deficient. When a UAV encounters interference and cannot make the correct decisions, it can cause serious harm to human society. Considering the interaction between intelligent UAV systems and humans to achieve more efficient and safer UAV systems is one of the goals in future 10-20 years.
+
+
+\subsection{Intelligent Information System}
+% Please add the following required packages to your document preamble:
+% \usepackage{multirow}
+\begin{table}[]
+\centering
+\caption{Correspondence between intelligent information system and RL methods.}
+\label{information}
+\begin{tabularx}{\textwidth}{|XX|c|c|c|}
+\hline
+\multicolumn{2}{|c|}{Applications}                                                                                      & Papers                                                          & Methods                                                  & SA/MA \\ \hline
+\multicolumn{1}{|X|}{\multirow{12}{=}{\centering Intelligent Information System}} & \multirow{6}{=}{\centering Natural language   processing} & \cite{li2016deep}                                               & REINFORCE-based \cite{REINFORCE}                         & SA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                                 &                                                & \cite{9025776}                                                  & AC-based \cite{ac}                                       & SA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                                 &                                                & \cite{Lu_Zhang_Chen_2019}                                       & DQN-based \cite{dqn}                                     & SA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                                 &                                                & \cite{8801910}                                                  & REINFORCE,AC,DQN \cite{REINFORCE,ac,dqn} & SA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                                 &                                                & \cite{li2017paraphrase}                                         & AC-based \cite{ac}                                       & SA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                                 &                                                & \cite{NEURIPS2022_b1efde53}                                     & PPO-based \cite{ppo}                                     & SA       \\ \cline{2-5} 
+\multicolumn{1}{|X|}{}                                                 & \multirow{3}{=}{\centering Programming   generation}      & \cite{NEURIPS2022_8636419d}                                     & REINFORCE \cite{REINFORCE}                               & SA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                                 &                                                & \cite{shojaee2023execution}                                     & PPO-based \cite{ppo}                                     & SA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                                 &                                                & \cite{ESNAASHARI2021115446}                                     & DQN-based \cite{dqn}                                     & SA       \\ \cline{2-5} 
+\multicolumn{1}{|X|}{}                                                 & \multirow{3}{=}{\centering Recommender system}            & \cite{10.1145/3383313.3412233,10.1145/3269206.3272021,10016386} & MADDPG-based \cite{maddpg}                               & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                                 &                                                & \cite{10.1145/3109859.3109914}                                  & Learning communication                                   & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                                 &                                                & \cite{10.1145/3331184.3331237}                                  & IQL-based \cite{iql}                                     & MA       \\ \hline
+\end{tabularx}
+\end{table}
+MARL has tremendous potential for applications in intelligent information systems, including natural language processing (NLP) \cite{Uc-Cetina2023, li2016deep, 9025776, Lu_Zhang_Chen_2019, chen-etal-2017-line, SU201824, 8801910, li2017paraphrase}, programming generation \cite{li2017paraphrase, shojaee2023execution, ESNAASHARI2021115446}, and recommender systems \cite{10.1145/3383313.3412233, 10.1145/3109859.3109914, 10.1145/3331184.3331237, 10.1145/3269206.3272021, 10016386}. Techniques based on SARL have been studied in NLP and programming generation, and we will summarize these studies and point out the significant advantages of MARL in these applications. The correspondence between this application and RL methods is shown in Table \ref{information}.
+
+\textbf{Natural language processing: }
+% Deep reinforcement learning for dialogue generation 对话系统
+Li et al. \cite{li2016deep} describe how RL can be applied to chatbot dialogue generation to predict the impact of current actions on future rewards. By utilizing a policy gradient approach to optimize long-term rewards defined by the developer, the model learns all possible strategies for speaking in an infinite action space, resulting in more interactive and consistent conversation generation for chatbots. %The results show that the approach is more consistently conversational and interactively responsive than the standard SEQ2SEQ model trained using MLE goals.
+% Multitask learning and reinforcement learning for personalized dialog generation: an empirical study
+Yang et al. \cite{9025776} combine multi-task learning and RL to present a personalized dialog system called MRPDG. Three kinds of rewards are used to guide the model to produce highly rewarded dialogs.
+% Goal-oriented dialogue policy learning from failures.
+In order to address the problems of sparse rewards and few successful dialogues, Lu et al. \cite{Lu_Zhang_Chen_2019} propose two complex methods for hindsight experience replay. 
+% % On-line dialogue policy learning with companion teaching. reward/质量评估
+% Reward estimation for dialogue policy optimisation 
+During the RL training process, chatbot agents can be made to generate more authentic dialogues by introducing human-relevant evaluation metrics. Chen et al. \cite{chen-etal-2017-line} present a framework called "companion teaching" in which a human teacher guides the machine in real-time during the learning process and uses example actions of the teacher to improve policy learning. Su et al. \cite{SU201824} present two approaches to address the challenge of measuring rewards in real-world dialogue system applications.
+% The epoch-greedy algorithm for contextual multi-armed bandits 机器翻译
+% A contextual-bandit approach to personalized news article recommendation 
+% Don’t until the final verb wait: reinforcement learning for simultaneous machine translation
+% Dual learning for machine translation 
+% Deep reinforcement learning for sequence-to-sequence models.文本生成
+% 使用强化学习解决sequence-to-sequence暴露偏差和训练/测试测量之间不一致的影响。
+Keneshloo et al. \cite{8801910} use RL to solve the effects of sequence-to-sequence exposure bias and inconsistency between training and test measurements.
+% Paraphrase generation with deep reinforcement learning
+Li et al. \cite{li2017paraphrase} propose a new framework that includes a generator and an evaluator for learning from data. The generator is a learning model for paragraph generation, and the evaluator is a matching model used to provide a reward function for RL.
+% Training language models to follow instructions with human feedback 带有人类反馈
+% 大规模语言模型可能会产生虚假输出，xx等人在GPT-3的基础上引入人类反馈的强化学习对其进行微调，使其减少无用输出，提出名为instructGPT的语言模型。他们认为利用人类反馈使得大规模语言模型的输出接近人类意图是非常重要的。
+Large language models may produce fake or useless outputs. Ouyang et al. \cite{NEURIPS2022_b1efde53} introduce RL with human feedback to fine-tune GPT-3 to reduce unwanted outputs and propose a language model called instructGPT. They believe that it is important to use human feedback to make the output of large language models close to human intention. 
+
+%It can improve model efficiency and accuracy and can be applied to more complex and large-scale tasks.
+\textbf{Programming generation: }
+% Improving automatic source code summarization via deep reinforcement learning
+% Coderl: Mastering code generation through pretrained models and deep reinforcement learning
+Le et al. \cite{NEURIPS2022_8636419d} design a program synthesis framework called CodeRL that uses pre-trained language models and RL to generate programs.% by introducing critic networks and critical sampling strategies. %to achieve new SOTA results in APPS and MBPP benchmark tests.
+% Execution-based Code Generation using Deep Reinforcement Learning
+Shojaee et al. \cite{shojaee2023execution} integrate a pre-trained programming language model with PPO to optimize the model through execution feedback and present a new code generation framework called PPOCoder. %It can automate the software engineering process and improve compilation success and functional correctness.
+% Automation of software test data generation using genetic algorithm and reinforcement learning 测试用例生成
+Software testing is essential for quality assurance but expensive and time-consuming. Esnaashari et al. \cite{ESNAASHARI2021115446} propose a new method using a memetic algorithm with RL as a local search that outperforms traditional evolutionary or heuristic algorithms in speed, coverage, and evaluation.
+
+% 多智能体强化学习的优势
+MARL has advantages over SARL in  NLP and programming generation due to its stronger collaboration ability and adaptability. In NLP, MARL can be used for tasks such as chatbots and text translation. In these tasks, multiple agents can work together to learn the knowledge and skills of a conversational system, thereby improving its performance and interaction experience. For programming generation, MARL is usually more suitable for scenarios that require the generation of complex systems or large-scale software. This is because in MARL, each agent can be responsible for generating a part of the code, and the whole system can be built through collaboration. This approach can improve the efficiency and quality of the generated code and can reduce the repetition and error rate of the code.
+
+\textbf{Recommender system: }
+% Learning to collaborate in multi-module recommendation via multi-agent reinforcement learning without communication
+He et al. \cite{10.1145/3383313.3412233}  propose a MARL method with communication restrictions to address sub-optimal global strategies due to the lack of cooperation among optimization teams.  %promote cooperation and an entropy-regularized version for exploration.
+% Dynamic scholarly collaborator recommendation via competitive multi-agent reinforcement learning
+Zhang et al. \cite{10.1145/3109859.3109914} propose a novel dynamic, collaborative recommendation method utilizing MARL for recommending academic collaborators, optimizing collaborator selection from different similarity measures.
+% Intelligent electric vehicle charging recommendation based on multi-agent reinforcement learning
+% Leveraging Long Short-Term User Preference in Conversational Recommendation Via Multi-Agent Reinforcement Learning
+% Mention recommendation in Twitter with cooperative multi-agent reinforcement learning
+To improve communication efficiency on Twitter-like social networking, Gui et al. \cite{10.1145/3331184.3331237} propose a MARL by combining dozens of more historical tweets to choose a set of users.
+% Real-time bidding with multi-agent reinforcement learning in display advertising
+Jin et al. \cite{10.1145/3269206.3272021} propose a method for optimizing bids using MARL to achieve specific goals, such as maximizing revenue and return on investment for real-time advertising. The method uses a clustering approach to assign strategic bidding agents to each advertiser cluster and proposes a practical distributed coordinated multi-agent bidding to balance competition and cooperation among advertisers.
+% Social Recommendation System Based on Multi-agent Deep Reinforcement Learning
+% 该论文提出了一种社会多代理强化学习框架（MATR），一个代理捕获用户的动态偏好，而另一个代理利用社交网络减少数据稀疏性和冷启动。状态表示模块旨在从社交网络和用户评分矩阵中学习，使用信任推理和特征聚合建模来优化社交网络的使用。
+Li and Tong \cite{10016386} propose a social MARL framework named MATR, where one agent captures the dynamic preferences of users while the other exploits social networks to reduce data sparsity and cold starts. The state representation module aims to learn from social networks and user rating matrices, using trust inference and feature aggregation modeling to optimize the use of social networks.
+
+% 多智能体强化学习在智能信息处理中有着很多的优势，缺乏鲁棒性与可解释性，使得强化学习是不可信的。进一步考虑带有人类反馈的强化学习方法，让其生成的语言更加真实、代码更加高效、推荐内容更加讨喜。
+MARL has many advantages in intelligent information processing, but the lack of robustness and transparency prevents MARL decisions from being trusted by humans. In order to apply MARL to the real world, it is first necessary to improve its trustworthiness, and in addition, RL with human feedback needs to be further considered to make the generated language more realistic, the programming more efficient, and the recommended content more attractive.
+
+\subsection{Public Health and Intelligent Medical Diagnosis}
+
+% Please add the following required packages to your document preamble:
+% \usepackage{multirow}
+\begin{table}[]
+\centering
+\caption{Correspondence between public health and intelligent medical diagnosis and RL methods.}
+\label{health}
+\begin{tabularx}{\textwidth}{|XX|c|c|c|}
+\hline
+\multicolumn{2}{|c|}{Applications}                                                                                                          & Papers                                                                                                                   & Methods                & SA/MA \\ \hline
+\multicolumn{1}{|X|}{\multirow{8}{=}{\centering Public Health and Intelligent Medical Diagnosis}} & \multirow{2}{=}{\centering COVID-19} & \cite{9551174,   Khalilpourazari2022,10.3389/fpubh.2021.744100}                                                          & DQN-based \cite{dqn}   & SA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                                                 &                                                    & \cite{Zheng2021}                                                                                                         & DDPG-based \cite{ddpg} & SA       \\ \cline{2-5} 
+\multicolumn{1}{|X|}{}                                                                 & \multirow{4}{=}{\centering Medical image processing}          & \cite{JALALI2021107675,9855449}                                                                                          & DQN-based \cite{dqn}   & SA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                                                 &                                                    & \cite{jpm12020309,zheng2021multi,10.1007/978-3-030-32251-9_29,10.1007/978-3-030-66843-3_18,10.1007/978-3-030-32251-9_29} & DQN-based \cite{dqn}   & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                                                 &                                                    & \cite{Liao_2020_CVPR,9311659}                                                                                            & A3C-based \cite{a3c}   & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                                                 &                                                    & \cite{10.1007/978-3-030-78191-0_59}                                                                                      & AC-based \cite{ac}     & MA       \\ \cline{2-5} 
+\multicolumn{1}{|X|}{}                                                                 & \multirow{2}{=}{\centering Disease diagnosis}                 & \cite{pmlr-v68-ling17a,   ling-etal-2017-learning,tang2016inquire}                                                       & DQN-based \cite{dqn}   & SA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                                                 &                                                    & \cite{10010747}                                                                                                          & DQN-based \cite{dqn}   & MA       \\ \hline
+\end{tabularx}
+\end{table}
+
+MARL is widely explored and applied in public health and intelligent medical diagnosis. For example, MARL can be applied in COVID-19 prediction and management, medical image processing, and disease diagnosis to improve disease prevention, diagnosis, and treatment efficiency and accuracy. The correspondence between this application and RL methods is shown in Table \ref{health}.
+
+\textbf{COVID-19 prediction and diagnosis: }
+% Using reinforcement learning to forecast the spread of COVID-19 in France
+% Designing a hybrid reinforcement learning based algorithm with application in prediction of the COVID-19 pandemic in Quebec 预测
+Khalilpourazari et al. \cite{9551174, Khalilpourazari2022} present the Hybrid Q-learning-based algorithm (HQLA) as a solution to predict the COVID-19 pandemic. HQLA accurately reflects the future trend in France and Quebec, Canada. Furthermore, their analysis also provides critical insights into pandemic growth and factors that policymakers should consider when making social measures. 
+% Recurrent neural network and reinforcement learning model for COVID-19 prediction
+Kumar et al. \cite{10.3389/fpubh.2021.744100} utilize two learning algorithms, DL and RL, to forecast COVID-19, where LSTM is used to forecasts newly affected individuals, losses, and cures in the coming days, and DQN is suggested for optimizing predictive outcomes based on symptoms.
+% Reinforcement learning assisted oxygen therapy for COVID-19 patients under intensive care 氧气辅助治疗
+Zheng et al. \cite{Zheng2021} propose developing MDPs to model the oxygen flow trajectory and health outcomes of COVID-19 patients. Using Deep Deterministic Policy Gradient (DDPG), an optimal oxygen control policy is obtained for each patient, resulting in a reduced mortality rate.
+% 关于COVID-19的预测与诊断，基于SARL。相比于SARL，MARL可以分别负责不同方面的任务，如病毒传播模型预测、临床诊断等，然后通过交流和协作完成整个任务。此外，COVID-19疫情发展速度快，且受多种因素影响，MARL可以更好的处理不确定性和复杂性。因此，我们认为MARL在这一方面有有很大的潜能。
+
+Regarding the prediction and diagnosis of COVID-19, existing studies are based on SARL. compared with SARL, MARL can be responsible for different tasks, such as virus transmission model prediction and clinical diagnosis, separately and then complete the task through communication and collaboration. In addition, the COVID-19 epidemic develops rapidly and is influenced by multiple factors, and MARL can better handle the uncertainty and complexity. Therefore, we believe that MARL has excellent potential in this area.
+% Multi-agent simulation model updating and forecasting for the evaluation of COVID-19 transmission
+% Reinforcement learning for optimization of COVID-19 mitigation policies 缓解策略
+% Deep reinforcement learning approaches for global public health strategies for COVID-19 pandemic 策略
+% Reinforcement learning-based decision support system for COVID-19 决策
+% A reinforcement learning based decision support tool for epidemic control: validation study for COVID-19
+% PaCAR: COVID-19 Pandemic Control Decision Making via Large-Scale Agent-Based Modeling and Deep Reinforcement Learning
+%Determination of optimal prevention strategy for COVID-19 based on multi-agent simulation
+% Vacsim: Learning effective strategies for covid-19 vaccine distribution using reinforcement learning 疫苗分配
+% Application of reinforcement learning for effective vaccination strategies of coronavirus disease 2019 (COVID-19) 疫苗接种
+% Reinforcement learning based framework for COVID-19 resource allocation 资源分配
+% On collaborative reinforcement learning to optimize the redistribution of critical medical supplies throughout the COVID-19 pandemic资源分配
+
+\textbf{Medical image processing: }
+% An oppositional-Cauchy based GSK evolutionary algorithm with a novel deep ensemble reinforcement learning strategy for COVID-19 diagnosis 诊断
+X-ray images have become crucial for expediting the diagnostics of COVID-19. Jalali et al. \cite{JALALI2021107675} propose an ensemble of CNNs to differentiate COVID-19 patients from non-patients according to an automated X-ray image. The selective ensemble approach utilizes DQN to heighten model accuracy while reducing the required classifiers.
+% Reinforcement Learning Based Diagnosis and Prediction for COVID-19 by Optimizing a Mixed Cost Function From CT Images 
+Chen et al. \cite{9855449} suggest an RL-based detection framework to quickly and effectively diagnose COVID-19. They build a mixed loss, enabling efficient detection of the virus. Additionally, they propose a prediction framework that allows for integrating multiple detection frameworks through parameter sharing. This allows for the prediction of disease progression without the need for additional training.
+% A multi-agent deep reinforcement learning approach for enhancement of COVID-19 CT image segmentation 图像分割
+Allioui et al. \cite{jpm12020309} develop a new method for more efficient automatic image segmentation that employs MARL. This approach addresses mask extraction difficulties and uses a modified version of the DQN to identify masks in CT images of COVID-19 patients. %Our experimental validation achieved impressive results with high accuracy, sensitivity, specificity, and precision. Moreover, our visual segmentation results accurately reflected the ground truth. This study demonstrates the potential of DRL-based mask extraction for effective COVID-19 diagnosis.
+% Iteratively-refined interactive 3D medical image segmentation with multi-agent reinforcement learning A3C
+MARL can be used for interactive image segmentation, where each voxel is an agent with a shared behavior policy to reduce exploration space and dependence among voxels. \cite{Liao_2020_CVPR} is for the field of medical image segmentation, considering clinical criteria, using MARL to solve the problem, reducing the exploration space, and using a sharing strategy to capture the dependencies between pixels;
+% Boundary-aware supervoxel-level iteratively refined interactive 3d image segmentation with multi-agent reinforcement learning a3c
+While \cite{9311659} is for interactive image segmentation, using MDP and MARL models to model iterative segmentation, introducing a boundary-based reward function to update the segmentation strategy.
+% Multi-agent reinforcement learning for prostate localization based on multi-scale image representation
+Zheng et al. \cite{zheng2021multi} use a MARL approach to prostate localization in Magnetic Resonance (MR) images. They create a communication environment by sharing convolutions and maintaining independent action policy via distinct fully connected layers for each agent.
+% Multiple Landmark Detection Using Multi-agent Reinforcement Learning DQN
+Anatomical landmark detection is crucial in medical image analysis. Vlontzos et al.\cite{10.1007/978-3-030-32251-9_29} present a novel approach using MARL to detect multiple landmarks simultaneously. This theory suggests that the positioning of anatomical landmarks in human anatomy is interdependent and not random. It can accommodate $K$ agents to detect $K$ different landmarks with implicit inter-communication.
+% Communicative reinforcement learning agents for landmark detection in brain images
+Leroy et al. \cite{10.1007/978-3-030-66843-3_18} develop a communicative MARL framework, aiding in detecting landmarks in MR images. In contrast to \cite{10.1007/978-3-030-32251-9_29}, agent communication is explicit.
+% Collaborative multi-agent reinforcement learning for landmark localization using continuous action space
+Kasseroller et al. \cite{10.1007/978-3-030-78191-0_59} propose a solution to the long inference time caused by DQN-based methods being limited to a discrete action space. They recommend using a continuous action space to allow the agent to move smoothly in any direction with varying step sizes, resulting in fewer required steps and increased landmark identification accuracy.
+
+\textbf{Disease diagnosis: }
+% Diagnostic inferencing via improving clinical concept extraction with deep reinforcement learning: a preliminary study
+% Learning to diagnose: assimilating clinical narratives using deep reinforcement learning
+Ling et al. \cite{pmlr-v68-ling17a, ling-etal-2017-learning} propose an RL-based method to improve clinical diagnostic inferencing. This approach can extract clinical concepts, integrate external evidence, and identify accurate diagnoses, which is especially beneficial in cases with limited annotated data. The system uses a DQN architecture and a reward function to optimize accuracy during training.
+% Inquire and diagnose: neural symptom checking ensemble using deep reinforcement learning DQN
+Tang et al. \cite{tang2016inquire} introduce a new neural symptom checker that employs an ensemble model. They incorporate an RL framework to develop inquiry and diagnosis policies as MDPs without using previous approximation methods. Furthermore, they develop a model for each anatomical section reflective of the practices of various hospital departments. This new approach offers improved user experience and significant enhancements in disease prediction accuracy over current models.
+% Intelligent Multi-Agent Reinforcement Learning Based Disease Prediction and Treatment Recommendation Model
+Rajesh et al. \cite{10010747} created the IMRLDPTR system, which uses mobile agents to collect data from multiple sources and generates rule sets for different disease categories.
+% 多智能体强化学习在公共健康与智能医疗中具有许多优点，例如可以处理大规模的数据和高度复杂的任务，并且可以考虑多个因素和变量的相互作用。然而，多智能体强化学习也存在一些缺点，例如学习过程与决策结果的透明度较低，使得难以理解模型的决策过程和行为。此外，多智能体强化学习的鲁棒性较差，决策易受干扰。因此，在将多智能体强化学习应用于公共健康和智能医疗时，还需要解决以上缺陷。
+
+MARL has many benefits in public health and intelligent medical diagnosis, such as the ability to handle highly complex tasks and to consider the interaction of multiple factors and variables. However, MARL also has some drawbacks, such as low transparency of the learning process and decision results, making it difficult to understand the decision process and behavior of the model. In addition, the robustness of MARL is poor, and the decisions are sensitive to perturbations. Therefore, the above drawbacks must be addressed when applying MARL to this field.
+
+\subsection{Smart Manufacturing}
+Smart manufacturing is the integration of advanced technologies, e.g., IoT, AI, and so on, into the manufacturing process to optimize the production process. As for smart manufacturing, MARL is a promising approach. In the context of smart manufacturing, MARL can be utilized as a tool for production scheduling, shop industrial robot control, quality control, and equipment maintenance to achieve an intelligent and efficient production process \cite{LI202375}. The correspondence between this application and RL methods is shown in Table \ref{manufacturing}.
+
+% Please add the following required packages to your document preamble:
+% \usepackage{multirow}
+\begin{table}[]
+\centering
+\caption{Correspondence between smart manufacturing and RL methods.}
+\label{manufacturing}
+\begin{tabularx}{\textwidth}{|XX|c|c|c|}
+\hline
+\multicolumn{2}{|c|}{Applications}                                                                    & Papers                                          & Methods                    & SA/MA \\ \hline
+\multicolumn{1}{|X|}{\multirow{12}{=}{\centering Smart Manufacturing}} & \multirow{6}{=}{\centering Job shop scheduling}    & \cite{WANG2022102324}                           & QMIX-based \cite{qmix}     & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                      &                                         & \cite{ZHANG2022102412}                           & PPO-based \cite{ppo}       & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                      &                                         & \cite{Jing2022}                                 & DDPG-based \cite{ddpg}     & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                      &                                         & \cite{POPPER202263,9590925}                     & PPO-based \cite{ppo}       & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                      &                                         & \cite{ZHANG2023110083}                          & DQN-based   \cite{dqn}     & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                      &                                         & \cite{10.1007/978-3-030-41913-4_1}              & IQL-based \cite{iql}       & MA       \\ \cline{2-5} 
+\multicolumn{1}{|X|}{}                                      & \multirow{4}{=}{\centering Industrial robots}      & \cite{agrawal_won_sharma_deshpande_mccomb_2021} & PPO-based \cite{ppo}       & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                      &                                         & \cite{Tan2019}                                  & DQN-based   \cite{dqn}     & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                      &                                         & \cite{krnjaic2022scalable}                      & MADDPG-based \cite{maddpg} & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                      &                                         &  \cite{9376433}                       & AC-based \cite{ac}         & MA       \\ \cline{2-5} 
+\multicolumn{1}{|X|}{}                                      & \multirow{2}{=}{\centering Preventive maintenance} & \cite{SU2022116323}                             & MADDPG-based \cite{maddpg} & MA       \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                      &                                         & \cite{RUIZRODRIGUEZ2022102406}                  & PPO-based \cite{ppo}       & MA       \\ \hline
+\end{tabularx}
+\end{table}
+
+\textbf{Job shop scheduling} is a key challenge in smart manufacturing because it involves complex decision-making processes and resource allocation problems. Traditional approaches are usually based on rules or static algorithms, but these approaches frequently fall short of adjusting to the changing production environment. In recent years, MARL has been introduced to job shop scheduling to improve the efficiency and accuracy of shop floor task scheduling by learning and adapting strategies from a progressively changing environment.
+% Multi-agent reinforcement learning approaches for distributed job shop scheduling problems
+% Solving job scheduling problems in a resource preemption environment with multi-agent reinforcement learning
+In the resource preemption that addresses the high-dimensional action space problem. A MARL algorithm for job scheduling is proposed in \cite{WANG2022102324}. In the algorithm, the environment is modeled as a Markov decision process which is decentralized and partially observable. And every job is regarded as an agent which selects the available robot. 
+% Dynamic job shop scheduling based on deep reinforcement learning for multi-agent manufacturing systems
+Zhang et al. \cite{ZHANG2022102412} propose a multi-agent manufacturing system for efficient and autonomous personalized order processing in a changeable workshop environment. The manufacturing equipment is built as an agent with an AI scheduler, which generates excellent production strategies in sight of the workshop state and is periodically trained through the PPO algorithm \cite{ppo}. This algorithm can tackle resource or task disturbances and obtain solutions that satisfy different performance metrics.
+% Multi-agent reinforcement learning based on graph convolutional network for flexible job shop scheduling
+Jing et al. \cite{Jing2022} address the flexible job shop scheduling issues by utilizing a graph-based MARL with centralized learning decentralized execution. The approach uses a directed acyclic graph to simulate the flexible job shop scheduling issues and predicts the connection probability among edges to adjust the scheduling strategy.
+% Utilizing multi-agent deep reinforcement learning for flexible job shop scheduling under sustainable viewpoints
+% Using Multi-Agent Deep Reinforcement Learning For Flexible Job Shop Scheduling Problems
+Popper et al. \cite{POPPER202263,9590925} use MARL to deal with the issues of flexible job shop scheduling with multiple objectives.
+% DeepMAG: Deep reinforcement learning with multi-agent graphs for flexible job shop scheduling
+Zhang et al. \cite{ZHANG2023110083} propose a new model called DeepMAG for flexible job shop scheduling according to MARL. DeepMAG provides each machine and job with an agent, and they work together to find the best action.
+% Multi-agent reinforcement learning tool for job shop scheduling problems
+In Industry 4.0, a user-friendly MARL tool for the job shop scheduling problem is designed in \cite{10.1007/978-3-030-41913-4_1}, which provides users with the chance to communicate with the learning algorithms. Users can either maintain the optimal schedule produced by Q-Learning or change it to meet constraints.
+% Actor-critic deep reinforcement learning for solving job shop scheduling problems
+
+\textbf{Industrial robots} have a growing amount of influence on industrial manufacturing. However, with the increasing complexity of production tasks, it is often difficult for individual robots to complete tasks effectively. MARL is widely used in smart manufacturing robots. 
+% Optimizing task scheduling in human-robot collaboration with deep multi-agent reinforcement learning 人机交互
+%Yu et al. \cite{YU2021487} propose a MARL approach for optimizing the completion time of Human-Robot Collaboration (HRC) assembly working processes.
+% A multi-agent reinforcement learning framework for intelligent manufacturing with autonomous mobile robots
+Agrawal et al. \cite{agrawal_won_sharma_deshpande_mccomb_2021} propose a framework based on MARL that integrates job scheduling and navigation control for an autonomous mobile robot-operated shop floor. 
+% Shop-floor Assembly Process with Dynamic Cyber-physical Interactions: A Case Study for CPS-based Smart Industrial Robot Production.
+To address the challenge of increasing demands for customization and rapid product iterations, Tan et al. \cite{Tan2019} propose a multi-agent model for the industrial robot assembly process, and the communication of agents which have real-time data acquisition and fusion is studied. Besides, they also propose an excellent algorithm for planning and scheduling industrial robot assembly using a MARL approach. 
+% Option-based multi-agent reinforcement learning for painting with multiple large-sized robots
+%Liu et al. \cite{9700783} propose an option-based multi-agent reinforcement learning (OMARL) method for task allocation in a cooperative multi-robot system for aircraft painting. The aim is to minimize conflict and maximize efficiency. The method utilizes a simplified 2D A* algorithm for trajectory planning and a hierarchical option-based model with shared network parameters for reducing training complexity. OMARL outperforms traditional methods in terms of efficiency and adaptability to real-time adjustments.
+% Scalable Multi-Agent Reinforcement Learning for Warehouse Logistics with Robotic and Human Co-Workers
+Krnjaic et al. \cite{krnjaic2022scalable} use MARL to optimize order-picking systems in commercial warehouses. The goal is to improve efficiency and flexibility while minimizing resource constraints. The MARL framework is applicable to various configurations of warehouses and allows agents to learn how to cooperate optimally with one another. %The project is a collaboration between Dematic and the University of Edinburgh, with the aim of developing a general-purpose and scalable solution for the order-picking problem in realistic warehouses.
+% Towards pick and place multi-robot coordination using multi-agent deep reinforcement learning
+Lan et al. \cite{9376433} explore the use of MARL to optimize coordination in a multi-robot pick-and-place system for smart manufacturing. 
+% Towards Self-X Cognitive Manufacturing Network: An Industrial Knowledge Graph-based Multi-agent Reinforcement
+% Zheng et al. \cite{ZHENG202116}
+
+\textbf{Preventive maintenance: } With the increasing scale and productivity of the manufacturing industry, how to design useful preventive maintenance strategies to guarantee the steady operation of production systems has become a vital issue in the manufacturing field. The MARL approach has provided a new idea to address this issue. 
+% Deep multi-agent reinforcement learning for multi-level preventive maintenance in manufacturing systems
+Due to the problem of action space explosion, traditional RL methods are difficult to be applied directly. Therefore, \cite{SU2022116323} adopts a MARL-based approach in a manufacturing system to model every machine as a collaborative intelligence and implements adaptive learning through the multi-agent value decomposition Actor-Critic algorithm to obtain an efficient and cost-reasonable preventive maintenance strategy.
+% Multi-agent deep reinforcement learning-based Predictive Maintenance on parallel machines
+\cite{RUIZRODRIGUEZ2022102406} present a multi-agent approach using RL to coordinate maintenance scheduling and dynamically assign tasks to technicians with various skills under the uncertainty of multiple machine failures.
+% 
+% 在这个领域，多智能体强化学习已经取得了一些有趣的结果，并展现了它在智能制造中的潜在应用价值。然而多智能体强化学习的可扩展性较差，难以扩展到智能体数量较多的情况。此外，还存在泛化性差的问题，无法很好的应用于真实场景中。且智能制造是一个人机交互的任务，还需要考虑人的行为，以及人机优先权的切换问题。
+
+MARL shows potential applications in smart manufacturing and achieves some stunning results. However, this approach has challenges in scalability and is difficult to scale to situations with a high number of agents. It also suffers from poor generalization, which makes it difficult to be applied well to real scenarios. In addition, smart manufacturing is a task that involves human-computer interaction, so human behavior and human-computer priority switching need to be considered when applying MARL. All these factors need to be fully considered when designing and implementing MARL algorithms to ensure the reliability and applicability of the models.
+
+\subsection{Financial Trade}
+% 金融交易是一个复杂的过程，需要快速决策和适应不断变化的市场条件。传统的人工决策和单一智能体方法已经无法满足市场需求。多智能体强化学习则提供了一种新的方法，通过多个智能体的合作和竞争来解决金融交易中的问题。这种方法可以在不同的市场情况下自适应地学习和调整策略，实现更加优秀的交易表现。
+Financial trading is a challenging activity that requires fast judgment and adjustment to continuously changing market conditions. Single-agent approaches and DL techniques from the past are no longer adequate to meet market expectations. MARL offers a fresh idea for tackling the difficulties in financial trade by combining collaboration and competition among various agents. We summarize the applications of MARL in financial trade from the perspectives of portfolio management \cite{Pham2021, lee2020maps, huang2022mspm, Ma2023, SHAVANDI2022118124}, trading strategy optimization \cite{9931995,qiu2021multi,patel2018optimizing,10.1145/3383455.3422570}, and risk management \cite{BAJO20126921, ganesh2019reinforcement, HE2023109985}. The correspondence between this application and RL methods is shown in Table \ref{trade}.
+
+% Please add the following required packages to your document preamble:
+% \usepackage{multirow}
+\begin{table}[]
+\centering
+\caption{Correspondence between financial trade and RL methods.}
+\label{trade}
+\begin{tabularx}{\textwidth}{|XX|c|c|c|}
+\hline
+\multicolumn{2}{|c|}{Applications}                                                                       & Papers                                              & Methods                            & SA/MA \\ \hline
+\multicolumn{1}{|X|}{\multirow{10}{=}{\centering Financial Trade}} & \multirow{2}{=}{\centering Portfolio management}          & \cite{Pham2021,Ma2023}                              & MADDPG-based \cite{maddpg}         & MA    \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                  &                                                & \cite{lee2020maps,huang2022mspm,SHAVANDI2022118124} & DQN-based \cite{dqn}               & MA    \\ \cline{2-5} 
+\multicolumn{1}{|X|}{}                                  & \multirow{5}{=}{\centering Trading strategy optimization} & \cite{9931995}                                      & MFRL-based \cite{pmlr-v80-yang18d} & MA    \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                  &                                                & \cite{qiu2021multi}                                 & MADDPG-based \cite{maddpg}         & MA    \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                  &                                                & \cite{patel2018optimizing}                          & DQN-based \cite{dqn}               & MA    \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                  &                                                & \cite{10.1145/3383455.3422570}                      & Double-Q-based \cite{doubleq}      & MA    \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                  &                                                & \cite{bao2019fairness}                              & DDPG-based \cite{ddpg}             & MA    \\ \cline{2-5} 
+\multicolumn{1}{|X|}{}                                  & \multirow{3}{=}{\centering Risk management}               &  \cite{BAJO20126921}                     & Multi-agent System                 & MA    \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                  &                                                & \cite{ganesh2019reinforcement}                      & PPO-based \cite{ppo}               & MA    \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                  &                                                & \cite{HE2023109985}                                 & DQN-based \cite{dqn}               & MA    \\ \hline
+\end{tabularx}
+\end{table}
+
+\textbf{Portfolio management:} 
+% 在组合投资领域，多智能体强化学习的应用可以帮助投资者更好地管理风险、优化资产配置、提高收益率等方面取得更好的效果。多个智能体进行投资决策，并通过强化学习算法对智能体进行训练和优化，以实现最优的投资组合和收益。
+In portfolio management, MARL can help investors better optimize asset allocation and improve returns. Multiple agents make investment decisions and are trained to achieve optimal investment portfolios and returns.
+% Multi-agent reinforcement learning approach for hedging portfolio problem
+For a portfolio of 10 equities on the Vietnam stock market, Pham et al. \cite{Pham2021} use MARL to create an automatic hedging strategy. They develop a simulator including transaction fees, taxes, and settlement dates for training the RL agent. The agent can get knowledge of trading and hedging to minimize losses and maximize earnings. It also protected portfolios and generated positive profits in case of a systematic market collapse.
+% MAPS: Multi-Agent reinforcement learning-based Portfolio Management System
+Lee et al. \cite{lee2020maps} propose a new investment strategy called a MARL-based portfolio management system (MAPS) that uses a cooperative system of independent "investor" agents to create a diversified portfolio. The agents are trained to act in a variety of ways and maximize their return using a thought-out loss function. %The experiment results using 12 years of US market data show that MAPS outperforms most baselines in terms of Sharpe ratio, and adding more agents to the system further lowers risk and increases returns through diversification.
+% MSPM: A modularized and scalable multi-agent reinforcement learning-based system for financial portfolio management
+To address the scalability and re-usability in RL-based portfolio management, Huang and Tanaka \cite{huang2022mspm} propose a MARL-based system with Evolving Agent Module (EAM) and the Strategic Agent Module (SAM). EAM generates signal-comprised information for a particular asset using a DQN agent. In contrast, SAM uses a PPO agent for portfolio optimization by connecting to multiple EAMs to reallocate corresponding assets. %The modularized architecture and reusable design of EAM make MSPM scalable and adaptable to changing markets. Experiments on 8-year U.S. stock market data show that MSPM outperforms five different baselines in terms of accumulated rate of return (ARR), the daily rate of return (DRR), and Sortino ratio (SR), improving ARR by at least 186.5\% compared to the constant rebalanced portfolio (CRP). EAM-enabled MSPMs improve ARR by at least 1341.8% compared to EAM-disabled MSPMs.
+% Multi-agent deep reinforcement learning algorithm with trend consistency regularization for portfolio management
+Ma et al. \cite{Ma2023} introduce a new MARL for optimizing financial portfolio management. The algorithm employs two agents to study the best trading policy for two distinct categories of stock trends, with a trend consistency factor that takes into account the consistency of stocks within a portfolio. Besides, the reward function now includes a novel TC regularization, which is based on the trend consistency factor value. The algorithm dynamically alternates between the two agents in order to obtain the best portfolio strategy based on the state of the market. %The proposed algorithm has been tested on the Chinese Stock Market and has been shown to be effective.
+% A multi-agent deep reinforcement learning framework for algorithmic trading in financial markets
+Shavandi and Khedmati\cite{SHAVANDI2022118124} propose a MARL framework that leverages the collective intelligence of expert traders on various periods. The DQN and a hierarchical structure are used in the framework to train the agents. %Numerical experiments conducted on historical data of the EUR/USD currency pair demonstrate that the proposed framework outperforms single agents and benchmark trading strategies in all investigated timeframes, making it suitable for algorithmic trading in financial markets.
+% Multi-agent reinforcement learning in a realistic limit order book market simulation
+% %Results show that our RL agent can converge toward a Time-Weighted Average Price strategy and outperform market replay simulations in certain scenarios.
+% Deep reinforcement learning for active high-frequency trading
+%Briola et al. \cite{briola2021deep} present an end-to-end DRL framework for active high-frequency trading using the PPO algorithm. The DRL agents are trained to trade Intel Corporation stock based on three months of high-frequency Limit Order Book data, with hyperparameters tuned using Sequential Model Based Optimization. We test three state characterizations and find that the agents create a dynamic representation of the environment, identifying occasional regularities and using them to generate stable positive returns despite the stochastic and non-stationary nature of the market.
+
+\textbf{Trading strategy optimization:} 
+% Multi-agent deep reinforcement learning for liquidation strategy analysis
+%\cite{bao2019multi} This paper proposes using a multi-agent deep reinforcement learning model to optimize the liquidation process of selling stocks. The model incorporates the complexities of the stock market and allows agents to learn how to make the best-selling decisions. The Almgren and Chriss model is analyzed and extended for use as a multi-agent trading environment. Reward functions for each agent are adjusted to analyze cooperative and competitive behaviors. Simulation of trading is conducted to develop an optimal trading strategy with practical constraints, demonstrating the capabilities of reinforcement learning methods in solving realistic liquidation problems.
+In the financial markets, developing an effective trading strategy is always a challenging issue. Traditionally, trading strategies are usually designed by individuals or teams based on their experience and skills, but there are many limitations in this approach. With the continuous advance in AI methods, MARL is widely applied in the optimization of trading strategies. It allows multiple agents to collaborate and compete to learn and improve strategies, leading to better trading results.
+\cite{9931995} and \cite{qiu2021multi} worked by Qiu et al use MFRL \cite{pmlr-v80-yang18d} and MADDPG \cite{maddpg} to optimize energy trading and market strategies, respectively.
+% Optimizing market-making using multi-agent reinforcement learning
+Patel \cite{patel2018optimizing} applies MARL to place limit orders to optimize market-making. The MARL framework consists of a macro-agent that decides whether to buy, sell, or hold an asset and a micro-agent that places limited orders within the order book. %The framework is tested on the Bitcoin market, and the study demonstrates that reinforcement learning can be used to effectively solve complex market-making problems.
+% Multi-agent reinforcement learning in a realistic limit order book market simulation
+%\cite{10.1145/3383455.3422570} This paper proposes a model-free approach to optimizing order execution using Reinforcement Learning (RL) agents in a realistic market simulation environment with multiple agents. The approach uses a multi-agent historical order book simulation environment built on an Agent-Based Interactive Discrete Event Simulation (ABIDES). The problem of optimal execution is formulated in an RL setting, and an RL execution agent is developed and trained using the Double Deep Q-Learning (DDQL) algorithm in the ABIDES environment. The simulation is evaluated by comparing it with a market replay simulation using real market Limit Order Book (LOB) data. The study demonstrates the effectiveness of RL in optimizing order execution in high-frequency trading.
+A model-free method is proposed by Karpe et al.\cite{10.1145/3383455.3422570}. It uses the Double Deep Q-Learning algorithm \cite{doubleq}, which is trained in a multi-agent realistic market simulation environment. The approach involves configuring a historical order book simulation environment with multiple agents and evaluating the simulation with real market data.
+% Multi-Agent Reinforcement Learning for Automated Peer-to-Peer Energy Trading in Double-Side Auction Market.
+%Qiu et al. \cite{qiu2021multi} propose a MARL algorithm, called DA-MADDPG, for optimizing operations and trading strategies in a double-side auction (DA) market for peer-to-peer (P2P) energy trading among prosumers. The proposed algorithm is modified based on MADDPG by abstracting the other agents’ observations and actions through the DA market public information for each agent’s critic. The study shows that prosumers can achieve more economic benefits in P2P energy trading compared to independently trading with the utility company, and DA-MADDPG outperforms traditional strategies and other MARL algorithms like IQL, IDDPG, IPPO, and MADDPG.
+% Fairness in multi-agent reinforcement learning for stock trading
+Bao \cite{bao2019fairness} proposes a MARL method to formulate stock trading strategies for investment banks with multiple clients. The method aims to balance revenue and fairness among clients with different order sizes and requirements. The proposed scheme uses RL to adapt trading strategies to complex market environments and uses MAS to optimize individual revenues. 
+%The Generalized Gini Index is used to control the fairness level of revenue across all clients. Empirical results show the superiority of this approach in improving fairness while maintaining revenue optimization.
+% Mean-field multi-agent reinforcement learning for peer-to-peer multi-energy trading
+
+\textbf{Risk management:} 
+Risk management is always a crucial part of business and organization management. Compared with traditional SARL, MARL can help enterprises and organizations better manage risk and reduce potential losses and risks.
+% A multi-agent system for web-based risk management in small and medium business
+Bajo et al. \cite{BAJO20126921} discuss the need for innovative tools to help small to medium enterprises predict risks and manage inefficiencies and create a multi-agent system that uses advanced reasoning to detect situations with risks and offer decision support. 
+% A multi-agent based framework for supply chain risk management
+%Giannakis and Louis \cite{GIANNAKIS201123}  address the challenges of achieving high levels of supply chain performance due to the complexity and risks associated with the demand and supply of resources, especially during economic downturns. To manage disruptions and mitigate risks in manufacturing supply chains, a framework for designing a multi-agent based decision support system using modern information technology is proposed.
+% Reinforcement learning for market making in a multi-agent dealer market
+Ganesh et al. \cite{ganesh2019reinforcement} use a simulation to study how RL can be utilized for training market maker agents in a dealer market. The RL agent learns to manage inventory and adapt to market price trends while also learning about the pricing strategies of its competitors. They also propose and test reward formulations to create risk-averse RL-based market makers.
+% A multi-agent virtual market model for generalization in reinforcement learning based trading strategies
+He et al. \cite{HE2023109985} propose a new approach to train a trading agent using RL by using a multi-agent virtual market model consisting of multiple generative adversarial networks. The model creates simulated market data that takes into account how the action of the agent affects the state of the market. 
+A backtest of the China Shanghai Shenzhen 300 stock index futures in 2019 shows that the trained agent has a 12 percent higher profit and a low risk of loss.
+% Risk averse reinforcement learning for mixed multi-agent environments
+%\cite{reddy2019risk} This work proposes a method for incorporating a popular risk measure, variance of return (VOR), as a constraint in the policy learning algorithm for multi-agent systems operating in mixed cooperative and competitive environments. The proposed multi-timescale actor critic method ensures that the learned policies satisfy the VOR constraint while still maximizing overall rewards for a given task. The risk-averse policies generated by this method strike a balance between maximizing rewards and minimizing risks in real-world applications of multi-agent systems.
+
+\subsection{Network Security} 
+Network security is an important issue facing society today, where attackers use various techniques and means to compromise computer systems and networks, threatening the security of individuals, organizations, and nations. MARL is a promising approach that can be used in the field of network security, with major applications in intrusion detection \cite{10.1007/978-3-540-87805-6_15, SETHI2021102923, 9335796, mohamed2021adversarial, louati2022distributed, louati2022distributed} and network resource optimization \cite{9348210,SUN2020107230,9254093,li2019cooperative,9329087}.
+The correspondence between this application and RL methods is shown in Table \ref{network}.
+
+% Please add the following required packages to your document preamble:
+% \usepackage{multirow}
+\begin{table}[]
+\centering
+\caption{Correspondence between network security and RL methods.}
+\label{network}
+\begin{tabularx}{\textwidth}{|XX|c|c|c|}
+\hline
+\multicolumn{2}{|c|}{Applications}                                                               & Papers                                                                                     & Methods                                    & \multicolumn{1}{c|}{SA/MA} \\ \hline
+\multicolumn{1}{|X|}{\multirow{6}{=}{\centering Network Security}} & \multirow{3}{=}{\centering Intrusion detection}   & \cite{10.1007/978-3-540-87805-6_15,SETHI2021102923,louati2022distributed,chowdhary2021sdn} & DQN-based \cite{dqn}                       & MA                         \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                  &                                        & \cite{9335796}                                                                             & DQN-based \cite{dqn}                       & SA                         \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                  &                                        & \cite{mohamed2021adversarial}                                                              & SARSA-based \cite{kuzmin2002connectionist} & MA                         \\ \cline{2-5} 
+\multicolumn{1}{|X|}{}                                  & \multirow{3}{=}{\centering Resource optimization} & \cite{9348210,SUN2020107230,li2019cooperative}                                             & DQN-based \cite{dqn}                       & MA                         \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                  &                                        & \cite{9254093}                                                                             & MADDPG-based \cite{maddpg}                 & MA                         \\ \cline{3-5} 
+\multicolumn{1}{|X|}{}                                  &                                        & \cite{9329087}                                                                             & Double-Q, AC \cite{doubleq,ac}             & MA                         \\ \hline
+\end{tabularx}
+\end{table}
+
+
+\textbf{Intrusion detection: } 
+Intrusion detection is one of the critical aspects to protect network security \cite{9705079}. However, traditional intrusion detection systems may have limitations in the face of complex and variable network attacks. MARL is an effective solution that can be used to enhance the accuracy and robustness of intrusion detection through collaborative learning and mutual communication.
+% Multi-agent reinforcement learning for intrusion detection: A case study and evaluation
+Servin and Kudenko \cite{10.1007/978-3-540-87805-6_15} present a MARL-based intrusion detection method that enables the identification and prediction of normal and abnormal states in a network through learning and interaction between distributed sensors and decision-making intelligence.
+% Attention-based multi-agent intrusion detection systems using reinforcement learning
+Sethi et al. \cite{SETHI2021102923} propose an intrusion detection system according to MARL with attention mechanisms for efficient detection and classification of advanced network attacks. 
+% A deep reinforcement learning approach for anomaly network intrusion detection system
+A DRL algorithm is proposed by Hsu and Matsuoka \cite{9335796} for the anomaly network intrusion detection systems, which can update itself to detect new types of network traffic behavior. The system is tested on two benchmark datasets and a real campus network log and compared to three classic machine learning methods and two related published results. The model is capable of processing large amounts of network traffic in real time.
+% Deep reinforcement learning-based intrusion detection system for cloud infrastructure
+%Sethi et al. \cite{9027452} introduce a The paper proposes a deep reinforcement learning-based adaptive cloud IDS architecture that can accurately detect and classify new and complex attacks, while maintaining a balance between accuracy and false positive rate. Traditional cloud IDSs are vulnerable to novel attacks and struggle with this balance. The proposed system is tested on the UNSW-NB15 dataset and shows better results compared to state-of-the-art IDSs.
+% Reinforcement learning for intrusion detection: More model longness and fewer updates
+% ADVERSARIAL MULTI-AGENT REINFORCEMENT LEARNING ALGORITHM FOR ANOMALY NETWORK INTRUSION DETECTION SYSTEM.
+Safa and Ridha \cite{mohamed2021adversarial} propose a new adversarial MARL approach-based Deep SARSA \cite{kuzmin2002connectionist} for intrusion detection in dynamic environments. The proposed algorithm addresses the problem of imbalanced distribution datasets by improving the detection of minority classes, which can improve classifier performance.
+% A Distributed Intelligent Intrusion Detection System Based on Parallel Machine Learning and Big Data Analysis.
+Louati et al. \cite{louati2022distributed} propose an intelligent and distributed intrusion detection system using the MAS based on parallel ML algorithms.
+% Deep reinforcement learning-based intrusion detection system for cloud infrastructure
+% Intrusion Detection Framework Using an Improved Deep Reinforcement Learning Technique for IoT Network
+% Evading Deep Reinforcement Learning-based Network Intrusion Detection with Adversarial Attacks
+% SDN-based Moving Target Defense using Multi-agent Reinforcement Learning
+Chowdhary et al. \cite{chowdhary2021sdn} propose a MARL framework for an adversarial game in a software-defined network-managed cloud environment. This model takes into account the dynamic nature of the network and minimal impact on service availability.
+
+\textbf{Resource optimization:}
+% Safe multi-agent deep reinforcement learning for dynamic virtual network allocation
+Suzuki and Harada \cite{9348210} propose a safe MARL to optimize network resources efficiently even during significant changes in network demands. This method uses DRL algorithms to learn the relationship between network demand patterns and optimal allocation in advance. Safety considerations and multi-agent techniques are developed to reduce constraint violations and improve scalability, respectively. 
+% MARVEL: Enabling controller load balancing in software-defined networks with multi-agent reinforcement learning
+Sun et al. \cite{SUN2020107230} propose a dynamic controller workload balancing scheme based on MARL to address the time-consuming or under-performing issues of iterative optimization algorithms. 
+% Multi-agent reinforcement learning for resource allocation in IoT networks with edge computing
+Peng and Shen\cite{9254093} explore multi-dimensional resource management for UAVs in vehicular networks, and the problem is formulated as a distributive optimization problem that can be addressed by the MADDPG method \cite{maddpg}. 
+% A cooperative multi-agent reinforcement learning framework for resource balancing in complex logistics network
+Li et al. \cite{li2019cooperative} propose a MARL approach to address resource-balancing challenges within complex transportation networks. The traditional solutions leveraging combinatorial optimization face challenges due to high complexity, uncertainty, and non-convex business constraints. The proposed approach introduces a cooperative mechanism for state and reward design, resulting in better transportation which is more efficient and effective. 
+% Multi-agent deep reinforcement learning for dynamic power allocation in wireless networks
+%Nasir and Guo \cite{8792117} propose a dynamic power allocation method for wireless networks using deep reinforcement learning.
+% Network resource optimization with reinforcement learning for low power wide area networks
+% Resource management in wireless networks via multi-agent deep reinforcement learning
+Naderializadeh et al.\cite{9329087} propose a distributed resource management and interference mitigation mechanism for wireless networks using MARL. In the network, each transmitter is equipped with a DRL agent responsible for selecting the user to serve and determining the transmission power to utilize based on delayed observations from its associated users and neighboring agents.
+% A Multi-Agent Reinforcement Learning-Based Optimized Routing for QoS in IoT
+%\cite{Jermin JeaunitaSarasvathi+2021+45+61} This paper proposes a machine learning-based routing algorithm for IoT applications to optimize Quality of Service (QoS) routing for heavy volume data transmissions. The proposed algorithm utilizes a multi-agent environment and performs route discovery using rank calculation and Q-routing with Q-Learning reinforcement machine learning. The second phase involves route maintenance with reduced control overheads and less delay in routing convergence. The proposed routing protocol creates a Destination Oriented Directed Acyclic Graph (DODAG) using Q-Learning.
+
+MARL has excellent potential in the field of network security, especially when dealing with complex network attacks and defense strategies. However, there are some shortcomings of MARL in the network security domain. One of the main problems is insufficient training data and performance issues. The behaviors of attackers are usually covert and small in number, so obtaining reliable training data is a challenge. In addition, attackers may use adversarial samples to spoof MARL models, leading to model failure. Therefore, it is necessary to address the robustness and generalization problem of MARL in addition to improving its performance. The correspondence between this application and RL methods is shown in Table \ref{education}.
+
+\subsection{Smart Education}
+% 隐私问题 % 泛化性与鲁棒性 % 不配合的学生 % 学生自主选择与AI推荐
+
+% Please add the following required packages to your document preamble:
+% \usepackage{multirow}
+\begin{table}[]
+\centering
+\caption{Correspondence between smart education and science and RL methods.}
+\label{education}
+\begin{tabular}{|cl|c|c|c|}
+\hline
+\multicolumn{2}{|c|}{Applications}                     & Papers                                    & \multicolumn{1}{c|}{Methods} & SA/MA \\ \hline
+\multicolumn{2}{|c|}{\multirow{2}{*}{Smart Education}} & \cite{asee_peer_40052,9970680}            & DQN-based \cite{dqn}         & SA    \\ \cline{3-5} 
+\multicolumn{2}{|c|}{}                                 & \cite{8615217,fu2022reinforcement} & DQN-based \cite{dqn}         & SA    \\ \hline
+\multicolumn{2}{|c|}{\multirow{3}{*}{RL for Science}}  & \cite{seo2021feedforward}                 & DDPG-based \cite{ddpg}       & SA    \\ \cline{3-5} 
+\multicolumn{2}{|c|}{}                                 & \cite{Degrave2022}                        & AC-based \cite{ac}           & SA    \\ \cline{3-5} 
+\multicolumn{2}{|c|}{}                                 & \cite{Bae2022}                            & PPO-based \cite{ppo}         & MA    \\ \hline
+\end{tabular}
+\end{table}
+
+Smart education uses the IoT and AI to digitize learning processes and offer individualized learning experiences and support depending on the learning styles and features of specific students. Sensors can be used to capture students' learning behaviors and data. Communication enables real-time interaction between students and teachers, as well as collaborative learning among students. 
+AI can be used to analyze learning behavior, offer personalized learning, and evaluate teaching. Scene reconstruction, experiment simulation, and remote teaching are made easier by virtual reality technology.
+In MARL-based smart education, we summarize the existing techniques \cite{asee_peer_40052, 9970680, 8615217, fu2022reinforcement}. 
+% Education 4.0: Artificial Intelligence Assisted Task- and Time Planning System
+% Evaluation of an AI-assisted Adaptive Educational Game System
+% Petri Nets and Hierarchical Reinforcement Learning for Personalized Student Assistance in Serious Games
+% Towards Smart Educational Recommendations with Reinforcement Learning in Classroom
+% A Reinforcement Learning-Based Smart Educational Environment for Higher Education
+% Smart Education是利用人工智能、物联网等技术，通过数字化手段获取学生的学习情况，根据学生的学习情况和特点为其提供个性化的学习体验和支持。如图1所示，HCPS中的传感器技术可以用于获取学生的学习行为和学习数据。通信技术可以实现学生与教师之间的实时互动、学生之间的合作学习等功能。人工智能技术可以实现学习分析、教学评估、个性化学习推荐等功能。虚拟现实技术可以实现场景再现、实验模拟、远程教学等功能。
+Education 4.0 intends to incorporate AI technology into each stage of student self-regulated learning to increase interest and effectiveness during the process \cite{HADERER20221328, SCHUMACHER2021100791, 8990763}. 
+Tang and Hare \cite{asee_peer_40052} create an adaptive tutoring game that allows students to personalize their learning without the guidance of teachers. In order to optimize student learning, this system uses a Petri net graph structure to monitor students' progress in the game and an RL agent to adaptively change system behavior in response to student performance.
+Then they apply Petri Nets and hierarchical reinforcement learning algorithm to personalized student assistance based on the above game \cite{9970680}. The algorithm can assist teachers in giving students in-game instruction and feedback that is specifically tailored to them, allowing them to gradually master complex knowledge and skills by breaking down the tasks in games into several stages. The algorithm can help educators provide customized support and feedback to students in games and gradually master complex knowledge and skills by dividing the tasks in games into multiple levels. \cite{8615217} and \cite{fu2022reinforcement} both monitor student learning progress using data gathered by sensors and offer students personalized learning advice using RL techniques. 
+
+% Smart Education在human-cyber-physical system中还存在一些不足，例如：
+% 数据隐私问题：Smart Education需要收集和分析学生的个人数据，这可能涉及到学生的隐私问题。如何保护学生的隐私，防止数据被滥用或泄露，是一个重要的问题。
+% 技术应用不够成熟：虽然Smart Education使用了许多先进的技术，如人工智能、物联网等，但这些技术仍然不够成熟，需要进一步研究和完善。例如，人工智能算法可能存在误判或歧视性问题，物联网设备可能存在安全漏洞等。
+% 个性化教育存在局限性：虽然Smart Education可以根据学生的学习情况和特点为其提供个性化的学习体验和支持，但是仍然存在一些局限性。例如，个性化教育可能会忽略学生的兴趣和需求，过度强调学习效果，导致学生对学习失去兴趣。
+% 师生互动不足：虽然Smart Education可以通过通信技术实现学生与教师之间的实时互动，但这种互动仍然存在一定的局限性。例如，学生可能会缺乏面对面的交流和互动，缺乏师生之间的情感联系，影响学生的学习效果和体验。
+% 优先级切换不当：在人机交互中，学生和教师可能会有不同的需求和目标，需要根据不同的场景和情境进行优先级切换。如果优先级切换不当，可能会导致教育效果下降，学生体验不佳。因此，如何进行合理的优先级切换是一个需要探讨的问题。
+Smart Education based on MARL can enhance teaching efficiency, save time, and ultimately, better learning outcomes for students. However, the collection of daily behavioral data from students is required by smart education, which presents privacy concerns. Additionally, since the core of intelligent education is human, its purpose is to assist teachers in teaching and students in learning. As a result, it necessitates prioritizing switching according to different scenarios, such as when there are discrepancies between the assessment of the teacher and AI for the level of knowledge mastery. Improper prioritization switching may lead to reduced educational effectiveness and poor student experiences. Therefore, how to conduct reasonable prioritization switching is a problem that needs to be explored.
+
+\subsection{RL for Science}
+Recently, AI for science has been a popular topic, and AI is highly regarded as a critical tool in achieving scientific progress \cite{9966863}. RL has demonstrated significant scientific potential, with particular promise in chemistry, physics, and materials research. RL has proven instrumental in solving challenges like exploring uncharted physical phenomena. The correspondence between this application and RL methods is shown in Table \ref{education}.
+% Feedforward beta control in the KSTAR tokamak by deep reinforcement learning DDPG
+Seo et al. \cite{seo2021feedforward} utilize RL to control feedforward $\beta$ in the KSTAR tokamak.
+% Magnetic control of tokamak plasmas through deep reinforcement learning 物理 AC
+Degrave et al. \cite{Degrave2022} introduce an innovative RL approach that enables the magnetic control system of a tokamak fusion device to learn autonomously, achieving precise control over various plasma configurations, significantly reducing design efforts, and representing a pioneering application of RL to the fusion domain.
+% Scientific multi-agent reinforcement learning for wall-models of turbulent flows ppo
+Bae et al. \cite{Bae2022} introduce a scientific MARL (SciMARL) for discovering wall models in turbulent flow simulations, dramatically reducing computational cost while reproducing key flow quantities and offering unprecedented capabilities for simulating turbulent flows.
+RL scientific research offers more possibilities, and we believe that RL will have a wider range of scientific applications in the future.
+
+% \subsection{Energy Prediction and Management}
+
+% \textbf{Energy Prediction:}
+% % A new hybrid ensemble deep reinforcement learning model for wind speed short term forecasting 风速预测
+% % A multi-factor driven spatiotemporal wind power prediction model based on ensemble deep graph attention reinforcement learning networks 风力预测
+% % Reinforcement Learning Based Dynamic Model Combination for Time Series Forecasting 时间序列预测
+% % DeepComp: Deep reinforcement learning based renewable energy error compensable forecasting 能源
+% % Dynamic Feature Selection for Solar Irradiance Forecasting Based on Deep Reinforcement Learning 太阳辐射
+% % Two-step wind power prediction approach with improved complementary ensemble empirical mode decomposition and reinforcement learning 风能预测
+% % AI agents envisioning the future: Forecast-based operation of renewable energy storage systems using hydrogen with Deep Reinforcement Learning 可再生能源
+
+% \textbf{Management:}
+% %  Wind power forecasting considering data privacy protection: A federated deep reinforcement learning approach 风力发电
+% % Deep reinforcement learning with uncertain data for real-time stormwater system control and flood mitigation 雨水调控
+% % Prediction-based multi-agent reinforcement learning in inherently non-stationary environments 出现了天气 （电网）
+% % A multi-step predictive deep reinforcement learning algorithm for HVAC control systems in smart buildings 出现了天气（建筑能源 空调）
+% % Building HVAC control with reinforcement learning for reduction of energy cost and demand charge
+% % Towards self-learning control of HVAC systems with the consideration of dynamic occupancy patterns: Application of model-free deep reinforcement learning 空调
+
+
+
+\section{Visionary Prospects} \label{Visionary}
+% 虽然MARL 在很多领域中都表现出了卓越的性能，但是还存在一些问题，如安全性、鲁棒性、泛化性，这限制了多智能体强化学习在实际中的应用。我们认为，未来最大程度发挥多智能体强化学习在实际应用中的优越性，在未来的10-20年中，需要解决安全性、鲁棒性与泛化性的问题，并且需要考虑人类社会的道德约束。在这一节中，我们从安全性、鲁棒性、泛化性和道德约束四个方面，总结了现有的研究方法并指出了其中的不足，给出了未来的研究方向。
+Although MARL has shown superior performance in many domains, some issues, such as safety, robustness, and generalization, limit the application of MARL in the real world. We believe that maximizing the superiority of MARL in practical applications in the future needs to first address these issues and need to consider the moral constraints of human society. %In this section, we summarize the existing research in four aspects: security, robustness, generalization, and moral constraints, and point out their shortcomings.
+This section reviews the current state of research in four areas: safety, robustness, generalization, and ethical constraints, and discusses the gaps that need to be addressed in future research.
+
+\subsection{Safety of Multi-agent Reinforcement Learning}
+The increasing popularity of MARL has brought attention to the need to ensure the safety of these systems. In MARL, the actions of one agent can potentially cause harm to the task or other agents involved. Therefore, there is a pressing need to develop safe MARL approaches. To achieve safety in MARL, one common approach is to add constraints to the training process. By incorporating safety constraints, agents are encouraged to avoid unsafe actions that could lead to task failure or harm to other agents. 
+There have been numerous reviews on the safety of RL, as summarized in \cite{JMLR:v16:garcia15a}, \cite{gu2022review}, and \cite{trustRL}. However, there is currently no systematic review of the safety of MARL, and there is relatively little research on this topic. In this section, we give a definition of safe MARL which is used in \cite{gu2021multi}.
+
+\begin{figure}
+    \centering
+    \includegraphics{figs/safe.pdf}
+    \caption{Categories of Safety in MARL}
+    \label{safe}
+\end{figure}
+
+\begin{definition}[Safe MARL]
+    A multi-agent constrained stochastic game can be modeled as the tuple 
+    $$
+        \left<N, \mathcal S, \mathcal A^1, \cdots, \mathcal{A}^N, R, \mathcal C^1, \cdots, \mathcal C^N, \bm c^1,\cdots, \bm c^N, p, \gamma\right>,
+    $$
+    where $R: \mathcal S \times \mathcal A^1 \times \cdots \times \mathcal A^N \times \mathcal S \rightarrow \mathbb R $ is the joint reward function, $\mathcal C^i = \{C^i_j\}^{i \le N}_{1\le j \le m^i}$ is a set of cost function of agent $i$ ($m^i$ is the number of cost functions of agent $i$), $C^i_j: \mathcal S \times \mathcal A^1\times \cdots \times \mathcal A^N \times \mathcal S \rightarrow \mathbb R $ is the cost function, and $\bm c^i = \{c^i_j\}^{i \le N}_{1\le j \le m^i} \in \mathbb R$ is cost-constraining values.
+\end{definition}
+The goal of agents is to maximize the expected total reward while trying to satisfy the safety constraint of each agent,
+\begin{equation}   \label{safety}
+\begin{aligned}
+    &\mathcal J\left(\bm \pi \right) = \mathbb E_{\bm \pi}\left[\sum_{t=0}^\infty \gamma^tR\left(s_t,\bm a_t,s_{t+1}|s_0 = s\right)\right], \\
+    s.t. &\mathcal J^i_j\left(\bm \pi \right) = \mathbb E_{\bm \pi}\left[\sum_{t=0}^\infty \gamma^tC^i_j\left(s_t,\bm a_t,s_{t+1}|s_0 = s\right)\right] \le c^i_j, \\
+    & \qquad \qquad  \forall j = 1,\cdots, m^i.
+\end{aligned} 
+\end{equation}
+We then summarize relevant research from two perspectives: optimization and formal methods, as shown in Fig.\ref{safe}. 
+\subsubsection{Optimization}
+% Multi-agent constrained policy optimisation.
+Gu et al. \cite{gu2021multi} introduce Multi-Agent Constrained Policy Optimization (MACPO) and MAPPO-Lagrangian to devise safety MARL algorithms. These algorithms aim to meet safety constraints while concurrently enhancing rewards by integrating theories from constrained policy optimization and multi-agent trust region learning, yielding strong theoretical guarantees. Furthermore, the authors have established a benchmark suite, Safe Multi-Agent MuJoCo, to evaluate the efficacy of their approaches, which exhibit performance levels comparable to baselines and persistently comply with safety constraints.
+% Decentralized policy gradient descent ascent for safe multi-agent reinforcement learning.
+Lu et al. \cite{lu2021decentralized} propose a method called Safe Decentralized Policy Gradient (Safe Dec-PG) to solve a distributed RL problem where agents work together with safety constraints. The method is decentralized and considers coupled safety constraints while ensuring a measurable convergence rate. It can also solve other decentralized optimization problems.
+% Deep multi-agent reinforcement learning with peak and average constraints.
+Liu et al. \cite{10.1007/978-3-030-86486-6_10} propose a novel algorithm CMIX that can be used for MARL in a partially observable environment with constraints on both peak and average reward. CMIX enables CTDE and outperforms existing algorithms in maximizing the global reward function subject to constraints. The algorithm is evaluated on two scenarios, including a blocker game and a vehicular network routing problem, demonstrating its ability to satisfy both peak and average constraints, which has not been achieved before in a CTDE learning algorithm. %This is the first proposal of a CTDE learning algorithm subject to both peak and average constraints.
+\subsubsection{Formal methods}
+% Safe multi-agent reinforcement learning via shielding.
+MARL is being used in safety-critical applications, but current methods do not guarantee safety during learning. To address this, two approaches for safe MARL have been presented in \cite{elsayed2021safe}: centralized shielding monitors actions of all agents and corrects unsafe actions, while factored shielding uses multiple shields to monitor subsets of agents concurrently. Both approaches ensure safety without sacrificing policy quality, but factored shielding is larger numbers of agents.
+% Safe deep reinforcement learning for multi-agent systems with continuous action spaces. 
+Sheebaelhamd et al. \cite{sheebaelhamd2021safe} improve the MADDPG framework for multi-agent control problems with safety constraints. A safety mechanism is integrated into the deep policy network to avoid in-feasibility problems in the action correction step, which guarantee constraint satisfaction using exact penalty functions. Empirical results show that this approach reduces constraint violations, enabling safety during learning.
+\subsubsection{Limitations of current methods}
+Although there has been some progress in researching the safety of MARL, there are still some limitations. First, the existing approach to MARL safety is designed for small numbers of agents and may not be applicable to large-scale systems. Second, most existing research on MARL safety assumes that the environment is static and unchanging. In real-world applications, however, the environment is often dynamic and unpredictable, which can pose additional safety risks. Finally, in order to apply MARL to human society, it is necessary to add constraints to protect human safety. Furthermore, human interactions lead to a non-Markov environment. Hence, MARL which accounts for the safety of large-scale human society, is a challenging and significant research direction for the future.
+
+\subsection{Robustness of Multi-agent Reinforcement Learning}
+% Explaining and harnessing adversarial examples
+% The limitations of deep learning in adversarial settings
+% Adversarial attacks on neural network policies
+
+The robustness of DL in classification tasks has a series of studies \cite{goodfellow2014explaining, 7467366, huang2017adversarial, jiao2022asynchronous, jiao2022distributed}. RL is a sequential decision problem, where misclassification at a one-time step is not equivalent to expecting the minimum reward. In MARL, a decision failure of any agent can lead to team task failure, which makes the study of robustness MARL challenging. Furthermore, MARL faces various challenges in real-world applications, such as uncertainty in the environment, uncertainty policies of other agents, and sensor noise. All these factors may cause the trained models to perform poorly or fail. Therefore, it is crucial to improve the robustness of MARL, which will help ensure that the models can operate stably and reliably in various situations. The following are related definitions of robust MARL. We use the definition of \cite{zhou2022romfac} and \cite{,NEURIPS2020_77441296}.
+\begin{definition}[Robustness against state observations perturbation]
+    A state-adversarial stochastic game can be defined as a tuple $$\left<\mathcal S, \mathcal A^1,\dots,\mathcal A^N,\mathcal B^1,\dots, \mathcal B^M, R^1,\dots, R^N,p,\gamma \right>$$ where $\mathcal B^j$ is the uncertainty set of adversarial states of agent $j$, and $M$ is the number of attacked agents such that $M \le N$.
+\end{definition}
+Given the joint policy $\bm \pi: \mathcal S \rightarrow \mbox{PD} \left(\mathcal A^1\times \cdots \times \mathcal A^N \right)$ and the joint adversarial perturbation $\bm v:\mathcal S \rightarrow \mathcal B^1\times \cdots \times \mathcal B^M $,  The Bellman equation with fixed $\bm \pi$ and $\bm v$ is as follows,
+	\begin{equation} \label{bv}
+		\begin{aligned}
+			\hat{V}^i_*(s)=\mathop {max} \limits_{\pi^i\left(\cdot|s\right)} \mathop{min} \limits_{v}
+   \sum_{\bm a  \in \mathcal A^1  \times \cdots  \times  \mathcal A^N} \bm \pi\left(\bm a|s ,\bm v(s)\right)\sum\limits_{s' \in \mathcal S}\left( p\left(s'|s,\bm a\right) 
+\left(R^i\left(s,\bm a,s'\right)+\gamma\hat{V}^i_*(s')\right)\right),
+		\end{aligned}
+	\end{equation}%
+\begin{definition}[Robustness against model perturbation]
+    A model-adversarial stochastic game can be defined as the tuple
+    $$
+        \left<N, \mathcal{S}, \mathcal A^1, \cdots, \mathcal A^N, \hat{\mathcal {R}}^1, \cdots, \hat{\mathcal {R}}^N, \hat{\bm p},\gamma \right>,
+    $$
+    where $\hat{\mathcal {R}}^i$ and $\hat{\bm p}$ are the uncertainty sets of reward functions and transition probabilities, respectively. 
+\end{definition}
+The Bellman-type equation is as follows:
+\begin{equation}
+    \hat V^i_*\left(s\right) = \mathop {max} \limits_{\pi^i\left(\cdot|s\right)} \mathop {min} \limits_{\hat R^i \in \hat{\mathcal {R}}^i, \hat p \in \hat{\bm p}} \sum_{\bm a\in \mathcal A^1\times\cdots\times\mathcal A^N}\bm \pi\left(\bm a|s\right)\sum_{s'\in \mathcal S}\left(\hat p \left(s'|s,\bm a\right)  \hat R^i\left(s, \bm a, s'\right) + \gamma \hat V^i_*\left(s'\right) \right)
+\end{equation}
+
+Currently, research on the robustness of MARL is being pursued from both attacks and defense. Attacks research aims to identify stronger perturbations to test the robustness of MARL models, while defense aims to develop MARL algorithms that are robust to perturbations. 
+\begin{figure}
+    \centering
+    \includegraphics{figs/Robustness.pdf}
+    \caption{Categories of Robustness in MARL}
+    \label{Robustness}
+\end{figure}
+
+% Attack
+% Reward Poisoning Attacks on Offline Multi-Agent Reinforcement Learning 奖励
+\subsubsection{Testing}: 
+As shown in Fig. \ref{Robustness}, similar to DL, the robustness testing methods for MARL can be classified into three categories: adversarial attacks, backdoor attacks, and data poisoning.
+
+\textbf{Data poisoning:} Wu et al. \cite{wu2022reward} discuss how an attacker can modify rewards in a dataset used for offline MARL to encourage each agent to adopt a harmful target policy with minimal modifications. 
+The attacker can establish the target policy as a Markov perfect dominant strategy equilibrium, which is a strategy that rational agents will adopt.
+%The attacker can install the target policy as a Markov Perfect Dominant Strategy Equilibrium, which rational agents will follow. 
+The article explores the effectiveness of attacks on various MARL agents and their cost compared to separate single-agent attacks. It also examines the relationship between dataset structure and attack cost and highlights the need for future research on defense in offline MARL.
+% On the Robustness of Cooperative Multi-Agent Reinforcement Learning 一个智能体的状态
+
+\textbf{Adversarial attacks:} Lin et al. \cite{9283830} show that Cooperative MARL (c-MARL) is vulnerable to attacks on a single agent. By manipulating agent observations, the attacker reduces the overall team reward. %The proposed attack involves training a policy network to encourage the victim agent to take the wrong action and using targeted adversarial examples to force the agent to take that action. 
+The proposed attack strategy involves training a policy network to induce the victim agent to take an incorrect action and utilizing targeted adversarial attack methods to compel the agent to take that action.
+Experiments demonstrate a significant reduction in team reward and winning rate.
+% Towards Comprehensive Testing on the Robustness of Cooperative Multi-agent Reinforcement Learning 整体
+Guo et al. \cite{Guo_2022_CVPR} discuss the potential vulnerabilities of c-MARL algorithms to adversarial attacks and the importance of testing their robustness before deployment in safety-critical applications. The authors propose MARLSafe, a comprehensive testing framework that considers state, action, and reward robustness to address this. Experimental results on the SMAC environment demonstrate the low robustness of advanced c-MARL algorithms in all aspects.
+% Sparse Adversarial Attack in Multi-agent Reinforcement Learning 状态
+Hu and Zhang \cite{hu2022sparse} propose a sparse adversarial attack on c-MARL systems to test their robustness. The attack is trained using MARL with regularization and is shown to significantly decrease performance when only a few agents are attacked at a few timesteps. This highlights the need for more robust cMARL algorithms.
+% Evaluating Robustness of Cooperative MARL: A Model-based Approach 状态 基于模型
+Pham et al. \cite{pham2022evaluating} introduce a novel model-based approach for evaluating the robustness of c-MARL agents against adversarial states. They demonstrate the superiority of their approach over existing baselines by crafting more robust adversarial state perturbations and employing a victim-agent selection strategy. 
+Through experiments on multi-agent MuJoCo benchmarks, they demonstrate that 
+the approach is effective by achieving a reduction in total team rewards.
+% Adversarial attacks in consensus-based multi-agent reinforcement learning
+% Attacking Cooperative Multi-Agent Reinforcement Learning by Adversarial Minority Influence
+Li et al. \cite{li2023attacking} propose the Adversarial Minority Influence attack, which introduces an adversarial agent that influences other cooperative victims to achieve worst-case cooperation. The attack addresses the complexity and cooperative nature of c-MARL by characterizing and maximizing the influence from the adversary to the victims. The proposed approach is demonstrated to be superior to existing methods in various simulation environments.
+
+% 后门攻击
+% MARNET: Backdoor Attacks against Value-Decomposition Multi-Agent Reinforcement Learning
+\textbf{Backdoor attack: } Chen et al. \cite{chen2022marnet} introduce a novel backdoor attack framework, known as MARNet, which is specifically designed for c-MARL scenarios. MARNet comprises three primary modules: trigger design, action poisoning, and reward hacking, all of which work together to manipulate the actions and rewards of poisoned agents. The framework is evaluated on two popular c-MARL algorithms, VDN \cite{vdn} and QMIX \cite{qmix}, in two commonly used c-MARL games. The experimental results demonstrate that MARNet outperforms baselines from SARL backdoor attacks, reducing the utility under attack by up to 100\%. Although fine-tuning is employed as a defense mechanism against MARNet, it is not entirely effective in eliminating the impact of the attack.
+% Poisoning Deep Reinforcement Learning Agents with In-Distribution Triggers
+% Stop-and-Go: Exploring Backdoor Attacks on Deep Reinforcement Learning-Based Traffic Congestion Control Systems
+Wang et al. \cite{9541185} investigate research on the backdoor attack for DRL-based Autonomous Vehicles (AVs) controllers. They develop a trigger based on traffic physics principles. Experiments are conducted on both single-lane and two-lane circuits, and they demonstrate that the attack can cause a crash or congestion when triggered while maintaining normal operating performance. These findings underscore the importance of robust security measures in AVs controller design.
+%Wang et al. \cite{9541185} investigate the backdooring of DRL-based Autonomous vehicles (AVs) controllers by developing a trigger design methodology based on traffic physics principles. They conduct experiments on single-lane and two-lane circuits and demonstrate that the attack can cause a crash or congestion when triggered while maintaining normal operation performance which highlights the need for robust security measures in AVs controller design. 
+% BACKDOOR: Backdoor Attack against Competitive Reinforcement Learning
+Wang et al. \cite{wang2021backdoorl} examine backdoor attacks in MARL systems and put forward a technique called BACKDOORL to detect and prevent such attacks.
+
+% 防御
+\subsubsection{Training}: Robustness testing and training in MARL are still in the early stages of research. Therefore, we summarize robustness training methods from five aspects: state observation, action, reward and model, adversarial policy, and communication.
+
+% 观察
+% 我自己的
+\textbf{State Observations:} In our previous work\cite{zhou2022romfac}, 
+we combine a policy gradient function and an action loss function, along with a regularized action loss term, to develop a new objective function for training actors in mean-field actor-critic reinforcement learning \cite{pmlr-v80-yang18d} that improves its robustness. Furthermore, we define State-Adversarial Stochastic Game (SASG) and discuss its properties. 
+% What is the Solution for State-Adversarial Multi-Agent Reinforcement Learning? Robust Multi-Agent Reinforcement Learning with State Uncertainties
+Due to the traditional solution concepts do not always exist in SASG, \cite{han2022solution} and \cite{he2023robust} introduce a new solution concept called robust agent policy and develop a Robust Multi-Agent Adversarial Actor-Critic (RMA3C) algorithm to learn robust policies for MARL agents.
+% Robust Multi-Agent Reinforcement Learning against Adversaries on Observation
+Wang et al. \cite{wang2023robust} propose a training framework for c-MARL to address the weakness of agents to adversarial attacks. The framework generates adversarial attacks on agent observations to help them learn a robust cooperative policy. The attacker selects an agent to attack and outputs a perturbation vector. The victim policy is then trained against the attacker. Experimental results demonstrate that the generated attacks improve the robustness against observation perturbations. 
+
+% 动作
+% Learning with opponent-learning awareness
+\textbf{Actions:} Foerster et al. \cite{foerster2017learning} consider how the policies adopted by different agents in the environment interact with each other and affect the learning process of all agents. They propose Learning with Opponent-Learning Awareness (LOLA), a framework that takes into account the influence of one agent's policy on the expected parameter update of the other agents through a specific term.
+The method leads to the emergence of cooperation in the iterated dilemma of prisoners and convergence to the Nash equilibrium in repeated matching pennies. 
+The extension of the policy gradient estimator enables efficient computation of LOLA, making it suitable for handling large parameters and input spaces that use nonlinear function approximators. 
+% Robust multi-agent reinforcement learning via minimax deep deterministic policy gradient
+Li et al. \cite{Li_Wu_Cui_Dong_Fang_Russell_2019} design MiniMax Multi-agent Deep Deterministic Policy Gradient (M3DDPG) to train MARL agents with continuous actions that can handle robustness issues in complex environments. M3DDPG  adds a minimax component to MADDPG \cite{maddpg} and employs multi-agent adversarial learning (MAAL) to optimize the learning objective. 
+Through experiment evaluation in four multi-agent environments, the proposed algorithm surpasses existing baselines in terms of performance.
+% ROMAX: Certifiably Robust Deep Multiagent Reinforcement Learning via Convex Relaxation
+Based on \cite{Li_Wu_Cui_Dong_Fang_Russell_2019}, Sun et al. \cite{9812321} apply the convex relaxation of neural networks instead of MAAL to apply the convex relaxation of neural networks to overcome computationally difficult,  which enables robustness in interacting with agents that have significantly different behaviors and achieves a certified bound of the original optimization problem.
+To overcome the computational difficulties of MAAL, Sun et al. \cite{9812321} utilize the convex relaxation technique to guarantee robustness in the interaction of agents with varying actions and yield a certified bound for the original optimization problem.
+% Resilient Multi-Agent Reinforcement Learning with Adversarial Value Decomposition
+Phan et al. \cite{Phan_Belzner_Gabor_Sedlmeier_Ritz_Linnhoff-Popien_2021} propose a value decomposition scheme that trains competing teams of varying sizes to improve resilience against arbitrary agent changes. By doing so, RADAR offers a more versatile and flexible approach to MARL that can adapt to changing agent behavior and system conditions. 
+% Robust Multi-Agent Reinforcement Learning Driven By Correlated Equilibrium
+%Hu et al. \cite{hu2021robust} suggest that non-adversarial agents must jointly make decisions to improve robustness, solving correlated equilibrium instead. They propose novel strategies to encourage agents to learn correlated equilibrium while preserving the convenience of decentralized execution.
+According to \cite{hu2021robust}, in order to enhance robustness, non-adversarial agents should collaborate and make decisions based on correlated equilibrium rather than acting independently. The authors introduce new approaches to encourage agents to learn and follow correlated equilibrium while maintaining the benefits of decentralized execution.
+
+% 奖励 和 模型
+% Online Robust Reinforcement Learning with Model Uncertainty
+\textbf{Rewards and models:} Wang and Zou \cite{NEURIPS2021_3a449677} propose a sample-based approach to estimate the uncertainty set of a misspecified MDP in model-free robust RL. They develop robust Q-learning and robust TDC algorithms that converge to optimal or stationary points without additional conditions on the discount factor. The algorithms also have similar convergence rates as their vanilla counterparts and can be extended to other RL algorithms.
+% Robust multi-agent reinforcement learning with model uncertainty
+Zhang et al. \cite{NEURIPS2020_77441296} focus on the problem of MARL in situations where there is uncertainty in the model, such as inaccurate knowledge of reward functions. They model this as a robust Markov game, where agents aim to find policies that lead to equilibrium points that are robust to model uncertainty. 
+They present a novel solution concept known as robust Nash equilibrium and a Q-learning algorithm that guarantees convergence. Additionally, policy gradients are derived, and an actor-critic algorithm that uses function approximation is developed to effectively tackle large state-action spaces.
+%They introduce a solution concept called robust Nash equilibrium and develop a Q-learning algorithm with convergence guarantees and derive policy gradients and develop an actor-critic algorithm with function approximation to handle large state-action spaces.
+% Reward Poisoning Attacks on Offline Multi-Agent Reinforcement Learning
+Wu et al. \cite{wu2022reward} introduce linear programs that can efficiently address the attack problem and analyze the connection between the characteristics of datasets and the minimal attack cost.
+
+% 对手策略
+% Backdoor Detection in Reinforcement Learning
+\textbf{Adversarial policy:} Guo et al. \cite{guo2022backdoor} propose Backdoor Detection in MARL systems, using Policy Cleanse to detect and mitigate Trojan agents and their trigger actions. Besides, they also design a machine unlearning-based approach to effectively mitigate the detected backdoors.
+% Adversarial Policy Learning in Two-player Competitive Games
+In contrast to previous techniques that rely on the zero-sum assumption, the recent work by Guo et al. \cite{pmlr-v139-guo21b} proposes a novel approach that resets the optimization objective and employs a new surrogate optimization function. This method has been shown through experiments to significantly enhance the ability of adversarial agents to exploit weaknesses in a given game and take advantage of any inherent unfairness in the game mechanics. Moreover, agents that are trained adversarially against this approach have demonstrated a greater level of resistance against adversarial attacks. Overall, these findings suggest that the proposed approach represents a promising direction for improving the robustness and fairness of game-playing AI agents.
+
+% 通信
+% Certifiably Robust Policy Learning against Adversarial Multi-Agent Communication
+\textbf{Communication: } A certifiable defense mechanism is proposed by Sun et al. \cite{sun2023certifiably}, which employs a message-ensemble policy to merge several message sets with random ablations. Theoretical analysis indicates that this mechanism can withstand various adversarial communications.
+
+\subsubsection{Limitations of current methods}
+% 人类行为的多样性
+% 人的加入和离开
+% 目前多智能体强化学习鲁棒性研究还存在许多不足。首先，现在的研究仅围绕状态、动作或者策略的其中一个展开，而没有考虑多方面相结合的鲁棒性。其次，缺乏团队鲁棒性评价指标，仅通过攻击的方式去测试团队策略的鲁棒性是片面的，因为其无法涵盖所有可能的扰动。此外，现有研究往往忽略了人为因素导致的非合作行为和恶意行为对鲁棒性的影响，这也是需要进一步研究的问题。因此，未来需要进一步深入集成多种扰动类型的鲁棒多智能体强化学习，可验证的鲁棒性评价指标以及人为干预的鲁棒性。
+Current research on MARL robustness leaves much to be desired. First, the recent research only focuses on one of the states, actions, or policies and needs to consider the robustness of a combination of multiple aspects. Second, there needs to be more team robustness evaluation metrics. It is insufficient to test the robustness of MARL only by way of attacks because it can only cover some possible perturbations. In addition, existing studies tend to ignore the impact of non-cooperative and malicious behaviors caused by human factors on robustness, which is also an issue that needs further research. Therefore, further in-depth integration of robust MARL with multiple perturbation types, verifiable robustness evaluation metrics, and robustness with human intervention must be considered in the future.
+
+\subsection{Generalization of Multi-agent Reinforcement Learning}
+% 不同系统的泛化性
+% 适应人类社会的泛化性
+Within the domain of MARL, generalization pertains to the capacity of agents to transfer their learned knowledge and skills from a specific environment or scenario to novel and diverse ones without necessitating significant modifications or retraining. Several surveys have investigated generalization in RL \cite{trustRL, 9308468, electronics9091363, 10.1613/jair.1.14174}. In the generalization of SARL, various techniques such as domain randomization \cite{7354126,rajeswaran2016epopt,Sadeghi_2018_CVPR}, causal inference \cite{ke2019learning, scherrer2021learning, pmlr-v119-zhang20t}, and meta-learning \cite{pmlr-v70-finn17a, 9196540,pmlr-v80-kaplanis18a} have been employed to address generalization issues. However, compared to single-agent settings, research on the generalization of MARL remains relatively scarce. In this regard, we provide an overview of pertinent work from two perspectives, namely multi-task learning, and sim2real, as shown in Fig. \ref{generalization}. %We use the definition of generalization MARL in \cite{9993797}.
+% \subsubsection{Definition}
+\begin{figure}
+    \centering
+    \includegraphics{figs/generalization.pdf}
+    \caption{Categories of Generalization in MARL}
+    \label{generalization}
+\end{figure}
+% \begin{definition}[Generalization of multi-agent reinforcement learning]
+
+% \end{definition}
+
+\subsubsection{Multi-tasks transfer}
+The goal of multi-task learning is to improve the generalization ability of a model by incorporating knowledge from related tasks as a form of inductive bias. In order to learn shared and task-specific representations and improve overall performance and efficiency in complicated domains entails training a model to carry out several tasks at once.
+
+% OPtions as REsponses: Grounding behavioral hierarchies in multi-agent reinforcement learning 未知对手的泛化 分层
+\textbf{Hierarchies: } To address the issue of generalization to unknown opponents in multi-agent games, Vezhnevets et al. \cite{pmlr-v119-vezhnevets20a} propose a hierarchical agent architecture grounded in game theory, which enables credit assignment across hierarchy levels and achieves better generalization to unseen opponents than conventional baselines.
+% Task Generalisation in Multi-Agent Reinforcement Learning
+% A Structured Prediction Approach for Generalization in Cooperative Multi-Agent Reinforcement Learning 分层
+Carion et al. \cite{NEURIPS2019_3c3c139b} propose a structured prediction method to assign agents to tasks that uses coordination inference procedures and scoring models. 
+% Multi-Task Multi-Agent Reinforcement Learning for Real-Time Scheduling of a Dual-Resource Flexible Job Shop with Robots Zhu et al. \cite{pr11010267}
+% Deep decentralized multi-task multi-agent reinforcement learning under partial observability 多任务学习 不是迁移
+% Discovering Generalizable Multi-agent Coordination Skills from Multi-task Offline Data 从离线数据中学习协同策略
+Zhang et al. \cite{zhang2023discovering} propose an offline multi-task collaborative reinforcement learning algorithm called ODIS, which is able to extract universal coordination skills from offline multi-task data, enabling better generalization in handling multi-task coordination problems. 
+Specifically, the ODIS algorithm has a two-step process for improving the generalization and performance of c-MARL tasks.
+First, it extracts coordination skills from offline data that are applicable across different tasks. It then uses these skills to differentiate between different agent behaviors.
+Second, it trains a coordination policy that selects the most effective coordination skills using the CTDE paradigm. The effectiveness of ODIS is demonstrated in experiments where it significantly improves generalization to unseen tasks, achieving superior performance in various cooperative MARL benchmarks. Importantly, the ODIS algorithm achieves these results using only limited sources of offline data.
+
+% Continuous self-adaptive optimization to learn multi-task multi-agent 元学习
+\textbf{Meta-learning: }
+Liang et al. \cite{Liang2022-yf} present a Self-adaptive Meta-learning (SAML) framework that employs gradient-based methods to combine individual task policies into a unified policy capable of adapting to new tasks.
+Experimental results demonstrate that SAML outperforms baseline methods in terms of efficiency and continuous adaptation. 
+% Randomized entity-wise factorization for multi-agent reinforcement learning Iqbal et al. \cite{pmlr-v139-iqbal21a} 
+% Towards Global Optimality in Cooperative MARL with Sequential Transformation
+
+% Deep decentralized multi-task multi-agent reinforcement learning under partial observability 多任务 分布式单任务学习
+\textbf{Decentralized learning: } Omidshafiei et al. \cite{pmlr-v70-omidshafiei17a} tackle the challenge of multi-task MARL with partial observability and limited communication. They introduce a decentralized single-task learning approach that can be synthesized into a unified policy for multiple correlated tasks without the need for explicit indication of task identity.
+% A decentralized policy gradient approach to multi-task reinforcement learning
+The work by Zeng et al. \cite{pmlr-v161-zeng21a} presents a novel mathematical framework for addressing multi-task RL problems using a policy gradient method. Specifically, the authors propose a decentralized entropy-regularized policy gradient method for solving these problems. The efficacy of the proposed method is evaluated through experimental results on both small-scale and large-scale multi-task RL problems. The findings demonstrate that the proposed approach offers promising performance for tackling complex multi-task RL problems.
+% Qauxi: Cooperative multi-agent reinforcement learning with knowledge transferred from auxiliary task
+% Liang et al.\cite{LIANG2022163} improve traditional MARL by forming a coordinated exploration scheme to transfer meta-experience from auxiliary tasks and use a weighting function to weight the importance of joint actions in a monotonic loss function to focus on more important joint actions and avoid yielding suboptimal policies.
+% Parallel knowledge transfer in multi-agent reinforcement learning
+% Policy distillation and value matching in multiagent reinforcement learning 不同智能体之间的知识迁移
+% Interaction Pattern Disentangling for Multi-Agent Reinforcement Learning
+% Towards human-level bimanual dexterous manipulation with reinforcement learning
+% Deep Decentralized Multi-task Multi-agent RL under Partial Observability
+
+\subsubsection{Sim2Real} 
+To train MARL agents, simulations are often used due to their efficiency and ease of implementation. However, a significant challenge arises when attempting to transfer policies learned in simulation to the real world, as differences between the two environments can lead to a performance gap.
+To address this issue, researchers have been investigating methods for Sim2Real transfer, which aim to minimize the performance gap between simulation and the real world. These methods typically involve fine-tuning policies in the real world, using domain randomization to increase the generalization of policies learned in simulation, or combining real data to achieve better results.
+% Transferring Multi-Agent Reinforcement Learning Policies for Autonomous Driving using Sim-to-Real
+% MARL Sim2real Transfer: Merging Physical Reality With Digital Virtuality in Metaverse
+
+\textbf{Domain randomization: }Candela et al. \cite{9981319} create a simulation platform for autonomous driving and use the MAPPO with domain randomization to enable the transfer of policies from simulation to reality. In our previous work \cite{9993797}, we developed a simulation platform for multi-UAV transport, utilizing domain randomization to facilitate the transfer from simulation to reality. Additionally, we formulated a non-stationary variant of Markov games and established the efficacy of RNNs in addressing non-stationary Markov games.
+
+% Real-to-Sim-to-Real: Learning Models for Homogeneous Multi-Agent Systems
+\textbf{Real data: }Gurevich et al. \cite{gurevichreal} 
+present a novel approach for implementing homogeneous MAS by transferring data between real and simulated robots. Their method involves designing a deep neural network architecture called CR-Net, which can simulate the motion of individual robots in this system. To train the CR-Net in a simulated environment, they generate synthetic data using a generative model trained on real data from one robot. The effectiveness of their approach is validated by testing the RL models trained using this method on real ground and underwater vehicles, which showed successful policy transfer from simulation to reality. %Overall, their method provides a promising avenue for developing robust multi-agent systems that can operate seamlessly in both simulated and real-world environments.
+% Interactive Robust Policy Optimization for Multi-Agent Reinforcement Learning
+% Reinforcement Learning for Traffic Signal Control Optimization: A Concept for Real-World Implementation
+% Multi-Agent Reinforcement Learning for Fast-Timescale Demand Response of Residential Loads
+% Learning a decentralized multi-arm motion planner
+% Coach-assisted multi-agent reinforcement learning framework for unexpected crashed agents
+
+\subsubsection{Others}
+% Model-based Multi-agent Reinforcement Learning with Tensor Decompositions 对未知状态-动作对的泛化
+The generalization to unexplored state-action pairs is considered in \cite{van2021model}, which uses tensors of low CP-rank to model the transition and reward functions.
+% A real-world-oriented multi-task allocation approach based on multi-agent reinforcement learning in mobile crowd sensing 用marl做多任务分配
+% Multi-task Actor-Critic with Knowledge Transfer via a Shared Critic 状态-动作空间不同的情况 知识迁移
+Zhang et al. \cite{pmlr-v157-zhang21b} propose a novel multi-task actor-critic paradigm based on a share critic with knowledge transfer to solve heterogeneous state-action learning problems.
+
+\subsubsection{Limitations of current methods}
+% 现有的研究还停留在CPS层面，即考虑多智能体面对未知智能体的泛化性，或者考虑虚拟环境与真实世界的差异的泛化性，并没有将人类社会系统考虑进去。人类社会系统的功能多变，并且人类的行为也多种多样。多智能体系统需要考虑与人类交互过程中的泛化性。比如，在智慧交通的系统中，基于多智能体强化学习的交通信号灯控制算法需要适用于不同的城市，需要在不同的时间段都具有泛化性；在智慧教育中，基于多智能体强化学习的辅助个性教育需要考虑到不同学生的生活环境以及性格特征，从而为学生制定个性化的学习方案。因此，我们认为考虑人类行为的泛化性的多智能体强化学习是未来一个具有前景的研究方向。但是由于人类行为的多样性，使得这一研究充满挑战。
+Current research in multi-agent learning has mainly focused on generalization in the context of cyber-physical systems, which considers the abstraction of agents to unknown agents and the differences between virtual and real-world environments. However, the functionality of human social systems is multifaceted, and human behavior is highly diverse, making the consideration of the generalization of interactions with humans a crucial research area for MAS. For instance, in intelligent transportation systems, traffic signal control algorithms based on MARL must generalize over different cities and time periods. Similarly, in smart education, personalized education assistance based on MARL needs to consider individual differences in living environments and personality traits to develop tailored learning plans for students. Hence, MARL which accounts for the generalization of human behavior, is a promising and challenging research direction for the future.
+\subsection{Learning with Ethical Constraint}
+% 隐私保护，公平性，决策透明
+% 环境中的智能体包括人类和拥有智能的机器，数据隐私如何保护，尤其是人类的隐私 
+% 人机的层面定义公平性：弱智能体和强智能体间的公平性？智能决策对人类社会是否公平，不能有歧视 
+% 公开：人类可以了解智能决策的依据（可解释性） 人类的控制权
+As AI technology continues to evolve, it is increasingly important to consider the ethical implications of AI systems \cite{ASHOK2022102433}. MARL systems involve the interaction of multiple agents whose actions can have significant real-world. Therefore, it is critical to ensure that the design and training of MARL systems take ethical considerations into account. We summarize research related to the ethical constraints of MARL in terms of privacy protection, fairness, and transparency, as shown in Fig.\ref{ethical}.
+\begin{figure}
+    \centering
+    \includegraphics{figs/Ethical.pdf}
+    \caption{Categories of MARL with Ethical Constraint}
+    \label{ethical}
+\end{figure}
+% 机器学习中有哪些分类，分别是怎么考虑的
+% 强化学习和多智能体强化学习中是从哪些方面考虑的，有哪些研究，要考虑HCPS，还需要考虑人的因素，可以从哪些方面进行研究
+\subsubsection{Privacy protection}
+
+Privacy protection is a long-standing issue extensively discussed in machine learning. Some of the main topics and techniques studied in this area include differential privacy, federated learning, cryptography, trusted execution environments, and ML-specific approaches\cite{de2020overview}. The research on privacy protection in RL is still in its early stages. We outline relevant studies in the following areas: the privacy of state and action, environment, reward function, and MARL scenario. 
+
+% state and action 
+% Privacy in stochastic control: A markov decision process perspective. %% 
+% Privacy-preserving q-learning with functional noise in continuous state spaces %%
+% Private reinforcement learning with pac and regret guarantees %%
+% Differentially private regret minimization in episodic markov decision processes.
+
+% Privacy-preserving reinforcement learning
+% Privacy-Preserving Reinforcement Learning Design for Patient-Centric Dynamic Treatment Regimes
+
+\textbf{State and action: }Venkitasubramaniam \cite{6736549} proposes an MDP to explore the development of controller actions while satisfying privacy requirements. They analyze the balance between the achievable privacy level and system utility using analytical methods. The optimization problem is formulated as a Bellman equation which owns the convex reward functions for a certain category of MDPs, and as a POMDP with belief-dependent rewards for the general MDP with privacy constraints.
+Differentially private algorithms are used in protecting reward information by Wang et al .\cite{NEURIPS2019_6646b06b} for RL in continuous spaces. The authors propose a method for protecting the value function approximator, which is realized by incorporating functional noise iterative into the training. They provide rigorous privacy guarantees and gain insight into the approximate optimality of the algorithm. Experiments show improvement over existing approaches.
+Vietri et al. \cite{pmlr-v119-vietri20a} use the notion of Joint Differential Privacy (JDP) and a private optimism-based learning method to address the privacy problem for episodic RL. Chowdhury et al. \cite{Chowdhury_Zhou_2022} 
+design two frameworks, i.e., policy optimization and value iteration, and not only consider the JDP but Local Differential Privacy (LDP) in finite horizon tabular MDP to minimize regret. The previous text describes the use of differential privacy as a means of protecting sensitive user data in RL. There are also other methods of protecting user privacy, such as cryptographic techniques. Sakuma et al. \cite{10.1145/1390156.1390265} use a homomorphic encryption algorithm to realize the privacy protection of distributed RL. They divide private information based on time and observation, design a sarsa privacy protection method based on random actions for these two division methods, and extend these to Q-learning based on greedy and $\epsilon$-greedy action selections. 
+A new privacy-preserving RL method is proposed by Liu et al. \cite{8630059}
+named Preyer to provide treatment options for patients while protecting their privacy. Preyer is composed of an innovative encrypted data format, a secure mechanism for plaintext length management, and a privacy-preserving RL with experience replay.
+
+% environment
+% How you act tells a lot: privacy-leaking attack on deep reinforcement learning.
+% Differentially private reinforcement learning with linear function approximation
+\textbf{Environment: } Pan et al. \cite{10.5555/3306127.3331715} first investigate the privacy in RL environment. They propose two methods based on genetic algorithms and shadow policies, respectively. Zhou \cite{10.1145/3508028} first discusses how to achieve privacy protection in finite-horizon MDPs, which have large state and action spaces. The author proposes two privacy-preserving RL algorithms according to value iteration and policy optimization and proves that they can achieve sub-linear regret performance while ensuring privacy protection. 
+
+% reward
+% Deceptive reinforcement learning for privacy-preserving planning
+% Learning robust rewards with adversarial inverse reinforcement learning
+% How private is your RL policy? An inverse RL-based analysis framework
+\textbf{Reward: } Fu et al. \cite{fu2017learning} and Prakash et al. \cite{Prakash_Husain_Paruchuri_Gujar_2022} investigate the problem of how to preserve the privacy of reward functions in reinforcement learning by employing adversarial reward and inverse reinforcement learning techniques.
+Liu et al. \cite{liu2021deceptive} studies privacy-preserving RL using dissimulation to hide the true reward function. Two models are presented and evaluated through computational and human experiments, showing that resulting policies are deceptive and make it more difficult for observers to determine the true reward function. 
+
+% MARL
+% Differential advising in multiagent reinforcement learning 用差分隐私提高性能 但不是解决隐私保护问题
+% Multi-agent reinforcement learning via knowledge transfer with differentially private noise 又是一个提升性能的
+% Differentially private multi-agent planning for logistic-like problems.
+% Differentially private malicious agent avoidance in multiagent advising learning 避免恶意消息传播的
+% PP-MARL: Efficient Privacy-Preserving MARL for Cooperative Intelligence in Communications
+% MARL-iDR_ Multi-Agent Reinforcement Learning for Incentive-based Residential Demand Response
+\textbf{MARL: } The differential privacy is used by Ye et al. \cite{9170873} in the field of multi-agent planning for the first time to protect agent privacy. Based on differential privacy, they propose a new strong privacy-preserving planning method, which can not only ensure strong privacy but also control communication overhead. %The strong privacy and completeness of the method are proved in theory, and its efficiency is proved by experiments. At the same time, we also analyze the communication overhead of this method, and how differential privacy can be used to control the communication overhead.
+Yuan et al. \cite{yuan2022pp} delve into the issue of integrating Cooperative Intelligence (CI) to enhance the efficiency of communication networks, which is hampered by privacy concerns and practical limitations in communication. In response, the authors present a Privacy-preserving scheme based on MARL (PP-MARL) that employs a HE-friendly architecture.  Experiment results indicate that PP-MARL exhibits better performance in privacy protection and reduced overhead compared to state-of-the-art approaches. Nonetheless, preserving privacy in CI-enabled communication networks remains a formidable challenge, especially when the number of agents involved is subject to variation or the system scales up. The research on privacy protection for MARL is still limited, and some studies have explored the use of differential privacy techniques to enhance the performance of MARL \cite{9269516,cheng2022multi} or against malicious advise \cite{8685696}.
+%van Tilburg \cite{van2021marl} 
+
+%We must model human behavior in HCPS, which involves the privacy of humans. 
+\subsubsection{Fairness}
+% Fairness in ML/RL/MARL  HCPS % 在智慧教育中，不能对学生产生偏见，在智慧交通中，对所有的行人应当平等对待。
+
+Fairness in machine learning refers to the concern that machine learning models and algorithms should not discriminate or create bias against certain groups of people based on their protected characteristics, such as race, gender, age, religion, etc. The review paper \cite{10.1145/3494672} provides a comprehensive summary of existing techniques. However, research on fairness in RL is still limited, and we provide an overview from both single-agent and multi-agent perspectives. %Moreover, we highlight the relevance of ensuring fairness in HCPS.
+% Fairness in Reinforcement Learning
+% Bringing Fairness to Actor-Critic Reinforcement Learning for Network Utility Optimization
+% A Comparison of Reinforcement Learning Algorithms in Fairness-Oriented OFDMA Schedulers
+% A competitive Markov decision process model and a recursive reinforcement-learning algorithm for fairness scheduling of agile satellites
+% Reinforcement Learning with Stepwise Fairness Constraints
+
+\textbf{SARL: }  Jabbari et al.\cite{pmlr-v70-jabbari17a} first consider the fairness in RL and demonstrate that an algorithm conforming to their fairness constraint requires an exponential amount of time to achieve a non-trivial approximation to the optimal policy. To overcome this challenge, they introduce a polynomial time algorithm that satisfies an approximate form of the fairness constraint.
+Weng et al. \cite{weng2019fairness}  address the issue of complete unfairness for some users or stakeholders by using a social welfare function encoded with fairness. 
+Chen et al. \cite{9488823} introduce a novel approach to incorporate fairness in actor-critic RL for network optimization problems. By considering the shape of the fairness utility function and past reward statistics, their proposed algorithm adjusts the rewards using a weight factor that is dependent on both of these factors.
+Ren et al. \cite{xx2022108242} propose a novel framework to obtain optimum and relative fairness solutions in space applications, including a new image quality representation method, a finite MDP model, and an algorithm based on RL. 
+Deng et al. \cite{deng2022reinforcement} propose an RL algorithm that enforces stepwise fairness constraints to ensure group fairness at every time step.
+
+% Learning Fairness in Multi-Agent Systems
+% Learning Fair Policies in Decentralized Cooperative Multi-Agent Reinforcement Learning
+% Multi-Agent Reinforcement Learning-Based Fairness-Aware Scheduling for Bursty Traffic%
+% Fairness-Aware Model-Based Multi-Agent Reinforcement Learning for Traffic Signal Control
+% Multi-Agent Deep Reinforcement Learning-Based Trajectory Planning for Multi-UAV Assisted Mobile Edge Computing 
+% 
+% Multi-agent reinforcement learning for edge information sharing in vehicular networks Multi-Agent Reinforcement Learning Approach for Residential Microgrid Energy Scheduling 用marl实现公平性 而不是考虑公平性
+% FaiR-IoT: Fairness-aware Human-in-the-Loop Reinforcement Learning for Harnessing Human Variability in Personalized IoT
+\textbf{MARL: }  Jiang and Lu \cite{NEURIPS2019_10493aa8} propose a hierarchical RL model, named FEN, which is aimed at both obtaining fairness and efficiency objectives. FEN decomposes fairness for each agent and utilizes a structure with a high-level controller and multiple sub-policies to avoid multi-objective conflict. The study by Zimmer et al. \cite{pmlr-v139-zimmer21a} also focuses on the two aspects of fairness and efficiency. They propose a generic neural network architecture to address this problem, which consists of two sub-networks specifically designed to consider the two aspects of fairness and can be implemented in centralized training and decentralized execution or fully decentralized MARL settings. 
+In multi-intersection scenarios, Huang et al. \cite{huang2023fairnessaware} propose a novel fairness-aware model-based MARL (FM2Light) to deal with unfair control with superior reward design.
+
+% Elmalaki \cite{10.1145/3450268.3453525} Wang et al. \cite{WANG2022267}  Fang et al. \cite{en13010123} propose a MARL approach for residential Microgrid Energy Scheduling (MES) that integrates Electric Vehicles (EVs) and Renewable Generations (RGs) in a microgrid market. MARL can achieve distributed autonomous learning for each agent and realize the equilibrium of all agents’ benefits. To guarantee fairness and privacy, we proposed an improved optimal Equilibrium Selection-MARL (ES-MARL) algorithm based on private negotiation and maximum average reward. Simulation results demonstrate that the proposed MARL outperforms Single-Agent Reinforcement Learning (SARL) in terms of overall performance and efficiency, and the improved ES-MARL can achieve higher average profit to balance all agents.
+ 
+\subsubsection{Transparency}
+Transparency is essential for building reliable MARL decision systems. Decision-making interactions among multiple agents are very complex and difficult to understand and explain. Without a transparent understanding of the interactions and decision-making processes among agents, the reliability and trustworthiness of the system are affected. Therefore, studying the transparency of MARL is an important direction. We summarize it in terms of both explainability and interpretability.
+
+\textbf{Explainability} refers to the ability of a model in machine learning to provide a rationale for its outputs that can be easily comprehended and trusted by humans \cite{10.1007/978-3-030-57321-8_5,10.1145/3527448}.
+% 让用户理解
+% Human-Centered AI using Ethical Causality and Learning Representation for Multi-Agent Deep Reinforcement Learning
+%Hu and Wang\cite{9582667} 
+% AI for explaining decisions in multi-agent environments 多智能体环境的可解释性 不是强化学习
+% Collective explainable AI: Explaining cooperative strategies and agent contribution in multiagent reinforcement learning with shapley values
+Heuillet et al. \cite{9679742} use a game theory concept of shapley values to explain the contribution of one agent in MARL and use Monte Carlo sampling to approximate shapley values to overcome the high overhead. This method provides an explanation for the model but can not give the precise reason why the action is taken by the agent.
+% Explainable AI (XAI) models applied to the multi-agent environment of financial markets
+Ohana et al. \cite{10.1007/978-3-030-82017-6_12} also use shapley values
+to understand the model behavior and explain local feature contributions.
+% Explainable Action Advising for Multi-Agent Reinforcement Learning
+% On Multi-Agent Deep Deterministic Policy Gradients and their Explainability for SMARTS Environment
+% Robust and scalable routing with multi-agent deep reinforcement learning for MANETs
+% Explainable and adaptable augmentation in knowledge attention network for multi-agent deep reinforcement learning systems
+% Structural relational inference actor-critic for multi-agent reinforcement learning
+Zhang et al. \cite{ZHANG2021383} propose a framework composed of a variational autoencoder and graph neural networks to encode the interactions between pairs of agents.
+
+\textbf{Interpretability} refers to the ability of a human to understand and explain the inner workings of a machine learning model \cite{10.1007/978-3-030-57321-8_5,10.1145/3527448}.
+% 让专家理解
+% Marleme: A multi-agent reinforcement learning model extraction library
+Kazhdan et al. \cite{9207564} develop a library named MARLeME which uses symbolic models to improve the interpretability of MARL. It can be employed across a broad spectrum of existing MARL systems and has potential applications in safety-critical domains.
+% Towards Interpretable Policies in Multi-agent Reinforcement Learning Tasks
+% MIXRTs: Toward Interpretable Multi-Agent Reinforcement Learning via Mixing Recurrent Soft Decision Trees
+% MAVIPER: Learning Decision Tree Policies for Interpretable Multi-Agent Reinforcement Learning
+Liu et al. \cite{liu2022mixrts} propose a novel interpretable architecture based on soft decision trees with recurrent structure. 
+Milani et al. \cite{10.1007/978-3-031-26412-2_16} propose two frameworks (IVIPER and MAVIPER) to extract interpretable coordination policies of MARL in sight of the decision tree. 
+% Human-Centered AI using Ethical Causality and Learning Representation for Multi-Agent Deep Reinforcement Learning
+% Hierarchical cooperative multi-agent reinforcement learning with skill discovery
+% Concept Learning for Interpretable Multi-Agent Reinforcement Learning
+Zabounidis et al. \cite{pmlr-v205-zabounidis23a} incorporate interpretable concepts from domain experts into MARL models trained. This approach improves interpretability, allows experts to understand which high-level concepts are used by the policy, and intervenes to improve performance.
+
+MARL for decision transparency involves not only the transparency of single-agent decisions but also the study of complex interactions among multiple agents. Currently, although there have some related research works, it is still relatively small, and more research works are needed to explore how to make MARL more transparent for better application to real-world problems.
+
+\section{Challenges on Human-Compatible Multi-agent Reinforcement Learning} \label{Challenges}
+The Human-Cyber-Physical System (HCPS) is developed based on the Cyber-Physical System (CPS) and integrates computer science, automatic technology, communication science, etc \cite{hcps,liuhcps}. The applications of MARL summarized in Section \ref{Applications} of this paper are typical of HCPS.
+Humans are seen as an essential component of HCPS. Therefore, the design of MARL algorithms needs to take into account the human factor.
+In addition to the challenges of scalability and non-stationary, MARL in HCPS faces many additional challenges due to the interactions between humans, physical systems, and computer systems. 
+
+\subsection{Non-stationarity due to Human Intervention}
+% 非稳定性指的是环境或者智能体的行为随着时间动态变化。现有的多智能体强化学习算法是基于随机博弈的，即在整个训练的过程中，智能体的数量是保持不变的。目前关于多智能体强化学习的非稳定性的研究还停留在CPS层面，仅仅考虑智能体策略变化对整体环境造成的非稳定性。而在HCPS中，人类与CPS在不断的交互，人类的行为会影响CPS系统的动态变化。对于CPS来说，人类的加入，可以看成是新智能体的加入；人类的离开，可以看成是智能体的离开。此外，多智能体强化学习训练的奖励函数由人类定义。在实际中，智能体的奖励函数会因为人类的需求而发生变化，这也是环境动态变化的一个重要因素。如何设计抗人类干预的稳定的多智能体强化学习算法是一个重大挑战
+Non-stationarity refers to the dynamic changes in the environment or the behavior of agents over time. The existing MARL is based on SG, where the number of agents remains constant during the training process. Currently, research on non-stationarity in MARL is limited to the CPS level, only considering the non-stationarity caused by changes in agent policies on the overall environment\cite{}. However, in HCPS, humans interact continuously with the CPS, and human behavior can affect the dynamic changes in the CPS system. In addition, the reward function for MARL agents is defined by human experts. Human needs will change with social progress, and the reward function for MARL agents will change accordingly. This is also an essential factor causing non-stationarity in HCPS. How to design stable MARL algorithms against human intervention is a vital challenge.
+\subsection{Diversity of Human Behavior}
+% 人类行为会因为受到不同地理、文化、信仰的影响而多样。在HCPS中，MARL为了在与人类交互的过程中更好的实现智能化，需要对人类行为建模。对人类行为理解的好坏很大程度上影响人类对CPS的使用体验。例如，在智能教育中，MARL智能体需要对学生的行为有很好的认知，从而更好的为不同学生推荐个性化的服务。然而，多样性的行为使得这一过程非常困难。目前对人类行为的建模方法停留在人类社会的层面，仅考虑了人的行为，而没有考虑机器智能对人类行为产生的潜在影响。
+% 如何在对人类行为建模的过程中考虑机器对人类行为的影响是一个很重大的挑战
+Human behavior is diverse due to the influence of different geographies, cultures, and beliefs. In HCPS, MARL needs to model human behavior in order to better achieve intelligence in interaction with humans. The quality of understanding human behavior predominantly affects the user experience of CPS. For example, in intelligent education, MARL agents need to understand student behavior well to better recommend personalized services for different students. However, the diversity of behavior makes this process very challenging. The current research for modeling human behavior is limited to the societal level and only takes into account human behavior, not the possible influence of machine intelligence on human behavior. How to consider the influence of machines on human behavior in the process of modeling human behavior is a significant challenge.
+
+
+\subsection{Complex Heterogeneity of HCPS}
+%The complex heterogeneity of HCPS refers to the intricate and diverse characteristics of these systems, encompassing human, physical, and computational components. The challenges that arise due to this heterogeneity can be attributed to various factors, such as the diversity in human behavior, physical system characteristics, computational architecture, temporal and spatial scales, and interdisciplinary collaboration. Consequently, effective solutions to these challenges require interdisciplinary research and collaboration among experts from various fields.
+% 人类系统的异构、信息系统的异构（软硬件，算法，对于多源信息，多任务决策，很难用一个端到端的算法解决，需要对不同的算法进行融合）、物理系统的异构（传感器，多源异构信息，比如无人机搬运系统，无人机装配了GPS，摄像头，图像数据和结构化数据的异构）、时序异构：智能体做决策是时间步需要根据实际的情况，定义不同的时间间隔。
+% The complex heterogeneity of HCPS is reflected in the following aspects:
+% \begin{itemize}
+%     \item [(1)] Human heterogeneity refers to the diversity of human behavior and the different roles played by humans in systems with different functions.
+%     \item [(2)] Physical system encompasses various sensors. For instance, there is equipped with GPS and cameras in a UAV transportation system. 
+%     \item [(3)] Cyber system is composed of various software, hardware, and algorithms. The integration of multiple intelligent algorithms is necessary due to the complexity of multi-source information and multi-task decision-making, which cannot be achieved by a single end-to-end algorithm.
+%     \item [(4)] When making decisions, MARL agents require defining different time intervals based on the actual situation at each time step, which is referred to as temporal heterogeneity.
+% \end{itemize}
+% % 如何设计多智能体强化学习算法，处理复杂异构的HCPS的决策，是一个巨大的挑战。
+% Designing multi-agent reinforcement learning c to handle the decision-making process of complex heterogeneous HCPS is a tremendous challenge.
+The complexity of HCPS manifests itself in various aspects, including human heterogeneity, physical system heterogeneity, cyber system heterogeneity, and temporal heterogeneity. Human heterogeneity refers to the diversity of human behavior and the different roles played by humans in systems with different functions. Physical system heterogeneity refers to the variety of sensors used, such as GPS and cameras in UAV transportation systems. Cyber system heterogeneity is composed of various software, hardware, and algorithms, which require the integration of multiple intelligent algorithms due to the complexity of multi-source information and multi-task decision-making. This cannot be achieved by a single end-to-end algorithm. Finally, temporal heterogeneity is when making decisions; MARL agents require defining different time intervals based on the actual situation at each time step. How to design MARL algorithms to handle the decision-making process of complex heterogeneous HCPS is an enormous challenge. 
+
+\subsection{Scalability of Multi-human and Multi-machine}
+% HCPS是一个多人多机共生的系统，因此用于智能决策的MARL应当具有较强的可扩展性。然而，随着智能体数量的增加，智能体的联合动作空间呈指数级增长，这使得MARL算法的可扩展性较差。现有的研究仅仅基于智能体数量的可扩展性，并没有考虑人的因素。如何设计适用于复杂异构HCPS的可扩展的多智能体强化学习算法是一个重大挑战
+HCPS is a complex system of multi-human and multi-machine coexistence. Thus, MARL used for intelligent decision-making should have strong scalability, and the agent here should have a broad concept that includes both humans and intelligent machines. However, as the number of agents increases, the joint action space of agents grows exponentially, which makes the scalability of MARL algorithms poor. Existing research only focuses on the scalability of the number of machines without considering human factors. Designing scalable multi-agent reinforcement learning algorithms that are suitable for complex and heterogeneous HCPS is a significant challenge. 
+
+\section{Conclusion} \label{Conclusion}
+% 本文总结了多智能体强化学习的基本概念，并总结了其在智慧交通，智慧教育，智能制造，无人机，金融交易，网络安全领域的相关研究。为了更好的服务于人类社会，需要构建可信的多智能体强化学习技术，我们从安全性、鲁棒性、泛化性和道德约束的角度，给出了可信多智能体强化学习的定义，并总结了现有的研究与不足。应用于人类社会，需要将人的因素考虑进去，因此，在本文的最后，我们给出了考虑人类活动的多智能体强化学习面临的额外挑战。
+This paper summarizes the fundamental methods of MARL and reviews its relevant research in various fields, such as smart transportation, unmanned aerial vehicles, intelligent information system, public health and intelligent medical diagnosis, smart manufacturing, financial trade, network security, smart education, and RL for science. In order to better serve human society, it is necessary to develop a trustworthy MARL. Therefore, we define trustworthy MARL from the perspectives of safety, robustness, generalization, and ethical constraints and summarize the current research and limitations in these areas. 
+Finally, we discuss the additional challenges when considering HCPS in MARL, which is crucial for its practical application in human society.
+We hope this paper can provide a comprehensive review of various research approaches and application scenarios, encouraging and promoting the application of MARL in human societies for better service to humans.
+
+%%
+%% The acknowledgments section is defined using the "acks" environment
+%% (and NOT an unnumbered section). This ensures the proper
+%% identification of the section in the article metadata and the
+%% consistent spelling of the heading.
+% \begin{acks}
+% % To Robert, for the bagels and explaining CMYK and color spaces.
+% \end{acks}
+
+%%
+%% The next two lines define the bibliography style to be used, and
+%% the bibliography file.
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{ref.bib}
+
+\end{document}
+\endinput
+%%
+%% End of file `sample-acmsmall.tex'.

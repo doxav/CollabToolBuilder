@@ -1,0 +1,1318 @@
+%%
+%% This is file `sample-acmsmall.tex',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% samples.dtx  (with options: `acmsmall')
+%% 
+%% IMPORTANT NOTICE:
+%% 
+%% For the copyright see the source file.
+%% 
+%% Any modified versions of this file must be renamed
+%% with new filenames distinct from sample-acmsmall.tex.
+%% 
+%% For distribution of the original source see the terms
+%% for copying and modification in the file samples.dtx.
+%% 
+%% This generated file may be distributed as long as the
+%% original source files, as listed above, are part of the
+%% same distribution. (The sources need not necessarily be
+%% in the same archive or directory.)
+%%
+%% Commands for TeXCount
+%TC:macro \cite [option:text,text]
+%TC:macro ~\citep [option:text,text]
+%TC:macro \citet [option:text,text]
+%TC:envir table 0 1
+%TC:envir table* 0 1
+%TC:envir tabular [ignore] word
+%TC:envir displaymath 0 word
+%TC:envir math 0 word
+%TC:envir comment 0 0
+%%
+%%
+%% The first command in your LaTeX source must be the \documentclass command.
+\documentclass[acmsmall]{acmart}
+
+\usepackage{graphicx}
+\usepackage{array}
+\usepackage{svg}
+\usepackage{varwidth}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{cite}
+\usepackage{lscape}
+\usepackage{afterpage}
+\usepackage{hyperref}
+\usepackage{multirow}
+\usepackage{makecell}
+\usepackage{longtable}
+\usepackage{setspace}
+\usepackage{makecell}
+\usepackage{titlesec}
+\usepackage{doi}
+%%\usepackage{biblatex}
+\bibliographystyle{IEEEtranN}
+\setcitestyle{maxcitenames=1}
+%%\bibliographystyle{ACM-Reference-Format}
+
+\hypersetup{colorlinks=true, linkcolor=blue}
+
+\titleformat{\paragraph}[runin]{\normalfont\small\bfseries}{}{0em}{}
+\titlespacing{\paragraph}{0pt}{-\parskip}{-\parskip}
+
+\newcolumntype{T}{>{\tiny}l} % define a new column type for \tiny
+\newcolumntype{H}{>{\Huge}l} % define a new column type for \Huge
+\newcolumntype{M}{>{\begin{varwidth}{2cm}}l<{\end{varwidth}}} %M is for Maximal column
+%\newcolumntype{psmall}{>{\small}p}
+
+%% NOTE that a single column version is required for 
+%% submission and peer review. This can be done by changing
+%% the \doucmentclass[...]{acmart} in this template to 
+%% \documentclass[manuscript,screen]{acmart}
+%% 
+%% To ensure 100% compatibility, please check the white list of
+%% approved LaTeX packages to be used with the Master Article Template at
+%% https://www.acm.org/publications/taps/whitelist-of-latex-packages 
+%% before creating your document. The white list page provides 
+%% information on how to submit additional LaTeX packages for 
+%% review and adoption.
+%% Fonts used in the template cannot be substituted; margin 
+%% adjustments are not allowed.
+%%
+%% \BibTeX command to typeset BibTeX logo in the docs
+\AtBeginDocument{%
+  \providecommand\BibTeX{{%
+    \normalfont B\kern-0.5em{\scshape i\kern-0.25em b}\kern-0.8em\TeX}}}
+
+%% Rights management information.  This information is sent to you
+%% when you complete the rights form.  These commands have SAMPLE
+%% values in them; it is your responsibility as an author to replace
+%% the commands and values with those provided to you when you
+%% complete the rights form.
+\setcopyright{rightsretained}
+\copyrightyear{2023}
+%% \acmYear{2023}
+\acmDOI{XXXXXXX.XXXXXXX}
+
+%%
+%% These commands are for a JOURNAL article.
+%% \acmJournal{JACM}
+%% \acmVolume{37}
+%% \acmNumber{4}
+%% \acmArticle{111}
+%% \acmMonth{8}
+
+%%
+%% Submission ID.
+%% Use this when submitting an article to a sponsored event. You'll
+%% receive a unique submission ID from the organizers
+%% of the event, and this ID should be used as the parameter to this command.
+%%\acmSubmissionID{123-A56-BU3}
+
+%%
+%% For managing citations, it is recommended to use bibliography
+%% files in BibTeX format.
+%%
+%% You can then either use BibTeX with the ACM-Reference-Format style,
+%% or BibLaTeX with the acmnumeric or acmauthoryear sytles, that include
+%% support for advanced citation of software artefact from the
+%% biblatex-software package, also separately available on CTAN.
+%%
+%% Look at the sample-*-biblatex.tex files for templates showcasing
+%% the biblatex styles.
+%%
+
+%%
+%% The majority of ACM publications use numbered citations and
+%% references.  The command \citestyle{authoryear} switches to the
+%% "author year" style.
+%%
+%% If you are preparing content for an event
+%% sponsored by ACM SIGGRAPH, you must use the "author year" style of
+%% citations and references.
+%% Uncommenting
+%% the next command will enable that style.
+%%\citestyle{acmauthoryear}
+%%\citestyle{authoryear}
+
+%%
+%% end of the preamble, start of the body of the document source.
+\begin{document}
+
+%%
+%% The "title" command has an optional parameter,
+%% allowing the author to define a "short title" to be used in page headers.
+\title{Complex QA \& language models hybrid architectures, Survey}
+
+%%
+%% The "author" command and its associated commands are used to define
+%% the authors and their affiliations.
+%% Of note is the shared affiliation of the first two authors, and the
+%% "authornote" and "authornotemark" commands
+%% used to denote shared contribution to the research.
+\author{Xavier Daull}
+\affiliation{%
+\institution{Naval Group, Toulon Université, Aix Marseille Univ, CNRS, LIS}
+  \country{France}
+}
+
+\author{Patrice Bellot}
+\affiliation{%
+  \institution{Aix Marseille Univ, CNRS, LIS, Marseille}
+  \city{Marseille}
+  \country{France}}
+
+\author{Emmanuel Bruno}
+\affiliation{%
+ \institution{Toulon Université, Aix Marseille Univ, CNRS, LIS, Toulon}
+ \city{Toulon}
+ \country{France}}
+
+\author{Vincent Martin}
+\affiliation{%
+  \institution{Naval Group}
+  \country{France}}
+
+\author{Elisabeth Murisasco}
+\affiliation{%
+  \institution{Toulon Université, Aix Marseille Univ, CNRS, LIS, Toulon}
+  \city{Toulon}
+  \country{France}}
+
+
+%%
+%% By default, the full list of authors will be used in the page
+%% headers. Often, this list is too long, and will overlap
+%% other information printed in the page headers. This command allows
+%% the author to define a more concise list
+%% of authors' names for this purpose.
+%% \renewcommand{\shortauthors}{Trovato and Tobin, et al.}
+
+%%
+%% The abstract is a short summary of the work to be presented in the
+%% article.
+\addtocontents{toc}{\protect\setcounter{tocdepth}{-1}}
+\begin{abstract}
+This paper reviews the state-of-the-art of language models architectures and strategies for "complex" question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.
+\end{abstract}
+
+%%
+%% The code below is generated by the tool at http://dl.acm.org/ccs.cfm.
+%% Please copy and paste the code instead of the example below.
+%%
+\begin{CCSXML}
+<ccs2012>
+   <concept>
+       <concept_id>10002951.10003317.10003347.10003348</concept_id>
+       <concept_desc>Information systems~Question answering</concept_desc>
+       <concept_significance>500</concept_significance>
+       </concept>
+   <concept>
+       <concept_id>10002951.10003317.10003347.10003352</concept_id>
+       <concept_desc>Information systems~Information extraction</concept_desc>
+       <concept_significance>300</concept_significance>
+       </concept>
+   <concept>
+       <concept_id>10002978.10003018.10003021</concept_id>
+       <concept_desc>Security and privacy~Information accountability and usage control</concept_desc>
+       <concept_significance>300</concept_significance>
+       </concept>
+ </ccs2012>
+\end{CCSXML}
+
+\ccsdesc[500]{Information systems~Question answering}
+\ccsdesc[300]{Information systems~Information extraction}
+\ccsdesc[300]{Security and privacy~Information accountability and usage control}
+
+
+%%
+%% Keywords. The author(s) should pick words that accurately describe
+%% the work being presented. Separate the keywords with commas.
+\keywords{complex question answering, semantic search, NLP, transformers, neural language models, GPT, taxonomy, neuro-symbolic, attention, pre-training, fine-tuning, prompting, non-factoid QA, multi-hop QA, multi-step QA, long-form QA, knowledge graph, multimodal search, human-in-the-loop, RLHF, RLHP, RLAIF}
+
+%%
+%% This command processes the author and affiliation and title
+%% information and builds the first part of the formatted document.
+\maketitle
+
+\pagebreak
+\small
+%\tableofcontents
+%\vspace{-10mm} % reduce the vertical space by 10mm
+\addtocontents{toc}{\protect\setcounter{tocdepth}{2}}
+
+\section{Introduction}
+Research in the field of question answering could route from earliest examples of AI system designed to answer questions like ELIZA~\citep{weizenbaumELIZAComputerProgram1966} developed at MIT in the 1960s; or engineering approaches to solve complex problems; or foundational research in the psychology field on how people understand and interpret language, prioritize and focus on relevant information in context~\citep{cuadraOPENINGBLACKBOX1967, wilsonSituationalRelevance1973}, investigate and make decision, retrieve and use information from memory to answer~\citep{normanMemoryKnowledgeAnswering1972}, innovate... Even Socrates' philosophical approach to questioning and critical thinking has recently been directly used to improve training~\citep{pagnoniSocraticPretrainingQuestionDriven2022}, common sense reasoning~\citep{jungMaieuticPromptingLogically2022}, or helping to solve some complex questions~\citep{shridharAutomaticGenerationSocratic2022}.
+
+When a question or problem is too complex to be solved as it is, such as ``~how does the concept of personal freedom vary between different cultures and societies ?~'', a common strategy is to break it down into solvable questions, and then combine solutions to provide an overall answer if there is consensus, or the possible alternatives and nuances. We aim to answer complex questions, or problems formulated as a question,  which are non-factoid and so require decomposition (multi-step), multi-source of knowledge combination, higher order reasoning or tasks resolution. All of these may vary a lot depending on the field and question. Neural language models recently demonstrated their ability to outperform an average human on different tasks across knowledge fields, and mimic methods or uncover appropriate methods for a given problem. However even most advanced systems will fail on some basic questions~\citep{borjiCategoricalArchiveChatGPT2023}, or could assert totally false or biased knowledge without any caution. This can seriously impact the credibility of a system by a human. Involving humans in the question-answering loop, strengthening training, hybridizing with third parties like programs, symbolic AI or other, can greatly improves those models and help ensure ethical and safe outcomes.
+
+To be able to build those efficient hybrid systems, properly trained and aligned to human expectations in order to better solve increasingly complex problems, it is thus necessary to precisely know strengths and limitations of each language models alone or in collaboration.
+
+Therefore we use benchmarks and insights from collective papers as consensus baselines. Largest community edited papers HELM~\citep{liangetal.HolisticEvaluationLanguage2022}, BLOOM~\citep{bigscienceetal.BLOOM176BParameterOpenAccess2022} and BIG~\citep{bigetal.ImitationGameQuantifying2022} focus on evaluating, democratizing and improving LLM capabilities, particularly on question answering and tasks that will also be useful for more complex questions. HELM provides a comprehensive analysis and benchmark for evaluating global strengths and weaknesses of reference large language models across a range of different scenarios and complementary metrics. Training large language models is done by resource-rich organizations and are mostly impossible to train by any individual public research group. BigScience~\footnote{\url{https://bigscience.huggingface.co/}}, a collaboration of hundreds of international researchers, trained on the French government-funded Jean Zay supercomputer during 3.5 months the largest open source multilingual language model called BLOOM and shared all models, codes and results in the BLOOM paper. BIG focus on spot and difficult capabilities to better assess current skills and limitations of language models.
+
+To overcome identified limitations and tackle more specific or complex questions, after those benchmarks and insights, we review hybrid architectural patterns solutions, training and prompting techniques, decomposition and reinforcement strategies to acquire the necessary knowledge, skills (general abilities), tasks (goal oriented actions), methods and human alignment.
+
+\subsection{Structure of the paper}
+This survey covers the main topics related to complex question answering systems.
+In \autoref{sec_core_concepts}, we define key concepts that are necessary to understand the rest of the survey: definitions, typical process and architectures, new approach brought by large language models (LLM) and transformers.
+Next, we delve into complex QA definition, required tasks \& skills, limitations to overcome (\autoref{sec_skills_tasks_limits}) to answer complex questions. For each limitation we link to potential resolution strategies presented later.
+In \autoref{sec_evaluation}, we review the evaluation metrics, methods and datasets of the scientific community used to assess current tasks, skills and limitations of LLM, or to further develop them through training.
+We then review the complementary resolving strategies which could be combined to solve complex QAs for the target usage.
+We first explore training techniques in \autoref{sec_training}, including methods for dealing with lack of data, poor quality, and adaptation to new tasks and domains.
+Second, in \autoref {sec_architectural_patterns}, we review and classify different hybridization architectural patterns with their pros and cons to augment LLM.
+Third, in \autoref{sec_prompting}, we review prompting techniques and how it can also be used to decompose complex questions down to solvable tasks.
+Fourth, in \autoref{sec_ImprovementLoop_and_kg_capitalization}, we review reinforcement techniques, continual learning, or how complex QA system might leverage its experience to solve more complex QAs. 
+Finally, \autoref{sec_limits_and_research} highlight tougher challenges, partial solutions that have been identified, and research avenues to overcome them.
+All along the survey, we provide an extensive bibliography for readers who wish to delve deeper into the subject matter (\autoref{sec_biblio}).
+
+\subsection{Contribution}
+This survey provides six main contributions:
+\begin{enumerate}
+\item[--] a systematic review \& analysis of literature on complex QA with LLM, including an enriched \textbf{definition} (\autoref{CQA_definition}) and \textbf{taxonomy} (\autoref{CQA_Taxonomy}), and an extensive bibliography of the field.
+\item[--] a qualitative analysis of the skills, tasks, and limitations of LLM (\autoref{sec_skills_tasks_limits}) aimed at better framing complex QA requirements and complexity.
+\item[--] an overview of evaluation metrics, methods, datasets and SOTA (\autoref{sec_evaluation}) to better evaluate skills \& tasks, and estimate LLM limits and strategies.
+\item[--] a \textbf{classification and aggregation of hybridization architectural patterns} (\autoref{sec_hybridLLMpatterns}) that can augment LLM and overcome their limitations in complex QA. 
+\item[--] a set of resolving strategies to combine (training: \autoref{sec_training}, hybridization: \autoref{sec_hybridLLMpatterns}, prompting: \autoref{sec_prompting}, reinforcement: \autoref{sec_ImprovementLoop_and_kg_capitalization}).
+\item[--] a list of major research challenges (\autoref{sec_limits_and_research}) and a focus on some blind spots (\textsl{i.e.} data multi sensitivity).
+\end{enumerate}
+
+\subsection{Survey methodology}
+
+To build this survey, \textbf{first}, we  collected surveys in the last two years related to ``~complex question answering~'' or ``~complex problem solving~'' and ``~language models~''  that we cite throughout the article. From these elements, we systematically extracted the major concepts and their plans (table of contents). We fused all their plans into one to ensure a complete coverage of major concepts and adopt a similar methodology.
+
+\textbf{Second}, we gathered:
+\begin{enumerate}
+\item[--] latest challenges from \href{http://nlp.uned.es/clef-qa/}{CLEF QA (nlp.uned.es)}, \href{https://research.nii.ac.jp/ntcir/}{NTCIR (research.nii.ac.jp)} and \href{https://semeval.github.io/}{SemEval (semeval.github.io)} related to question answering;
+\item[--] the list of the major conferences; then, list research papers from latest edition of conferences \href{https://sigir.org/}{SIGIR (sigir.org)}, \href{https://nips.cc/}{NeurIPS (nips.cc)}, \href{https://naacl.org/}{NAACL (naacl.org)}, \href{https://2022.emnlp.org/}{EMNLP (emnlp.org)}, \href{https://iclr.cc/}{ICLR (iclr.cc)}, \href{https://aaai.org/}{AAAI (aaai.org)}, \href{https://www.ijcai.org/}{IJCAI (ijcai.org)}, \href{https://www.cikm2022.org/}{CIKM (cikm2022.org)}, \href{https://www.kdd.org/}{SIGKDD (kdd.org)}, \href{https://www.wsdm-conference.org/}{WSDM (wsdm-conference.org)} about  ``~complex question answering~'' and ``~language models~'';
+\item[--] research publications from influential organizations in the field: \href{https://www.deepmind.com/research}{Deepmind}, \href{https://openai.com/publications/}{OpenAI}, \href{https://research.google/pubs/}{Google}, \href{https://www.microsoft.com/en-us/research/publications/}{Microsoft}, \href{https://research.facebook.com/publications/}{Meta} related to "question answering" and "language models".
+\end{enumerate}
+
+From these enriched data we identified and clustered major challenges and solution patterns from the field and state-of-the-art:
+\begin{enumerate}
+\item[--] Domain adaptation or specialization, and maintenance.
+\item[--] Decomposition (including multi-hop/step), question to search action design.
+\item[--] Safety and data sensitivity, truthfulness, veracity and hallucinations, explainability.
+\item[--] Reasoning (process, methods, chain of thought, code generation, causality).
+\item[--] Scalability (inc. routing, space reduction).
+\item[--] Alignment to human intentions, expectations and values (e.g. RLHF, clarifications and questions expansion).
+\item[--] Long form question answering, long term dependency in reasoning, multi-document summarization.
+\item[--] Dialog and context improvement (e.g. clarification question).
+\item[--] Multimodal search (e.g. images, tables, audio).
+\item[--] Time dimension reasoning.
+\item[--] Biases reduction.
+\end{enumerate}
+
+\textbf{Third}, we enriched our bibliography using a search engine of scientific articles to identify all the articles published during the last four years on the main subject of this investigation (\small{\textit{search queries: "complex question answering" AND "language model"; "question answering" AND "language model architecture"; "question answering" AND "language model" AND "hybrid architecture"; "hybrid language models" OR "hybrid language model" OR "hybrid neural language models"; "language model" "hybrid architecture"}}).
+
+The bibliography collected in all the previous steps was then used throughout this survey to ensure that we summarize the main concepts at the state-of-the-art by automatically detecting articles semantically close (subscription to "zeta alpha" and "semantic scholar").
+
+Last but not least, we searched the most cited papers in this bibliography and extended with recent connected papers or some historical papers often cited, and investigated relevant citations. Through this research, we identified three recent research papers (HELM, BLOOM, and BIG) each involving hundreds of researchers from many organizations, so we decided to use them as a baseline or major reference in this study.
+
+\section{Core concepts \& architectures}\label{sec_core_concepts}
+
+\subsection{Definitions}
+In order to help the reader and to better define the scope of this study, we pose a set of definitions on the key concepts. As different definitions often exist for the same concept, we choose the one that best defines the scope of survey.
+\begin{description}
+%% TODO: LIMITER DEF: 2 phrases max
+\item [Question Answering (QA)] systems can answer questions from a specific or general knowledge base (limited / closed-domain, or public / open-domain QA).
+\item [Complex question answering (CQA)] is to answer higher complexity questions. This complexity can come from the variety of skills required(\ref{sec_skills_tasks_limits}) including multiple logic, higher reasoning (e.g. constraints solving, deduction, induction, abduction) and domain knowledge, answer format alignment and nuances handling in non-factoid questions, the need for decomposition and multi-step resolution, multiple sources of information to include and reason over on longer reasoning distance.
+\item [Complex problem solving (CPS)] is to overcome barriers between a given state and a desired goal state by means of behavioral or cognitive multistep activities\citep{frenschComplexProblemSolving1995}. A CPS process is split into two phases, knowledge acquisition and knowledge application.
+\item [Question complexity] is a multidimensional construct that can be characterized by various aspects such as syntactic, lexical, semantic, discourse complexity, or cognitive complexity. We focus on this latest and consider the cognitive process required to answer a question, such as the level of concepts abstraction, the degree of reasoning, the amount and variety of knowledge, and the number of steps needed to find the answer. \textbf{Non-factoid questions} (e.g. "What are the causes of poverty in cities?") are typically considered much more complex than factoid questions (e.g. "What is the capital of Suriname ?").
+\item [Information Retrieval (IR)] is the general task of retrieving information for a given query/subject. \textbf{Semantic search} is the IR process of using natural language understanding techniques such as embedding to match the "meaning" of a query (rather than keywords) to the most relevant content in a corpus, regardless of the format of the content (e.g. structured or unstructured text, image...).
+\item [Taxonomy of QA formats] is a proposed taxonomy~\citep{rogersQADatasetExplosion2022} which covers question format, answer format, and source \& evidence format. Question format can be in the form of natural language questions, queries, cloze format or story completion. Answer format can be in the form of extractive format, multi-choice/categorical format, freeform/generative format, or numerical. The source \& evidence format can be in the form of unstructured text, semi-structured text, structured knowledge, images, audio, video or other combinations, and it can also be characterized by the amount of evidence provided, and whether it is from a single, multiple, partial or no source.
+\item [Taxonomy of QA skills] is presented in a further section on elementary tasks \& skills types.
+\item [Prompt and instructions engineering VS pre-training and fine-tuning]: pre-training refers to training a model on a large corpus of data to learn general understanding of knowledge and logic; fine-tuning is the process of adapting a pre-trained model to a specific task with additional training on specific examples; prompt engineering is the technique of optimizing input question and optional instructions sent to a pre-trained model, potentially fine-tuned, without re-training it to improve the model's answer performance.
+\item [End-to-end QA VS pipeline of specialized tasks]: an end-to-end QA uses a single call to a model to answer, while a pipeline uses multiple calls, often to specialized models, to deliver final answer.
+\item [Multi-hop/Multi-step QA] is related to questions requiring reasoning over multiple pieces of evidence or multiple steps. It is often done after a question decomposition task or iteratively.
+\item [(Neural) Language model] is a statistical model that predicts the likelihood of a sequence of words, or tokens, in a language. It can understand and generate human-like text or code, perform various language-related tasks and even non-textual tasks leveraging skills extracted from text or code~\citep{haoLanguageModelsAre2022}.
+\item [(Language model with) Knowledge in/out of model] is the distinction between a model with knowledge explicitly encoded inside the model, and a model using external knowledge (e.g. search engine, data sources, program).
+\item [Standard/monomodal vs multimodal QA]: monomodal can search only one type of input (e.g text only) while multi-modal can search multiple types of input (text, image, video, sound...)
+\item [Human-in-the-loop] is the practice of involving humans in the process to cover a processing task of getting feedback for improving system or processing a task instead of a system. Most frequent technique is RLHF (reinforcement learning with human feedback).
+\item [Hallucinations] are confident generated responses including false information not justified by the model's training data. They are classified as extrinsic, when a model adds information that is not present in the source data, and intrinsic, when the model distorts information present in the source data into a factually incorrect representation~\citep{choubeyCaPEContrastiveParameter2022}.
+\item [Knowledge graphs (KG) \& ontologies] are structured representations of knowledge (ontologies for concepts, KG for real-world objects) enabling to link and reason over knowledge.
+\end{description}
+
+\subsection{Question answering typical pipeline}
+From question capture and refinement, to answer generation and knowledge capitalisation, question answering (QA) or complex question answering (CQA) pipeline can follow a variable number of steps depending on architecture and features. Some steps are explicit and well separated, some can be implicit and fused with others in the same model operation. However, we can identify most frequent steps and options. The "IBM DeepQA Architecture" (see figure~\ref{DeepQA Architecture}) seems a dated architecture compared to some current end-to-end neural language models but it defines clearly some major steps:
+%%    https://www.researchgate.net/profile/Ali-Allam-4/publication/311425566_The_Question_Answering_Systems_A_Survey/links/5845873808ae8e63e62862b1/The-Question-Answering-Systems-A-Survey.pdf
+\begin{figure}
+\includegraphics[width=\linewidth]{DeepQA.jpg}
+\caption{IBM DeepQA Architecture (2010)~\citep{ferrucciBuildingWatsonOverview2010} and CQA pipeline steps.}
+\label{DeepQA Architecture}
+\end{figure}
+
+\begin{enumerate}
+\item \textbf{Question understanding} and analysis, it can include question and context refine, parsing and understanding the question, context, and intent (for task identification). It can also embed a dialogue management to interact with the user and understand the conversation context and state.
+\item \textbf{Query construction} with optional \textbf{decomposition} of complex questions and multi-step queries.
+\item \textbf{Information retrieval (IR)} with optional knowledge base expansion - to add new knowledge to the system.
+\item (a) \textbf{Information extraction}, and (b) \textbf{evaluation, scoring, ranking, filtering}.
+\item \textbf{Answer generation}, natural language or defined format (e.g. language program, table, ...)
+\item \textbf{Feedback loop \& new knowledge capitalisation}: learning and improving from users and models feedback, plus storing linked and generated knowledge for improving answering skills.
+\end{enumerate}
+This process is only a baseline as complex questions answering can be a dynamic and progressive process, and can also be collaborative.
+Architectures of QA systems have importantly evolved recently with the arrival of transformers architectures and large language models. We first quickly review typical modular architectures, then the transformers with large language models and, later, the hybrid architectures. Will we go to gigantic knowledge models or more complex and composed architectures, maybe in network of smaller specialized models and other components ?
+
+\subsection{Modular approaches before transformers}    
+Typical architectures of QA systems before transformers could be grouped in the following complementary approaches/methods:
+\begin{description}
+    \item [Rule-based approach/methods] - These systems are based on a set of predefined rules that the system uses to answer questions.
+    \item [Retrieval-based approach/methods] - These systems use a search engine or database to find answers to questions.
+    \item [Information extraction approach/methods] - These systems use natural language processing (NLP) to extract relevant information from text documents and often leverage information retrieval (IR) systems.
+    \item [Knowledge-based approach/methods] - These systems store and retrieve information from a knowledge base.
+    \item [Case-based reasoning systems] - These systems use a database of previously solved problems to find solutions to new questions.
+    \item [Hybrid architectures] - The task oriented approaches below could sometimes be assembled (e.g. "IBM DeepQA Architecture, 2010"~\citep{ferrucciBuildingWatsonOverview2010}) for delivering a more advanced QA system and integrated with natural language models for understanding initial question for example.
+\end{description}
+
+\subsection{LLM with transformers breakthrough...}
+The emergence of deep feedforward layers, allowed to learn and infer a wide range of relationships with inputs; Then the raise of attention mechanism, allowed a model to selectively focus on certain parts of the input for better understanding and contextualizing. It led to language models surpassing humans on certain tasks. We can group current transformer based language models in three types~\citep{lewisNaturalLanguageProcessing2022}:
+\begin{description}
+    \item [Encoders only (e.g. BERT~\citep{devlinBERTPretrainingDeep2019}, RoBERTa~\citep{liuRoBERTaRobustlyOptimized2019})] encode a sequence of text (input) into a rich representation (vector embedding) which can be used by a task-specific model or function for classification, named entity recognition (NER), semantic similarity measure used in IR and QA or topic modeling. This is often called bidirectional attention, meaning they take the context of the words before and after the target word into account, which allows them to perform better on some tasks. BERT is one of the most well-known encoder-only models, and RoBERTa is an optimized version of BERT.
+    \item [Decoders only (e.g. GPT-3~\citep{zongSurveyGPT32022})] complete an input sequence (mostly text prompt) by the most probable next words (generation). This left to right generation can be very rich like writing a story or answering a question (e.g. used by ChatGPT). The input prompt can be formatted with appropriate instructions (prompt \& instructions engineering) to use the generated text as a task-specific model (e.g. classification, summarization, decomposition...). This is often called causal or autoregressive attention (non-causal decoders exist but has limited adoption in the literature). GPT family of models are one of the most well-known decoder-only models, known for their ability to generate human-like text.
+    \item [Encoders-Decoders (e.g. T5~\citep{raffelExploringLimitsTransfer2020}, BART~\citep{lewisBARTDenoisingSequencetoSequence2019}, BigBird~\citep{zaheerBigBirdTransformers2021})] encode the input text and decode it into a different form (text-to-text mapping), they are suitable for translation, summarization, or generating a response to a question. They consist of both an encoder and a decoder, where the encoder generates a fixed-size representation of the input text, and the decoder generates the output text. T5 is known for its multi-tasks ability, BART is mainly used for text generation and summarization, and BigBird allows to process much longer sequence of texts than other models.
+\end{description}
+
+\section{Analyzing: complexity, skills, tasks, and limits}\label{sec_skills_tasks_limits}
+In order to design a system able to answer complex questions, we first propose to analyze targeted questions complexity, identify required skills and tasks, as well as limitations to handle. This analysis allows to properly define the problem to be solved gradually and constraints to integrate in order to compose among the different complementary solving approaches further reviewed (training: section \ref{sec_training}, hybridization: section \ref{sec_hybridLLMpatterns}, prompting: section \ref{sec_prompting}, experience: section \ref{sec_ImprovementLoop_and_kg_capitalization}). This analysis could also be done "a posteriori" if a system fails to properly answer in order to better characterize or identify the causes.
+
+\subsection{What are complex questions ?}\label{CQA_definition}
+\citet{ullrichUsingBloomTaxonomy2021} proposes to use Bloom taxonomy to assess question complexity by combining required knowledge dimension (from easier to harder: factual, conceptual, procedural, meta cognitive) and cognitive process dimension (from easier to harder: remember, understand, apply, analyze, evaluate). \newline
+We think that a question complexity is also highly dependent on users or systems expertise involved in the response. We propose to also assess it by identifying main difficulties and efforts required by a LLM to solve target questions:
+\begin{itemize}
+    \item \textbf{skills and knowledge} required (section \ref{sec_skills}): simple memorization or higher reasoning (e.g. evaluation, constraints solving, deduction, induction, abduction), single or multiple logic; prior domain-specific knowledge, retrieve and process one easily accessible information or multiple rare information, reason over long distance between information to combine; expected answer format and explanation; ambiguity and nuances to handle (especially in non-factoid questions).
+    \item \textbf{new or challenging tasks} to solve like specific decomposition, and multi-step resolution (section \ref{sec_tasks}).
+    \item major \textbf{limitations of LLM to overcome} in this context (sections \ref{sec_LLMlimits} and \ref{sec_limits_and_research}).
+    \item difficulty to evaluate skills, knowledge and tasks performance (section \ref{sec_evaluation}) with \textbf{existing metrics \& sufficient datasets} or to create.
+    \item \textbf{training effort} to develop those skills \& tasks (section \ref{sec_training}) in a model, or in different \textbf{hybrid models} (section \ref{sec_hybridLLMpatterns}) and, align or train, end-to-end to solve questions in a coherent way.
+    \item difficulties to \textbf{engineer prompt questions} on trained models such as additional context and instructions required (section \ref{sec_prompting}), and then \textbf{decompose questions down to solvable tasks}.
+    \item progressive \textbf{reinforcement and knowledge capitalization}, or system's experience learning, to solve targeted complex questions (section \ref{sec_ImprovementLoop_and_kg_capitalization}).
+\end{itemize}
+
+\afterpage{%
+  \clearpage
+\begin{landscape}
+
+\vspace*{\fill}
+\begin{figure}[ht]
+\centering
+\includegraphics[width=1.0\linewidth]{CQA_Taxonomy.pdf}
+\caption{QA/CQA taxonomy links skills, tasks and limits of LLM to complementary resolving strategies (training, hybridization, prompting and reinforcement), as well as evaluation datasets \& metrics (skills inspired by \citet{rogersQADatasetExplosion2022}) - Each concept is provided with reference to section in this paper.}
+\label{CQA_Taxonomy}
+\end{figure}
+\vspace*{\fill}
+
+\end{landscape}
+  \clearpage
+}
+
+\subsection{Skills}\label{sec_skills}
+
+Considering the QA/CQA standard pipeline presented in introduction, a task of question answering requires different complementary skills in the domain of machine reading comprehension (MRC), information retrieval (IR), and also knowledge capitalisation and reinforcement.
+
+In this section, we leverage the QA skills taxonomy from \citet{rogersQADatasetExplosion2022} which we augmented with the "Experience learning" skill concept (see figure \ref{CQA_Taxonomy}), important for a CQA system. This later has shown to be a major skill to enable calibration or alignment to intent and values, and continuous improvement by usage~\citep{baiConstitutionalAIHarmlessness2022, chiuKnowledgeGroundedReinforcementLearning2022}.
+
+\subsubsection{\textbf{Interpreting \& manipulating input}}
+Like humans, machines should capture the meaning of the individual constituent elements of the input (words, numbers) and the global syntax and semantic, and manipulate them in the context of the task and in respect to the language and other shared system (e.g. mathematics). This  requires a set of skills, including: 
+\begin{itemize}
+    \item \textbf{Linguistic skills} - e.g. recognizing word categories and meaning, translating, understanding the context, relationships and implications of words and phrases; it might be decomposed into syntactic, grammatical, and semantic skills.
+    \item \textbf{Numeric skills} - e.g. performing calculations, dealing with precise and imprecise numbers.
+    \item \textbf{Operation on sets} - e.g. selecting, combining, intersection, operating on elements of a set of input (e.g. Alice, Bob and Charlie are in the room. Bob goes out. Who are the persons in the room?);
+\end{itemize}
+
+\subsubsection{(Information) \textbf{Retrieval}}
+It can be summarized as determining whether an answer exists, if yes, to look for it and provide most useful information :
+\begin{itemize}
+    \item \textbf{Answerability}: ability to identify whether a given query is a valid question and can be answered with provided information.  Optionally identify additional information to correctly answer.
+    \item \textbf{Where to look for the required knowledge?}: ability to identify the correct source of knowledge to get the best answer.  It the required knowledge for the answer is in the question, process is to extract the good piece of information. Otherwise, we need to know if it is a precise fact or non factual, then where to look for it. Additionally, a proper answer may require common sense and potential domain information.
+\end{itemize}
+
+\subsubsection{\textbf{Inference type \& reasoning} (Generation)}
+Inference / reasoning:  it can be summarized as the process of drawing logical conclusions from available facts or other premises. Inference is used in language models to understand a text, and generate responses to questions posed. There are three main aspects to inference in language models:
+\begin{itemize}
+    \item \textbf{Inference Strength}: could draw general conclusions from specific facts (inductive), or draw specific conclusions from general facts (deductive).
+    \item \textbf{Inference Mechanism}: draw conclusions from a comparison of two or more elements (analogy), draw conclusions based on the best explanation for a given situation (best explanation)...
+    \item \textbf{Inference Direction}: conclusion follows necessarily from the premises or from general to specific (Deductive), conclusion is reached through a process of elimination or reasoning from the specific to the general (abductive).
+\end{itemize}
+
+\subsubsection{\textbf{World modeling}} \citep{liLanguageModelingLatent2022}
+It can be summarized as  the ability to understand and make decisions based on the understanding of the world. It is a complex type of question answering skill that requires understanding of physical and mental states, as well as relationships between them. It involves the following categories: 
+\begin{itemize}
+    \item \textbf{Spatial} reasoning: understand and reason about objects and their locations in space. 
+    \item \textbf{Temporal} reasoning: understand and reason about event order, event attribution to time, script knowledge, event duration, temporal commonsense knowledge, factoid/news questions with answers where the correct answers change with time, temporal reasoning in multimodal setting.
+    \item \textbf{Belief states}: understand and track beliefs, opinions, and mental states.
+    \item \textbf{Causal relations}: understand and reason about the cause-and-effect relationships between events.
+    \item \textbf{Other relations between events}: understand and reason about relationships between events, such as sub-events, conditionals, and counterfactuals.
+    \item \textbf{Entity properties and relations}: properties of characters, physical properties, numerical properties, social interactions.
+    \item \textbf{Tracking entities}: understand and track entities over time, across locations, in co-reference chains.
+\end{itemize}
+
+\subsubsection{\textbf{Decomposing, multi-step}}
+Complex questions require decomposition down to solvable tasks and resolution in the best chain of action steps. \textbf{Simple} question may use multi-step resolution but all necessary knowledge are located in one place. \textbf{Complex} questions rely on several knowledge, necessitating the combination of information across sentences, paragraphs, documents, or other modalities. It also includes questions that require a combination of context and world knowledge. It can be even broader than simply combining several facts, and could also be taken as combining the “skills” from different dimensions and different methods of resolution. This decomposition and multi-step resolution can be resolved inside a model having these skills and all other necessary for the question, or distributed across multiple components.
+
+\subsubsection{\textbf{Experience learning}}
+A complex QA system should be able to permanently improve itself through: \textbf{reinforcement} by aligning answers to target intent, format, method, values expectations with solutions which could vary with requester person (e.g. knowledge, culture...) or system; \textbf{capitalization} by integrating new knowledge generated or linked in order to improve knowledge enabling to solve more complex problems. Experience skills   could be classified under meta-analysis in world modeling skills but it may not fully capture self-modeling, self-practice or  integration of external feedback, incremental learning towards a coherent optimization of all skills.
+
+\subsection{Tasks}\label{sec_tasks}
+A task of complex question answering could be solved in one inference task incorporating all the skills viewed in previous section, or subdivided in several sub-tasks, each with a set of skills and, maybe, different domains.
+
+\subsubsection{\textbf{Integrated (C)QA task}}
+In this case, the CQA system answers from question using only one inference in the model but could include multi-step reasoning inside the model. LLM (large language models) should therefore embed all the necessary skills and knowledge for interpretation \& manipulation, information retrieval, world knowledge, reasoning \& inference, decomposition \& multi-step resolution. If it is not the case, model should be further trained with adapted datasets to acquire those new skills and knowledge, or rely on task decomposition and LLM hybridation.
+
+The papers BIG~\citep{bigetal.ImitationGameQuantifying2022} and HELM~\citep{liangetal.HolisticEvaluationLanguage2022} provide a good overview of current limits of integrated task approach for QA/CQA (see also tables "[HELM] SOTA QA multi-metrics"(\ref{SOTA QA multi-metrics}) and "[BIG] QA complex QA tasks benchmark" (\autoref{Table [BIG] QA complex QA})).
+
+\begin{table}[!htp]\centering
+\newcolumntype{T}{>{\tiny}c} % define a new column type for \tiny
+\captionsetup{skip=2pt} % Reduce space between caption and table
+\caption{[BIG] QA complex tasks benchmark (January 2013), focus on decomposition, multi-step, context length, truthful, programmatic, summarization - \tiny{Each task is compared between "best model vs average human vs expert human" on the same given metric specified in the 2nd column: BLEU and Exact (string) match are explained in section \ref{sec_standard_metrics}, "multiple choice grade" is a weighted multiple choice accuracy between 0-100 for a set of targets and scores for each potential target are specified, "normalized aggregate score" is an aggregation of various metrics on a same baseline}}\label{Table [BIG] QA complex QA}
+\scriptsize
+\begin{tabular}{l T V{1cm}V{1cm}V{1cm}MV{1cm}V{1cm}V{1cm}}
+\toprule
+task & metric & avg human & max expert & max model & model conf & delta model / avg h. & delta model / expert \\\midrule
+auto\_categorization &BLEU &1 &7 &16 &PaLM-535B-5shots & \textbf{1500\%} & \textbf{129\%} \\
+matrixshapes &exact (string) match &4 &60 &35 &PaLM-535B-2shots & \textbf{785\%} &-41\% \\
+factuality\_of\_summary &normalized aggregate score &12 &25 &51 &\setstretch{0.3}BIG-G T=0-137B-0shots & \textbf{321\%} & \textbf{102\%} \\
+gre\_reading\_comprehension &multiple choice grade &39 &80 &68 &PaLM-535B-1shots & \textbf{74\%} &-15\% \\
+gem &normalized aggregate score &23 &30 &39 &PaLM-535B-1shots & \textbf{71\%} & \textbf{31\%} \\
+minute\_mysteries\_qa &normalized aggregate score &4 &31 &7 &PaLM-535B-0shots & \textbf{68\%} &-78\% \\
+misconceptions &multiple choice grade &64 &90 &81 &PaLM-535B-2shots & \textbf{27\%} &-10\% \\
+\textbf{strategyqa} &multiple choice grade &63 &90 &74 &PaLM-535B-5shots & \textbf{17\%} &-18\% \\
+fact\_checker &multiple choice grade &72 &89 &84 &PaLM-535B-5shots & \textbf{17\%} &-6\% \\
+understanding\_fables &multiple choice grade &67 &100 &77 &PaLM-535B-2shots & \textbf{15\%} &-23\% \\
+question\_selection &multiple choice grade &48 &100 &55 &PaLM-535B-1shots & \textbf{14\%} &-45\% \\
+vitaminc\_fact\_verification &multiple choice grade &63 &100 &71 &PaLM-535B-2shots & \textbf{12\%} &-29\% \\
+logic\_grid\_puzzle &multiple choice grade &40 &100 &44 &PaLM-535B-2shots & \textbf{9\%} &-56\% \\
+analytic\_entailment &multiple choice grade &81 &100 &86 &PaLM-535B-5shots & \textbf{6\%} &-14\% \\
+what\_is\_the\_tao &multiple choice grade &79 &100 &83 &PaLM-535B-5shots & \textbf{5\%} &-17\% \\
+\textbf{authorship\_verification} &multiple choice grade &49 &90 &50 &\setstretch{0.3}BIG-G T=1-137B-0shots & \textbf{3\%} &-44\% \\
+misconceptions\_russian &multiple choice grade &65 &100 &59 &PaLM-535B-5shots &-9\% &-41\% \\
+boolean\_expressions &multiple choice grade &79 &100 &69 &\setstretch{0.3}BIG-G T=0-137B-0shots &-13\% &-32\% \\
+chess\_state\_tracking &normalized aggregate score &57 &97 &48 &PaLM-535B-0shots &-16\% &-51\% \\
+evaluating\_information\_ess.  &multiple choice grade &39 &70 &28 &\setstretch{0.3}BIG-G sparse-9B-0shots &-28\% &-60\% \\
+hhh\_alignment &multiple choice grade &75 &75 &51 &PaLM-535B-5shots &-32\% &-32\% \\
+\textbf{web\_of\_lies} &multiple choice grade &81 &100 &54 &\setstretch{0.3}BIG-G T=1-137B-0shots &-33\% &-46\% \\
+\textbf{truthful\_qa} &normalized aggregate score &64 &96 &42 &\setstretch{0.3}BIG-G T=0-137B-0shots &-35\% &-56\% \\
+spelling\_bee &normalized aggregate score &5 &9 &3 &\setstretch{0.3}BIG-G T=1-137B--1shots &-36\% &-64\% \\
+\textbf{multistep\_arithmetic} &normalized aggregate score &10 &25 &6 &\setstretch{0.3}BIG-G T=0-137B-0shots &-43\% &-77\% \\
+python\_programming\_challenge &normalized aggregate score &2 &39 &1 &\setstretch{0.3}BIG-G T=1-137B-0shots &-60\% &-98\% \\
+\textbf{long\_context\_integration} &normalized aggregate score &5 &17 &2 &GPT-200B-0shots &-62\% &-89\% \\
+tracking\_shuffled\_objects &multiple choice grade &65 &100 &24 &PaLM-535B-5shots &-63\% &-76\% \\
+checkmate\_in\_one &exact string match &8 &70 &2 &PaLM-535B-2shots &-80\% &-98\% \\
+ascii\_word\_recognition &exact string match &86 &100 &15 &PaLM-535B-2shots &-83\% &-85\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+\subsubsection{\textbf{CQA tasks decomposition and primitives}}
+Answering by decomposition could be grouped in those different categories:
+\begin{itemize}
+    \item[--] \textbf{Standard sub-tasks} include intent detection, word sense disambiguation, entity recognition (NER) and linking, topic classification, sentiment classification, information extraction, fact retrieval, ranking, and summarization, including query focused summarization...
+    \item[--] \textbf{Advanced sub-tasks} include multi-hop \& decomposition, domain oriented tasks, sources \& fact checking, code generation \& program synthesis, causal explanation (or possible consequences), temporal explanation...
+    \item[--] \textbf{External sub-tasks} leverage resources out of model like program synthesis~\citep{droriNeuralNetworkSolves2022}, using a solver...
+\end{itemize}
+
+Wu et al~\citep{wuAIChainsTransparent2022} proposes a taxonomy of \textbf{primitive tasks in decomposed and chained LLM} which could be applicable to CQA:
+\begin{description}
+    \item[--] \textbf{Validate and categorize input} such as \textbf{classification} which assigns the input to categories. Most useful for branching logic and validation (e.g. is the question answerable?).
+    \item[--] \textbf{Gather additional information} from the LLM such as \textbf{Factual Query} to ask LLM for a fact, {Generation} to ask LLM to do some creative “hallucination” on the input, \textbf{Ideation} to ask a list of ideas or examples.
+    \item[--] \textbf{Re-organize input} such as \textbf{Information extraction} from the context, \textbf{Rewriting (1-1 mapping)} input to more machine-readable formats (e.g. JSON to natural language) or other usage (e.g. translation), \textbf{Split Points (1-N mapping)} for splitting contexts, digging concepts, {Compose Points (N-1 mapping} to  synthesise, reverse operation of decomposition like merge multiple results back together.
+\end{description}
+
+\subsubsection{\textbf{CQA tasks hybrid program decomposition examples}}
+To better illustrate how CQA tasks could be simply decomposed between a LLM and an external software module to better solve complex problems, we invite you to see how: university level math problems (CQA) can be solved by splitting the task between a LLM and a Python language interpreter~\citep{droriNeuralNetworkSolves2022}, physical reasoning question can be solved by splitting the task between a LLM and a physics engine~\citep{liuMindEyeGrounded2022}.
+Those solutions design can be extrapolated to many complex QA challenges by looking into the section later about "hybrid LLM patterns"(section \ref{sec_hybridLLMpatterns}). Each of these patterns can be combined to split sub-tasks of complex problem to leverage most adapted module for the task by ensuring necessary context is provided wherever needed.
+
+\subsection{LLM limits}\label{sec_LLMlimits}
+Scaling up language models has been shown to predictably improve performance\citep{weiEmergentAbilitiesLarge2022} on a wide range of downstream tasks. The HELM~\citep{liangetal.HolisticEvaluationLanguage2022} and BIG~\citep{bigetal.ImitationGameQuantifying2022} studies show that state-of-the-art on most scenarios are led by those very larges models but still lack on different sides (e.g. fairness, robustness across tasks \& domains, reasoning). Complex question answering are even more demanding and require to push further the limits. Many additional components are used or investigated to face limitations of those models by hybridation with LLM. For example, ChatGPT and InstructGPT~\citep{baiTrainingHelpfulHarmless2022} added reinforcement learning with human feedback to its pre-trained large language model to highly improve~\citep{mahowaldDissociatingLanguageThought2023} their answer performance (e.g. calibration, human expectation alignment). Therefore we decided to cover in this study the improvement of the language model itself (see next section) and the hybridation patterns which can overcome different limits of base models (below).
+Those different limits or challenges have been identified in our systematic review, and we linked them to different potential solutions presented in next section.
+
+\vspace{-4mm} % reduce the vertical space by 4mm
+{
+\begin{longtable}{p{0.7\linewidth} >{\tiny}p{0.25\linewidth}}
+\label{Table2LLMArchPatterns}\\
+%\multicolumn{2}{c}{LLM architectural pattern}. \\\midrule
+
+Limitation & Potential solutions (see also \autoref{sec_limits_and_research}) \\\midrule
+
+\textbf{Adaptating and updating} - adapting models to specific domains and tasks, and ensuring they stay updated with new knowledge
+&
+    Hybridization: \ref{HP2}, \ref{HP3}, \ref{HP5}, \ref{HP6}, \ref{HP18}; Training: \ref{sec_pretraining_transfert}, \ref{sec_supervisedtraining_transfer}, \ref{sec_supervisedtraining_instructions}; Reinforcement/experience: \ref{sec_ImprovementLoop_and_kg_capitalization};
+    Prompting: \ref{sec_prompting}.
+\\
+%\midrule
+
+\textbf{Bias}~\citep{liangetal.HolisticEvaluationLanguage2022} - mitigating biases, especially those related to race, gender, and religion, in model outputs
+&
+    Hybridization: \ref{HP9}, \ref{HP18}.
+    Reinforcement/experience: \ref{sec_ImprovementLoop_and_kg_capitalization}.
+\\   
+
+\textbf{Scalability}~\citep{liangetal.HolisticEvaluationLanguage2022} - efficiently scaling models for training and inference while managing computational resources
+&
+    Hybridization: \ref{HP5}, \ref{HP12}, \ref{HP17}.
+    Training: \ref{sec_PETtraining}, \ref{sec_improvetraining}.
+\\   
+
+\textbf{Question context improvement} - enhancing context understanding through clarification questions, question expansion, and dialog.
+&
+    Hybridization: \ref{HP13}, \ref{HP3}.
+    Prompting: \ref{sec_prompting}.
+    Reinforcement/experience: \ref{sec_ImprovementLoop_and_kg_capitalization}.
+\\
+
+\textbf{Question decomposition strategy} - breaking down complex questions into simpler sub-questions, enabling multi-hop/step reasoning and action design.
+&
+    Prompting: \ref{sec_prompting}.
+    Hybridization: \ref{HP4}, \ref{HP10}.
+    Reinforcement/experience: \ref{sec_ImprovementLoop_and_kg_capitalization} to learn specific decomposition.
+\\
+
+\textbf{Reasoning}~\citep{rogersQADatasetExplosion2022} - incorporating higher logical reasoning, causality, and learning from code to improve problem-solving capabilities. Those reasoning capabilities could be specific and added at inference time.
+&
+    Hybridization: \ref{HP3}, \ref{HP7}, \ref{HP8}, \ref{HP14}, \ref{HP15}.
+    Training: \ref{sec_supervisedtraining_multitask}, \ref{sec_pretraining_program}.
+\\
+
+\textbf{Alignment to human expectation \& values}~\citep{baiTrainingHelpfulHarmless2022} - ensuring models align with human expectations and values while managing trade-offs and cultural differences.
+&
+    Reinforcement/experience: \ref{sec_ImprovementLoop_and_kg_capitalization}.
+    Hybridization: \ref{HP9}, \ref{HP17}.
+    Training: \ref{sec_supervisedtraining_active}, \ref{sec_supervisedtraining_instructions}.
+\\
+
+\textbf{Hallucination~\citep{jiSurveyHallucinationNatural2022} prevention, veracity, explainability and safety} - reducing hallucination, ensuring answer accuracy, providing confidence and explanations, and maintaining security in critical domains.
+&
+    Reinforcement/experience: \ref{sec_ImprovementLoop_and_kg_capitalization}.
+    Hybridization: \ref{HP9}, \ref{HP11}.
+    Training: \ref{sec_supervisedtraining_multiview}, \ref{sec_improvetraining}...
+\\
+
+\textbf{Long form question answering handling} - handling long context inputs, addressing long-term dependencies in reasoning, and summarizing multi-document/sources. Most LLM are designed with important limitation in input and output lengths impacting size of input knowledge, reasoning length dependencies, answer size.
+&
+    Hybridization: \ref{HP4}, \ref{HP5}, \ref{HP6}, \ref{HP10}, \ref{HP14}.
+\\
+
+\textbf{Multi-modal search and reasoning} - many knowledge and world model cannot be captured with text only and requires integration with tables, and images in understanding and answering.
+&
+    Hybridization: \ref{HP16}...
+    Training: \ref{sec_supervisedtraining_meta}, \ref{sec_pretraining_program}, \ref{sec_supervisedtraining_multitask}...
+\\
+
+\textbf{Time dimension} - handling time-based reasoning, knowledge update, and understanding sequences or workflows.
+&
+    Hybridization: \ref{HP9}, \ref{HP19}.
+\\
+
+\textbf{Data sensitivity protection} - utilizing and protecting sensitive data, such as private, intellectual property, organizational, or governmental sensitive data.
+&
+    Hybridization: \ref{HP5}, \ref{HP6};
+    Reinforcement/experience: \ref{sec_ImprovementLoop_and_kg_capitalization}.
+\\
+
+\textbf{Experience / knowledge and skills capitalization}~\citep{openaiGPT4TechnicalReport2023} - like a human, it should be able to continually improve itself by experience on skills and knowledge using implicit and explicit feedback.
+&
+    Reinforcement/experience: \ref{sec_ImprovementLoop_and_kg_capitalization};
+    Hybridization: \ref{HP3}, \ref{HP9}, \ref{HP12}, \ref{HP13}, \ref{HP18}.
+\\
+\end{longtable}}
+
+
+\section{Evaluating: metrics, cost functions, datasets}\label{sec_evaluation}
+The performance of language models on question answering can vary greatly depending on factors such as the domain, question complexity, necessary subtasks, bias, fairness, toxicity, and human expectations. A large language model may perform well overall but struggle with some type of questions (see table "[HELM] SOTA QA multi-metrics(\ref{SOTA QA multi-metrics})" and "[BIG] QA complex QA tasks benchmark(\ref{Table [BIG] QA complex QA})" or areas of evaluation, while a model that is specialized for certain questions or domains may perform poorly on more general tasks. The following section will examine different metrics and datasets used for evaluating and training these models.
+\subsection{Metrics \& performance SOTA}\label{sec_metricsSOTA}
+
+\subsubsection{Standard metrics}\label{sec_standard_metrics}
+There are a variety of metrics ~\citep{zhaoDenseTextRetrieval2022} that can be used to evaluate the performance of QA models, each with its own strengths and weaknesses. In this section, we will discuss some of the most common metrics used to evaluate QA models:
+\begin{description}
+\item [Recall@k] Measures the proportion of relevant answers retrieved by the model among the top k answers. It is a measure of the model's ability to find all the relevant answers, regardless of their position in the ranking. The main weaknesses are that it does not take into account the position of the relevant answer in the ranking and does not penalize irrelevant answers that appear in the top k.
+\item [Accuracy@k] Measures the proportion of correct answers among the top k answers returned by the model. It is a measure of the model's ability to return the correct answer and can be used to evaluate the performance of a model in a closed-domain QA task. As with recall@k, the main weaknesses are that it does not take into account the position of the correct answer in the ranking and does not penalize irrelevant answers that appear in the top k.
+\item [nDCG] Normalized Discounted Cumulative Gain, a measure of ranking quality that takes into account the relevance and position of answers. It is often used in information retrieval and web search to measure the effectiveness of a ranking algorithm. The main weaknesses are that it does not take into account the number of irrelevant answers in the ranking
+\item [MAP] Mean Average Precision, a measure of the quality of a set of ranked answers. It is a commonly used metric for evaluating QA models in open-domain tasks, where the model must return a list of possible answers. its main weakness is that it does not take into account the position of the correct answer in the ranking.
+
+\afterpage{%
+  \clearpage
+\begin{landscape}
+  \begin{figure}[ht]
+    \centering
+    \includegraphics[width=\linewidth]{Table1QA_and_IR.jpg}
+    \caption{[HELM] SOTA QA multi-metrics (December 2022)}
+    \label{SOTA QA multi-metrics}
+  \end{figure}
+\end{landscape}
+  \clearpage
+}
+
+\item [MRR] Mean Reciprocal Rank, a measure of the quality of a set of ranked answers, with a higher value indicating better performance. It is often used in information retrieval and web search to measure the effectiveness of a ranking algorithm. Weakness: It only considers the position of the first correct answer in the ranking.
+\item [CWS] Cross-entropy word-level perplexity, a measure of the model's ability to predict the next word in a sentence. It is often used to evaluate the quality of the language model. Weakness: it cannot be used for answer quality and perplexity is not well correlated with a language model tasks performance.
+\item [F1 (Macro, Micro)] F1 score, a measure of a model's accuracy that takes into account both precision and recall. It is used to evaluate the model's performance in a classification task. F1 macro averages the per-class F1 scores, used for imbalanced datasets, F1 micro computes metrics globally by counting total true positives, false negatives, and false positives, used for balanced datasets. Weakness: It does not take into account the relative importance of false positives and false negatives.
+\item [EM] Exact Match, a binary metric that measures whether the model's answer is exactly the same as the reference answer. It is often used in closed-domain QA tasks where the correct answer is a single word or phrase. Weakness: It is not able to capture the semantic similarity between the model's answer and the reference answer.
+\item [Jacard similarity] measures similarity between two sets of data, based on the size of the intersection divided by the size of the union of the sets. Weakness: It does not take into account the overall size of the sets, which can lead to errors in similarity measurements.
+\item [Cosine similarity] measures similarity between two non-zero vectors based on the cosine of the angle between them. Weakness: It is sensitive to the magnitude of the vectors (e.g. zero), which can lead to errors in similarity measurements.
+\item [BLEU] Bilingual Evaluation Understudy, a measure of the similarity between a model's answer and a reference answer. It is commonly used in machine translation and natural language generation tasks. Weakness: It does not take into account the meaning of the words (semantic similarity).
+\item [ROUGE] Recall-Oriented Understudy for Gisting Evaluation, a measure of the similarity between a model's answer and a reference answer. It is commonly used in natural language summarization tasks. Additionally to BLEU, it takes into account the longest common sequence (LCS). Weakness: it does not take into account the meaning of the words (semantic similarity).
+\item [METEOR] Metric for Evaluation of Translation with Explicit ORdering, a measure of the similarity between a model's answer and a reference answer. It is similar to BLEU, but takes into account word alignment and synonymy. Weakness: It is computationally expensive and can be sensitive to the reference translations used.
+\item [Human evaluation] human judges provides a subjective measure of the quality of the model's answers. It is considered the gold standard for evaluating QA models. Weakness: it is time-consuming and can vary greatly depending on the individual evaluators and their level of expertise.
+\end{description}
+
+\subsubsection{New metrics for free-form/natural language QA}
+In the context of free-form QA standard metrics limits question complexity~\citep{chenEvaluatingQuestionAnswering2019} and do not capture many good answers semantically close. So new metrics have been proposed using PLM having higher correlations to human expectations:
+\begin{description}
+\item [BERTScore]~\citep{zhangBERTScoreEvaluatingText2020} compute a semantic similarity score through a sum of cosine similarities between the contextualized embeddings of answer tokens and those of the reference text.
+\item [BARTScore]~\citep{yuanBARTScoreEvaluatingGenerated2021} similar to BERTScore, it uses the more recent model BART pre-trained using a more robust technique (denoising autoencoding). A BARTScore variant adds faithfulness in the measure.
+\item [MAUVE]~\citep{pillutlaMAUVEMeasuringGap2021}: similar to BERTScore and add divergence frontiers. It claims to better correlate with human judgement and identify quality differences.
+\item [T5Score] this hybrid metric~\citep{qinT5ScoreDiscriminativeFinetuning2022} based on mT5 model is not yet compared to date with MAUVE but is globally more robust than BERTScore and BARTScore.
+\end{description}
+
+However the paper "\textit{On the Blind Spots of Model-Based Evaluation Metrics for Text Generation}"~\citep{heBlindSpotsModelBased2022} (2022) highlights that all those PLM based metrics have flaws, they could assign a high likelihood to degenerate, repetitive text and could be insensitive to perturbations such as word order shuffling, negation, etc. So those blind spots should be taken in account to compose and eval~\citep{frisoniNLGMetricverseEndtoEndLibrary2022} the best metric for targeted complex QA application.
+
+\subsubsection{HELM multi-metrics and related findings}
+
+The Holistic Evaluation of Language Models (HELM~\citep{liangetal.HolisticEvaluationLanguage2022}), after referencing a large space of targeted use cases of LLM with a focus on QA, has identified 7 key categories of metrics required to create useful systems: accuracy, calibration, robustness, fairness, bias, toxicity, and efficiency (speed/cost). For accurate definition of theses categories of metrics please refer to HELM taxonomy~\citep{liangetal.HolisticEvaluationLanguage2022}. From data provided by this project, we created a new table (see \textbf{[HELM] SOTA QA multi-metrics} \ref{sec_metricsSOTA}) assessing best performing models on each of this metrics in QA and a systematic comparison with the current global best performer (REF). We can see that performance of models are unequal and even best performer is not the best choice depending on metrics preference regarding your needs. The best performing model in these metrics was InstructGPT from OpenAI~\citep{chiusanoOpenAIInstructGPTBrings2022}. A much smaller model (Anthropic-LM v4-s3) is close to the leading model which means it should cost much less to operate. The study observed a consistent gap between the current open models and non-open models in terms of accuracy. The gap has been reducing with the recent release of open models such as BLOOM (176B size)~\citep{bigscienceetal.BLOOM176BParameterOpenAccess2022} by BigScience, OPT (175B size)~\citep{zhangOPTOpenPretrained2022} by Meta, and GLM (130B size)~\citep{zengGLM130BOpenBilingual2022} by Tsinghua University. Study shows that instruction-tuning can provide a broad set of advantages in terms of accuracy, robustness, and fairness metrics.
+The relationship between accuracy and calibration depends on the scenario (task \& domain) and adaptation procedure, with some scenario showing trade-offs between accuracy and calibration.
+Across all scenarios, there is a strong correlation between accuracy, robustness, and fairness, but trade-offs where the most accurate model is not the most robust or fair.
+The study also found performance disparities in models when demographic metadata is available, and low overall average biases and toxicity in model generations, but notes that targeted evaluations are needed to obtain a more detailed characterization.
+The study also found that there is not a strong trade-off between accuracy and efficiency, but as models become larger, accuracy improves but with higher training and inference cost. Only a subset of all models are on the accuracy-efficiency Pareto frontier for each scenario.
+There is no model leading on all metrics, QA performances also vary depending on the scenario (task \& domain) and model, so weighting or defining a decision tree among the 7 metrics then evaluating on target scenario is necessary for choosing your model.
+
+\subsubsection{Which metrics for "complex" QA?}
+
+Considering that complex QA is not well defined and answers highly depends on human expectations and values, we could not identify standard metrics in the literature. \citet{ullrichUsingBloomTaxonomy2021} proposes to use Bloom taxonomy to assess question complexity but does not offer a metric for measuring the relevance of answers to question. Metrics identified in previous section for free-form QA could be used when there is a gold/reference answer but shall be unstable considering that a good non-factoid answer can be semantically distance to gold answer. In this survey we aim to answer complex questions with the following characteristics: non-factoid, multi-step (requiring decomposition), multi-source of knowledge, higher order of reasoning questions. We could separately measure each skill of a language model on those characteristics to estimate the capacity to answer using decomposition. Using data from BIG bench, we created a summary evaluation of similar QA capacities (see figure \ref{Table [BIG] QA complex QA} [BIG] QA complex QA tasks benchmark). However, it will not assess the end-to-end capacity to provide a relevant final answer.
+Current systems like ChatGPT~\citep{haqueThinkThisMost2022} which solves some complex questions, with high differences in quality but a clear improvement curve, used human feedback~\citep{baiTrainingHelpfulHarmless2022} measurement (e.g. ranking/preference). A path investigated in papers WebGPT~\citep{nakanoWebGPTBrowserassistedQuestionanswering2022} and Constitutional AI paper~\citep{baiConstitutionalAIHarmlessness2022} is to build one or several Elo scores mapping human preferences competing on different axes (e.g. helpfulness vs harmlessness, compute efficiency) and maximizing frontiers.
+
+\subsubsection{Explainability, truthfulness, hallucination metrics}
+Recent conferences highlights the recurrent problem of hallucination~\citep{jiSurveyHallucinationNatural2022} and urge for explainability~\citep{leiterExplainableEvaluationMetrics2022, wiegreffeTeachMeExplain2021} and truthfulness~\citep{sopranoManyDimensionsTruthfulness2021, linTruthfulQAMeasuringHow2022} when delivering an answer.
+
+Conventional metrics measuring quality of writing including answers are not adequate for quantifying the level of hallucination~\citep{jiSurveyHallucinationNatural2022}. There are no mature metrics except human, first proposed are:
+\begin{itemize}
+    \item[--] statistical metrics mainly focus on lexical matching~\citep{jiSurveyHallucinationNatural2022} such as PARENT-T, bag-of-vectors sentence similarity (BVSS)~\citep{martindaleIdentifyingFluentlyInadequate2019}, Knowledge F1.
+    \item[--] model based metrics expect to handle more complex syntactic and semantic variations but mainly focus the generation compared to known gold answer:  FEQA~\citep{durmusFEQAQuestionAnswering2020}, QAGS~\citep{wangAskingAnsweringQuestions2020}, QuestEval~\citep{scialomQuestEvalSummarizationAsks2021} 
+    \item[--] human evaluation is the most commonly used method considering the currently imperfect automatic methods, most common usages are: (1) scoring: annotator rate the evaluation level out of a range; (2) comparing: annotator compares the output texts with baselines or ground-truth references.
+\end{itemize}
+
+We identified three types of explanation in the literature~\citep{wiegreffeTeachMeExplain2021}: highlights, free-text, and structured explanations. Those explanations could be intrinsic, explaining LM internal logic, or extrinsic, related to external sources and proofs. Therefore some metrics for the extrinsic explanation could be the number of sources, authority and reliability of sources. The intrinsic explanation could be measured trough their quality: compactness (short and coherent), sufficiency, comprehensiveness. Some indirect metrics could be related to the explaination task performance (source identification, fact-checking, coherence...). Explaination are usually evaluated on plausibility and faithfulness (coherent decision process), a common approach is to provide a chain of facts that detail the reasoning steps to reach an answer.
+
+For further details, we invite you to look into main references~\citep{wiegreffeTeachMeExplain2021, leiterExplainableEvaluationMetrics2022, jiSurveyHallucinationNatural2022, linTruthfulQAMeasuringHow2022}, the taxonomy in the table~\ref{Table Explainable Evaluation Metrics} "Taxonomy of existing explainable evaluation metrics"~\citep{leiterExplainableEvaluationMetrics2022}, and research topics in the further section "Hallucination \& credibility".
+
+\begin{table}[!htp]\centering
+\caption{Taxonomy of existing explainable evaluation metrics (extracted from table of \citet{leiterExplainableEvaluationMetrics2022})}\label{Table Explainable Evaluation Metrics}
+\begin{tabular}{llll}
+\toprule
+Work & Type & Method & Goals \\ \midrule
+Eval4NLP 2021: (Fomicheva et al. 2021) & Various \\
+Rubino, Fujita, and Marie (2021) & FI & Expl. by Design & AL \\
+Treviso et al. (2021) & FI & Various & AL \\
+SemEval 15/16: (Agirre et al. 2015, 2016) & Various \\
+Magnolini, Feltracco, and Magnini (2016) & CAl & Neural Networks & AL, E \\
+Yuan, Neubig, and Liu (2021) & CA & Generation Prob. & E \\
+Adversarial Attacks (Section 7) & EbE & Perturbations & D, E \\
+Kaster, Zhao, and Eger (2021) & EbS/CA & Linear Regression & D, E \\
+Sai et al. (2021) & CA & Perturbations & B, D, E \\
+\end{tabular}
+\caption*{%\small{
+The first column is the research work reference. The second is the explanation types: Concept Attribution (CA), Chunk Alignment (CAl), Feature Importance (FI), Explanation by Example (EbE) and Explanation by Simplification (EbS). The column “Goals” specifies which aspect is measured amongst (B)ias detection, (D)iagnosis, (E)xpressiveness and automated labeling(AL).}
+%}
+\end{table}
+
+\subsubsection{Domain/task matrix of performance}
+As performance of a model is unequal depending on knowledge domain and tasks~\citep{bigetal.ImitationGameQuantifying2022}~\citep{bigscienceetal.BLOOM176BParameterOpenAccess2022}~\citep{liangetal.HolisticEvaluationLanguage2022}, metrics assessment should be segmented per knowledge domain \& tasks within a matrix of comparison or database like in the 42 scenarios of HELM~\citep{liangetal.HolisticEvaluationLanguage2022}. 
+
+\subsection{Cost functions}
+Cross-entropy loss is the main objective function used for language models training. This function is adapted to each training objective (see sections \ref{sec_pretraining}, \ref{sec_supervisedtraining}, \ref{sec_PETtraining}, \ref{sec_improvetraining}) and some complex implementations can be done for knowledge distillation~\citep{wuOneTeacherEnough2021}. We will see in later section that it is common to add a reinforcement learning mechanism to align QA with human's expectations. In this case, the cost function will be hybrid by adding to the LM cross-entropy loss, the RL reward from the human supervisor\citep{ouyangTrainingLanguageModels2022}.
+        
+\subsection{Datasets}
+    To train and evaluate QA/CQA systems, a variety of datasets have been developed to cover main skills, tasks and knowledge which we reference in the following sections. They can assess current performance or train model from end-to-end question answering on different field and complexity, to specific logic or task, such as decomposition. We also cover the generation of datasets or improvement of existing ones to overcome quality issues or challenge to create domain or logic specific dataset.
+
+\subsubsection{QA/CQA text datasets (monomodal)}
+Major usage and datasets of QA/CQA focus on text sources:
+\begin{description}
+    \item [MS Marco] (Microsoft Machine Reading Comprehension Dataset): largest publicly available collection of relevance judgments, with 100,000 to 1,000,000 human generated QA, it has been central to the progress in neural IR/QA over the past several years (standard QA task, human performance: Rouge-L: 0.539, BLEU-1: 0.485)~\citep{liangetal.HolisticEvaluationLanguage2022, linPretrainedTransformersText2021}. 
+    \item [SQUAD] (Stanford  Question  Answering Dataset)~\citep{rajpurkarSQuAD1000002016}: 100,000+ questions posed by crowdworkers on a set of Wikipedia articles (human performance F1-score: 86.8\%).
+    \item [SQuAD v2]~\citep{rajpurkarKnowWhatYou2018}: add 50,000 unanswerable questions written adversarially by crowdworkers to look similar to answerable ones, to avoid training on unreliable guesses on questions (human performance F1-score: 86.8\%).
+    \item [TriviaQA]~\citep{joshiTriviaQALargeScale2017}: 650K question-answer-evidence triples. TriviaQA includes 95K question-answer pairs authored by trivia enthusiasts and independently gathered evidence documents, six per question on average, with distant supervision for answering. In comparison to other QA datasets in 2017, TriviaQA (1) had relatively complex, compositional questions, (2) considerable syntactic and lexical variability between questions and corresponding answer-evidence sentences, and (3) required more cross sentence reasoning to find answers.
+    \item [MMLU] (Measuring Massive Multitask Language Understanding)~\citep{hendrycksMeasuringMassiveMultitask2021}: 15,908 multiple-choice questions packages across 57 different tasks/datasets from subjects in the humanities, social sciences, hard sciences, and many others (unspecialized human performance accuracy: 34.5\%).
+    \item [NarrativeQA]~\citep{kociskyNarrativeQAReadingComprehension2017}: 46,765 human generated questions \& answers requiring understanding of stories (books, movie scripts) requiring summarization (human performance: Bleu-1:44.3, Bleu-4:18.9, Meteor:24.0, Rouge-L:57.1)
+    \item [NaturalQuestions] (closed-book, open-book)~\citep{kwiatkowskiNaturalQuestionsBenchmark2019}: 323,000 questions and documents (full dataset is 42Gb) consisting of real anonymized, aggregated queries from  Google search engine providing several long documents (e.g. 5 wikipeda pages) with a long answer (e.g. a paragraph) and a short answer (one  or  more  entities) if present on the pages, or marks null if no long/short answer is present (standard human performance: short answers F1: 57.5\%, long answer F1: 73.4\%).
+    \item [QuAC]~\citep{choiQuACQuestionAnswering2018}: >100,000 questions and their corresponding answers, based on dialogues between two persons where many questions requires understanding of the dialog (human performance F1: 80.9\%).
+    \item [Semi-structured datasets]: semi-structured data with \textbf{tables-and-text} are abundant on the web and in companies. \citet{wangSurveyTableandTextHybridQA2022} list the following datasets: HybridQA, OTT-QA, GeoTSQA, FinQA, TAT-QA, TAT-HQA, MultiHiertt. Semi-structured dataset could also be samples of JSON, XML....
+For \textbf{Structured, graph, table only or SQL like data} (not bundled with text), Rogers et al in "QA Dataset Explosion: A Taxonomy of NLP Resources for Question Answeringand Reading Comprehension"~\citep{rogersQADatasetExplosion2022} list the following datasets: WikiTableQuestions, TableQA, WikiSQL, WikiOps.
+    \item [CQA on knowledge bases datasets]: knowledge bases like ontologies and knowledge graphs offers valuables structured symbolic data (e.g. Wikidata, all resources from lod-cloud.net...) not always easy to query to non experts. \citet{lanComplexKnowledgeBase2022} list the following datasets: WebQuestions, ComplexQuestions, WebQuestionsSP, ComplexWebQuestions, QALD series, LC-QuAD, LC-QuAD 2.0, MetaQA Vanilla, CFQ, GrailQA, KQA Pro.
+    \item [Domain specific datasets] are numerous such MedQA~\citep{jinWhatDiseaseDoes2020} and TREC-COVID~\citep{voorheesTRECCOVIDConstructingPandemic2020} in medical sector with the later focusing on Covid19, or Qasper QA about research papers in NLP~\citep{dasigiDatasetInformationSeekingQuestions2021}.
+\end{description}
+
+\subsubsection{Multimodal QA datasets}
+When answering a question, humans build~\citep{yangEnhancingMultimodalMultihop2022} a coherent understanding of the world by actively exploring and  reasoning over multiple evidences (multi-hop) from different modalities (multimodal). Therefore, natural QA requires to leverage more than text (natural or structured) like images, videos, sensors... Training \& evaluation datasets are emerging like:
+
+\begin{description}
+    \item [Image QA datasets]: recent survey on visual QA and visual reasoning~\citep{zakariVQAVisualReasoning2022} provides a full list of images/visual question-answering (VQA) including reasoning tasks.
+    \item [Audio QA datasets]: DAQA~\citep{fayekTemporalReasoningAudio2019} on audio temporal reasoning, Clotho-AQA~\citep{lippingClothoAQACrowdsourcedDataset2022} on binary and multi-choice audio QA.
+    \item [Video QA datasets]: such as VideoQA~\citep{zhongVideoQuestionAnswering2022} for multi-domain, MovieQA~\citep{tapaswiMovieQAUnderstandingStories2016}/MovieFIB~\citep{maharajDatasetExplorationModels2017}/TVQA~\citep{leiTVQALocalizedCompositional2019}/KnowIT VQA~\citep{garciaKnowITVQAAnswering2019} for movies and shows, MarioQA~\citep{munMarioQAAnsweringQuestions2017} for games, PororoQA~\citep{kimDeepStoryVideoStory2017} for cartoons, TurorialVQA~\citep{colasTutorialVQAQuestionAnswering2020} for tutorials, CLEVRER~\citep{maoCLEVRERHumansDescribingPhysical2022} for physical \& causal reasoning.
+    \item [Multi-modal QA datasets]: MultiModalQA/MMQA~\citep{talmorMultiModalQAComplexQuestion2021} for multi-modal and multi-hop QA, WebQA~\citep{changWebQAMultihopMultimodal2022a} on web multi-modal QA, MAQA focus on negation learning and testing~\citep{liMAQAMultimodalQA2023}.
+    \item [Unified dataset format] is proposed by \citet{xieUnifiedSKGUnifyingMultiTasking2022} to unify multiple formats of different modality to enable training, inference and evaluation on multi-tasks and sources.
+\end{description}
+
+\subsubsection{Structured knowledge datasets}
+As seen in first section "QA/CQA text datasets (monomodal)", we can use structured (e.g. RDBMS, graph, table) or semi-structured (e.g. table and text, JSON samples) datasets to learn to extract factual information from structured knowledge sources in natural language. These datasets are also key to improve general or domain specific reasoning abilities as we see in further section \ref{reasoning_dataset}.
+
+\begin{table}
+\newcolumntype{T}{>{\tiny}c} % define a new column type for \tiny
+\captionsetup{skip=1pt} % Reduce space between caption and table
+\caption{Multi-hop QA datasets (data from \citet{maviSurveyMultihopQuestion2022}) - OD: Open domain context, MCQ A: multi-choice question with A being the number of possible answers}
+\label{TableMultiHopDatasets}
+\scriptsize
+\begin{tabular}{T T T T T T T T T}
+\toprule
+
+\makecell{Context \\ granularity} & Dataset & \makecell{Total context \\ of dataset} & Context source & Domain & \makecell{Number of \\ questions} & \makecell{Context \\ per question} & \makecell{Average \\ \# hops } & Answer type \\ \midrule
+Passage & HotpotQA & Wikipedia & Wikipedia & Generic & 112,779 & 10/0 ODa & 1/2/3 & Span \\ 
+\makecell{Table,\\ Passage} & HybridQA & \makecell{Tables: 13k \\ Passages: 293k} & \makecell{Wikitables, \\ Wikipedia} & Generic & 69611 & \makecell{1 table \\ passages} & 2/3 & Span \\ 
+Sentence & NarrativeQA & \makecell{Books: 783 \\ Movies: 789} & Multiple & Fiction & 46765 & 1 story & - & Generative \\
+Sentence & MultiRC & 871 & Multiple & Generic & 9872 & 1 passage & 2.37 & MCQ A : 5.44 \\ 
+Passage & Medhop & Medline & Medline & Medicine & 2508 & OD & - & MCQ A : 8.9 \\ 
+Passage & Wikihop & |Wikipedia| & Wikipedia & Generic & 51318 & OD & - & MCQ A1:19.8 \\ 
+Sentence & QASC & \makecell{Core: 928 \\ Other: 7672} & WorldTree & Science & 9980 & OD & 2 & MCQ A:8 \\
+Sentence & OpenBookQA & \makecell{Core: 1326 \\ Other: 6000} & WorldTree & Science & 5947 & OD & 2 & MCQ A:4 \\ 
+
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Decomposition and multi-hop datasets}
+\textbf{Decomposition} skill is required for CQA to break down complexity, and the related ability to resolve it in \textbf{multiple hops or steps}. Table \ref{TableMultiHopDatasets} shows typical multi-hop QA datasets~\citep{maviSurveyMultihopQuestion2022} with number of hops (steps) required to answer, question with context description and complexity, answer format type. BIG~\citep{bigetal.ImitationGameQuantifying2022} also provides advanced \textbf{decomposition and multi-step tasks datasets} in \ref{sec_BIG_Bench_datasets} such as strategyQA or multistep arithmetics.
+In order to improve problem specific decomposition and resolution ability, emerging datasets are providing reasoning decomposition examples to be provided in context like chain-of-thoughts (e.g. FLAN CoT dataset\citep{chungScalingInstructionFinetunedLanguage2022}). They are mainly used as examples to be provided with the question but could be also used at training. In a different manner, Galactica model was trained on scientific papers where step-by-step reasoning were wrapped between 2 tokens <WORK>\citep{taylorGalacticaLargeLanguage2022} both to explicitly learn reasoning and activate working memory which lacks in standard LLM.
+
+\subsubsection{Instructions (IFT, CoT) datasets}
+Instructions fine-tuning (IFT) are collection of written instructions used to teach model user intent declaration to solution logic \& format which can be model generated such as: Unnatural Instructions:~\citep{honovichUnnaturalInstructionsTuning2022}, large community effort Super-natural instructions~\citep{wangSuperNaturalInstructionsGeneralizationDeclarative2022}, small high-quality crafted~\citep{wangSelfInstructAligningLanguage2022}, converted existing large datasets to instructions~\citep{iyerOPTIMLScalingLanguage2023, weiFinetunedLanguageModels2022}, NaturalInstructions~\citep{mishraCrossTaskGeneralizationNatural2022}, PromptSource~\citep{sanhMultitaskPromptedTraining2022}.
+
+\subsubsection{Reasoning datasets}\label{reasoning_dataset}
+Dedicated datasets for specific reasoning abilities~\citep{qiaoReasoningLanguageModel2022} have been developed, or existing sets could be derived to take advantage of different abilities.
+\begin{enumerate}
+    \item spatial reasoning: bAbI~\citep{westonAICompleteQuestionAnswering2015}, SpartQA~\citep{mirzaeeSPARTQATextualQuestion2021}
+    \item temporal reasoning: event order (QuAIL~\citep{rogersGettingCloserAI2020}, TORQUE~\citep{ningTORQUEReadingComprehension2020}), 
+event attribution to time (TEQUILA~\citep{jiaTEQUILATemporalQuestion2018}, TempQuestions~\citep{jiaTempQuestionsBenchmarkTemporal2018}, 
+script knowledge (MCScript~\citep{ostermannMCScriptNovelDataset2018}), event duration (MCTACO~\citep{zhouGoingVacationTakes2019}, QuAIL~\citep{rogersGettingCloserAI2020}), 
+temporal commonsense knowledge (MCTACO~\citep{zhouGoingVacationTakes2019}, TIMEDIAL~\citep{qinTIMEDIALTemporalCommonsense2021}), 
+factoid/news questions with answers where the correct answers change with time (ArchivalQA~\citep{wangArchivalQALargescaleBenchmark2022}, SituatedQA~\citep{zhangSituatedQAIncorporatingExtraLinguistic2021}), temporal reasoning in multimodal setting [DAGA~\citep{fayekTemporalReasoningAudio2020}, TGIF-QA~\citep{jangTGIFQASpatioTemporalReasoning2017};
+    \item belief states: Event2Mind~\citep{rashkinEvent2MindCommonsenseInference2018}, QuAIL~\citep{rogersGettingCloserAI2020};
+    \item causal relations: ROPES~\citep{linReasoningParagraphEffects2019}, QuAIL~\citep{rogersGettingCloserAI2020}, QuaRTz~\citep{tafjordQuaRTzOpenDomainDataset2019}, ESTER~\citep{hanESTERMachineReading2021};
+    \item other relations between events: subevents, conditionals, counterfactuals etc. ESTER~\citep{hanESTERMachineReading2021};
+    \item entity properties and relations : 20 social interactions (SocialIQa~\citep{sapSocialIQaCommonsense2019}), properties of characters (QuAIL~\citep{rogersGettingCloserAI2020}), 
+physical properties (PIQA~\citep{biskPIQAReasoningPhysical2020}, QuaRel~\citep{tafjordQuaRelDatasetModels2018}), numerical properties (NumberSense~\citep{linBirdsHaveFour2020}); 
+    \item tracking entities: across locations (bAbI [arXiv:1502.05698]), in coreference chains (Quoref~\citep{dasigiQuorefReadingComprehension2019}, resources in the Winograd Schema Challenge family~\citep{sakaguchiWinoGrandeAdversarialWinograd2019}). 
+Arguably the cloze-style resources based on named entities also fall into this category (CBT~\citep{hillGoldilocksPrincipleReading2016}, CNN/DailyMail~\citep{hermannTeachingMachinesRead2015}, WhoDidWhat~\citep{onishiWhoDidWhat2016})
+\end{enumerate}
+
+\label{sec_BIG_Bench_datasets}
+\subsubsection{BIG bench: complex QA subtasks datasets} - The BIG-Bench is a benchmark consisting of 204 tasks and associated datasets on diverse problems from linguistics, childhood development, math, common-sense reasoning, biology, physics, social bias, software development, and other. Many of those tasks are related to QA and IR or could be a subtasks of a complex question anwering pipeline. We created the table \ref{Table [BIG] QA complex QA} illustrating such substasks (most representative are in bold) with associated metric, average human performance, top human expert performance, max state-of-the-art performance with the model name, and ratio between this model performance and human performance.
+
+\subsubsection{Explainable \& truthfulness QA datasets}
+The veracity and explainability of an answer is a significant challenge for language models where answers are mostly provided without evidence, logic, confidence/trust. Explainability can be trained by models or evaluated through different tasks like source highlighting or URL providing and importance, claim check, commonsense check, answer explanation, logic check...\newline
+
+Leiter et al~\citep{leiterExplainableEvaluationMetrics2022} propose three types of ground truth explanations: highlights (rationales or feature importance), free-text explanations, and structured explanations. In table \ref{TableExplDatasets} "Explainability tasks datasets" we enriched an existing comparison~\citep{wiegreffeTeachMeExplain2021} listing important \textbf{datasets with explainability tasks} in field with number of instances, mode of creation, explanation type and format, task.
+
+\citet{rogersQADatasetExplosion2022} proposes an "evidence format" for the explainable part of a dataset composed of Modality (Unstructured text, Semi-structured text, Structured knowledge, Images, Audio, Video, Other combinations) and Amount of evidence (Single source, Multiple sources, Partial source, No sources).
+
+\begin{table}
+\newcolumntype{T}{>{\tiny}c} % define a new column type for \tiny
+\captionsetup{skip=1pt} % Reduce space between caption and table
+\caption{Explainability tasks datasets (data from \citet{wiegreffeTeachMeExplain2021} enriched)}
+\label{TableExplDatasets}
+\scriptsize
+\begin{tabular}{T T T T T T}
+\toprule
+Ex type & Dataset & Task & Ex Format & Made by & \# Instances \\ \midrule
+highlight & TRUTHFULQA & check false belief \& ref in QA & URL ref & experts & 817 \\ 
+highlight & TriviaQA with evidence or filtered & QA with evidence & URL ref & crowd \& experts & 95k / 2099 \\ 
+highlight & FEVER  or filtered (GopherCite) & verifying claims from text & sentences or URLs & crowd & ~136K \\ 
+highlight & WIKIQA & open-domain QA & sentence & crowd + authors & 1,473 \\ 
+highlight & MULTIRC & reading comprehension QA & sentences & crowd & 5,825 \\ 
+highlight & HOTPOTQA & reading comprehension QA & sentences & crowd & 112,779 \\ 
+highlight & Hanselowski et al. & verifying claims from text & sentences & crowd & 6,422 (varies) \\ 
+highlight & CoQA & conversational QA & none & crowd & ~127K (1 or 3) \\ 
+highlight & COS-E v1.0 [100] & commonsense QA & none & crowd & 8,56 \\ 
+highlight & COS-E v1.11 & commonsense QA & none & crowd & 10,962 \\ 
+highlight & BOOLQ & reading comprehension QA & none & crowd & 199 \\ 
+highlight & SCIFACT & verifying claims from text & 1-3 sentences & experts & 995 (1-3) \\ 
+highlight & Kutlu et al. & webpage relevance ranking & 2-3 sentences & crowd & 700 (15) \\ 
+free-text & NaturalQuestions & QA with evidence & sentences & crowd \& experts & 323k / 7638 \\
+& or filtered version (GopherCite) \\
+free-text & ELI5 or filtered (GopherCite) & long QA & sentences & crowd \& experts & 270k / 3999 \\ 
+free-text & Jansen et al. & science exam QA &  & authors & 363 \\ 
+free-text & Ling et al.  & solving algebraic word problems &  & auto + crowd & ~101K \\ 
+free-text & LIAR-PLUS & verifying claims from text &  & auto & 12,836 \\ 
+free-text & COS-E v1.0 [100] & commonsense QA &  & crowd & 8,56 \\ 
+free-text & COS-E v1.11 & commonsense QA &  & crowd & 10,962 \\ 
+free-text & ECQA & commonsense QA &  & crowd & 10,962 \\ 
+free-text & PUBHEALTH & verifying claims from text &  & auto & 11,832 \\ 
+free-text & ESPRIT & reasoning about qualitative physics &  & crowd & 2441 (2) \\ 
+structured & ProofWriter & Reasoning QA with proof & rules, QA, chain of facts &  & 500k \\ 
+structured & WORLDTREE V1 & science exam QA & explanation graphs & authors & 1,68 \\ 
+structured & OPENBOOKQA & open-book science QA & 1 fact from WORLDTREE & crowd & 5,957 \\ 
+structured & WORLDTREE V2 & science exam QA & explanation graphs & experts & 5,1 \\ 
+structured & QED & reading comp. QA & inference rules & authors & 8,991 \\ 
+structured & QASC & science exam QA & 2-fact chain & authors + crowd & 9,98 \\ 
+structured & EQASC & science exam QA & 2-fact chain & auto + crowd & 9,980 (~10) \\ 
+structured & Ye et al. & SQUAD QA & semi-structured text & crowd + authors & 164 \\ 
+structured & Ye et al. & NATURALQUESTIONS QA & semi-structured text & crowd + authors & 109 \\ 
+structured & R4C & reading comp. QA & chains of facts & crowd & 4,588 (3) \\ 
+structured & STRATEGYQA & implicit reasoning QA & reasoning steps w/ highlights & crowd & 2,780 (3) \\  
+
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Local \& multi-lingual datasets}
+Multilingual datasets can not only help to assess or expand the answering skills to new languages, but also to transfer or share concepts between languages: CCQA~\citep{huberCCQANewWebScale2022} focuses on general QA pre-training, MLQA~\citep{lewisMLQAEvaluatingCrosslingual2020} on extractive question answering, MKQA~\citep{longpreMKQALinguisticallyDiverse2021} on open domain QA, TydiQA~\citep{clarkTyDiQABenchmark2020} is a topologically diverse QA dataset to learn more robust concept and answer without the need of translation, XQuAD~\citep{artetxeCrosslingualTransferabilityMonolingual2020,chiInfoXLMInformationTheoreticFramework2021} demonstrates performance on pre-training mono-lingual and fine-tuning on new languages, MGSM~\citep{shiLanguageModelsAre2022} deals with solving math problems and transfering reasoning abilities across 10 languages.
+
+\subsubsection{Dialogue datasets}
+The "Dialogue System Technology Challenge" started as an initiative to provide a common testbed on dialog state tracking and is now a reference in terms of dialog dataset~\citep{zhangAutomaticEvaluationModeration2021} with each year several tacks (challenge). The most recent 10 tracks were released for \href{https://dstc10.dstc.community/tracks}{DSTC10} and \href{https://dstc11.dstc.community/tracks}{DSTC11 in 2022}.
+Some other reference datasets are:
+\begin{itemize}
+    \item[--] CommaQA~\citep{khotLearningSolveComplex2021} on complex tasks solving by talking to agents.
+    \item[--] SODA~\citep{kimSODAMillionscaleDialogue2022} with million exchange with social commonsense contextualization.
+    \item[--] DeliData~\citep{karadzhovDeliDataDatasetDeliberation2022} for multi-party problem solving with deliberation.
+    \item[--] TIMEDIAL~\citep{qinTIMEDIALTemporalCommonsense2021} for temporal commonsense reasoning.
+\end{itemize}
+
+\subsubsection{Generate (e.g. synthesis) or improve datasets}
+Creating datasets is very expensive but often necessary for domain adaptation. A growing trend is the \textbf{generation of synthetic QA datasets} from models~\citep{jeronymoInParsv2LargeLanguage2023} or unstructured text using different techniques such as ICT~\citep{leeLatentRetrievalWeakly2019}, GPL~\citep{wangGPLGenerativePseudo2022}, GenQ~\citep{thakurBEIRHeterogenousBenchmark2021}, Promptagator~\citep{daiPromptagatorFewshotDense2022}, COCO-DR~\citep{yuCOCODRCombatingDistribution2022}.
+
+Dataset generation can also be used to robustify reasoning skills learning\citep{trivediTeachingBroadReasoning2022} by converting an existing QA dataset provided with question decomposition meaning representation (QDMR) to generate new contexts and questions.
+
+Some other technics like natural language augmentation~\citep{dholeNLAugmenterFrameworkTaskSensitive2022} aims at enriching existing datasets for a more robust training through transformation and data filtering.
+
+An interesting paper from \citet{yuanReStructuredPretraining2022} highlights the "signals" present in datasets for learning knowledge and capabilities. They propose the RST~\citep{yuanReStructuredPretraining2022} method including restructuring pre-training dataset, such as enriching to highly improve model performance learnt from the same dataset.
+
+
+\section{Solving with training}\label{sec_training}
+Now that we surveyed the skills we need to develop, the tasks and challenges to solve, the datasets needed for training, the specializable blocks on skills of a hybrid architecture on which to dispatch our task, how to train for complex QA ? We will see the importance of pre-training, domain adaptation and fine-tuning.
+
+\subsection{Training dataset quality}
+Even before pre-training, a very important step is to maximize the quality of the input datasets (eg, accuracy, completeness, consistency, relevance, uniformity)~\citep{budachEffectsDataQuality2022, whangDataCollectionQuality2022}. It is commonly said that machine learning project could spend up to 80\% of time on data preparation with a major part dedicated to data cleaning~\citep{pfistererHumanCenteredAutoML2019}. The efficiency of a model task is directly and heavily affected by the quality of the training dataset and its improvement~\citep{budachEffectsDataQuality2022, whangDataCollectionQuality2022}. We will not dig this subject because, surprisingly, our review methodology did not preselect any scientific article with the word "quality" in their title and is anecdotal in their abstracts. It might be that it is not specific to QA/CQA or language models training but an assumption in any machine learning related subject. Developers of GPT-3 spent important efforts to filter on a high-quality training dataset~\citep{zongSurveyGPT32022}, and \citet{sunImportanceBuildingHighquality2022} highlights this important preparation task of complex question answering. To improve the quality of your data, please refer to the citations above and \citet{yuanReStructuredPretraining2022} which augments the learning signals, a quality aspect, of already high-quality datasets to improve LLM learning.
+
+\subsection{Type of LLM training}
+As introduced in the "core concepts" section, training can apply to:
+\begin{enumerate}
+    \item a \textbf{pretrained language model (PLM)} which is trained without supervision (unsupervised or self-supervised) mainly on large text (e.g. reddit, Wikipedia...) to discover general knowledge and logic. It could then be re-used and augmented with a "head" to be further trained (fine-tuned) on specific tasks (supervised training). It can also be trained on very large corpus of data (e.g. GPT-3.5) to uncover enough knowledge and logic to be used "as is" without additional training but oftenly some additional instructions to better align with requester expectations (e.g. ChatGPT). Kalyan et al (2021)~\citep{kalyanAMMUSSurveyTransformerbased2021} identifies several type of pre-training: Pretraining from Scratch (PTS), Continual Pretraining (CPT - initialization from an existing PLM), Simultaneous Pretraining (SPT - synchronized mix of general and domain-specific corpus from beginning), Task Adaptive Pretraining (TAPT - continually adapts mix of general and specific training examples), Knowledge Inherited Pretraining (KIPT~\citep{qinKnowledgeInheritancePretrained2022} - adds knowledge distillation in the process).
+    \item \textbf{fine-tuned model} on specific task(s) in a supervised manner (each training example is provided with input and expected output solution), by re-purposing a pre-trained language model.
+    \item adapting an existing model (PLM or fine-tuned model) to a new domain of knowledge (\textbf{domain adaptation} - e.g. COVID19 terms and facts) or to new task(s) (\textbf{knowledge transfer}) leveraging existing knowledge and logic in the model.
+\end{enumerate}
+
+\subsection{Pre-training techniques}\label{sec_pretraining}
+
+\subsubsection{Self-supervised learning (SSL)}
+This type of machine learning technique, largely used for PLM, trains on a dataset without any pre-labeled outputs. Instead, the model must learn to generate the correct output itself, using information from the input data. It is often based on an unlabeled training converted to a supervised coherence task. Kalyan et al (2021)~\citep{kalyanAMMUSSurveyTransformerbased2021} identify three major techniques:
+\begin{description}
+    \item [Generative SSL], depending on chosen technique, the model learns to predict different scenarios: (1) next token based on current tokens (CLM - used by GPT-1, GPT-2, GPT-3 models); (2) masked tokens in a phrase (MLM~\citep{devlinBERTPretrainingDeep2019} is most used technique, but variants exists such as TLM~\citep{lampleCrosslingualLanguageModel2019}, Seq2SeqLM - used by RoBERTa, XLM, XLM-R models); (3) reconstruct original text which has been corrupted (denoising autoencoder, DAE, is used by BART, mBART models).
+    \item [Contrastive SSL] augments learning by comparison. It is not used alone but to further improve a model like in continual pretraining, to learn sentence-level semantics. Different techniques exist such as next-sentence prediction NSP~\citep{devlinBERTPretrainingDeep2019}, sentence order prediction SOP~\citep{lanALBERTLiteBERT2020}, simple contrastive learning with SimCSE~\citep{gaoSimCSESimpleContrastive2022} or SimCLR~\citep{chenSimpleFrameworkContrastive2020} or MoCo-v2~\citep{chenImprovedBaselinesMomentum2020}, bootstrapping with BYOL~\citep{grillBootstrapYourOwn2020}, cross lingual contrastive pretraining with XLCo~\citep{chiInfoXLMInformationTheoreticFramework2021}.
+    \item [Adversarial SSL] learns by distinguishing corrupted tokens (replaced or shuffled), can be used alone or in continual pretraining like contrastive. Different techniques exist: replaced token detection (RTD - used by ELECTRA model), multi-lingual replaced token detection (MRTD) is used by XLM-E model, translation replaced token detection (TRTD), shuffled token detection (STD) is used by RoBERTa model.
+    \item [Hybrid SSL] uses more than one type of SSL - e.g. U-Palm uses up to 7 denoising objectives (\textbf{mixtures-of-denoisers~\citep{tayUL2UnifyingLanguage2022}}), BERT uses MLM (generative) and NSP (contrastive), ALBERT used MLM and SOP (contrastive), infoXLM uses MLM + TLM (generative) and XLCo (contrastive). Here XLCo represents the cross lingual contrastive pretraining task.
+\end{description}
+
+\subsubsection{Transfer learning, domain adaptation, knowledge distillation}\label{sec_pretraining_transfert}
+Those techniques are also used as supervised learning \& finetuning which we cover in the next section.
+
+\subsubsection{Program execution learning}\label{sec_pretraining_program}
+This technique\citep{piReasoningProgramExecutors2022} tries to learn, or mimic, how a program works to capture its logic on the specific scope of the program or more general skills like numerical reasoning, logical reasoning, better multi-hop reasoning. This technique useful at pre-training stage can be viewed as a self-supervised learning.
+
+\subsection{Supervised learning \& fine-tuning}\label{sec_supervisedtraining}
+Supervised learning is the ancestor and most well-known ML technique. It trains on labeled dataset to predict the expected ouput from given input. This allows the model to learn from the data and make predictions about new, unseen data but similar task. This assumes that dataset is representative of new, unseen data. We will see in sections \ref{sec_PETtraining} and \ref{sec_prompting} that task specific fine-tuning, which can require a lot of compute and examples, can be avoided via complementary strategies like prompt engineering, tuning adapters, soft prompts prefix, late prompts.
+
+\subsubsection{(Task specific) Vanilla Fine-Tuning}
+Vanilla fine-tuning, is commonly used to refer to the basic or standard method of fine-tuning a pre-trained deep learning model based on task-specific loss, the weights of the few layers near the output (the tasks specific head) are updated while keeping the PLM weights fixed. \citet{kalyanAMMUSSurveyTransformerbased2021} highlights that the main drawback is that PLM having large parameters is prone to overfit on small task specific datasets limiting performance. Intermediate fine-tuning or multi-task fine-tuning overcome this.
+
+\subsubsection{Multi-task learning}\label{sec_supervisedtraining_multitask}
+According to \citet{kalyanAMMUSSurveyTransformerbased2021}, training a model to perform \textbf{multiple different tasks} can help the model to learn more generalizable features (regularization effect), and improve its performance on multiple tasks (transverse knowledge and skills acquired from multiple datasets). From MQAN (\citet{mccannNaturalLanguageDecathlon2018}) passing the decathlon of QA, and T5 (2019)~\citep{raffelExploringLimitsTransfer2020} reaching many state-of-the-art benchmarks in one model, the field does not stop improving. This learning can be done: \textbf{simultaneously} on all tasks~\citep{liuMultiTaskDeepNeural2019}, in \textbf{sequence}~\citep{mahajanIdentificationSemanticallySimilar2020}, \textbf{mixed}~\citep{piergiovanniAnswerMeMultiTaskOpenVocabulary2022}, or \textbf{optimized learning per task with hypernetwork} (e.g. imbalanced)~\citep{jiPatientOutcomeZeroshot2023}. Multi-task learning can spread on \textbf{similar tasks from different domains and cross-language} (e.g. similar summarization tasks~\citep{goodwinZeroShotConditionalSummarization2020, baiCrossLingualAbstractiveSummarization2021}), or \textbf{auxiliary tasks}~\citep{jinHooksHeadlineLearning2020} to improve different skills.
+
+\subsubsection{Instruction fine-tuning} \citep{chungScalingInstructionFinetunedLanguage2022, wangSelfInstructAligningLanguage2022, honovichUnnaturalInstructionsTuning2022}\label{sec_supervisedtraining_instructions}
+Recent work from Chung et al~\citep{chungScalingInstructionFinetunedLanguage2022}, additional to multi-task learning, demonstrates the capacity to highly increase the number of tasks, the reasoning capabilities and global performance by finetuning a pre-trained multi-task model with example with instructions.
+
+\subsubsection{Transfer learning, knowledge \& domain adaptation, continual learning} \label{sec_supervisedtraining_transfer}
+Those techniques leverage an already trained model which captured expected knowledge and/or logic for my target domain or application, which we then fine-tune using techniques explained above. This enables faster adaptation to target usage and allows to address a task even when there is not enough data available. Transfer learning could be further divided into inductive (related task) and transductive (same task, new domain) learning, unlabeled to labeled transfer (similar to unsupervised pre-training to fine-tuning), and feature and parameter transfer (capture high level concepts of domain). A model can be very efficient on a given knowledge domain but will be later enable to process new questions requiring new or updated facts, this highlights the need for continual knowledge update in models which can be covered with continual learning technique~\citep{yuanUnifiedQuestionGeneration2022, scialomFinetunedLanguageModels2022}.
+
+\subsubsection{Knowledge distillation (KD)} \citep{boreshbanImprovingQuestionAnswering2021}\label{sec_supervisedtraining_distillation}
+This technique enables a smaller, more efficient model (student) to be trained to imitate the predictions of a larger, more complex model (teacher), leveraging the knowledge learned by the larger model. For a given QA question/answer pair, it not only provides answer but could provide confidence, attention map and activated features. The KD can be jointly used with active learning to reduce even more the training examples needed.
+
+\subsubsection{Active learning} \citep{boreshbanImprovingQuestionAnswering2021, jukicSmoothSailingImproving2022, kocielnikCanYouLabel2022, yuAcTuneUncertaintyawareActive2022, buddSurveyActiveLearning2021}\label{sec_supervisedtraining_active}
+This technique enables a language model to be trained on a small initial set of examples and then, in a iterative manner, the model can request additional labeled data based on its own uncertainty, in order to improve its accuracy on a given task with minimal effort. This highly reduces the training time and the manual creation of a dataset when required. This can also help to craft better examples and avoid overfitting due to excessive examples on a subject.
+
+\subsubsection{Meta learning} \citep{debBoostingNaturalLanguage2022, upadhyaySharingLearnLearning2023, wangSuperNaturalInstructionsGeneralizationDeclarative2022}\label{sec_supervisedtraining_meta} Meta Learning is the ability to learn faster new tasks  with lesser data and time, like "learning to learn"~\citep{baxterTheoreticalModelsLearning1998, thrunLearningLearnIntroduction1998}. This ability is well used through the capacity to learn instructions to be addressed to a language model with the example of Tk-INSTRUCT supporting >1600 NLP tasks from 76 types reaching a performance near SOTA supervised tasks~\citep{wangSuperNaturalInstructionsGeneralizationDeclarative2022}.
+
+\subsubsection{Multi-view learning} \citep{liLearningDiverseDocument2022, dengMultihopInferenceQuestiondriven2020}\label{sec_supervisedtraining_multiview} This technique learns multiple representations or "views" of the same input data to improve the model's performance on a specific task. The idea is to leverage those different representations to better capture different knowledge facets or aspects of the data, leading to a more nuanced and effective representation for the task at hand. In the case of question-driven summarization, multi-view learning is used to model the relevance to the question and the interrelation among different sentences to generate a more informed and justified summary. This can improve the performance of the model compared to using a single view of the data, as the model is able to capture more diverse and complementary information from multiple perspectives.
+
+\subsubsection{Reinforcement learning~\citep{goyalRetrievalAugmentedReinforcementLearning2022, chiuKnowledgeGroundedReinforcementLearning2022}, Inverse reinforcement learning~\citep{zhouInverseReinforcementLearning2020}} \label{sec_supervisedtraining_RL}
+Reinforcement learning learns by interacting with its environment and later receiving evaluation for its actions (e.g. rewards vs punishments). Model can then infer the best policy to maximize expected result. This technique is used when teaching to a model exact output for each input is non trivial or evaluation is indirect (later reward). Reinforcement learning with human feedback is a key technique used to improve answer alignment to human requester expectations and values. For example a QA dialog system can generate possible responses to a user request, and then a human moderator provides feedback on which response is the best. This feedback is then used to uncover best factors leading to expected result and update the system policy so that it produces better responses in the future. This \textbf{key element of future CQA systems design} is further discussed in section \ref{sec_ImprovementLoop_and_kg_capitalization}.
+
+\subsubsection{Intermediate Fine-Tuning} 
+Intermediate Fine-Tuning (IFT) fine-tunes a model using an intermediate dataset with a large number of labeled instances to learn domain knowledge (DAIFT - domain adaptative IFT) or task logic (TAIFT - task adaptative IFT) to avoid overfitting on small final datasets. However, \citet{kalyanAMMUSSurveyTransformerbased2021} warns that IFT may sometimes reduce the performance on final tasks~\citep{pruksachatkunIntermediateTaskTransferLearning2020} but authors showed that tasks requiring high-level inference and reasoning abilities work best such as QA tasks.
+
+\subsection{Parameter-efficient tuning (PEFT) of a frozen PLM}\label{sec_PETtraining}
+As per HELM study~\citep{liangetal.HolisticEvaluationLanguage2022}, larger models lead to better performance although some architecture allows to get them a bit smaller. Those large-scale PLM are very expensive to retrain or just fine-tune. The parameter-efficient tuning alternative targets a small fraction of model parameter update with similar performance than full-model fine-tuning, sometimes better~\citep{dingDeltaTuningComprehensive2022}.
+\begin{enumerate}
+
+    \item \textbf{Addition-based methods} introduce extra trainable neural modules or parameters that do not exist in the original model or process (Adapters-based Tuning, Prompt-based Tuning).
+    \begin{itemize}
+        \item[--] \textbf{Adapters-based Tuning}. It works by adding small adapter layer modules to a PLM and only updating its own parameters when learning a task. \citet{heEffectivenessAdapterbasedTuning2021} demonstrate adapter-based tuning outperforms fine-tuning on low-resource and cross-lingual tasks, is more robust to overfitting and less sensitive to changes in learning rates. Prompt-free tuning uses task-specific adapters and learnable multi-token label embeddings to enable few-shot fine-tuning with frozen PLM~\citep{mahabadiPERFECTPromptfreeEfficient2022}.
+        \item[--] \textbf{Prompt-based Tuning} including \textbf{Prefix tuning}~\citep{xieUnifiedSKGUnifyingMultiTasking2022, yuanFewshotQueryFocusedSummarization2022}. This technique allows to integrate additional knowledge for a given task, such as QA or question driven summarization, into a pre-training strategy without modifying the PLM. This prefix is learnt by training on the task with the same type of dataset but requires few examples. Then, it is injected as knowledge when running the target task. This can highly improve the performance of the target task with a small number of trainable parameters (e.g. 0.1\%).
+        \item[--] Late prompt tuning~\citep{liuLatePromptTuning2022}.
+    \end{itemize}
+
+    \item \textbf{Specification-based methods} specify certain parameters in the original model to become trainable, while others are frozen, this selection is either based on heuristic, either learned.
+
+    \item \textbf{Reparameterization-based methods} re-parameterize existing parameters by transformation - one major technique is LoRA~\citep{huLoRALowRankAdaptation2021} which injects low rank trainable matrices to target layers to optimize them while keeping model weights frozen claims massive training speedup and resources reduction. LoRA matches fine-tuning performance on the GLUE benchmark.
+
+    \item Some new approaches emerge such as hypernetwork~\citep{phangHyperTuningAdaptingLarge2022} which produce soft prefixes or adapters through just one forward pass enabling to quickly adapt to unseen tasks.
+
+\end{enumerate}
+
+\subsection{Techniques for improving training}\label{sec_improvetraining}
+Additionally to the different training options, these are complementary techniques to improve different aspects:
+\begin{description}    
+    \item [Regularization and early-stopping techniques.]
+Like in other deep learning training, dropout, weight decay, and early stopping are important to prevents over-fitting, reduce complexity and help to learn more generalizable features. Additionally, early stopping strategies while training reduces time and avoids over-fitting~\citep{schusterConfidentAdaptiveLanguage2022}.
+
+    \item [Additional mixture-of-denoisers~\citep{tayUL2UnifyingLanguage2022} training.]
+UL2R proposes to additionally train for few iterations (0.1\%) an already trained LM to largely improve its capabilities in terms of accuracy and reasoning capabilities~\citep{tayTranscendingScalingLaws2022}.
+
+    \item [Tasks disambiguation for generalization.]
+Training on ambiguous examples in different contexts~\citep{anonymousTaskAmbiguityHumans2022} can dramatically improve the accuracy of language models trained without large-scale human feedback training (RLHF).
+
+    \item [Red teaming for secure/harmless content.] 
+Automatic red teaming~\citep{ganguliRedTeamingLanguage2022, perezRedTeamingLanguage2022} are different methods to automatically generate test cases to detect offensive content in LM.
+
+    \item [Post pruning.]
+A pruning method like SparseGPT~\citep{frantarSparseGPTMassiveLanguage2023} can reduce model size by 50\% of a very large model (GPT family) in one-shot without any retraining with a minimal loss of accuracy.
+
+    \item [Cross-lingual learning.]~\citep{lampleCrosslingualLanguageModel2019, chiInfoXLMInformationTheoreticFramework2021}
+Learning from multiple languages can help the model to learn language-agnostic features, knowledge not available on target knowledge, and improve its performance on tasks that involve multiple languages.
+\end{description}
+
+
+\section{Solving with hybridization (architecture composition)}\label{sec_hybridLLMpatterns}\label{sec_architectural_patterns}
+
+To address the different limits of LLM and skills identified for complex QA, we referenced architectural components which could augment a general-purpose base LLM such as a task-specific fine tuned model, a search engine, a software, a code interpreter... To help design the different ways to increase an LLM both at inference or training, even if some may overlap, we propose to classify them into the following list of key hybrid architectural patterns each with description, strengths(\textbf{S}), weaknesses(\textbf{W}), illustrations (\textbf{e.g.}).
+
+\titleformat{\subsection}[runin]{\normalfont\small\bfseries}{}{0em}{}
+\titlespacing{\subsection}{0pt}{-\parskip}{-\parskip}
+
+\vspace{-4mm} % reduce the vertical space by 4mm
+{
+\begin{longtable}{p{1\linewidth}}
+\label{Table2LLMArchPatterns}\\
+%%\multicolumn{2}{c}{LLM architectural pattern}. \\\midrule
+
+
+{\subsection{1. LLM base transformer}\label{HP1}:
+model usually trained on a large corpus of web resources to properly model target language(s) and various degrees of knowledge, common sense, reasoning capabilities. It is the core building bloc of all the architectures below}. \\\midrule
+{\textbf{S}: leverage knowledge from large unstructured data, can handle wide and versatile knowledge, some long-range dependencies and reasoning, and serves as the foundation for all subsequent architectures.
+ \newline \textbf{W}:} training is too long/costly to allow frequent update, prones to hallucinate with confidence, limited reasoning without massive scale, no mechanism to protect sensitive data.
+ \newline \textbf{e.g.} encoders BERT~\citep{devlinBERTPretrainingDeep2019} or its optimized version RoBERTa~\citep{liuRoBERTaRobustlyOptimized2019}; decoders GPT2/GPT-3~\citep{brownLanguageModelsAre2020}; encoders-decoders T5~\citep{raffelExploringLimitsTransfer2020} or BART. \\\midrule
+
+{\subsection{2. LLM + Task-specific head}\label{HP2}:
+connected layers or separated module trained to specialize on a particular task using output of LLM.}. \\\midrule
+{\textbf{S}: achieves SOTA performance for targeted task and/or domain with lower computational resources than retraining an entire LLM.    
+ \newline \textbf{W}:} requires structured dataset for training, limited to the specific task it is designed for, may struggle with more general or open-ended tasks.
+ \newline \textbf{e.g.} BART with classification head for question answering~\citep{lewisBARTDenoisingSequencetoSequence2019} \\\midrule
+
+{\subsection{3. LLM + Prompt/instruction tuning module}\label{HP3}:
+discovers best prompt, context, instructions to query a LLM for given tasks and domains (or to better fine-tune)}. \\\midrule
+{\textbf{S}: improve LLM performance on single or multiple task with no retraining, and can dynamically adapt reasoning skills according to context.
+ \newline \textbf{W}:} highly sensitive to slight prompt variations, may require substantial context, finding the right/robust prompt can be complex.
+ \newline \textbf{e.g.} prompt optimization programming~\citep{beurer-kellnerPromptingProgrammingQuery2022}, programmatic retrieval-augmented in-context learning~\citep{khattabDemonstrateSearchPredictComposingRetrieval2023}, instructions generation~\citep{wangSelfInstructAligningLanguage2022}. \\\midrule
+
+{\subsection{4. LLM + Question/task decompose, plan, act module}\label{HP4}:
+efficient break down of complex tasks into addressable subtasks following a resolution plan}. \\\midrule  
+{\textbf{S}: efficient at solving more complex tasks requiring multiple steps or sources by converting into several manageable subtasks and an efficient resolution plan (a priori, iterative or recursive). It can benefit from incorporating external knowledge sources or reasoning capabilities.
+\newline \textbf{W}:} more time and resources to implement, depending on implementation may struggle with long context and reasoning dependencies.
+\newline \textbf{e.g.} decomposition, planning, and task design to multiple specialized AI models using ChatGPT~\citep{shenHuggingGPTSolvingAI2023}, iterated decomposition w/ reasoning process supervision~\citep{reppertIteratedDecompositionImproving2023}, links reasoning and acting decomposition~\citep{yaoReActSynergizingReasoning2022},
+unsupervised QA decomposition~\citep{perezUnsupervisedQuestionDecomposition2020}, Text Modular Networks learns to decompose w/ existing models~\citep{khotTextModularNetworks2021}, Talk2Data for high-Level QA decomposition~\citep{shiTalk2DataHighLevelQuestion2021},
+DeepQA uses fact-based QA decomposition~\citep{kalyanpurFactbasedQuestionDecomposition2012}, learns to decompose compound QA w/ RL~\citep{yangLearningDecomposeCompound2018}, successive prompting decomposition for CQA~\citep{duaSuccessivePromptingDecomposing2022}. \\\midrule
+
+{\subsection{5. LLM + Semantic Information Retriever}\label{HP5}:
+incorporates external sources rather than storing all in the LLM model. Can be improved with a reinforcement learning (RL) mechanism}. \\\midrule  
+{\textbf{S}: incorporates any up-to-date external sources without increasing LLM size, allowing much smaller models (RETRO is 1/25 size of GPT-3 for same perforamnce), control over sources (sensitivity, explainability, knowledge update) and a variety of retrieval techniques.
+ \newline \textbf{W}:} may struggle with tasks requiring abstract or creative reasoning, may be limited by the quality and coverage of the external sources.
+ \newline \textbf{e.g.} Deepmind RETRO~\citep{borgeaudImprovingLanguageModels2022}, Facebook DrQA~\citep{chenReadingWikipediaAnswer2017}, FiDO~\citep{dejongFiDOFusioninDecoderOptimized2022}, Atlas~\citep{izacardAtlasFewshotLearning2022}, training RL agents to query external knowledge~\citep{liuAskingKnowledgeTraining2022}, Toolformer~\citep{schickToolformerLanguageModels2023}, minimizing search like humans~\citep{varshneyCanOpenDomainQA2022, sungOptimizingTestTimeQuery2022}. \\\midrule
+
+{\subsection{6. LLM + Symbolic/structured Information Retriever}\label{HP6}:
+leverages symbolic \& structured information (e.g. KG, ontologies, SQL). }. \\\midrule  
+{\textbf{S}: allows cold start tasks and fast domain adaptation with low data, follows rules and concepts more effectively, manages evolving information while enriching context with structured facts or concepts (ontologies, RDBMS, graph, taxonomy, metadata).
+ \newline \textbf{W}:} neuro-symbolic integration is complex, creating symbolic data is time-consuming and labor-intensive.
+ \newline \textbf{e.g.} UNIQORN~\citep{pramanikUNIQORNUnifiedQuestion2022}, Heterformer~\citep{jinHeterformerTransformerArchitecture2022}, UnifiedSKG~\citep{xieUnifiedSKGUnifyingMultiTasking2022}. \\\midrule
+
+{\subsection{7. LLM + Program (software or service via API)}\label{HP7}:
+leverages capabilities of external task specialized sw tools with associated proven robustness and performance (e.g. math solver, simulation, WWW search engine) to perform tasks difficult or impossible to handle using only internal knowledge and reasoning}. \\\midrule  
+{\textbf{S}: Leverages proven performance and robustness of external software/services in information retrieval (IR), logic, world modelling. 
+\newline \textbf{W}:} challenging end-to-end learning and potential complex integration (e.g. additional pre-processing or post-processing steps) \newline \textbf{e.g.} physics with MindsEye~\citep{liuMindEyeGrounded2022}, WebGPT~\citep{nakanoWebGPTBrowserassistedQuestionanswering2022}, SeeKeR~\citep{shusterLanguageModelsThat2022}, Toolformer~\citep{schickToolformerLanguageModels2023}. \\\midrule
+
+{\subsection{8. LLM + Code interpreter}\label{HP8}:
+generates code to delegate complex tasks well handled by compiler/solver, can also learn complex logics by learning program input/output.}. \\\midrule  
+{\textbf{S}: leverage robust reasoning \& algorithmic capabilities, and language ecosystem.
+\newline \textbf{W}:} may struggle with tasks requiring deeper understanding of context or concepts, dependency on external code interpreters. \newline \textbf{e.g.} PAL~\citep{gaoPALProgramaidedLanguage2023}, solving math problems via cooperative reasoning~\citep{zhuSolvingMathWord2022} or program synthesis~\citep{droriNeuralNetworkSolves2022}, LM self-improve its programing capabilities~\citep{haluptzokLanguageModelsCan2022}, Codex~\citep{chenEvaluatingLargeLanguage2021}, AlphaCode~\citep{liCompetitionLevelCodeGeneration2022}. \\\midrule
+
+{\subsection{9. LLM + Human/AI RL feedback}\label{HP9}:
+learns optimal policy for goals (answer quality, safety, data sources...)}. \\\midrule  
+{\textbf{S}: support in most critical challenge of LLM design such as human expectation alignment and personalization, safety and quality control.
+\newline \textbf{W}:} human feedback and convergence is highly time-consuming. This could be mitigated by incorporating active learning and AI feedback learning, but that means added complexity.
+\newline \textbf{e.g.} reinforcement learning with human feedback RLHF~\citep{baiTrainingHelpfulHarmless2022, ouyangTrainingLanguageModels2022, daniels-kochExpertiseProblemLearning2022}, with AI feedback RLAIF~\citep{baiConstitutionalAIHarmlessness2022}, search algorithms MCTS~\citep{yeSpendingThinkingTime2021, laurentLearningFindProofs2022} or DiL-piKL~\citep{bakhtinMasteringGameNoPress2022} or PPO in Diplomacy~\citep{bakhtinMasteringGameNoPress2022}, experts imitation learning~\citep{yangChainThoughtImitation2022}, web search RL in WebGpt~\citep{nakanoWebGPTBrowserassistedQuestionanswering2022}, citation RL in GopherCite~\citep{menickTeachingLanguageModels2022}. \\\midrule
+
+{\subsection{10. Cascaded/chained/looped LLM}\label{HP10}:
+solves complex problems by solving it by steps as a pipeline with multiple sequential requests to LLM, this sequence could be also iterative or recursive.}. \\\midrule  
+{\textbf{S}: facilitates human control over design and execution process, can solve higher complexity problems than LLM core skills by breaking down tasks \& design, provides a causal chain useful for explainability, allows optimization of the pipeline and leverage specialization to avoid potential bottlenecks or inefficiencies.
+\newline \textbf{W}:} may be less effective at tasks requiring extensive context and long reasoning dependencies. \newline \textbf{e.g.} solving by cacasding language models~\citep{dohanLanguageModelCascades2022}, AI Chains~\citep{wuAIChainsTransparent2022}, in a collaborative visual chain of prompt~\citep{wuPromptChainerChainingLarge2022}, logical and robust reasoning with selection-inference~\citep{creswellSelectionInferenceExploitingLarge2022}, human readable multi-step logical deduction on scientific QA improving accuracy and faithfulness~\citep{creswellFaithfulReasoningUsing2022}, iterative prompting an LLM~\citep{wangIterativelyPromptPretrained2022, yangRe3GeneratingLonger2022, duaSuccessivePromptingDecomposing2022}. \\\midrule
+
+{\subsection{11. LLM + Veracity/evidence checker}\label{HP11}:
+provides veracity and sources assessment}. \\\midrule
+{\textbf{S}: guarantees information credibility \& reliability while mitigating hallucinations by providing verifiable sources and evidence assessment.
+\newline \textbf{W}:} limited by the quality and coverage of external sources, do not eliminate risk of misinformation. \newline \textbf{e.g.} GopherCite supports answers with verified quotes~\citep{menickTeachingLanguageModels2022}, logic-regularized reasoning for interpretable fact verification~\citep{chenLORENLogicRegularizedReasoning2022}, survey on automated fact-checking~\citep{guoSurveyAutomatedFactChecking2022}, hallucinated content detection~\citep{zhouDetectingHallucinatedContent2021}, RL approach for explainability using entailment trees~\citep{liuRLETReinforcementLearning2022}. \\\midrule
+
+{\subsection{12. LLM + Router or Task discriminator}\label{HP12}:
+route task/domain to best model with instructions \& context}. \\\midrule
+{\textbf{S}: can accelerate LLM training, improve inference LLM performance by routing to the most appropriate model (performance vs resource) with most appropriate instructions. \newline \textbf{W}:} complex to implement and maintain, shared reasoning and long term dependencies might be compromised. \newline \textbf{e.g.} universal discriminator for zero-shot generalization~\citep{xuUniversalDiscriminatorZeroShot2022}, Branch-Train-Merge for fast parallel training of experts LM~\citep{liBranchTrainMergeEmbarrassinglyParallel2022}, DEMIXLayers~\citep{gururanganDEMixLayersDisentangling2021}. \\\midrule
+
+{\subsection{13. LLM + Dialog module}\label{HP13}:
+enable dialog with requester and long context capture, can include an ontology to help structure tasks definition and tracking. }. \\\midrule
+{\textbf{S}: enhances understanding of complex contexts, problems and concepts through human interaction, guidance, progressive refinement and problem-solving.
+\newline \textbf{W}:} might not fit targeted usage format, more time and resources implementation. \newline \textbf{e.g.} GODEL~\citep{pengGODELLargeScalePreTraining2022}, OPAL~\citep{chenOPALOntologyAwarePretrained2022}, CommaQA~\citep{khotLearningSolveComplex2021}, ChatGPT \\\midrule
+
+{\subsection{14. LM + Read-write memory}\label{HP14}:
+add an external memory to LLM allowing to process unbounded inputs, improve long-term capacities, store and pass information between multiple inferences}. \\\midrule
+{\textbf{S}: without LLM modification can simulate any algorithm, process unbounded inputs, strengthen controllability, long-term dependencies (for reasoning, dialogs, summarization, retrieval, algorithmic...) and robustness by incorporating counterfactual \& irrelevant contexts.
+\newline \textbf{W}:} scalability issues with increasing model size. \newline \textbf{e.g.} universal memory augmented large LM~\citep{schuurmansMemoryAugmentedLarge2023}, Recurrent Memory Transformer~\citep{bulatovRecurrentMemoryTransformer2022}, long-term open-domain conversations~\citep{xuGoldfishMemoryLongTerm2021}, working memory for scientific reasoning in Galactica~\citep{taylorGalacticaLargeLanguage2022}. \\\midrule
+
+{\subsection{15. LLM + Generator/Verifier}\label{HP15}:
+innovative problem solving by generating many potential solutions, checks for consistency, groups and classifies to come up with the best alternative answers}. \\\midrule
+{\textbf{S}: can solve complex tasks, out of training knowledge, by combining generation and adversarial skills.
+ \newline \textbf{W}:} resource-intensive \& costly; may not always lead to performance improvements proportional to effort. \newline \textbf{e.g.} AlphaCode~\citep{liCompetitionLevelCodeGeneration2022}, DiVeRSe~\citep{liAdvanceMakingLanguage2022}, CoRe (cooperative reasoning)~\citep{zhuSolvingMathWord2022}, self-consistency for chain of thought~\citep{wangSelfConsistencyImprovesChain2022}, training verifiers to solve math~\citep{cobbeTrainingVerifiersSolve2021}, STaR bootstrapps reasoning with reasoning~\citep{zelikmanSTaRBootstrappingReasoning2022}. \\\midrule
+
+{\subsection{16. LLM + Multimodal}\label{HP16}:
+search and reason over knowledge out of texts (image, audio, video, sensors...).}. \\\midrule  
+{\textbf{S}: leverages knowledge from non-textual sources and combines each modality to enhance understanding, reasoning and problem-solving.
+ \newline \textbf{W}:} integration complexity (representation, alignment, reasoning, generation...) \& cost, increased difficulty in addressing explainability and hallucination issues
+ \newline \textbf{e.g.} foundations and recent trends in multimodal ML~\citep{liangFoundationsRecentTrends2022, openaiGPT4TechnicalReport2023}. \\\midrule
+
+{\subsection{17. LLM Ensembling and LLM composing}\label{HP17}:
+ensembling different LLM to answer QA or a subtask or automatic construction of an architecture composed of multiple components/models.}. \\\midrule
+{\textbf{S}: improves inference accuracy, generalization and stability by combining diversity.
+ \newline \textbf{W}:} cost \& complexity, be aware of trade-offs (e.g. additional computation).
+ \newline \textbf{e.g.} ensemble learning for validation and explanation~\citep{huyAutoencodingLanguageModel2022},
+    parallel training of expert LLM~\citep{liBranchTrainMergeEmbarrassinglyParallel2022},
+    ensembles of LLM via iterative consensus~\citep{liComposingEnsemblesPretrained2022}, automatic neural module composition~\citep{andreasNeuralModuleNetworks2017}. \\\midrule
+
+{\subsection{18. LLM + (multi) Teacher}\label{HP18}:
+efficiently improves LLM knowledge/skills through 1 or more expert teachers on given domains/tasks.}. \\\midrule  
+{\textbf{S}: accelerates and improves knowledge learning, expansion, adaption, multi-tasking, reinforces reasoning capabilities (e.g. temporal).
+\newline \textbf{W}:} cost \& complexity, control of teacher knowledge transfer (e.g. domain scope, biases). \newline \textbf{e.g.} Teacher-Student Architecture for Knowledge Learning survey~\citep{huTeacherStudentArchitectureKnowledge2022}, better learn from multiple teachers~\citep{wuOneTeacherEnough2021}. \\\midrule
+
+{\subsection{19. LLM + Temporal reasoning}\label{HP19}:
+improves performance on time-related tasks, enhance temporal information understanding, retrieval and reasoning  (could be extended to spatial dimension)}. \\\midrule
+{\textbf{S}: allows temporal estimation, ranking \& clustering, reasoning, incoherence detection, addresses knowledge forget and update.
+\newline \textbf{W}:} still in its early stages for LLM (few papers), efficient integration might be challenging.
+\newline \textbf{e.g.} TimeBERT: Extending Pre-Trained Language Representations with Temporal Information~\citep{wangTimeBERTExtendingPreTrained2022}, improves temporal reasoning through added audio modality~\citep{fayekTemporalReasoningAudio2020}. \\\midrule
+\end{longtable}}
+
+\small
+
+\titleformat{\subsection}{\normalfont\small\bfseries}{\thesubsection}{1em}{}
+\titlespacing{\subsection}{1em}{\parskip}{\parskip}
+
+\section{Solving with prompting}\label{sec_solvingCQA}\label{sec_prompting}
+Now that we have trained models to acquire the required skills to solve a complex QA or rely on hybridization, let's see how to design questions (i.e. prompt) with proper instructions and context.
+
+\subsection{Designing my question (prompting)}
+LLM can highly improve its ability to solve a problem by leveraging information provided with a question ("problem well stated is half solved"). Engineering a good prompt (text provided to a LLM when posing a question) can rival or beat model finetuning on QA in many cases~\citep{chowdheryPaLMScalingLanguage2022}. Different information can be added to improve answer success probability while posing a question to a LLM such as \textbf{additional context and knowledge, constraints, instructions and examples}... Question can also be \textbf{designed to be answered in multiple steps}, for example just by asking to answer step by step~\citep{weiChainThoughtPrompting2022, kojimaLargeLanguageModels2023} or reasoning compositionally like humans~\citep{drozdovCompositionalSemanticParsing2022},~\citep{zhouLeasttoMostPromptingEnables2022, duaSuccessivePromptingDecomposing2022}.
+
+In the following sections, we present the main prompting techniques to combine for solving complex questions through prompting by re-using the taxonomy of \citet{qiaoReasoningLanguageModel2022}.
+
+\subsection{Problem solving strategies}
+\subsubsection{Single pass optimization}
+Prompt can be optimized to get the best answer possible directly (\textbf{prompt engineering for single-pass}):
+    \begin{description}
+            \item [Zero-shot prompting] provides a prompt for task without prior training on this task and no additional context or guidance.
+            \item [In-Context learning and Few-shot Prompting] provides prompt with relevant context~\citep{brownLanguageModelsAre2020, rubinLearningRetrievePrompts2022} or demonstration~\citep{minRethinkingRoleDemonstrations2022} for expected task helping LLM to better answer. Most well-known example is few-shot learning which provides a prompt with a few examples of expected task for helping to generate the best answer.
+            \item [(Hard) prompt tuning] adjusts the initial prompt, often by trial and error, to improve answer accuracy. This improving process can be manual, automated or even programmed~\citep{beurer-kellnerPromptingProgrammingQuery2022}.
+            \item [Soft prompt tuning] creates soft prompts~\citep{lesterPowerScaleParameterEfficient2021} which are concatenated to the input text. Tokens of this soft prompt are learned vectors optimized end-to-end over a training dataset. \autoref{sec_PETtraining} provides some additional details. Some innovative examples are:
+                \begin{itemize}
+                    \item[--] {Exploring Universal Intrinsic Task Subspace via Prompt Tuning}: adapt to many NLP tasks with small-scale data by optimizing only a few free parameters in a unified low-dimensional intrinsic task subspace~\citep{qinExploringUniversalIntrinsic2022}.
+                    \item[--] {Compositional Task Representations} learn specific codebook for compositional tasks~\citep{shaoCompositionalTaskRepresentations2023}.
+                \end{itemize}
+            \item [Chain-of-thought prompting]~\citep{weiChainThoughtPrompting2022, fuComplexityBasedPromptingMultiStep2023} ask to reason step by step and can provide relevant examples of multi-steps of reasoning/thoughts up to the solution to improve reliability or more easily spot errors in the result. It largely outperforms the state-of-the-art results with zero and few-shots learning with the same model on many advanced natural language processing tasks and fine-tuned models trained with hundreds times of examples, with the advantage of being interpretable.
+            \item [Chain-of-hindsight or contrastive prompting]~\citep{liuChainHindsightAligns2023, paranjapePromptingContrastiveExplanations2021} provides examples with qualitative feedback (e.g. comparison and critiques) to better align the model output to preferences. It is mostly used for finetuning model but could be used when prompting.
+    \end{description}
+
+\subsubsection{Multi-step optimization}
+Prompt can also be designed to enable a solving process in best iterative steps (\textbf{prompt engineering for multi-step}):
+    \begin{description}
+        \item [Least-to-most prompting]~\citep{zhouLeasttoMostPromptingEnables2022} improves chain-of-thought with multi-step examples that gradually becomes more specific or detailed; Chain-of-thought often performs poorly on tasks requiring to solve problems harder than those in demonstration examples. To tackle this, LtM first reduces a complex problem into a list of easier subproblems, and then sequentially solves these subproblems with gradual complexity. LtM can be combined with self-consistency to improve robustness.
+        \item [Dynamic least-to-most prompting (compositionality)]~\citep{drozdovCompositionalSemanticParsing2022} is a refinement of least-to-most prompting using the following steps:(1) prompts LLM to teach it to perform a synthatic parsing of all inputs to create a tree-structured decomposition, (2) use decomposition to select demonstration exemples, (3) linearize the decomposition tree and prompt the model to sequentially generate answers to subproblems.
+        \item [Successive prompting]~\citep{duaSuccessivePromptingDecomposing2022} develops successive prompting decomposing a complex problem into a first simple problem, with each next subproblem prediction having access to the answers to each previous subproblems.
+        \item [Maieutic prompting]~\citep{jungMaieuticPromptingLogically2022} is inspired by Socratic way of questioning, it generates a tree of logical explanations up to the truth values that max-satisfy these relations to verify its veracity. It surpass many approaches and provides intrinsic interpretations of inference.
+    \end{description}
+
+\subsubsection{Process optimization}
+Prompt is designed to follow a parallel or iterative process optimizing the final output.
+    \begin{description}
+        \item [Self-Optimization] covers self refining processes (e.g. calibrators, filters)~\citep{yeUnreliabilityExplanationsFewshot2022, wiegreffeReframingHumanAICollaboration2021}.
+
+        \item [Ensemble-Optimization] encompasses ensembling techniques used to generate more consistent answers by majority vote or ensembling decision process. A good example  is \textbf{Self-consistency}~\citep{wangSelfConsistencyImprovesChain2022} which generates multiples prompts, verifies and votes~\citep{wengLargeLanguageModels2022}.
+
+        \item [Iterative-Optimization] fine-tunes iteratively to produce better reasoning processes and answers~\citep{wangIterativelyPromptPretrained2022, huangLargeLanguageModels2022, zelikmanSTaRBootstrappingReasoning2022}.
+    \end{description}
+
+\subsubsection{Prompt for external module}
+Prompt is designed to query an external dedicated tool
+    \begin{description}
+        \item [Use of simulator] (e.g. physics engine) to simulate processes and aid LMs in real-world reasoning~\citep{liuMindEyeGrounded2022, jacksonNaturalLanguageSimulations2022}
+        \item [Use of code interpreter] to enrich LLM answers for complex structures and calculations~\citep{lyuFaithfulChainofThoughtReasoning2023, chenProgramThoughtsPrompting2022, madaanLanguageModelsCode2022, gaoPALProgramaidedLanguage2023}.
+    \end{description}
+
+\subsection{Enhancing knowledge or skills}
+Prompt can be engineered in order to enhance:
+\begin{description}
+    
+    \item [Knowledge retrieval] which could be divided into \textbf{implicit knowledge} to enrich LLM answers through Few-Shot Prompting and Reinforcement Learning~\citep{wangPINTOFaithfulLanguage2022, liuRainierReinforcedKnowledge2022, liuGeneratedKnowledgePrompting2022}; and \textbf{explicit knowledge} to retrieve and provide in-context labeled examples in prompt to improve explicit knowledge, reduce hallucination and enrich LLM answers~\citep{yangLogicSolverInterpretableMath2022, suSelectiveAnnotationMakes2022}.
+
+    \item [Arithmetic reasoning] with many different approaches:\citep{zhouTeachingAlgorithmicReasoning2022, lewkowyczSolvingQuantitativeReasoning2022, chenProgramThoughtsPrompting2022, huangLargeLanguageModels2022, liAdvanceMakingLanguage2022, gaoPALProgramaidedLanguage2023, shiLanguageModelsAre2022, beurer-kellnerPromptingProgrammingQuery2022}
+
+    \item [Commonsense reasoning] on general background knowledge and reasoning.
+~\citep{wangPINTOFaithfulLanguage2022, madaanLanguageModelsCode2022, liuRainierReinforcedKnowledge2022, kojimaLargeLanguageModels2023, wangSelfConsistencyImprovesChain2022, liuGeneratedKnowledgePrompting2022}
+
+    \item [Creativity reasoning] to support ideation \& creation process like automated diverse prompting ideas~\citep{leePromptiverseScalableGeneration2022, rhyscoxDirectedDiversityLeveraging2021, schickPEERCollaborativeLanguage2022, gozalo-brizuelaChatGPTNotAll2023}.
+
+    \item [Logical reasoning] uses examples that contain synthetic rule bases, entailment trees, and diagnostic benchmarks.
+~\citep{creswellSelectionInferenceExploitingLarge2022, creswellFaithfulReasoningUsing2022}
+        
+    \item [Symbolic reasoning]~\citep{gaoPALProgramaidedLanguage2023, khotDecomposedPromptingModular2022, kojimaLargeLanguageModels2023, wangSelfConsistencyImprovesChain2022} uses examples that contain symbolic rationales, rules...
+
+    \item [Multimodal reasoning] incorporate existing multimodal reasoning benchmarks such as ScienceQA, ALERT, into the LLM prompting~\citep{zhangMultimodalAnalogicalReasoning2023, luLearnExplainMultimodal2022}.
+
+\end{description}
+        
+
+\section{Solving with reinforcement (experience loop, knowledge capitalization)} \label{sec_ImprovementLoop_and_kg_capitalization}
+How to create a system able to align to expectations and continually improve its solving capabilities ? The last step in the standard pipeline presented in introduction is the improvement loop and knowledge capitalization, a form of "experience". How to learn from each answer to better align to expectations (e.g. max usefulness vs min harmless answer), improve skills and knowledge. Our survey methodology has identified “reinforcement learning” and "human-in-the-loop" as the main levers.
+
+\subsection{Reinforcement learning methods}
+We can categorize reinforcement learning (RL)~\citep{suttonReinforcementLearningSecond2018} in this survey into those different techniques or approaches:
+\begin{itemize}
+     \item \textbf{Reward-based reinforcement learning} (RL standard technique): the LM is trained to maximize a reward signal (e.g. positive or negative feedback) that is provided by a human or some other external source. This could involve providing the model with a fixed reward whenever a correct answer is generated, or using more complex reward functions that take into account the quality and specificity of the model's answers.
+     \item \textbf{Imitation learning} (includes procedure cloning~\citep{yangChainThoughtImitation2022}): the LM is trained to imitate the behavior of an expert (e.g. human, system...). This can be a useful way to incorporate domain knowledge, search methodology, or other types of expertise into the model, and can help the model learn to generate high-quality answers more quickly by mimicking.
+     \item \textbf{Inverse reinforcement learning}~\citep{zhouInverseReinforcementLearning2020}: here the reward is not direct, the LM attempts to infer the reward function from indirect human feedback or other forms of guidance. This can be a more flexible approach, as it allows the model to learn from a wider range of feedback signals and to adapt to changing requirements over time. Inverse RL could be classified as a type of imitation learning.
+\end{itemize}
+
+\subsection{Human-in-the-loop (RLHF), } \citep{wangPuttingHumansNatural2021}
+Human-in-the-loop is meant to improve the outcome of an event or process via user input in the system loop. Humans can intervene at many steps in a QA system from task definition or data creation, to final answer assessment. We focus on the QA feedback loops. Human can explicitly validate, rank, correct, provide guidance for improvement, or implicitly rate via click-through. The outcome of each question expect the answer to best fit with the user’s intention~\citep{leikeScalableAgentAlignment2018}. Those intentions are explicit on one side (following instructions) and implicit on the other side (answer is helpful, truthful, not biased, nor toxic, nor harmful)~\citep{askellGeneralLanguageAssistant2021, baiTrainingHelpfulHarmless2022}.
+We therefore need to:
+\begin{itemize}
+    \item capture user rich explicit and implicit feedback through different human-in-the-loop input feedback.
+    \item estimate and maximize user explicit and implicit intentions satisfaction for each answer and also in total through diverse reinforcement learning (RL) techniques.
+\end{itemize}
+This approach is often called RLHF (reinforcement learning with human feedback)~\citep{ouyangTrainingLanguageModels2022, baiTrainingHelpfulHarmless2022, daniels-kochExpertiseProblemLearning2022, anonymousTaskAmbiguityHumans2022, ganguliRedTeamingLanguage2022, baiConstitutionalAIHarmlessness2022}, it can be enhanced by an AI supervision process to better scale, reduce human workload and biases, this is illustrated in the figure~\ref{RLHF CAI}.
+
+\begin{figure}
+\includegraphics[width=1.0\linewidth]{FromRLHFtoRLAIF.pdf}
+\caption{From reinforcement learning with human feedback to AI feedback in order to scale and maximize helpfulness vs harmless tradeoff (\citet{ouyangTrainingLanguageModels2022, baiConstitutionalAIHarmlessness2022})}
+\label{RLHF CAI}
+\end{figure}
+
+When compared to GPT-3 with 175B parameters, best in class language model in 2022, to model InstructGPT 1.3B more than 100 times smaller, prompt answers from this small model built with RLHF are 85\% preferred by humans~\citep{ouyangTrainingLanguageModels2022} .
+
+However, learning from human expertise has limits:
+\begin{enumerate}
+    \item \textbf{scaling cost selection}: manual labeling of data is slow and expensive so maybe restricted to some wealthy organizations or labeled with less expertise. To highly reduce this, \citet{suSelectiveAnnotationMakes2022} proposes vote-k an unsupervised graph-based selective annotation method yielding to drast reduction and more robust learning, Anthropic et al~\citep{baiConstitutionalAIHarmlessness2022} introduce different supervised and RL techniques (SL-CAI and RL-CAI summarized to RLAIF (RL with AI feedback)) which can learn from far fewer labelers and generate higher quality labeling.
+    \item \textbf{labeler biases}: longer RLHF training can bias language model with stronger political views (e.g. gun rights, immigration) and desires to pursue specific goals (e.g. resource acquisition) and their preservation~\citep{perezDiscoveringLanguageModel2022}. AI supervision from Anthropic~\citep{baiConstitutionalAIHarmlessness2022} driven by principles could allow more controllable and transparent feedback behaviors.
+    \item \textbf{expertise problem}: even if same questions are challenged by different persons and agreed with majority, some questions may require specific expertise to be correctly analyzed. Problem formalization and query-teacher selection solution is discussed in "The Expertise Problem: Learning from Specialized Feedback"~\citep{daniels-kochExpertiseProblemLearning2022}.
+    \item \textbf{harmlessness vs helpfulness trade-off}: "helpfulness tends to increase harmfulness, since models are willing to obey pernicious requests, and conversely  models  trained  to  be  harmless  tend  to  be  more  evasive  and  generally  less  helpful"~\citep{baiConstitutionalAIHarmlessness2022}. This competitive objective solving is well discussed and solutions provided in \citet{baiTrainingHelpfulHarmless2022} and recent Constitutional AI~\citep{baiConstitutionalAIHarmlessness2022} approach.
+\end{enumerate}
+
+\subsubsection{Continuous improvement throughout the CQA pipeline}
+This reinforcement loop can improve at many stage of the QA pipeline such as:
+
+\begin{enumerate}
+ 
+   \item {Question understanding and context improvement} are demonstrated in reinforced clarification question generation by \citet{pyatkinReinforcedClarificationQuestion2022} and within dialogue by \citet{huInteractiveQuestionClarification2020}.
+
+  \item {Decomposition strategies} in learning to decompose compound questions~\citep{yangLearningDecomposeCompound2018}, automatic generation of socratic subquestions~\citep{shridharAutomaticGenerationSocratic2022}, decision-making with multi-step expert advices on the web~\citep{philippDecisionMakingMultiStepExpert2019}.
+     
+   \item {Query construction (prompting)} in reinforced knowledge introspector for commonsense QA~\citep{liuRainierReinforcedKnowledge2022}, optimizing discrete text prompts~\citep{dengRLPromptOptimizingDiscrete2022}, improving prompt in-context policy iteration~\citep{brooksInContextPolicyIteration2022}.
+            
+   \item {Information retrieval} in reinforced browser-assisted QA with human feedback~\citep{nakanoWebGPTBrowserassistedQuestionanswering2022}, knowledge-grounded QA~\citep{chiuKnowledgeGroundedReinforcementLearning2022}, retrieval augmented process~\citep{goyalRetrievalAugmentedReinforcementLearning2022}, answering with verified quotes~\citep{menickTeachingLanguageModels2022}, querying external knowledge~\citep{liuAskingKnowledgeTraining2022}, reasoning and acting in multiple search~\citep{yaoReActSynergizingReasoning2022}.
+
+   \item {Answer generation} reinforcement mainly with instructions/expectation alignment (quality, safety, ambiguity...) in training a helpful and harmless assistant from human feedback~\citep{baiTrainingHelpfulHarmless2022}, improving it with AI feedback~\citep{baiConstitutionalAIHarmlessness2022}, aligning with natural language goals~\citep{zhouInverseReinforcementLearning2020}, benchmarking with preference~\citep{leeBPrefBenchmarkingPreferenceBased2021}.
+
+   \item {Knowledge capitalization}: we did not find any articles related to QA progressive capitalization with a reinforcement loop. However, QA entailment tree~\citep{ribeiroEntailmentTreeExplanations2022, tafjordEntailerAnsweringQuestions2022, liuRLETReinforcementLearning2022}, self-consistency~\citep{huangLargeLanguageModels2022}, compositional solving above model capacity~\citep{drozdovCompositionalSemanticParsing2022, shaoCompositionalTaskRepresentations2023} seem potential ways to capitalize from answers to answers building a faithful and truthful explainable tree of information and this kind of tree has already been used in a RL process~\citep{liuRLETReinforcementLearning2022}.
+
+\end{enumerate}
+
+
+\section{Discussion: limitations and research topics for solving more complex QA and problems}\label{sec_limits_and_research}
+In the architectural patterns section, we listed the most frequent topics identified has challenge or limits of LLM. After reviewing the collected literature and identifying different solutions in this study, some limits seem tougher research limits to enable more complex QA and problems solving:
+\begin{itemize}
+    \item The hallucination problem which limits a clear expectation of credibility/truthfulness in "Alignment to human expectation \& values in answer".
+    \item The scalability problem which we can extend to compute and costs limits.
+    \item Data availability \& quality which limits "domain adaptation \& task specialization" and "bias" 
+    \item Data multi-sensitivity in LLM: this point is nearly uncovered.
+    \item Question decomposition of very complex problems and its explainability.
+\end{itemize}
+A recent paper from Meta\citep{mialonAugmentedLanguageModels2023} surveys LLM augmentation with more details on reinforcement learning. It also proposes additional research topics such as an optimal tradeoff between getting knowledge in or out of the model, which would help to better design modules presented in section \ref{sec_architectural_patterns}), and to extend LLM decomposition and planning module presented in section \ref{sec_architectural_patterns} to be a central orchestrator.
+
+\subsection{Hallucination \& credibility}
+Recent debates about Galactica~\citep{taylorGalacticaLargeLanguage2022, WhyMetaLatest} and ChatGPT~\citep{rudolphChatGPTBullshitSpewer2023} shade the light of limits and credibility of such language models concerning hallucination. It generates plausible-looking statements that are irrelevant or factually incorrect. It predicts without giving clues about which part of a false claim goes wrong, even sources given are not trustworthy. It even has difficulty to learn correct associations between entities from factual text corpus (e.g. Wikipedia). Explainability of an answer with a supported citation is a pointer but does not mean it is true. We have identified different topics of research to address the challenge of hallucinations such as:
+\begin{itemize}
+    \item More robust training \& prompting (self-consistency, context optimization, prompt tuning, denoising...)~\citep{lyuFaithfulChainofThoughtReasoning2023}.
+    \item Hallucination detection~\citep{zhouDetectingHallucinatedContent2021}.
+    \item Providing references, traceability, faithful explanation logic~\citep{chenLORENLogicRegularizedReasoning2022} or the emerging field of entailment tree explanation~\citep{ribeiroEntailmentTreeExplanations2022, liuRLETReinforcementLearning2022}.
+    \item Automated fact-checking~\citep{guoSurveyAutomatedFactChecking2022}.
+    \item Identifying faithfulness performance per tasks/domain~\citep{liangetal.HolisticEvaluationLanguage2022} and biases, to better ensemble experts~\citep{choubeyMoFEMixtureFactual2021}.
+    \item Contrastive learning to reduce hallucination~\citep{sunContrastiveLearningReduces2022}.
+    \item Reinforcement learning from human feedback, including red teaming, boosted with AI supervision (RLHP, RLHF, RLAIF) seams the strongest area of research to reduce hallucination in QA~\citep{baiConstitutionalAIHarmlessness2022, ganguliRedTeamingLanguage2022, baiTrainingHelpfulHarmless2022}.
+\end{itemize}
+
+\subsection{Compute, scaling... Costs}
+More than 8 million TPUv4 hours is the time taken to train PalM 540B parameters model~\citep{tayTranscendingScalingLaws2022}. For a far smaller model "T5 11B paremeters" and its variants, the cost of the project is estimated \$10 millions~\citep{sharirCostTrainingNLP2020}. Those models continue to scale. Time of compute for training is therefore reserved to few organization. Operational costs for usage (inference) are less impressive~\citep{liangetal.HolisticEvaluationLanguage2022} but limits the use cases considering inference latency and minimal required hardware. We can apply standard model size reductions like quantization, distillation, pruning, early stopping at training... Different research avenues try to reduce this computing and costs required and inverse this scaling law :
+\begin{itemize}
+    \item \textbf{Frozen PLM techniques}: we presented in previous sections prompt tuning and parameters-efficient tuning, there is a constant research on this related approach re-using already trained (frozen) LLM to avoid re-training it or at minimal.
+    \item \textbf{Retrieval augmented LLM}: keeping a maximum of information out of model while making it easy to access and update without any re-train has an important potential but is often less efficient and may require equal computation when comparing "total additional answer generation time" vs "training", new techniques try to close the gap~\citep{dejongPrecomputedMemoryOnthefly2023}.
+    \item \textbf{Scaling in-context learning}: in-context learning highly improves tasks efficiency without re-training but is limited by maximum length input constraints due to quadratic complexity in computation and memory, different techniques allow to efficiently scale it~\citep{haoStructuredPromptingScaling2022, choPromptAugmentedLinearProbing2022, martinsInftyFormerInfinite2022}.
+    \item \textbf{Mixture of denoisers}: in "Transcending Scaling Laws with 0.1\% Extra Compute"~\citep{tayTranscendingScalingLaws2022}, same model is train at half the budget to reach the same performance using mixture-of-denoisers (" U-PaLM achieves the same performance as the final PaLM 540B model at around half its computational budget - saving approx. 4.4 million TPUv4 hours"). UL2, proposes an unification of LM learning paradigms~\citep{tayUL2UnifyingLanguage2022}.
+    \item \textbf{Improve pruning techniques}: in "SparseGPT: Massive Language Models Can Be Accurately Pruned in One-Shot"~\citep{frantarSparseGPTMassiveLanguage2023}, same model can be reduced more than 50\% parameters with only one-shot, without any retraining, and nearly no loss in accuracy.
+    \item \textbf{Mixture of experts, parameters sharing and routing techniques}: "Switch Transformers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity"~\citep{fedusSwitchTransformersScaling2022} demonstrated the usage of internal routing to expert layers in large language models to limit compute to part of the whole model to allow to scale model without augmenting compute. Many researchers propose new MoE: HetuMoE~\citep{nieHetuMoEEfficientTrillionscale2022}, MoE distributed training system~\citep{nieHetuMoEEfficientTrillionscale2022}, evolutional EvoMoE using dense-to-sparse gates~\citep{nieEvoMoEEvolutionalMixtureofExperts2022}, FlexMoE with dynamic device placement~\citep{nieFlexMoEScalingLargescale2023}.
+    \item \textbf{Knowledge distillation} improvement~\citep{blakeneyReduceReuseRecycle2022, zaheerTeacherGuidedTraining2022, wahleCohesiveDistillationArchitecture2023} and \textbf{dynamic composition} of model~\citep{xuSurveyDynamicNeural2022} to compose optimal and smaller models.
+    \item \textbf{Adaptive computation and training}: all samples are equally computed in standard training. Easy samples could be less worked out than hard ones, adaptive computing enable sample-dependent computation and reached 2/3x computation for CALM~\citep{schusterConfidentAdaptiveLanguage2022}. Chinchilla~\citep{hoffmannTrainingComputeOptimalLarge2022} demonstrated that we can highly reduce inference budget while improving accuracy by using the same training budget with much more data on a much smaller LLM.
+    \item \textbf{Dedicated hardware}: language models are typically accelerated by running on GPU but an area of research investigate dedicated hardware (e.g. FPGA, ASICS, ) for saving energy and costs~\citep{hongDFXLowlatencyMultiFPGA2022a}.
+\end{itemize}
+
+\subsection{Data availability \& quality}
+The skills and training datasets section, as well as human feedback, highlighted the need for specialized data and of high quality, to acquire skills and domain knowledge as well as to calibrate to requester intents. Large language models requires huge volume of data to develop each skills and domains targeted. Wealthy organization can spend millions to clean or produce data but even them are limited.
+\begin{itemize}
+    \item \textbf{Frugal and rich data with AI supervision}: we saw in previous sections techniques like dynamic least-to-most requiring far less data for training while improving accuracy and skills, or active learning identifying best examples for improvement\citep{diaoActivePromptingChainofThought2023}. Those data could be more and more automatically generated like in Auto-CoT~\citep{zhangAutomaticChainThought2022}, CAI~\citep{baiConstitutionalAIHarmlessness2022}.
+    \item \textbf{Simulation, distillation and code interpreter} (program execution): simulation~\citep{liuMindEyeGrounded2022, jacksonNaturalLanguageSimulations2022}, existing models~\citep{wahleCohesiveDistillationArchitecture2023}, and code interpreters~\citep{haluptzokLanguageModelsCan2022} can provide infinite examples in different domains of logic and knowledge. We also uncovered that code interpreter allow to learn logic transferable to many domains.
+    \item \textbf{More signals}: better leverage all available symbolic data which have clear signals, already structured (Linked Open Data) or re-structured~\citep{yuanReStructuredPretraining2022}.
+    \item \textbf{Open dataset}: QA and IR field has continuously progressed through the availability of existing and new open datasets~\citep{jerniteDataGovernanceAge2022} for target skills and knowledge.
+\end{itemize}
+
+\subsection{Data multi-sensitivity usage \& protection}\label{sec_data_sensitivity}
+How a QA can ensure protection of rules associated to each data sensitivity ?
+Sensitive data can be personal but also business confidential, regulated, high risk... The same data can have multiple sensitivity and should be restricted to only person required to know it. Large language models are currently designed without any access control mechanism for the embedded data in the model. Apart from removing any sensitive data, making it impossible for authorized persons to use them legitimately (e.g. a doctor on a patient's medical data), different techniques and strategies have been identified as avenues of research:
+
+\begin{itemize}
+    \item \textbf{Data access control through retriever}: language models using a retriever could avoid embedding sensitive data in the model and use sensitive data stored outside the model in a suitable system (eg RDBMS, EDM) incorporating a data access control mechanism.
+    \item \textbf{Models per sensitivity}: the different type of sensitive data could each be stored in a specific model and a common front-end could manage the access control to each model.
+    \item \textbf{Privacy preserving mechanisms}~\citep{chenTHEXPrivacyPreservingTransformer2022, haoIronPrivateInference2022, huangTextHideTacklingData2020, kimPrivacypreservingTextEmbedding2022, mireshghallahQuantifyingPrivacyRisks2022, quNaturalLanguageUnderstanding2021, quPrivacyAdaptiveBERTNatural2021, zhouTextFusionPrivacyPreservingPretrained2022, xuPrivacyPreservingMachineLearning2021}: QA can ensure protection of private data by implementing privacy-preserving techniques such as homomorphic encryption, local differential privacy, or secure multiparty computation. These techniques can be applied to the input text, token embeddings, and sequence representations in order to protect the data from malicious actors. In addition, QA can ensure privacy by using secure protocols for matrix multiplication and complex non-linear functions such as Softmax, GELU activations, and LayerNorm. QA can also use TextHide which introduces an encryption step to prevent an eavesdropping attacker from recovering private text data. Finally, QA can use TextFusion which employs an adversarial training regime to privatize token representations and make it difficult to accurately recover the complete plain text.
+    \item \textbf{Functional encryption}: this technique could use encryption to finely restrict data usage based on defined roles and functions (e.g. right to query medical data)~\citep{xuPrivacyPreservingMachineLearning2021}.
+    \item \textbf{Decentralized (federated) approach} with sensitive data: federated learning could allow to keep sensitive data at source to avoid sharing and unauthorized usage~\citep{chenFedMatchFederatedLearning2021, xuPrivacyPreservingMachineLearning2021, xiaoOffsiteTuningTransferLearning2023}.
+    \item Other techniques~\citep{xuPrivacyPreservingMachineLearning2021} could avoid elimination of data by perturbation, knowledge transfer...
+\end{itemize}
+
+\subsection{Decomposition of very complex QA and explainability}
+We defined complex question answering as high complexity questions which are non-factoid, multi-step requiring decomposition, higher reasoning (constraints, deduction, induction, abduction), multi-source questions. This need for decomposition is central in this solving process because it breaks down a non solvable complex question (problem) down to solvable questions. Moreover, as we have seen in chain-of-thought and dynamic least-to-most, those traceable steps improve solving capacities of a given model but also makes the answer auditable, truthful and explainable in case of errors. However nearly all examples of papers reviewed related to decomposition are factoid questions. \citet{duaSuccessivePromptingDecomposing2022}  used "\textit{Who kicked the longest field goal in the first half?}" as the main example of complex question, it is a factoid question. What if we ask "\textit{What are the most adapted LM hybrid architectures to answer complex questions ?}". That would be a non-factoid question, requiring multiple sources, reasoning... And a compatible decomposition process aligned with an acceptable and auditable scientific methodology. We could learn this decomposition behaviour by cloning a human process~\citep{yangChainThoughtImitation2022} or learn to discover it through a human contribution. Iterated decomposition~\citep{reppertIteratedDecompositionImproving2023}, a human-in-the-loop workflow for process supervision using a language model allows to address new type of problems and enables users to inspect and intervene in the LM’s reasoning process. Those two research topics seem of high potential even if it still requires a lot of human expert feedback, domain specific data and computation is an important limit. The generalization of such a process of decomposition for complex non factoid questions to many domains and practice could be accelerated by the same techniques identified for scaling RLHF, research avenues in "Data availability \& quality", "Compute, scaling... Costs" and "Hallucination \& credibility" sections; and improved with adapted shortest path iterative approach.
+
+
+\section{Conclusion}
+In this paper, we present a comprehensive survey of language model hybrid architectures for answering complex questions. We review the various skills required and typical approach, datasets and metrics that are used, the current limits of large language models for complex QA, the potential of hybrid architectures, better training and prompting strategies for this goal. We also identify the main challenges and research avenues for solving more complex questions including knowledge capitalization. We identify the need to address multi-sensitivity data in language models architectures and potential approaches. Finally, we outline research topics and highlight the potential of exploration in this field. This paper aims to provide a comprehensive and useful resource for readers interested in the development of complex non-factoid question answering.
+
+\bibliography{BibSurveyCQALM}\label{sec_biblio}
+
+\end{document}
+\endinput
+%%
+%% End of file `sample-acmsmall.tex'.
