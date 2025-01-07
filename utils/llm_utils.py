@@ -801,6 +801,10 @@ class HumanLLMMonitor:
         if not os.path.exists('pickle'):
             os.makedirs('pickle')
 
+        for key in special_criteria:
+            if 'num_parallel_inferences' in key and special_criteria[key] == 0:
+                special_criteria[key] = 1
+
         # Serializing variables to pickle file
         variables_to_pickle = {
             'saved_task': task,
