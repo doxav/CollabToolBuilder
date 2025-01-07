@@ -56,8 +56,8 @@ UnifiedVectorDB.es_url = elastic_url_port
 UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
 
 
-embedding_function = "text-embedding-ada-002"  #"Alibaba-NLP/gte-base-en-v1.5" UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
-reset_db_indices = True  # Set to True after changing embeddings
+embedding_function = "text-embedding-ada-002" if embedding_function is None else embedding_function  #"Alibaba-NLP/gte-base-en-v1.5" UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
+reset_db_indices = False  # Set to True after changing embeddings
 
 HumanLLMMonitor.use_websocket = True
 
@@ -90,7 +90,7 @@ def apply_special_criteria(agent, special_criteria, available_locals=None):
                 if agent_name != class_name and agent_name not in ['all', '']: continue
             if hasattr(agent, key):
                 setattr(agent, key, value)
-              
+
             elif key in available_locals:
                 new_params[key] = value
                 print(f"Special criteria applicable to {agent}'s local variables: {key} = {value}")
@@ -196,17 +196,17 @@ class TaskIdentificationAgent:
         if hasattr(self, 'log_user_message') and self.log_user_message:
             with open(self.log_user_message, "a") as f:
                 f.write("Coach -- identify_best_task:<<\n" + user_message + "\n>>\n\n")
-                
+
         original_stdout = sys.stdout
-        sys.stdout = open('system_debug.txt', 'w') 
+        sys.stdout = open('system_debug.txt', 'w')
         # print(self.problem_prompts_subdir + 'identify_best_task')
-        sys.stdout=original_stdout 
-        
+        sys.stdout=original_stdout
+
         original_stdout = sys.stdout
-        sys.stdout = open('user_message.txt', 'w') 
+        sys.stdout = open('user_message.txt', 'w')
         print(f"User message: {user_message}")
-        sys.stdout=original_stdout  
-        
+        sys.stdout=original_stdout
+
         task = self.human_llm_identify_best_task.CallHumanLLM(
             system_prompt_template=self.problem_prompts_subdir + 'identify_best_task',
             user_message=user_message,
@@ -214,7 +214,7 @@ class TaskIdentificationAgent:
             model_choice=self.model_choice,
             stream_output=True
         )
-        
+
         return task
 
     def expand_criteria_aligned(self, criteria):
@@ -512,7 +512,7 @@ class CodingAgent:
                             # if in websocket, then get from self.human_llm_code_task.premium_llm
                             if HumanLLMMonitor.use_websocket:
                                 edited_code = self.human_llm_code_task.temp_inference_result_content
-                              
+
                             else:
                                 edited_code = _visual_input(parsed_code["program_code"], filetype="py",
                                                             message_type="fix_error", agent_name=self.name,
@@ -602,7 +602,7 @@ class CodingAgent:
         with open('primitives_checking.txt', 'w') as file:
           sys.stdout = file  # Redirect standard output to the file
 
-        sys.stdout = sys.__stdout__                    
+        sys.stdout = sys.__stdout__
         return primitives
 
     def code_task_and_run_test(self, refined_task):
@@ -716,7 +716,7 @@ class CodingAgent:
         # Ajouter temperature seulement si l'attribut temperature existe dans l'instance
         if hasattr(self, 'temperature'):
             kwargs["temperature_max"] = self.temperature
-        
+
 
         # Appeler la méthode avec les arguments sous forme de **kwargs
         codes = self.human_llm_code_task.CallHumanLLM(**kwargs)
@@ -725,12 +725,12 @@ class CodingAgent:
         for index, code in enumerate(codes):
             # Get the proper check_results corresponding to the output_id (which is the index)
             check_results = self.human_llm_code_task.last_inference_check_results[index]
-
-            code_parsing_success, parsed_code = check_results.get("Code Parsing", (False, None))
-            if code_parsing_success and isinstance(parsed_code, dict):
-                test_results = check_results.get("Run Tests", None)
-                if test_results:
-                    results.append(test_results)
+            if check_results:
+                code_parsing_success, parsed_code = check_results.get("Code Parsing", (False, None))
+                if code_parsing_success and isinstance(parsed_code, dict):
+                    test_results = check_results.get("Run Tests", None)
+                    if test_results:
+                        results.append(test_results)
 
         if len(results) > 1:
             # display the list of results with success, exception and code
@@ -874,6 +874,12 @@ class CapitalizationAgent:
 
         print('Starting capitalize_successful_tasks')
         import socket, uuid, datetime
+        self.human_llm_generate_function_description.task_parameters = {'task_description' : task_description, 'parsed_code' : parsed_code}
+        if hasattr(self, 'saved_task') and self.automation in ['before', 'after']:
+            content = self.saved_task.get('content', {})
+            task_description = content.get("task_parameters", {}).get("task_description", task_description)
+            parsed_code = content.get("task_parameters", {}).get("parsed_code", parsed_code)
+            self.human_llm_generate_function_description.task_parameters = {'task_description': task_description,'parsed_code': parsed_code}
 
         function_name = parsed_code.get("main_function_name",
                                         parsed_code.get("main_function", {}).get("name", "unknown"))
@@ -971,7 +977,7 @@ class CapitalizationAgent:
 
         with open('inspection/results.pkl', 'wb') as f:
             pickle.dump(serialized_entry, f)
-        
+
         print('Adding learnt task')
 
         # Add to vector database with tags
@@ -1120,7 +1126,7 @@ class PlannerAgent:
         # if self.envs:
         #     if isinstance(self.envs[0], SWEBenchEnvironment):
         #         question = f"Solve the SWE bench problem {self.envs[0].swe_data.instance_id} by finding buggy files, generating patch, applying patch and running tests. Current state of the solution is:\n{self.envs[0].get_state()}.\nOn the basis of current state, provide the best code that shoud be executed next"
-        
+
         # print(question)
 
         print("Got the learnt tasks")
@@ -1149,7 +1155,7 @@ class PlannerAgent:
         selected_code = self.human_llm_planner.CallHumanLLM(original_input_messages=[SystemMessage(content=prompt), HumanMessage(content=user_message_content)]) #, automation=self.automation)
         if selected_code:
             selected_code = prebuilt_code + "\n" + selected_code
-            
+
             result = self.execute_code_on_envs(selected_code)
             if result:
                 parsed_code, success, exec_results, scores, states, total_execution_time = result
@@ -1382,8 +1388,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                              problem_prompts_subdir=problem_prompts_subdir,
                                              premium_llm_by_default=agtask_premium_llm_by_default,
                                              skip_rounds=agtask_skip_rounds, llmORchains_list=llmORchains_list,
-                                             automation=automation['taskreco'] if isinstance(automation,
-                                                                                             dict) else automation,
+                                             automation=automation['taskreco'] if isinstance(automation,dict) else automation,
                                              model_choice=(
                                                  model_choice[
                                                      'taskreco' if 'taskreco' in model_choice else 'coach'] if type(
@@ -1391,7 +1396,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                              criteria=params_user_message,
             temperature_max=temperature_max,
             num_parallel_inferences=agcoach_num_parallel_inferences,
-                                             fixed_coach=fixed_coach, 
+                                             fixed_coach=fixed_coach,
             special_criteria=special_criteria)
 
     agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
@@ -1401,7 +1406,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                model_choice=(
                                    model_choice['coding' if 'coding' in model_choice else 'coder'] if type(
                                        model_choice) == dict else model_choice), special_criteria=special_criteria,
-                              
+
                                num_parallel_inferences=agcoding_num_parallel_inferences, primitives_dir=primitives_dir)
     agent_validation = ValidationAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
                                        skip_rounds=agvalidation_skip_rounds, llmORchains_list=llmORchains_list,
@@ -1416,8 +1421,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                            skip_rounds=agcapitalize_skip_rounds,
                                            problem_prompts_subdir=problem_prompts_subdir,
                                            llmORchains_list=llmORchains_list,
-                                           automation=automation['capitalizer'] if isinstance(automation,
-                                                                                              dict) else automation,
+                                           automation=automation['capitalizer'] if isinstance(automation, dict) else automation,
                                            model_choice=(
                                                model_choice[
                                                    'capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(
@@ -1426,6 +1430,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
 
     #agent_capitalize.retrieve_saved_tasks_in_db(include_code=include_code, selected_successful_functions=selected_successful_functions, selected_failed_functions=selected_failed_functions)
     continue_identifying_tasks = True
+    max_coding_attempts = 4 if not agent_coding.automation == "skip_once" else 1
     total_scores = []
 
     # Global learn loop
@@ -1481,8 +1486,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                                                      manual_validation_to_capitalize,
                                                                      automation=agent_coding.human_llm_code_task.automation,
                                                                      end_time=time_end)
-
-        if validation == "success":
+# TODO: Fusionner les capitalizations, en ajoutant un paramètre pour savoir si on doit capitaliser les tâches réussies ou échouées et adapter le prompt en conséquence pour déterminer automatiquement si on doit capitaliser les tâches réussies ou échouées dans le cas d'un goto
+        if validation == "success" or (agent_capitalize.human_llm_generate_function_description.automation in ["before", "after"] and (hasattr(agent_capitalize.human_llm_generate_function_description, 'saved_task') and agent_capitalize.human_llm_generate_function_description.saved_task['agent_name'] == "CapitalizationAgent")):
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
         else:
             if agent_capitalize.human_llm_generate_function_description.automation or smart_input(
@@ -1535,7 +1540,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                     f"total_score_weighted_with_stats: {total_score_weighted_with_stats}; scores['percentage_no_runtime_error']: {scores['percentage_no_runtime_error']}; scores['best_score_without_validation']: {scores['best_score_without_validation']}; validated_score_avg: {validated_score_avg}")
             # add total_score_weighted_with_stats to total_scores
             total_scores.append(total_score_weighted_with_stats)
-        
+
             total_scores.append(0)
 
     # print status of: continue_identifying_tasks and time.time() < time_end
@@ -1643,7 +1648,7 @@ def run_4agents_learning_loop_graph(
             model_choice=model_choice,
             special_criteria=special_criteria
         )
-        
+
         parsed_code, validation, scores = coding_and_validation_loop(
             agent,
             validation_agent,
@@ -1653,7 +1658,7 @@ def run_4agents_learning_loop_graph(
             automation=agent.human_llm_code_task.automation,
             end_time=state["end_time"]
         )
-        
+
         return {
             "code": parsed_code,
             "validation": validation,
@@ -1685,7 +1690,7 @@ def run_4agents_learning_loop_graph(
 
         # Determine whether to continue
         should_continue = continue_each_loop if agent.automation else get_user_continue_input()
-        
+
         return {"should_continue": should_continue, **state}
 
     def should_continue(state: AgentState) -> str:
@@ -1695,7 +1700,7 @@ def run_4agents_learning_loop_graph(
 
     # Create workflow graph
     workflow = StateGraph(AgentState)
-    
+
     # Add nodes
     workflow.add_node("task_coach", create_task_agent)
     workflow.add_node("code_task", create_coding_agent)
@@ -1745,7 +1750,7 @@ def calculate_total_score(scores):
         for dic in scores['validated_scores']:
             validated_score_avg += sum(dic.values())
         validated_score_avg /= len(scores['validated_scores'])
-    
+
     total_score = (
         scores['percentage_no_runtime_error'] +
         10 * scores['best_score_without_validation'] +
@@ -1763,7 +1768,7 @@ def get_user_continue_input():
         'orchestrate_agents',
         message_type='VALIDATION_INFO'
     ).strip().upper()
-    
+
     return False if answer in ['E', 'EXIT'] else True
 
 def run_planner(*args, **kwargs):  # NEW VERSION
@@ -1830,7 +1835,7 @@ def run_planner(*args, **kwargs):  # NEW VERSION
             serialized_entry = json.dumps({ "time": datetime.now().isoformat(), "main_function_name": function[0], "program_code": function[1], "tool_description": "", "task_description": ""}, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
             tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": HumanLLMMonitor.step_id}
             print("Adding learnt task:", HumanLLMMonitor.add_learnt_task(serialized_entry, tags))
-        
+
     smart_print(str(kwargs.get('max_execution_time')), "orchestrate_agents", "time_end")
 
     successful_tasks = HumanLLMMonitor.get_learnt_tasks()
@@ -2214,7 +2219,8 @@ if __name__ == "__main__":
         from datetime import datetime
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
 
-    unique_id = "TEST"
+    #unique_id = "XP_21_12_24"
+
     HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy,
                                                 unique_id=unique_id)
 
@@ -2275,17 +2281,17 @@ if __name__ == "__main__":
     if 'saved_task' in globals():
         special_criteria["all#saved_task"] = saved_task
         if special_criteria[f"{saved_task['agent_name']}#num_parallel_inferences"] == 0:
-            special_criteria[f"{saved_task['agent_name']}#num_parallel_inferences"] = json.loads(saved_task['content'])['num_parallel_inferences']
+            special_criteria[f"{saved_task['agent_name']}#num_parallel_inferences"] = saved_task.get('content', {}).get('num_parallel_inferences', 2)
     else:
         special_criteria = None
     if not ('automatic' in globals()):
         automatic = None
     else:
         automation_global = "full_auto" if automatic else None
-   
+
     # Run the planner agent
     envs_swe = None
-    
+
     #run_planner(default_llm_key="default_llm",
     run_4agents_learning_loop_graph(default_llm_key="default_llm",
                 premium_llm_key="premium_llm",

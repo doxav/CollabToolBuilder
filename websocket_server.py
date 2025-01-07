@@ -12,7 +12,7 @@ import threading
 import shutil  # To check if localtunnel is available
 
 class WebsocketServer:
-    parallel_functions = ["updateAnswer", "criticAnswer", "get_tasks"]
+    parallel_functions = ["updateAnswer", "criticAnswer", "get_tasks", "generate_best_improvement_suggestions"]
     def __init__(self, port=6789, secret=None, proxy_enabled=False, unique_id=None):
         self.server_id = str(uuid.uuid4())
         self.monitors = {}  # Stores agent monitors
