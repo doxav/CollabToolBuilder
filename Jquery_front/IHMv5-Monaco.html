@@ -223,6 +223,9 @@
     }
 
 
+
+
+
     function removeUnicodeSequences(jsonString) {
         // Expression régulière pour trouver les séquences \uXXXX
         const unicodeRegex = /\\u[\dA-Fa-f]{4}/g;
@@ -254,13 +257,7 @@
             console.log("Current agent is : ", currentAgent, " and data.agent_name is : ", data.agent_name);
             current_llm_in_use = "default_llm";
         }
-        if(data.agent_name === "TaskIdentificationAgent" && data.message.includes("BEFORE") ){
-            console.log("Let's update the Task List");
-            // Show task-selection
-            $("#task-selection").show();
-            updateTaskList("None");
-            init_task_list = true;
-        }
+
         if (data.agent_name !== undefined) {
            if (currentAgent !== data.agent_name) {
                // Clear the agent content for this agent
@@ -334,6 +331,11 @@
                     clearInterval(countdown);
                 }
             }, 1000);
+            // Show the task-list and update the task list
+            $("#task-selection").show();
+            $("#search-task-toggle").show();
+            updateTaskList("None");
+            init_task_list = true;
             return;
         }
 
@@ -1541,6 +1543,7 @@ z-index: -1;
     <div id="main-content">
         <div class="toggle-buttons">
             <div class="sidebar-toggle" id="toggle-history-main">Show history</div>
+            <input id="search-task-toggle" placeholder="Search a task" style="margin-right: 10px; background-color: mediumspringgreen; display: none;"/>
             <select id="task-selection" style="margin-right: 10px; background-color: mediumspringgreen; display: none;" >
                 <option value="TASK 1">TASK 1</option>
                 <option value="TASK 2">TASK 2</option>
@@ -1702,6 +1705,9 @@ monacoLoaderPromise.then(function() {
 // Référence aux éléments du DOM
 const logContainer = document.getElementById('log-container');
 const toggleLogButton = document.getElementById('toggle-log-button');
+const searchTask = document.getElementById('search-task-toggle');
+
+
 
 toggleLogButton.addEventListener('click', function() {
     if (logContainer.style.display === 'none') {
@@ -1712,6 +1718,18 @@ toggleLogButton.addEventListener('click', function() {
         toggleLogButton.textContent = 'Afficher le Log';
     }
 });
+
+searchTask.addEventListener('input', function(event) {
+    filterTaskList();
+});
+
+function filterTaskList() {
+    let searchValue = searchTask.value.toLowerCase();
+    $("#task-selection option").each(function() {
+        let text = $(this).text().toLowerCase();
+        $(this).toggle(text.includes(searchValue));
+    });
+}
 
 function addLogLine(message) {
     logLines.push(message.replace(/\\n/g, '\n'));
@@ -1744,12 +1762,12 @@ document.addEventListener('keydown', function (event) {
     }
 });
 function hideAgentButtons(agentName) {
-    $(`div[data-agent="${agentName}"]`).find('button#autofix-button, button[id^="select-"], button[id^="delete-"], button[id^="evaluate-"], button[id^="regenwithmymodifbutton-"], button[id^="regenallbutton-"], input[id^="comment-"], button#custom-autofix-button').hide();
+    $(`div[data-agent="${agentName}"]`).find('button#autofix-button, button[id^="select-"], button[id^="delete-"], button[id^="evaluate-"], button[id^="regenwithmymodifbutton-"], button[id^="regenallbutton-"], button[id^="suggestions-"], input[id^="comment-"], button#custom-autofix-button').hide();
 }
 
 function showAgentButtons(agentName) {
     //$(`div[data-agent="${agentName}"]`).find('button#autofix-button, button[id^="select-"], button[id^="delete-"], button[id^="evaluate-"], button[id^="regenwithmymodifbutton-"], button[id^="regenallbutton-"], input[id^="comment-"], button#custom-autofix-button').show();
-    $(`div[data-agent="${agentName}"]`).find('button#autofix-button, button[id^="delete-"], button[id^="evaluate-"], button[id^="regenwithmymodifbutton-"], button[id^="regenallbutton-"], input[id^="comment-"], button#custom-autofix-button').show();
+    $(`div[data-agent="${agentName}"]`).find('button#autofix-button, button[id^="delete-"], button[id^="evaluate-"], button[id^="regenwithmymodifbutton-"], button[id^="regenallbutton-"], button[id^="suggestions-"], input[id^="comment-"], button#custom-autofix-button').show();
 }
 
 // Function to update button visibility based on the selector
@@ -1765,6 +1783,7 @@ function updateButtonVisibility() {
         // Include any other session 1 specific buttons here
     ];
     const session1HideSelectors = [
+        'button[id^="suggestions-"]',
         'button[id^="evaluate-"]',
         'button[id^="regenwithmymodifbutton-"]',
         'button[id^="regenallbutton-"]',
@@ -1774,6 +1793,7 @@ function updateButtonVisibility() {
     ];
 
     const session2ShowSelectors = [
+        'button[id^="suggestions-"]',
         'button[id^="evaluate-"]',
         'button[id^="regenwithmymodifbutton-"]',
         'button[id^="regenallbutton-"]',
@@ -1789,6 +1809,7 @@ function updateButtonVisibility() {
     const session3ShowSelectors = [
         'button#autofix-button',
         'button[id^="delete-"]',
+        'button[id^="suggestions-"]',
         'button[id^="evaluate-"]',
         'button[id^="regenwithmymodifbutton-"]',
         'button[id^="regenallbutton-"]',
@@ -1873,6 +1894,7 @@ function updateButtonVisibility() {
             const otherFullColumnId = $(this).attr('id').replace(/^column-/, ''); // Remove 'column-' prefix
             $(`button#save-${otherFullColumnId},
                button#evaluate-${otherFullColumnId},
+               button#evaluate-${otherFullColumnId},
                button#regenallbutton-${otherFullColumnId},
                button#regenwithmymodifbutton-${otherFullColumnId},
                input#comment-${otherFullColumnId}`).hide();
@@ -1881,6 +1903,7 @@ function updateButtonVisibility() {
     else {
         // If no green "Continue" button is visible, hide all relevant buttons across all columns
         $(`button[id^="save-"],
+           button[id^="suggestions-"],
            button[id^="evaluate-"],
            button[id^="regenallbutton-"],
            button[id^="regenwithmymodifbutton-"],
@@ -2160,7 +2183,8 @@ function getColumnsToKeep(agent) {
 
 
                     <div style="display: flex; flex-direction: column; gap: 5px;">
-                        <button id="evaluate-${agent_columnId}"><i class="fa-regular fa-paper-plane"></i>Regenerate from instructions</button><br>
+                        <button id="suggestions-${agent_columnId}"><i class="fa-regular fa-paper-plane"></i>Get suggestions</button><br>
+                        <button id="evaluate-${agent_columnId}"><i class="fa-solid fa-rotate"></i>Regenerate from instructions</button><br>
                         <button id="regenwithmymodifbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i>Regenerate from this answer's annotations</button>
                         <button id="regenallbutton-${agent_columnId}"><i class="fa-solid fa-rotate"></i>Regenerate from all answers & annotations</button>
                     </div>
@@ -2220,8 +2244,8 @@ function getColumnsToKeep(agent) {
             function enableGenButtons(isEnabled, agent_columnId = null, selectedButton = null, timeoutReEnable = 30000) {
                 // Determine the button selectors, handling the case when agent_columnId is null
                 let buttonSelectors = agent_columnId === null
-                    ? ['[id^=evaluate-]', '[id^=regenallbutton-]', '[id^=regenwithmymodifbutton-]']
-                    : [`#evaluate-${agent_columnId}`, `#regenallbutton-${agent_columnId}`, `#regenwithmymodifbutton-${agent_columnId}`];
+                    ? ['[id^=evaluate-]', '[id^=regenallbutton-]', '[id^=regenwithmymodifbutton-]', '[id^=suggestions-]']
+                    : [`#evaluate-${agent_columnId}`, `#regenallbutton-${agent_columnId}`, `#regenwithmymodifbutton-${agent_columnId}`, `#suggestions-${agent_columnId}`];
 
                 let buttons = buttonSelectors.map(selector => $(selector));
                 let targetButton = $(selectedButton);
@@ -2269,6 +2293,19 @@ function getColumnsToKeep(agent) {
                 alert(responseMessage);
                 document.querySelector(`#save-${agent_columnId}`).style.display = 'none';
             });
+        });
+
+        $(`#suggestions-${agent_columnId}`).click(function () {
+            let editor_content = targetColumn.editorInstance.getValue();
+            let output_id = data.column_id;
+           sendFunctionCall(data.agent_name, "generate_best_improvement_suggestions", {inference_result_content:editor_content, output_id:output_id}, function(responseMessage) {
+                console.log("responseMessage:", responseMessage);
+                let suggestions = JSON.parse(responseMessage);
+                annotationswithID = suggestions.suggestions;
+                let comment_editor = window[`editorInstance_${currentAgent}_${suggestions.output_id}`];
+                comment_editor.setValue(annotationswithID);
+            });
+
         });
 
     $(`#evaluate-${agent_columnId}`).click(function () {
@@ -2762,6 +2799,7 @@ function getColumnsToKeep(agent) {
                     console.log("Link to goto", url);
                     // Open the URL in a new tab
                     window.open(url, '_blank');
+                    alert("Task available here : "+url);
                 });
                 modal.remove();
                 overlay.remove();
@@ -2778,7 +2816,7 @@ function getColumnsToKeep(agent) {
 
         if(id === "None"){
             console.log("Getting task list");
-            sendFunctionCall("TaskIdentificationAgent", "get_tasks", {"id_last_task":"None"},function (response) {
+            sendFunctionCall(currentAgent, "get_tasks", {"id_last_task":"None"},function (response) {
                 let tasks = JSON.parse(response)
                 console.log("Task list:", tasks);
                 // Référence à l'élément <select>
@@ -2799,11 +2837,12 @@ function getColumnsToKeep(agent) {
                     option.textContent = `${task.id_task} - ${task.date.substring(0, 16)} - ${task.agent_name} - ${task.function_name} - ${task.before_after.charAt(0).toUpperCase() + task.before_after.slice(1)} - ${username}`; // Texte visible pour l'utilisateur
                     selectElement.appendChild(option);
                 });
+                filterTaskList();
 
             });
         }else{
             console.log("Getting task list");
-            sendFunctionCall("TaskIdentificationAgent", "get_tasks", {"id_last_task":id},function (response) {
+            sendFunctionCall(currentAgent, "get_tasks", {"id_last_task":id},function (response) {
                 let tasks = JSON.parse(response)
                 console.log("Task list:", tasks);
                 // Référence à l'élément <select>
@@ -2824,9 +2863,11 @@ function getColumnsToKeep(agent) {
                     option.textContent = `${task.date.substring(0, 16)} - ${task.agent_name} - ${username}`; // Texte visible pour l'utilisateur
                     selectElement.appendChild(option);
                 });
+                filterTaskList();
 
             });
         }
+
     }
 
     // Adds the listener for the expand button of the solution columns
