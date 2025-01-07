@@ -316,8 +316,9 @@ class CodingAgent:
                 if language == "py":  # Python caset
                     if code is None:
                         # Match Python code blocks
-                        code_pattern = re.compile(r"```python(.*?)```", re.DOTALL)
-                        code = "\n".join(code_pattern.findall(message))
+                        code_pattern = re.compile(r"```python(.*?)(```|$)", re.DOTALL)
+                        codes_match = [match[0].strip() for match in code_pattern.findall(message)]
+                        code = "\n".join(codes_match) if codes_match else message
 
                     parsed = ast.parse(code)
                     functions = []
@@ -975,7 +976,7 @@ class CapitalizationAgent:
             "task_description": task_description,
         }, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
 
-        with open('inspection/results.pkl', 'wb') as f:
+        with open('pickle/results.pkl', 'wb') as f:
             pickle.dump(serialized_entry, f)
 
         print('Adding learnt task')
@@ -995,7 +996,7 @@ class CapitalizationAgent:
         else:
             if False or not self.automation:  # TODO: temporary disabled, find the logic to fix this or if not required
                 task_name = smart_input(
-                    f"CONFIG Please provide a name for the {'pipeline' if is_anomaly else 'function'}: {task_description}",
+                    f"CONFIG Please provide a name for the {'pipeline' if is_anomaly else 'function'}:\n {task_description}",
                     "CapitalizationAgent", message_type="Capitalization_info").strip()
             else:
                 task_name = f"{task_description[:500]}"
@@ -1338,7 +1339,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agcoding_num_parallel_inferences=1,
                               continue_each_loop=False,unique_id=None, primitives_dir=None, functions_to_import=None,
                               embedding_function=None):
-    unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+    if unique_id is None:
+        unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
     if unique_id is not False and UnifiedVectorDB.unique_collection_id is None:
         UnifiedVectorDB.set_unique_collection_id(unique_id)
     # Initialize HumanLLMMonitor databases
@@ -2219,7 +2221,7 @@ if __name__ == "__main__":
         from datetime import datetime
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
 
-    #unique_id = "XP_21_12_24"
+    unique_id = "XP_21_12_24"
 
     HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy,
                                                 unique_id=unique_id)
@@ -2293,7 +2295,7 @@ if __name__ == "__main__":
     envs_swe = None
 
     #run_planner(default_llm_key="default_llm",
-    run_4agents_learning_loop_graph(default_llm_key="default_llm",
+    run_4agents_learning_loop(default_llm_key="default_llm",
                 premium_llm_key="premium_llm",
                 llmORchains_list=llmORchains_list,
                 test_environments=envs_tech_synthesis,
