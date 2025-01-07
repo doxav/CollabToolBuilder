@@ -1137,10 +1137,10 @@ class SynthesisManager:
         self.target_plan_embedding = self.target_data[target_plan_embedding_label]
 
         resources = {}
-        embed_len = 0
+        embed_len = len(self.document.dumb_embedding)
         for res in self.target_data["resources"]:
             resources[res["resource_id"]] = res[target_resource_embedding_label]
-            embed_len = len(res[target_resource_embedding_label])
+            # embed_len = len(res[target_resource_embedding_label])
 
         self.target_plan_resources_embedding = np.mean([
             np.mean([
@@ -1148,7 +1148,7 @@ class SynthesisManager:
             ], axis=0) if len(section["resources_used"]) > 0 else np.zeros((embed_len,))
             for section in self.target_data["plan"]
         ], axis=0)
-        self.target_resource_embedding = np.mean([r[target_resource_embedding_label] for r in self.target_data["resources"]], axis=0)
+        self.target_resource_embedding = np.mean([r[target_resource_embedding_label] for r in self.target_data["resources"]], axis=0) if len(self.target_data["resources"]) > 0 else np.zeros((embed_len,))
 
         if normalize_embeddings:
             if min_cosine_similarity is None:
