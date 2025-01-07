@@ -796,11 +796,11 @@ class ValidationAgent:
         human_evaluation = ''
         if human_evaluation_required:
             human_evaluation = smart_input(f"""
-************
-{code}
-************
-CODE ABOVE EXECUTED with result: {runtime_errors}
-****\System may not efficiently evaluate what is produced by the code, please add your evaluation of the result (or hit enter): """)
+************\n
+{code}\n
+************\n
+CODE ABOVE EXECUTED with result: {runtime_errors}\n
+****\nSystem may not efficiently evaluate what is produced by the code, please add your evaluation of the result (or hit enter): """, agent_name=self.name, message_type="VALIDATION_INFO")
 
         # Define user_message template
         user_message_template = """
@@ -851,7 +851,7 @@ class CapitalizationAgent:
                  special_criteria=None):
         self.additional_check_list = None
         self.name = self.__class__.__name__
-        saved_task, auto_n_rounds, num_parallel_inferences, temperature_max, recommend_critics = None, None, 1, None, None
+        self.saved_task, auto_n_rounds, num_parallel_inferences, temperature_max, recommend_critics = None, None, 1, None, None
 
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
 
@@ -876,8 +876,10 @@ class CapitalizationAgent:
         print('Starting capitalize_successful_tasks')
         import socket, uuid, datetime
         self.human_llm_generate_function_description.task_parameters = {'task_description' : task_description, 'parsed_code' : parsed_code}
+        print(f"DEBUG CACA : {hasattr(self, 'saved_task')}, {self.automation}, {self.automation in ['before', 'after']}")
         if hasattr(self, 'saved_task') and self.automation in ['before', 'after']:
             content = self.saved_task.get('content', {})
+            print(f"task parameters : {content.get('task_parameters', {})}")
             task_description = content.get("task_parameters", {}).get("task_description", task_description)
             parsed_code = content.get("task_parameters", {}).get("parsed_code", parsed_code)
             self.human_llm_generate_function_description.task_parameters = {'task_description': task_description,'parsed_code': parsed_code}
@@ -1338,7 +1340,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agcoach_num_parallel_inferences=1, fixed_coach=False, return_array=False,
                               agcoding_num_parallel_inferences=1,
                               continue_each_loop=False,unique_id=None, primitives_dir=None, functions_to_import=None,
-                              embedding_function=None):
+                              embedding_function=None, human_evaluation_required=False):
     if unique_id is None:
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
     if unique_id is not False and UnifiedVectorDB.unique_collection_id is None:
@@ -1487,7 +1489,8 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                                                      max_coding_attempts,
                                                                      manual_validation_to_capitalize,
                                                                      automation=agent_coding.human_llm_code_task.automation,
-                                                                     end_time=time_end)
+                                                                     end_time=time_end,
+                                                                     human_evaluation_required=human_evaluation_required)
 # TODO: Fusionner les capitalizations, en ajoutant un paramètre pour savoir si on doit capitaliser les tâches réussies ou échouées et adapter le prompt en conséquence pour déterminer automatiquement si on doit capitaliser les tâches réussies ou échouées dans le cas d'un goto
         if validation == "success" or (agent_capitalize.human_llm_generate_function_description.automation in ["before", "after"] and (hasattr(agent_capitalize.human_llm_generate_function_description, 'saved_task') and agent_capitalize.human_llm_generate_function_description.saved_task['agent_name'] == "CapitalizationAgent")):
             agent_capitalize.capitalize_successful_tasks(task_description, parsed_code)
@@ -1791,42 +1794,6 @@ def run_planner(*args, **kwargs):  # NEW VERSION
     HumanLLMMonitor.check_init_class_db(force=True)
 
     # Definition of automation depending on the task given
-    automation = kwargs.get('automation')
-    if 'saved_task' in globals():
-        match saved_task['agent_name']:
-            case "TaskIdentificationAgent":
-                automation = {
-                    'taskreco': saved_task['before_after'],
-                    'coder': None if not special_criteria['CodingAgent#auto_n_rounds'] else "full_auto",
-                    'critic': None if not special_criteria['ValidationAgent#auto_n_rounds'] else "full_auto",
-                    'capitalizer': None if not special_criteria['CapitalizationAgent#auto_n_rounds'] else "full_auto"
-                }
-            case "CodingAgent":
-                automation = {
-                    'taskreco': 'skip_once',
-                    'coder': saved_task['before_after'],
-                    'critic': None if not special_criteria['ValidationAgent#auto_n_rounds'] else "full_auto",
-                    'capitalizer': None if not special_criteria['CapitalizationAgent#auto_n_rounds'] else "full_auto"
-                }
-            case "ValidationAgent":
-                automation = {
-                    'taskreco': 'skip_once',
-                    'coder': 'skip_once',
-                    'critic': saved_task['before_after'],
-                    'capitalizer': None if not special_criteria['CapitalizationAgent#auto_n_rounds'] else "full_auto"
-                }
-            case "CapitalizationAgent":
-                automation = {
-                    'taskreco': 'skip_once',
-                    'coder': 'skip_once',
-                    'critic': 'skip_once',
-                    'capitalizer': saved_task['before_after']
-                }
-            case _:
-                automation = kwargs.get('automation')
-    print(f"automation: {automation}")
-    kwargs['automation'] = automation
-
     if kwargs.get('functions_to_import') is not None:
         # Imports the functions with the regex pattern given from functions directory into the elastic database
         functions = import_functions_from_directory(kwargs.get('functions_to_import'))
@@ -1964,7 +1931,7 @@ def get_highest_score_index(score_array, mode='total'):
 
 def coding_and_validation_loop(agent_coding: CodingAgent, agent_validation: ValidationAgent, task_description, max_attempts,
                                extra_manual_validation_to_capitalize=True, continue_even_if_successful=True,
-                               automation=None, end_time=None):
+                               automation=None, end_time=None, human_evaluation_required=False):
     metadata = {'step_id': HumanLLMMonitor.step_id}
     # Retrieve data
     previous_errors, _ = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_errors',
@@ -2011,7 +1978,7 @@ def coding_and_validation_loop(agent_coding: CodingAgent, agent_validation: Vali
             smart_print(f"Generated code:\n{parsed_code['program_code']}\n*******\nOutput of code execution:\n{exec_result}\n".replace("\\n", "\n"), "coding_and_validation_loop", "coding_and_validation_loop RESULT")
             validation_agent_feedback = agent_validation.validate_code(parsed_code["program_code"], no_runtime_error,
                                                                        exec_result, task=task_description,
-                                                                       scores=scores, env_states=env_states, human_evaluation_required=True)
+                                                                       scores=scores, env_states=env_states, human_evaluation_required=human_evaluation_required)
             smart_print("Agent validation 'feedback' currently only support 1 feedback", "coding_and_validation_loop","coding_and_validation_loop WARNING")
             validation_agent_feedback = validation_agent_feedback[0]
             afb = validation_agent_feedback.content.replace('\\n', '\n')
@@ -2209,6 +2176,7 @@ if __name__ == "__main__":
         with open(f'pickle/{args.pickle_name}.pkl', 'rb') as f:
             variables_from_pickle = pickle.load(f)
             saved_task = variables_from_pickle.get('saved_task')
+            saved_task['content'] = json.loads(saved_task['content'])
             automatic = variables_from_pickle.get('automatic')
             unique_id = variables_from_pickle.get('unique_id')
             special_criteria = variables_from_pickle.get('special_criteria')
@@ -2283,7 +2251,43 @@ if __name__ == "__main__":
     if 'saved_task' in globals():
         special_criteria["all#saved_task"] = saved_task
         if special_criteria[f"{saved_task['agent_name']}#num_parallel_inferences"] == 0:
-            special_criteria[f"{saved_task['agent_name']}#num_parallel_inferences"] = saved_task.get('content', {}).get('num_parallel_inferences', 2)
+            saved_task_get = saved_task.get('content', {})
+            special_criteria[f"{saved_task['agent_name']}#num_parallel_inferences"] = saved_task_get.get('num_parallel_inferences', 2)
+        match saved_task['agent_name']:
+            case "TaskIdentificationAgent":
+                automation = {
+                    'taskreco': saved_task['before_after'],
+                    'coder': None if not special_criteria['CodingAgent#auto_n_rounds'] else "full_auto",
+                    'critic': None if not special_criteria['ValidationAgent#auto_n_rounds'] else "full_auto",
+                    'capitalizer': None if not special_criteria[
+                        'CapitalizationAgent#auto_n_rounds'] else "full_auto"
+                }
+            case "CodingAgent":
+                automation = {
+                    'taskreco': 'skip_once',
+                    'coder': saved_task['before_after'],
+                    'critic': None if not special_criteria['ValidationAgent#auto_n_rounds'] else "full_auto",
+                    'capitalizer': None if not special_criteria[
+                        'CapitalizationAgent#auto_n_rounds'] else "full_auto"
+                }
+            case "ValidationAgent":
+                automation = {
+                    'taskreco': 'skip_once',
+                    'coder': 'skip_once',
+                    'critic': saved_task['before_after'],
+                    'capitalizer': None if not special_criteria[
+                        'CapitalizationAgent#auto_n_rounds'] else "full_auto"
+                }
+            case "CapitalizationAgent":
+                automation = {
+                    'taskreco': 'skip_once',
+                    'coder': 'skip_once',
+                    'critic': 'skip_once',
+                    'capitalizer': saved_task['before_after']
+                }
+            case _:
+                automation = None
+        print(f"automation: {automation}")
     else:
         special_criteria = None
     if not ('automatic' in globals()):
@@ -2318,7 +2322,7 @@ if __name__ == "__main__":
                 functions_to_import=None,
                 primitives_dir="primitives",
                 special_criteria=special_criteria,
-                automation=automatic,
+                automation=automation if 'automation' in globals() else automatic,
                 model_choice={"coach": "default_llm", "coder": "premium_llm", "critic": "default_llm",
                               "capitalizer": "default_llm"},
                 embedding_function=embedding_function)  # Auto-test: 0"""
