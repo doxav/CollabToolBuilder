@@ -141,7 +141,6 @@ def apply_criteria_and_prepare_monitor_args(agent, special_criteria, available_l
 
     return kw_common_args
 
-
 # Agent 1: Task Identification
 class TaskIdentificationAgent:
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
@@ -254,7 +253,6 @@ class TaskIdentificationAgent:
                     new_criteria[key] = value
             expanded_criteria.append(new_criteria)
         return expanded_criteria
-
 
 # Agent 2: Code Task
 class CodingAgent:
@@ -770,7 +768,6 @@ class CodingAgent:
 
         return results
 
-
 # Agent 3: Code Validation
 class ValidationAgent:
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, skip_rounds=0,
@@ -844,7 +841,6 @@ New environment status of examples on which the task has been tested on: <<{envs
             model_choice=self.model_choice
         )
         return code_validation
-
 
 # Agent 4: Code Capitalization
 class CapitalizationAgent:
@@ -1084,10 +1080,7 @@ class CapitalizationAgent:
             return_message_content_only=True, model_choice=self.model_choice)
         return tool_description
 
-
-#        smart_print(f"Error: Could not find a valid definition for {function_name}. Please set it:", "orchestrate_agents", "orchestrate_agents ERROR")
-#        function_code = _visual_input(current_function_code, filetype="py")
-
+# Agent 5: Planner
 class PlannerAgent:
     def __init__(self, default_llm_choice, envs, premium_llm_choice=None, problem_prompts_subdir=None,
                  skip_rounds=0, llmORchains_list=None, automation=None, model_choice=None, special_criteria=None,
@@ -1293,7 +1286,6 @@ class PlannerAgent:
             smart_print(f"Error during LLM call: {e}", agent_name=self.name)
             return ""
 
-
 def extract_function_code(task_content, function_name, current_function_code=None):
     """
     Extracts the complete code block for the specified function from the given task content.
@@ -1314,7 +1306,6 @@ def extract_function_code(task_content, function_name, current_function_code=Non
 
     return function_code
 
-
 def import_functions_from_directory(regex=".*"):
     """
     Imports functions from files in the functions directory that match the given regex pattern,
@@ -1328,7 +1319,6 @@ def import_functions_from_directory(regex=".*"):
                 code = f.read()
                 functions[file.replace(".py", "")] = code
     return functions
-
 
 # Main learning loop orchestration functions
 def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environments=None,
@@ -1345,6 +1335,18 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               continue_each_loop=False,unique_id=None, primitives_dir=None, functions_to_import=None,
                               embedding_function=None, human_evaluation_required=False):
     scores = None
+
+    # Definition of automation depending on the task given
+    if functions_to_import:
+        # Imports the functions with the regex pattern given from functions directory into the elastic database
+        functions = import_functions_from_directory(functions_to_import)
+        print("Imported functions:", type(functions))
+        for function in functions.items():
+            print(f"Function:<<<\n{function}\n>>>")
+            # TODO: improve by re-using code from SWE which also import docstrings for descriptions
+            serialized_entry = json.dumps({ "time": datetime.now().isoformat(), "main_function_name": function[0], "program_code": function[1], "tool_description": "", "task_description": ""}, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
+            tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": HumanLLMMonitor.step_id}
+            print("Adding learnt task:", HumanLLMMonitor.add_learnt_task(serialized_entry, tags))
 
     print("Starting learning loop...")
 
@@ -1551,203 +1553,18 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
     else:
         return max(total_scores)
 
-def run_4agents_learning_loop_graph(
-    default_llm_key,
-    premium_llm_key,
-    test_environments=None,
-    manual_validation_to_capitalize=True,
-    problem_prompts_subdir=None,
-    max_coding_attempts=4,
-    include_code=None,
-    selected_successful_functions=None,
-    selected_failed_functions=None,
-    agtask_premium_llm_by_default=True,
-    agtask_skip_rounds=0,
-    agcoding_skip_rounds=0,
-    agvalidation_skip_rounds=0,
-    agcapitalize_skip_rounds=0,
-    llmORchains_list=None,
-    model_choice=None,
-    automation=None,
-    allow_custom_score_state_functions=False,
-    params_user_message=None,
-    max_execution_time=900,
-    special_criteria=None,
-    temperature_max=1,
-    agcoach_num_parallel_inferences=1,
-    fixed_coach=False,
-    return_array=False,
-    agcoding_num_parallel_inferences=1,
-    continue_each_loop=False,
-    unique_id=None,
-    primitives_dir=None,
-    functions_to_import=None,
-    embedding_function=None
-):
-    # Initialize state tracking
-    class AgentState(TypedDict):
-        task: str
-        code: dict  # Changed from str to dict to match parsed_code structure
-        validation: str
-        messages: Sequence[BaseMessage]
-        scores: dict
-        should_continue: bool
-        environments: list
-        total_scores: list
-        end_time: float
-
-    # Create agent nodes with proper initialization
-    def create_task_agent(state: AgentState) -> AgentState:
-        agent = TaskIdentificationAgent(
-            default_llm_key,
-            state["environments"],
-            premium_llm_choice=premium_llm_key,
-            problem_prompts_subdir=problem_prompts_subdir,
-            premium_llm_by_default=agtask_premium_llm_by_default,
-            skip_rounds=agtask_skip_rounds,
-            llmORchains_list=llmORchains_list,
-            automation=automation.get('taskreco') if isinstance(automation, dict) else automation,
-            model_choice=model_choice,
-            criteria=params_user_message,
-            temperature_max=temperature_max,
-            num_parallel_inferences=agcoach_num_parallel_inferences,
-            fixed_coach=fixed_coach,
-            special_criteria=special_criteria
-        )
-        task = agent.identify_best_task()
-        return {"task": task[0].content, **state}  # Extract content from first task
-
-    def create_coding_agent(state: AgentState) -> AgentState:
-        agent = CodingAgent(
-            default_llm_key,
-            state["environments"],
-            premium_llm_choice=premium_llm_key,
-            problem_prompts_subdir=problem_prompts_subdir,
-            skip_rounds=agcoding_skip_rounds,
-            llmORchains_list=llmORchains_list,
-            automation=automation.get('coder') if isinstance(automation, dict) else automation,
-            model_choice=model_choice,
-            special_criteria=special_criteria,
-            num_parallel_inferences=agcoding_num_parallel_inferences,
-            primitives_dir=primitives_dir
-        )
-        validation_agent = ValidationAgent(
-            default_llm_key,
-            state["environments"],
-            premium_llm_choice=premium_llm_key,
-            skip_rounds=agvalidation_skip_rounds,
-            llmORchains_list=llmORchains_list,
-            automation=automation.get('critic') if isinstance(automation, dict) else automation,
-            model_choice=model_choice,
-            special_criteria=special_criteria
-        )
-
-        parsed_code, validation, scores = coding_and_validation_loop(
-            agent,
-            validation_agent,
-            state["task"],
-            max_coding_attempts,
-            manual_validation_to_capitalize,
-            automation=agent.human_llm_code_task.automation,
-            end_time=state["end_time"]
-        )
-
-        return {
-            "code": parsed_code,
-            "validation": validation,
-            "scores": scores,
-            **state
-        }
-
-    def create_capitalization_agent(state: AgentState) -> AgentState:
-        agent = CapitalizationAgent(
-            default_llm_key,
-            premium_llm_choice=premium_llm_key,
-            skip_rounds=agcapitalize_skip_rounds,
-            problem_prompts_subdir=problem_prompts_subdir,
-            llmORchains_list=llmORchains_list,
-            automation=automation.get('capitalizer') if isinstance(automation, dict) else automation,
-            model_choice=model_choice,
-            special_criteria=special_criteria
-        )
-
-        if state["validation"] == "success":
-            agent.capitalize_successful_tasks(state["task"], state["code"])
-        else:
-            agent.capitalize_failed_tasks(state["task"], state["code"])
-
-        # Update total scores
-        if state["scores"]:
-            total_score = calculate_total_score(state["scores"])
-            state["total_scores"].append(total_score)
-
-        # Determine whether to continue
-        should_continue = continue_each_loop if agent.automation else get_user_continue_input()
-
-        return {"should_continue": should_continue, **state}
-
-    def should_continue(state: AgentState) -> str:
-        if not state["should_continue"] or time.time() >= state["end_time"]:
-            return "end"
-        return "continue"
-
-    # Create workflow graph
-    workflow = StateGraph(AgentState)
-
-    # Add nodes
-    workflow.add_node("task_coach", create_task_agent)
-    workflow.add_node("code_task", create_coding_agent)
-    workflow.add_node("capitalize", create_capitalization_agent)
-
-    # Add edges
-    workflow.add_edge("task_coach", "code_task")
-    workflow.add_edge("code_task", "capitalize")
-
-    # Add conditional edges
-    workflow.add_conditional_edges(
-        "capitalize",
-        should_continue,
-        {
-            "continue": "task_coach",
-            "end": END
-        }
-    )
-
-    # Set entry point
-    workflow.set_entry_point("task_coach")
-
-    # Compile graph
-    app = workflow.compile()
-
-    # Initialize state
-    initial_state = {
-        "messages": [],
-        "should_continue": True,
-        "environments": test_environments,
-        "total_scores": [],
-        "end_time": time.time() + max_execution_time
-    }
-
-    # Execute graph
-    result = app.invoke(initial_state)
-
-    # Return results based on return_array parameter
-    if return_array:
-        return result["total_scores"]
-    else:
-        return max(result["total_scores"]) if result["total_scores"] else 0
-
-def calculate_total_score(scores):
+def calculate_total_score(scores, weight_no_runtime_error: float = 1.0, weight_best_score: float = 10.0, weight_validated_scores: float = 20.0):
+    """Calculate total score from the scores dictionary with configurable weights"""
     validated_score_avg = 0
-    if scores['validated_scores'] is not None:
+    if scores.get('validated_scores') is not None and len(scores['validated_scores']) > 0:  # Check if the list is not empty
         for dic in scores['validated_scores']:
             validated_score_avg += sum(dic.values())
-        validated_score_avg /= len(scores['validated_scores'])
+        validated_score_avg /= len(scores['validated_scores'])  # Safe division
 
     total_score = (
-        scores['percentage_no_runtime_error'] +
-        10 * scores['best_score_without_validation'] +
-        (20 * (1 + validated_score_avg) if scores['validated_scores'] else 0)
+        weight_no_runtime_error * scores.get('percentage_no_runtime_error', 0) +
+        weight_best_score * scores.get('best_score_without_validation', 0) +
+        (weight_validated_scores * (1 + validated_score_avg) if scores.get('validated_scores') else 0)
     )
     return total_score if total_score > 0 else 0
 
@@ -1870,14 +1687,12 @@ def run_planner(*args, **kwargs):  # NEW VERSION
 
     return
 
-
 def get_success_value_in_text(text):
     match = re.search(r"Success['\"]?\s*[:=][:=]?\s*(['\"]?)(True|False|Yes|No|y|n|0|1)\1", text, re.IGNORECASE)
     if match:
         success_value = match.group(2)
         return success_value.lower() in ['true', 'yes', 'y', '1']
     return False
-
 
 def get_highest_score_index(score_array, mode='total'):
     """
@@ -2078,7 +1893,6 @@ def sanitized_task_name(task):
     # Implement task name sanitization logic
     return task
 
-
 class PrintPromptRunnable(Runnable):
     def invoke(self, input_msg, config):
         smart_print(f"PrintPromptRunnable type of input_msg: {type(input_msg)}")
@@ -2104,7 +1918,6 @@ def format_prompt(messages):
         else:
             prompt_str += f"Type {type(message)}: " + str(message.content) + "\n"
     return prompt_str
-
 
 def create_Nmajority_chain(num_models=3, map_model_name=None, reduce_model_name=None, map_temperature=0.7,
                            reduce_temperature=0.):
@@ -2287,8 +2100,7 @@ if __name__ == "__main__":
     # Run the planner agent
     envs_swe = None
 
-    #run_planner(default_llm_key="default_llm",
-    run_4agents_learning_loop(default_llm_key="default_llm",
+    run_4agents_learning_loop(default_llm_key="default_llm", # ALTERNATIVES: run_4agents_learning_loop, run_planner, run_4agents_learning_loop
                 premium_llm_key="premium_llm",
                 llmORchains_list=llmORchains_list,
                 test_environments=envs_tech_synthesis,
