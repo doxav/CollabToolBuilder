@@ -1,5 +1,3 @@
-
-
 import ast
 import contextlib
 import hashlib
@@ -11,7 +9,6 @@ import shutil
 import traceback
 import types
 import uuid
-
 
 class Environment:
     def __init__(self, temp_root_dir: str = None, data_dir: str = "data"):
@@ -162,7 +159,6 @@ class EnvironmentManager:
 
     def get_environment(self):
         return self.env
-
 
 def validate_function_code(code, function_name, local_scope=None, compile_test_only=False):
     if local_scope is None:

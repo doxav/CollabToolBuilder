@@ -22,7 +22,7 @@ import traceback
 import json
 import requests
 
-from learn import Environment
+from env.env import Environment
 
 # import a function from langchain which could embed a text into a vector using OpenAI ada-002 or HuggingFace
 import langchain
@@ -78,7 +78,9 @@ class Document:
     embedding_model_name: str = "intfloat/e5-base-v2" # e.g. "nomic-embed-text:latest" for OpenAI ada-002, "intfloat/e5-base-v2" for HuggingFace e5-base-v2, ...
 
 class DocumentStructure:
+    # declare a class variable to store the embedding model class instance to avoid reinitializing it for each DocumentStructure instance
     embedding_model_cls = None
+    embedding_model_cls_name = None
     def __init__(self,
                  synthesis_type: str,
                  initial_goal: str,
@@ -96,17 +98,17 @@ class DocumentStructure:
         self.embedding_model_query_prefix = embedding_model_query_prefix
         self.embedding_model_name = embedding_model_name
         if not DocumentStructure.embedding_model_cls:
-            if embedding_model_name == "text-embedding-ada-002":
+            if DocumentStructure.embedding_model_cls_name == embedding_model_name and DocumentStructure.embedding_model_cls:
+                self.embedding_model = DocumentStructure.embedding_model_cls
+            elif embedding_model_name == "text-embedding-ada-002":
                 if not os.getenv("OPENAI_API_KEY"):
                     raise ValueError("OpenAI API key is required for OpenAI ada-002 model.")
-                self.embedding_model = OpenAIEmbeddings(
-                    model=embedding_model_name)  # , openAIApiKey=os.getenv("OPENAI_API_KEY")
+                self.embedding_model = OpenAIEmbeddings(model=embedding_model_name)  # , openAIApiKey=os.getenv("OPENAI_API_KEY")
             else:
                 self.embedding_model = HuggingFaceEmbeddings(model_name=embedding_model_name,
                                                              encode_kwargs={"normalize_embeddings": True},
-                                                             model_kwargs={
-                                                                 "trust_remote_code": True})  # , openAIApiKey=os.getenv("OPENAI_API_KEY"
-            DocumentStructure.embedding_model_cls = self.embedding_model
+                                                             model_kwargs={"trust_remote_code": True})  # , openAIApiKey=os.getenv("OPENAI_API_KEY"
+            DocumentStructure.embedding_model_cls, DocumentStructure.embedding_model_cls_name = self.embedding_model, embedding_model_name
         else:
             self.embedding_model = DocumentStructure.embedding_model_cls
 
@@ -1416,7 +1418,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         document_state += f"> Current resources: {resources_observation if len(resources_observation) > 0 else 'Empty'}\n"
         if extended:
             embed_id = "1" if self.document.embedding_model_name == "text-embedding-ada-002" else "2"
-            distance_to_targetJSON = self.synthesis_manager.get_distance_to_targetJSON(target_section_title_embedding_label="section_embedding_"+embed_id, target_section_content_embedding_label="content_embedding_"+embed_id, target_plan_embedding_label="plan_embedding_"+embed_id)
+            distance_to_targetJSON = self.synthesis_manager.get_distance_to_targetJSON(target_section_title_embedding_label="section_embedding_"+embed_id, target_section_content_embedding_label="content_embedding_"+embed_id, target_plan_embedding_label="plan_embedding_"+embed_id, target_resource_embedding_label="resource_embedding_"+embed_id)
             events_action_counts = self.synthesis_manager.get_count_method_calls()
             document_state += f"1. sections titles progress: {distance_to_targetJSON['plan_titles_embedding_similarity']}\n"
             document_state += f"2. sections content progress: {distance_to_targetJSON['plan_contents_embedding_similarity']}\n"

@@ -864,6 +864,8 @@ class HumanLLMMonitor:
         if embedding_function:
             HumanLLMMonitor.set_common_vectordb_embedding_function(embedding_function)
         if HumanLLMMonitor.common_vectordb is None:
+            if reset_db_indices:
+                HumanLLMMonitor.reset_db_indices = True
             HumanLLMMonitor.common_vectordb = UnifiedVectorDB(
                 collection_name=HumanLLMMonitor.common_vectordb_collection_name,
                 embedding_function=HumanLLMMonitor.common_vectordb_embedding_function,
