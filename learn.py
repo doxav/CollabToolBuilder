@@ -36,6 +36,7 @@ from env.env import EnvironmentManager, validate_function_code
 from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, smart_print, smart_input
 from env.IR_CPS_TechSynthesis.env import *
 from env.SWEBench.env import *
+from env.env import Environment, EnvironmentManager
 
 from typing import TypedDict, Sequence
 
@@ -57,7 +58,9 @@ UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "no
 
 
 embedding_function = "text-embedding-ada-002" if embedding_function is None else embedding_function  #"Alibaba-NLP/gte-base-en-v1.5" UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
-reset_db_indices = False  # Set to True after changing embeddings
+# test if reset_db_indices exists
+if not 'reset_db_indices' in locals():
+    reset_db_indices = False  # Set it in your config.py to True if you want to reset "after changing embeddings"
 
 HumanLLMMonitor.use_websocket = True
 
@@ -1341,14 +1344,6 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agcoding_num_parallel_inferences=1,
                               continue_each_loop=False,unique_id=None, primitives_dir=None, functions_to_import=None,
                               embedding_function=None, human_evaluation_required=False):
-    if unique_id is None:
-        unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
-    if unique_id is not False and UnifiedVectorDB.unique_collection_id is None:
-        UnifiedVectorDB.set_unique_collection_id(unique_id)
-    # Initialize HumanLLMMonitor databases
-    HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function)
-    HumanLLMMonitor.check_init_class_db(force=True)
-
     scores = None
 
     print("Starting learning loop...")
@@ -1589,13 +1584,6 @@ def run_4agents_learning_loop_graph(
     functions_to_import=None,
     embedding_function=None
 ):
-    unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
-    if unique_id is not False and UnifiedVectorDB.unique_collection_id is None:
-        UnifiedVectorDB.set_unique_collection_id(unique_id)
-    # Initialize HumanLLMMonitor databases
-    HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function)
-    HumanLLMMonitor.check_init_class_db(force=True)
-
     # Initialize state tracking
     class AgentState(TypedDict):
         task: str
@@ -1784,14 +1772,6 @@ def run_planner(*args, **kwargs):  # NEW VERSION
         problem_type, instance_ids_raw = match.groups()
         instance_ids = instance_ids_raw.split() if instance_ids_raw else []
         return problem_type.lower(), instance_ids
-
-    unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}" if kwargs.get( 'unique_id') is None else kwargs.get('unique_id')
-    if unique_id is not False and UnifiedVectorDB.unique_collection_id is None:
-        UnifiedVectorDB.set_unique_collection_id(unique_id)
-
-    # Initialize HumanLLMMonitor databases
-    HumanLLMMonitor._check_and_init_vector_db(embedding_function=kwargs.get('embedding_function'), reset_db_indices=kwargs.get('reset_db_indices'))
-    HumanLLMMonitor.check_init_class_db(force=True)
 
     # Definition of automation depending on the task given
     if kwargs.get('functions_to_import') is not None:
@@ -2190,6 +2170,15 @@ if __name__ == "__main__":
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
 
     unique_id = "XP_21_12_24"
+
+    if unique_id is None:
+        unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+    if unique_id is not False and UnifiedVectorDB.unique_collection_id is None:
+        UnifiedVectorDB.set_unique_collection_id(unique_id)
+    # Initialize HumanLLMMonitor databases
+    HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
+    HumanLLMMonitor.check_init_class_db(force=True)
+
 
     HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy,
                                                 unique_id=unique_id)
