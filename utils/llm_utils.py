@@ -1328,6 +1328,7 @@ class HumanLLMMonitor:
                  fixed_coach=False, prompt_critic=None, saved_task=None, automation=None, auto_n_rounds=None,
                  recommend_critics=None, task_parameters=None):
         # Instance properties to track time
+        self.agent_name = agent_name or self.get_caller_class_name()
         self.task_parameters = task_parameters
         self.selected_outputs = []
         self.menu_start_time = None
@@ -1346,7 +1347,7 @@ class HumanLLMMonitor:
         self.set_premium_llmORchain(
             premium_llmORchain if premium_llmORchain else "premium_llm")  #premium_llm = premium_llmORchain if premium_llmORchain else self.llmORchains_list.get("premium_llm")
         self.CPS_env_type = CPS_env_type
-        self.agent_name = agent_name or self.get_caller_class_name()
+
         if HumanLLMMonitor.use_websocket:
             if HumanLLMMonitor.websocket_server is None:
                 HumanLLMMonitor.initialize_websocket_server()
@@ -2699,7 +2700,7 @@ class HumanLLMMonitor:
                      callable_system_message=None, system_prompt_template=None, user_message=None,
                      return_message_content_only=True, function_calling=False, temperature_min=None, timeout_seconds=300,
                      stream_output=False, use_default_llm=True, model_choice=None,
-                     temperature_max=None, task_name=None):
+                     temperature_max=None, task_name=None, prompt_directory="prompts"):
         #if not self.selected_llm_or_chain: raise ValueError("No LLM or chain selected for use.")
         if temperature_min is None: temperature_min = self.temperature_min
         if temperature_max is None: temperature_max = self.temperature_max
@@ -2834,7 +2835,7 @@ class HumanLLMMonitor:
         elif original_input_messages is None:
             print(f"****user_message {self.agent_name} : {user_message}****")
             original_input_messages = [
-                SystemMessage(content=self.load_prompt(prompt_name=self.system_prompt, directory='prompts')),
+                SystemMessage(content=self.load_prompt(prompt_name=self.system_prompt, directory=prompt_directory)),
                 HumanMessage(content=user_message)]
         input_contents_str0, input_contents_str1 = str(original_input_messages[0].content), str(
             original_input_messages[1].content)
