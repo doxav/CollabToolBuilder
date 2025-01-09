@@ -801,6 +801,10 @@ class HumanLLMMonitor:
         if not os.path.exists('pickle'):
             os.makedirs('pickle')
 
+        for key in special_criteria:
+            if 'num_parallel_inferences' in key and special_criteria[key] == 0:
+                special_criteria[key] = 1
+
         # Serializing variables to pickle file
         variables_to_pickle = {
             'saved_task': task,
@@ -860,6 +864,8 @@ class HumanLLMMonitor:
         if embedding_function:
             HumanLLMMonitor.set_common_vectordb_embedding_function(embedding_function)
         if HumanLLMMonitor.common_vectordb is None:
+            if reset_db_indices:
+                HumanLLMMonitor.reset_db_indices = True
             HumanLLMMonitor.common_vectordb = UnifiedVectorDB(
                 collection_name=HumanLLMMonitor.common_vectordb_collection_name,
                 embedding_function=HumanLLMMonitor.common_vectordb_embedding_function,

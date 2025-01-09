@@ -275,7 +275,8 @@ class Document:
         # resources = paper_data.get("references", [])
         resources = self.__references
         for i in range(len(resources)):
-            resources[i]["resource_embedding"] = embed_OPENAI.embed_query(resources[i]["resource_description"])
+            resources[i]["resource_embedding_1"] = embed_OPENAI.embed_query(resources[i]["resource_description"])
+            resources[i]["resource_embedding_2"] = embed_HF.embed_query(HUGGINGFACE_EMBEDDING_PREFIX + resources[i]["resource_description"])
 
         plan_embed_1 = self.__gen_embed_plan(plan, 1)
         plan_embed_2 = self.__gen_embed_plan(plan, 2)
