@@ -1373,6 +1373,7 @@ class HumanLLMMonitor:
         self.premium_llm_by_default = premium_llm_by_default
         self.synthesize_mode = synthesize_mode
         self.inference_checks = inference_checks if inference_checks else {}
+        self.excluded_inference_checks = []
         self.last_inference_check_results = None
         self.user_message = ""
         self.envs = envs
@@ -1582,11 +1583,26 @@ class HumanLLMMonitor:
     def add_inference_check(self, check_name, check_function):
         self.inference_checks[check_name] = InferenceCheck(check_name, check_function)
 
+    def exclude_inference_check(self, check_name : list):
+        for name in check_name:
+            while name[0] == " ":
+                name = name[1:]
+            if name in self.inference_checks:
+                self.excluded_inference_checks.append(name)
+
+    def include_inference_check(self, check_name : list):
+        for name in check_name:
+            while name[0] == " ":
+                name = name[1:]
+            if name in self.excluded_inference_checks:
+                del self.excluded_inference_checks[self.excluded_inference_checks.index(name)]
+
     def run_inference_checks(self, output_id, *args, **kwargs):
         results = {}
         for check_name, check in self.inference_checks.items():
-            result = check.run_check(output_id, *args, **kwargs)
-            results[check_name] = result
+            if not check_name in self.excluded_inference_checks:
+                result = check.run_check(output_id, *args, **kwargs)
+                results[check_name] = result
         # Ensure output_id is within bounds before updating the list
         if 0 <= output_id < len(self.last_inference_check_results):
             self.last_inference_check_results[output_id] = results  # Update the specific index
@@ -1665,6 +1681,7 @@ class HumanLLMMonitor:
                 f"[J] Set num of parallel inferences ({self.num_parallel_inferences}, Synthesis={'ON' if self.synthesize_mode else 'OFF'})\n")  # UPDATED
             menu += ("[K] Exit\n")
             menu += (f"[P] Generate with a PREMIUM agent (default:{use_premium_llm})\n")
+            menu += ("[R] Activate/Deactivate inferences checks\n")
             menu += (f"[Z] Continue\n")
 
             smart_print(before_menu + menu, self.agent_name, "BEFORE inference action MENU", optional=False)
@@ -1765,6 +1782,9 @@ class HumanLLMMonitor:
             elif action == "J":  # Change num of parallel inferences and synthesize mode
                 self.changeNumParallelInferencesAndSynthesize()
 
+            elif action == "R":
+                self.activate_deactivate_inference_checks()
+
             # Count time spent and occurrences waiting and in each option
             self.track_time_spent(action, mode='before')
 
@@ -1785,6 +1805,22 @@ class HumanLLMMonitor:
 
         self.mode = None
         return messages, comments, forced_llm_output, use_premium_llm, default_llm_function, premium_llm_function, function_calling
+
+    def activate_deactivate_inference_checks(self):
+        menu = "Current inference checks:\n"
+        for check_name in self.inference_checks :
+            menu += f"- {check_name} {'(Deactivated)' if check_name in self.excluded_inference_checks else ''}\n"
+        menu += "\n[A] Activate inference check\n"
+        menu += "[E] Deactivate inference check\n"
+        answer = smart_input(menu, self.agent_name, "ACTIVATE/DEACTIVATE INFERENCE CHECKS")
+        if answer.lower() == "a":
+            check_name = smart_input("Enter the names of the inference check to activate (if many to activate, separated by comma): ", self.agent_name,
+                                     "ACTIVATE INFERENCE CHECK").title().split(",")
+            self.include_inference_check(check_name)
+        else:
+            check_name = smart_input("Enter the names of the inference check to deactivate (if many to deactivate, separated by comma): ", self.agent_name,
+                                     "DEACTIVATE INFERENCE CHECK").title().split(",")
+            self.exclude_inference_check(check_name)
 
     def changeNumParallelInferencesAndSynthesize(self):
         try:
@@ -2395,7 +2431,7 @@ class HumanLLMMonitor:
             for result in self.last_inference_check_results:
                 if result is not None and isinstance(result, dict):
                     for key, value in result.items():
-                        if key == 'Recommend critiques':
+                        if key == 'Recommend Critics':
                             critic = value
                             break
                 else:
