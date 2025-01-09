@@ -121,6 +121,7 @@ def apply_criteria_and_prepare_monitor_args(agent, special_criteria, available_l
         class_name = agent.__class__.__name__
         # Apply special criteria to agent attributes and local parameters
         for key, value in special_criteria.items():
+            print(f"Special criteria: {key} = {value}")
             if key in ['self', 'special_criteria']:
                 continue
             if '#' in key:
@@ -136,8 +137,10 @@ def apply_criteria_and_prepare_monitor_args(agent, special_criteria, available_l
 
     # Prepare HumanLLMMonitor arguments
     HumanLLMMonitor_args = set(inspect.signature(HumanLLMMonitor.__init__).parameters) - {'self'}
+    print(HumanLLMMonitor_args)
     kw_common_args = {param: available_locals[param] for param in HumanLLMMonitor_args if param in available_locals}
     kw_common_args.update(new_params)
+    print(kw_common_args)
 
     return kw_common_args
 
@@ -850,7 +853,7 @@ class CapitalizationAgent:
                  special_criteria=None):
         self.additional_check_list = None
         self.name = self.__class__.__name__
-        self.saved_task, auto_n_rounds, num_parallel_inferences, temperature_max, recommend_critics = None, None, 1, None, None
+        saved_task, auto_n_rounds, num_parallel_inferences, temperature_max, recommend_critics = None, None, 1, None, None
 
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
 
@@ -876,8 +879,8 @@ class CapitalizationAgent:
         import socket, uuid, datetime
         self.human_llm_generate_function_description.task_parameters = {'task_description' : task_description, 'parsed_code' : parsed_code}
         print(f"DEBUG CACA : {hasattr(self, 'saved_task')}, {self.automation}, {self.automation in ['before', 'after']}")
-        if hasattr(self, 'saved_task') and self.automation in ['before', 'after']:
-            content = self.saved_task.get('content', {})
+        if hasattr(self.human_llm_generate_function_description, 'saved_task') and self.automation in ['before', 'after']:
+            content = self.human_llm_generate_function_description.saved_task.get('content', {})
             print(f"task parameters : {content.get('task_parameters', {})}")
             task_description = content.get("task_parameters", {}).get("task_description", task_description)
             parsed_code = content.get("task_parameters", {}).get("parsed_code", parsed_code)
@@ -887,7 +890,7 @@ class CapitalizationAgent:
                                         parsed_code.get("main_function", {}).get("name", "unknown"))
         db_function_names = self.human_llm_generate_function_description.get_learnt_tasks(k=100)
         tmp = [json.loads(item) for item in db_function_names]
-        db_function_names = [item["class_name"] for item in tmp]
+        db_function_names = [item["main_function_name"] for item in tmp]
 
         if function_name in db_function_names:
             if self.replace_if_exists_function:
@@ -1498,7 +1501,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                 "Y", "YES"]:
                 agent_capitalize.capitalize_failed_tasks(task_description, parsed_code)
         if agent_capitalize.human_llm_generate_function_description.automation:
-            continue_identifying_tasks = continue_each_loop
+            continue_identifying_tasks = True if agent_capitalize.human_llm_generate_function_description.automation == "full_auto" else continue_each_loop
         else:
             answer = smart_input(
                 "Do you want to:\n- search for a new task after reseting to empty documents (Y/YES) ?\n- search for a new task based based on the status of documents after applying the task you just validated (N/NO/Enter) ?\n- or just exit the program (E/EXIT) ?",
