@@ -206,7 +206,7 @@ class WebsocketServer:
         print(f"Access to HMI via : {absolute_hmi_file_path}")
 
         # Start the WebSocket server
-        server = await websockets.serve(self.handler, "localhost", self.port, ping_timeout=120)
+        server = await websockets.serve(self.handler, "127.0.0.1", self.port, ping_timeout=120)
         print(f"WebSocket server started on port {self.port}")
 
         # Start localtunnel if proxy is enabled
