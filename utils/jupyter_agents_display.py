@@ -188,4 +188,3 @@ class AgentDisplayManager:
 
         # This approach doesn't block; you might need to fetch user_input[0] later
         return user_input[0]
-

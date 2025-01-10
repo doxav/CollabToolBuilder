@@ -1,0 +1,13 @@
+User message: 
+    
+    - Current status of examples on which the task will be tested on: <<< Document #cf0d353c-b43b-4a79-88f9-42c2c84cf75e properties:
+> Current table of content:
+Empty
+> Current resources: Empty
+>>>
+<<< Document #42252c6c-12f3-4edf-9045-8acd69bc3356 properties:
+> Current table of content:
+Empty
+> Current resources: Empty
+>>>
+    

@@ -2,7 +2,6 @@ pip
 openai
 langchain
 python-dotenv
-pytesseract
 beautifulsoup4
 requests
 tiktoken
@@ -16,3 +15,4 @@ loguru
 scikit-learn
 numpy
 pdfminer.six
+einops

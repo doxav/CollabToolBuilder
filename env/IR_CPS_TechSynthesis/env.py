@@ -22,7 +22,7 @@ import traceback
 import json
 import requests
 
-from learn import Environment
+from env.env import Environment
 
 # import a function from langchain which could embed a text into a vector using OpenAI ada-002 or HuggingFace
 import langchain
@@ -58,6 +58,8 @@ class Section:
     title_embedding: List[float] = field(default_factory=list)
     content: str = ""
     content_embedding: List[float] = field(default_factory=list)
+    resource: str = ""
+    resource_embedding: List[float] = field(default_factory=list)
     title_validation_status: int = 0
     content_progress_validation_status: int = 0
     local_feedback_to_process: List[str] = field(default_factory=list) # could be citation to integrate, critics to process...
@@ -69,12 +71,16 @@ class Document:
     title_embedding: List[float] = field(default_factory=list) # TODO: check if we need to store the embedding of the title because, differently to sections, it is not used in comparison to target because it is an input
     context: str = "" # e.g. should be the abstract content of the document if the goal is to write a SOTA survey paper, the introduction of a Wikipedia article if the goal is to write a Wikipedia article, the introduction of a patent if the goal is to write a patent, ...
     context_embedding: List[float] = field(default_factory=list)  # TODO: check if we need to store the embedding of the context because, differently to sections content, it is not used in comparison to target because it is an input
+    resource: str = ""
+    resource_embedding: List[float] = field(default_factory=list)
     sections_list: List[Any] = field(default_factory=list)  
     sections_list_embedding: List[float] = field(default_factory=list)
     embedding_model_name: str = "intfloat/e5-base-v2" # e.g. "nomic-embed-text:latest" for OpenAI ada-002, "intfloat/e5-base-v2" for HuggingFace e5-base-v2, ...
 
 class DocumentStructure:
+    # declare a class variable to store the embedding model class instance to avoid reinitializing it for each DocumentStructure instance
     embedding_model_cls = None
+    embedding_model_cls_name = None
     def __init__(self,
                  synthesis_type: str,
                  initial_goal: str,
@@ -84,6 +90,7 @@ class DocumentStructure:
                  # e.g. "query: " for intfloat/e5-base-v2 should improve for QA but we are in estimating straight semantic similarity
                  title: str = None,
                  context: str = None,
+                 resources:str = None,
                  abstract: str = None,
                  ):
         if abstract is not None: context = abstract if context is None else context + "\n" + abstract
@@ -91,17 +98,17 @@ class DocumentStructure:
         self.embedding_model_query_prefix = embedding_model_query_prefix
         self.embedding_model_name = embedding_model_name
         if not DocumentStructure.embedding_model_cls:
-            if embedding_model_name == "text-embedding-ada-002":
+            if DocumentStructure.embedding_model_cls_name == embedding_model_name and DocumentStructure.embedding_model_cls:
+                self.embedding_model = DocumentStructure.embedding_model_cls
+            elif embedding_model_name == "text-embedding-ada-002":
                 if not os.getenv("OPENAI_API_KEY"):
                     raise ValueError("OpenAI API key is required for OpenAI ada-002 model.")
-                self.embedding_model = OpenAIEmbeddings(
-                    model=embedding_model_name)  # , openAIApiKey=os.getenv("OPENAI_API_KEY")
+                self.embedding_model = OpenAIEmbeddings(model=embedding_model_name)  # , openAIApiKey=os.getenv("OPENAI_API_KEY")
             else:
                 self.embedding_model = HuggingFaceEmbeddings(model_name=embedding_model_name,
                                                              encode_kwargs={"normalize_embeddings": True},
-                                                             model_kwargs={
-                                                                 "trust_remote_code": True})  # , openAIApiKey=os.getenv("OPENAI_API_KEY"
-            DocumentStructure.embedding_model_cls = self.embedding_model
+                                                             model_kwargs={"trust_remote_code": True})  # , openAIApiKey=os.getenv("OPENAI_API_KEY"
+            DocumentStructure.embedding_model_cls, DocumentStructure.embedding_model_cls_name = self.embedding_model, embedding_model_name
         else:
             self.embedding_model = DocumentStructure.embedding_model_cls
 
@@ -116,6 +123,8 @@ class DocumentStructure:
         self.context = context
         if context and context != "":
             self.set_plan_field_with_embedding('context', context)
+        if resources and resources != "":
+            self.set_plan_field_with_embedding('resources', resources)
         self.dumb_embedding = self.embedding_model.embed_query(".")  # Used to compute min_cosine_similarity
         self.embedding_size = len(self.dumb_embedding)
 
@@ -180,6 +189,13 @@ class DocumentStructure:
                     sections_label_to_update.append('title_embedding')
                 else:
                     section.title_embedding = self.get_embedding(section.title)
+            if (not section.resource_embedding and section.resource) or force_update:
+                if batch_update:
+                    texts_to_embed.append(section.resource)
+                    sections_to_update.append(section)
+                    sections_label_to_update.append("resource_embedding")
+                else:
+                    section.resource_embedding = self.get_embedding(section.resource)
         
         if batch_update:
             # Get embeddings in one batch call
@@ -194,6 +210,7 @@ class DocumentStructure:
         """ update plan embedding by computing mean of all section embeddings and the title embedding (if any) of the synthesis plan """
         title_embeddings = []  # List to hold title embeddings
         content_embeddings = []  # List to hold content embeddings
+        resource_embeddings = []
         # get mode embeddings length 
         
         try:
@@ -201,15 +218,16 @@ class DocumentStructure:
             # x.title_embedding should be added only if x.title_embedding is not empty (nor None, nor '')
             title_embeddings = [x.title_embedding for x in self.document_content.sections_list if x.title_embedding]
             content_embeddings = [x.content_embedding for x in self.document_content.sections_list if x.content_embedding]
+            resource_embeddings = [x.resource_embedding for x in self.document_content.sections_list if x.resource_embedding]
 
             # convert self.dumb_embedding to a list to be able to use it in np.mean
             # Compute mean embedding for titles
             title_mean = np.mean(title_embeddings, axis=0).tolist() if title_embeddings else self.dumb_embedding
             # if content_embeddings is empty, set content_mean to 0
             content_mean = np.mean(content_embeddings, axis=0).tolist() if content_embeddings else self.dumb_embedding
-            
+            resource_mean = np.mean(resource_embeddings, axis=0).tolist() if resource_embeddings else self.dumb_embedding
             # Combine title and content embeddings and compute their mean
-            all_embeddings = title_embeddings + content_embeddings
+            all_embeddings = title_embeddings + content_embeddings + resource_embeddings
             total_mean = np.mean(all_embeddings, axis=0).tolist() if all_embeddings else self.dumb_embedding
 
         except KeyError:
@@ -217,6 +235,7 @@ class DocumentStructure:
         
         self.document_content.sections_list_title_embedding = title_mean  # Store the mean title embedding
         self.document_content.sections_list_content_embedding = content_mean  # Store the mean content embedding
+        self.document_content.sections_list_resource_embedding = resource_mean
         self.document_content.sections_list_embedding = total_mean  # Store the combined mean embedding
 
     def set_plan_field_with_embedding(self, field: str, value: str, event: str = None, section_id: int = None):
@@ -273,6 +292,7 @@ class DocumentStructure:
         for section in self.document_content.sections_list:
             section.content_embedding = []
             section.title_embedding = []
+            section.resource_embedding = []
         self.document_content.sections_list_embedding = []
         self.document_content = Document() # self.document_content = copy.deepcopy(DOCUMENT_SCHEMA)
 
@@ -935,7 +955,7 @@ class SynthesisManager:
             return False
 
     @method_call_counter
-    def edit_section(self, section_id: int, new_content: str = None, new_title: str = None, new_parent_id: int = None) -> bool:
+    def edit_section(self, section_id: int, new_content: str = None, new_title: str = None, new_resource: str = None, new_parent_id: int = None) -> bool:
         #section = next((s for s in self.document.document_content if s['id'] == section_id), None)
         section = next((s for s in self.document.document_content.sections_list if s.section_id == section_id), None)
         if section:
@@ -949,6 +969,10 @@ class SynthesisManager:
                 section.title = new_title
                 update_embeddings = True
                 action_event['new_title'] = new_title
+            if new_resource:
+                section.resource = new_resource
+                update_embeddings = True
+                action_event['new_resource'] = new_resource
             if new_parent_id:
                 section.parent_id = new_parent_id
                 action_event['new_parent_id'] = new_parent_id
@@ -1097,7 +1121,7 @@ class SynthesisManager:
     def list_all_previous_document_events(self) -> List[Any]:
         return self.document.events
 
-    def set_targetJSON_comparison(self, file_path: str, target_section_title_embedding_label: str = "section_embedding_2", target_section_content_embedding_label: str = "content_embedding_2", target_plan_embedding_label: str = "plan_embedding_2", normalize_embeddings: bool = True, min_cosine_similarity: float = None):
+    def set_targetJSON_comparison(self, file_path: str, target_section_title_embedding_label: str = "section_embedding_2", target_section_content_embedding_label: str = "content_embedding_2", target_plan_embedding_label: str = "plan_embedding_2", target_resource_embedding_label: str = "resource_embedding_2", normalize_embeddings: bool = True, min_cosine_similarity: float = None):
         self.target_file_path = file_path
 
         with open(file_path, 'r') as f:
@@ -1114,28 +1138,44 @@ class SynthesisManager:
         self.target_plan_contents_embedding = np.mean([section[target_section_content_embedding_label] for section in self.target_data["plan"]], axis=0)
         self.target_plan_embedding = self.target_data[target_plan_embedding_label]
 
+        resources = {}
+        embed_len = len(self.document.dumb_embedding)
+        for res in self.target_data["resources"]:
+            resources[res["resource_id"]] = res[target_resource_embedding_label]
+            # embed_len = len(res[target_resource_embedding_label])
+
+        self.target_plan_resources_embedding = np.mean([
+            np.mean([
+                resources[r] for r in section["resources_used"]
+            ], axis=0) if len(section["resources_used"]) > 0 else np.zeros((embed_len,))
+            for section in self.target_data["plan"]
+        ], axis=0)
+        self.target_resource_embedding = np.mean([r[target_resource_embedding_label] for r in self.target_data["resources"]], axis=0) if len(self.target_data["resources"]) > 0 else np.zeros((embed_len,))
+
         if normalize_embeddings:
             if min_cosine_similarity is None:
                 dumb_embedding = self.document.dumb_embedding
                 self.min_plan_titles_cosine_similarity = cosine_similarity([dumb_embedding], [self.target_plan_titles_embedding])[0][0]
                 self.min_plan_contents_cosine_similarity = cosine_similarity([dumb_embedding], [self.target_plan_contents_embedding])[0][0]
                 self.min_plan_cosine_similarity = cosine_similarity([dumb_embedding], [self.target_plan_embedding])[0][0]
+                self.min_plan_resources_cosine_similarity = cosine_similarity([dumb_embedding], [self.target_plan_resources_embedding])[0][0]
+                self.min_resources_cosine_similiarty = cosine_similarity([dumb_embedding], [self.target_resource_embedding])[0][0]
             else:
-                self.min_plan_titles_cosine_similarity = self.min_plan_contents_cosine_similarity = self.min_plan_cosine_similarity = min_cosine_similarity
+                self.min_plan_titles_cosine_similarity = self.min_plan_contents_cosine_similarity = self.min_plan_cosine_similarity = self.min_resources_cosine_similiarty = self.min_plan_resources_cosine_similarity = min_cosine_similarity
         else:
-            self.min_plan_titles_cosine_similarity = self.min_plan_contents_cosine_similarity = self.min_plan_cosine_similarity = 0 
+            self.min_plan_titles_cosine_similarity = self.min_plan_contents_cosine_similarity = self.min_plan_cosine_similarity = self.min_resources_cosine_similiarty = self.min_plan_resources_cosine_similarity = 0 
 
-    def get_distance_to_targetJSON(self, target_section_title_embedding_label: str = "section_embedding_2", target_section_content_embedding_label: str = "content_embedding_2", target_plan_embedding_label: str = "plan_embedding_2", get_progress: bool = False):
+    def get_distance_to_targetJSON(self, target_section_title_embedding_label: str = "section_embedding_2", target_section_content_embedding_label: str = "content_embedding_2", target_plan_embedding_label: str = "plan_embedding_2", target_resource_embedding_label: str = "resource_embedding_2", get_progress: bool = False):
         # if self does not have target_file_path
         if not hasattr(self, 'target_file_path'):
             raise ValueError("Please set target_file_path using set_targetJSON_comparison method")
 
         if not hasattr(self, 'target_data'):
-            section_embedding_key, content_embedding_key, plan_embedding_key = "content_embedding_2", "section_embedding_2", "plan_embedding_2"
             self.set_targetJSON_comparison(self.target_file_path,
-                                           target_section_title_embedding_label=section_embedding_key,
-                                           target_section_content_embedding_label=content_embedding_key,
-                                           target_plan_embedding_label=plan_embedding_key)
+                                           target_section_title_embedding_label=target_section_title_embedding_label,
+                                           target_section_content_embedding_label=target_section_content_embedding_label,
+                                           target_plan_embedding_label=target_plan_embedding_label,
+                                           target_resource_embedding_label=target_resource_embedding_label)
             self.document.update_plan_embedding()
         elif not hasattr(self.document.document_content, 'sections_list_title_embedding'):
             self.document.update_plan_embedding()
@@ -1150,11 +1190,13 @@ class SynthesisManager:
         plan_embedding = self.document.document_content.sections_list_embedding
         plan_titles_embedding = self.document.document_content.sections_list_title_embedding
         plan_contents_embedding = self.document.document_content.sections_list_content_embedding
+        plan_resources_embedding = self.document.document_content.sections_list_resource_embedding
 
         # Compute embedding similarity
         plan_embedding_similarity = self.normalized_cosine_similarity(plan_embedding, self.target_plan_embedding, self.min_plan_cosine_similarity)
         plan_titles_embedding_similarity = self.normalized_cosine_similarity(plan_titles_embedding, self.target_plan_titles_embedding, self.min_plan_titles_cosine_similarity)
         plan_contents_embedding_similarity = self.normalized_cosine_similarity(plan_contents_embedding, self.target_plan_contents_embedding, self.min_plan_contents_cosine_similarity)
+        plan_resources_embedding_similarity = self.normalized_cosine_similarity(plan_resources_embedding, self.target_plan_resources_embedding, self.min_plan_resources_cosine_similarity)
 
         # Refined ratio calculations
         content_length_ratio_to_target = round(
@@ -1171,6 +1213,7 @@ class SynthesisManager:
             "plan_embedding_similarity": round(plan_embedding_similarity, 6),
             "plan_titles_embedding_similarity": round(plan_titles_embedding_similarity, 6),
             "plan_contents_embedding_similarity": round(plan_contents_embedding_similarity, 6),
+            "plan_resources_embedding_similarity": round(plan_resources_embedding_similarity, 6),
 
             "current_sections_count": current_sections_count,
             "sections_count_ratio_to_target": sections_count_ratio_to_target,
@@ -1191,6 +1234,7 @@ class SynthesisManager:
                 distance_to_targetJSON['plan_embedding_similarity_progress'] = get_ratio(plan_embedding_similarity, self.distance_to_targetJSON['plan_embedding_similarity'])
                 distance_to_targetJSON['plan_titles_embedding_similarity_progress'] = get_ratio(plan_titles_embedding_similarity, self.distance_to_targetJSON['plan_titles_embedding_similarity'])
                 distance_to_targetJSON['plan_contents_embedding_similarity_progress'] = get_ratio(plan_contents_embedding_similarity, self.distance_to_targetJSON['plan_contents_embedding_similarity'])
+                distance_to_targetJSON['plan_resources_embedding_similarity_progress'] = get_ratio(plan_resources_embedding_similarity, self.distance_to_targetJSON['plan_resources_embedding_similarity'])
                 distance_to_targetJSON['sections_count_ratio_to_target_progress'] = get_ratio(sections_count_ratio_to_target, self.distance_to_targetJSON['sections_count_ratio_to_target'])
                 distance_to_targetJSON['title_non_empty_count_ratio_to_target_progress'] = get_ratio(sections_title_non_empty_count_ratio_to_target, self.distance_to_targetJSON['title_non_empty_count_ratio_to_target'])
                 distance_to_targetJSON['content_length_ratio_to_target_progress'] = get_ratio(content_length_ratio_to_target, self.distance_to_targetJSON['content_length_ratio_to_target'])
@@ -1316,9 +1360,16 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         return VoyagerEnvIR_CPS_TechSynthesis.llm_model.invoke([SystemMessage(content=""), HumanMessage(content=prompt)]).content
 
     def get_score(self):
-        distance = self.synthesis_manager.get_distance_to_targetJSON()
+        embed_id = "1" if self.document.embedding_model_name == "text-embedding-ada-002" else "2"
+        distance = self.synthesis_manager.get_distance_to_targetJSON(
+            target_section_title_embedding_label="section_embedding_"+embed_id,
+            target_section_content_embedding_label="content_embedding_"+embed_id,
+            target_plan_embedding_label="plan_embedding_"+embed_id,
+            target_resource_embedding_label="resource_embedding_"+embed_id
+        )
         return {'plan/titles similarity (top:1, worst:0)': distance['plan_titles_embedding_similarity'],
                 'sections contents similarity (top:1, worst:0)': distance['plan_contents_embedding_similarity'],
+                'sections resources similarity (top:1, worst:0)': distance['plan_resources_embedding_similarity'],
                 'sections count (top:1, <1:too short, >1:too long)': distance['sections_count_ratio_to_target'],
                 'titles count (top:1, <1:too short, >1:too long)': distance['title_non_empty_count_ratio_to_target'],
                 'sections contents length (top:1, <1:too short, >1:too long)': distance[
@@ -1366,7 +1417,8 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         document_state += f"> Current table of content:\n{table_of_content if len(table_of_content) > 0 else 'Empty'}\n"
         document_state += f"> Current resources: {resources_observation if len(resources_observation) > 0 else 'Empty'}\n"
         if extended:
-            distance_to_targetJSON = self.synthesis_manager.get_distance_to_targetJSON()
+            embed_id = "1" if self.document.embedding_model_name == "text-embedding-ada-002" else "2"
+            distance_to_targetJSON = self.synthesis_manager.get_distance_to_targetJSON(target_section_title_embedding_label="section_embedding_"+embed_id, target_section_content_embedding_label="content_embedding_"+embed_id, target_plan_embedding_label="plan_embedding_"+embed_id, target_resource_embedding_label="resource_embedding_"+embed_id)
             events_action_counts = self.synthesis_manager.get_count_method_calls()
             document_state += f"1. sections titles progress: {distance_to_targetJSON['plan_titles_embedding_similarity']}\n"
             document_state += f"2. sections content progress: {distance_to_targetJSON['plan_contents_embedding_similarity']}\n"
