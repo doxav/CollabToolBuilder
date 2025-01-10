@@ -1985,9 +1985,7 @@ if __name__ == "__main__":
         from datetime import datetime
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
 
-    unique_id = "XP_21_12_24"
-
-    if unique_id is None:
+    if unique_id is None: # SET unique_id in config.py if you need to fix it for experiments
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
     if unique_id is not False and UnifiedVectorDB.unique_collection_id is None:
         UnifiedVectorDB.set_unique_collection_id(unique_id)

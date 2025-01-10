@@ -1,4 +1,7 @@
 import os
+
+unique_id = None # e.g. set it to "XP_21_12_24" or any appropriate name for comparing on same experiment
+
 # Check the docker environment variables to see if LLM_MODE is set (to launch on a cluster/macstudio using ollama)
 IN_MACSTU = os.environ.get('LLM_MODE')
 if IN_MACSTU in ["macstudio", "gpu"]:
