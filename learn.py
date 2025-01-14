@@ -980,6 +980,9 @@ class CapitalizationAgent:
             "task_description": task_description,
         }, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
 
+        if not os.path.exists("pickle"):
+            os.makedirs("pickle")
+        
         with open('pickle/results.pkl', 'wb') as f:
             pickle.dump(serialized_entry, f)
 
