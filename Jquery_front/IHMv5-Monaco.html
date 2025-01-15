@@ -2604,9 +2604,19 @@ function getColumnsToKeep(agent) {
 
                         const detailScores = formatPythonDict2Table(codeMatch[1]);
 
-                        button.addEventListener('click', function () {
-                            alert(`Test score of solution ${index} in ${timeT}s:\n${detailScores}`); // Ensure timeT is used properly and fullText is passed for formatting. // MODIFIED
-                        });
+                        // Remove any previously attached listener
+                        if (button._clickListener) {
+                            button.removeEventListener('click', button._clickListener);
+                        }
+
+                        // Define the new listener and store its reference
+                        const buttonClick = () => {
+                            alert(`Test score of solution ${index} in ${timeT}s:\n${detailScores}`);
+                        }
+                        button._clickListener = buttonClick;
+                        
+                        // Add the new listener
+                        button.addEventListener('click', buttonClick);
                     }
                 } else {
                     button.textContent = "Scoring failed";
