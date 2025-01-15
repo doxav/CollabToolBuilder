@@ -2574,19 +2574,31 @@ function getColumnsToKeep(agent) {
             $(`#continue-button-${data.agent_name}`).prop('disabled', false);
             let $scoreButtons = $agentAccordion.find("button[id^='score-']");
             $scoreButtons.each(function (index, button) {
+                if (data.column_id !== index) {
+                    return
+                }
 
                 // Regex patterns
+                // const indexRegex = /^(\d+)\./;
                 const statusRegex = /\[\d+m(SUCCESS|FAILED)\[\d+m/;
                 const scoreRegex = /SCORE:\s+(\[.*?\])/;
                 const timeRegex = /TIME:\s+([\d.]+)s/;
                 const codeRegex = /CODE:\s+(\[.*\])$/;
 
+                // Ensure data and message are valid
+                if (!data || !data.message) {
+                    console.error("Invalid data or message");
+                    return;
+                }
+
                 // Extract values
+                // const indexMatch = data.match(indexRegex);
                 const statusMatch = data.message.match(statusRegex);
                 const scoreMatch = data.message.match(scoreRegex);
                 const timeMatch = data.message.match(timeRegex);
                 const codeMatch = data.message.match(codeRegex);
 
+                // Process the message
                 if (statusMatch) {
                     console.log("Match found:", statusMatch);
                     const score = statusMatch[1];
