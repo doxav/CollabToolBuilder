@@ -439,6 +439,18 @@ class CodingAgent:
                     optional=False, column_id=output_id)
         return False, self.parsed_code
 
+    def generate_score(self, index:int, success:bool, score:Dict, elapsed_time:int)-> str:
+        str_score = f"{index}. "
+        if success:
+            str_score += "\033[32mSUCCESS"
+        else:
+            str_score += "\033[31mFAILED"
+        str_score += "\033[0m / SCORE: "
+        str_score += f"[{','.join(f'{a:.2f}' for a in list(score.values()))}]"
+        str_score += f" / TIME: {elapsed_time}s"
+        str_score += f" / CODE: [{json.dumps(score)}]"
+        return str_score
+
     def run_tests_on_code(self, message, parsed_code=None, skip_already_processed=False, output_id=None,
                           restore_state=True, custom_agent=None):
         # Retrieve error_patches from HumanLLMMonitor
@@ -487,7 +499,13 @@ class CodingAgent:
                     code_to_run = common_code + parsed_code["program_code"] + "\n" + "\n".join(matching_tests)
                     smart_print("TESTING GENERATED CODE.....", custom_agent if custom_agent else self.name,
                                 "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                    
+                    t1 = time.time()
                     no_runtime_error, exec_result = env.step(code_to_run)
+                    # Show score
+                    scores = self.generate_score(idx, no_runtime_error, env.get_score(), time.time() - t1)
+                    smart_print(scores, custom_agent if custom_agent else self.name, "Scores", optional=False, column_id=output_id)
+
                     if no_runtime_error:
                         smart_print("TEST SUCCESSFUL", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
                         smart_print(env.get_state(), custom_agent if custom_agent else self.name, "CODE_RESULT", optional=False, column_id=output_id)
@@ -558,7 +576,13 @@ class CodingAgent:
                         code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
                         smart_print("TESTING UPDATED CODE.....", custom_agent if custom_agent else self.name,
                                     "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+
+                        t1 = time.time()
                         no_runtime_error, exec_result = env.step(code_to_run)
+                        # Show score
+                        scores = self.generate_score(idx, no_runtime_error, env.get_score(), time.time() - t1)
+                        smart_print(scores, custom_agent if custom_agent else self.name, "Scores", optional=False, column_id=output_id)
+
                         # Update parsed_code if re-run is successful
                         parsed_code["program_code"] = edited_code
                         smart_print(
@@ -1769,6 +1793,7 @@ def coding_and_validation_loop(agent_coding: CodingAgent, agent_validation: Vali
         HumanLLMMonitor.add_agent_data(agent_coding.name, 'unique_codes', list(unique_codes), metadata=metadata)
 
         results = agent_coding.code_task_and_run_test(task_description)
+        print("Results:", results)
 
         all_results.extend(results)
         HumanLLMMonitor.add_agent_data(agent_coding.name, 'all_results', all_results, metadata=metadata)
