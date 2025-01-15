@@ -2145,8 +2145,8 @@ if __name__ == "__main__":
                 agcoding_skip_rounds=0,  # Auto-test: 4
                 agvalidation_skip_rounds=0,  # Auto-test: 4
                 agcapitalize_skip_rounds=0,
-                agcoding_num_parallel_inferences=1,
-                agcoach_num_parallel_inferences=1,
+                agcoding_num_parallel_inferences=2,
+                agcoach_num_parallel_inferences=2,
                 unique_id=unique_id,
                 # functions_to_import=".*",
                 functions_to_import=None,
