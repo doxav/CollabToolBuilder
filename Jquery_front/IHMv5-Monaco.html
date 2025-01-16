@@ -865,13 +865,13 @@
             }
 
             // Generate a unique ID for the editor
-            //let editorId = `editor-${Date.now()}`;
+            let editorId = `editor-${Date.now()}`;
 
             // Create the container with the editor ID
             let $messageContainer = $(`<h4>${title}</h4><div class="column-container"><div id="${editorId}"></div></div>`);
 
             $agentAccordion.children("div").append($messageContainer);
-            alert(data.message);
+            // alert(data.message);
             // Initialize Monaco Editor
             //createMonacoEditor(editorId, data.message, 'markdown', data.agent_name, 0).then(function(editor) {messageContainer[0].editorInstance = editor;});
 
@@ -2562,6 +2562,7 @@ function getColumnsToKeep(agent) {
 
         // Process evaluation results based on agent's evaluation type
         const evaluationType = agentEvaluations[data.agent_name] || 'default';
+        console.log(evaluationType, data);
 
         if (evaluationType === 'score') {
             // Handle scoring results
@@ -2573,28 +2574,61 @@ function getColumnsToKeep(agent) {
             $(`#continue-button-${data.agent_name}`).prop('disabled', false);
             let $scoreButtons = $agentAccordion.find("button[id^='score-']");
             $scoreButtons.each(function (index, button) {
-                const regex = new RegExp(`^\{?${index}\\.\\s+\\u001b\\[\\d+m(SUCCESS|FAILED)\\u001b\\[0m`, 'm');
-                const match = data.message.match(regex);
-                if (match) {
-                    console.log("Match found:", match);
-                    const score = match[1];
+                if (data.column_id !== index) {
+                    return
+                }
+
+                // Regex patterns
+                // const indexRegex = /^(\d+)\./;
+                const statusRegex = /\[\d+m(SUCCESS|FAILED)\[\d+m/;
+                const scoreRegex = /SCORE:\s+(\[.*?\])/;
+                const timeRegex = /TIME:\s+([\d.]+)s/;
+                const codeRegex = /CODE:\s+(\[.*\])$/;
+
+                // Ensure data and message are valid
+                if (!data || !data.message) {
+                    console.error("Invalid data or message");
+                    return;
+                }
+
+                // Extract values
+                // const indexMatch = data.match(indexRegex);
+                const statusMatch = data.message.match(statusRegex);
+                const scoreMatch = data.message.match(scoreRegex);
+                const timeMatch = data.message.match(timeRegex);
+                const codeMatch = data.message.match(codeRegex);
+
+                // Process the message
+                if (statusMatch) {
+                    console.log("Match found:", statusMatch);
+                    const score = statusMatch[1];
                     button.textContent = score;
                     if (score === "SUCCESS") {
                         button.style.backgroundColor = "green";
                     } else {
                         button.style.backgroundColor = "red";
                     }
-                    //const fullTextRegex = new RegExp(`^${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:([^/]+)/`, 'm');
-                    const fullTextRegex = new RegExp(`^\\{?${index}\\.\\s+\\u001b\\[\\d+m${score}\\u001b\\[0m\\s+/\\s+SCORE:\\s*(\\[.*?\\])\\s+/\\s+TIME:\\s*([\\d\\.]+)s`, 'm'); // Correct regex for extracting the score and time // MODIFIED
-                    const fullTextMatch = data.message.match(fullTextRegex);
-                    if (fullTextMatch) {
-                        const fullText = fullTextMatch[1].trim();
-                        const timeT = parseFloat(fullTextMatch[2]).toFixed(1); // Convert time string to a float and fix precision. // MODIFIED
+
+                    if (scoreMatch) {
+                        const fullText = scoreMatch[1].trim();
+                        const timeT = parseFloat(timeMatch[1]).toFixed(1); // Convert time string to a float and fix precision. // MODIFIED
                         button.textContent += "\n" + fullText.substring(0, 70) + "...[see DETAILS]";
 
-                        button.addEventListener('click', function () {
-                            alert(`Test score of solution ${index} in ${timeT}s:\n${formatPythonDict2Table(fullText)}`); // Ensure timeT is used properly and fullText is passed for formatting. // MODIFIED
-                        });
+                        const detailScores = formatPythonDict2Table(codeMatch[1]);
+
+                        // Remove any previously attached listener
+                        if (button._clickListener) {
+                            button.removeEventListener('click', button._clickListener);
+                        }
+
+                        // Define the new listener and store its reference
+                        const buttonClick = () => {
+                            alert(`Test score of solution ${index} in ${timeT}s:\n${detailScores}`);
+                        }
+                        button._clickListener = buttonClick;
+                        
+                        // Add the new listener
+                        button.addEventListener('click', buttonClick);
                     }
                 } else {
                     button.textContent = "Scoring failed";
