@@ -38,6 +38,32 @@ def get_hashed_filename(func_name, *args, **kwargs):
     m.update(data)
     return f"{func_name}_{m.hexdigest()}.pkl"
 
+import ast
+
+def extract_functions_ast(code, include_docstring=False, include_body=False, return_string=False):
+    tree = ast.parse(code)
+    functions_info = {}
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):  # Identify function definitions
+            func_name = node.name
+            params = [arg.arg for arg in node.args.args]  # Extract parameter names
+            docstring = ast.get_docstring(node) if include_docstring else None
+            
+            if return_string:
+                doc_part = f'    """ {docstring} """\n' if docstring else ""
+                body_part = f"    # {func_name}'s body...\n" if not include_body else ""
+                functions_info[func_name] = f"def {func_name}({', '.join(params)}):\n{doc_part}{body_part}"
+            else:
+                functions_info[func_name] = {
+                    "parameters": params,
+                    "docstring": docstring.strip() if docstring else None
+                }
+
+    if return_string:
+        return "\n\n".join(functions_info.values())  # Return as compact Python-style string
+    return functions_info  # Return as dictionary
+
 def save_to_pickle(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
