@@ -33,7 +33,7 @@ from langgraph.graph import StateGraph
 from langgraph.graph import END, START
 from config import *
 from env.env import EnvironmentManager, validate_function_code
-from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, smart_print, smart_input
+from utils.file_utils import extract_functions_ast
 from env.IR_CPS_TechSynthesis.env import *
 from env.SWEBench.env import *
 from env.env import Environment, EnvironmentManager
@@ -149,7 +149,7 @@ class TaskIdentificationAgent:
     def __init__(self, default_llm_choice, envs: [Environment], premium_llm_choice=None, problem_prompts_subdir=None,
                  premium_llm_by_default=True, skip_rounds=0, llmORchains_list=None, automation=None, model_choice=None,
                  criteria=None, params_user_message=None, temperature_min=0., temperature_max=1.,
-                 num_parallel_inferences=1, agcoach_num_parallel_inferences=1, fixed_coach=False, special_criteria=None):
+                 num_parallel_inferences=1, agcoach_num_parallel_inferences=1, fixed_coach=False, special_criteria=None, primitives_dir=None):
         self.additional_check_list = None
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
@@ -160,6 +160,7 @@ class TaskIdentificationAgent:
         self.envs = envs
         self.automation = automation
         self.model_choice = model_choice
+        self.primitives_dir = primitives_dir
         saved_task, auto_n_rounds, recommend_critics, log_user_message = None, None, None, None  # Params for special_criteria application
 
         kw_common_args = apply_criteria_and_prepare_monitor_args(self, special_criteria, locals())
@@ -185,18 +186,20 @@ class TaskIdentificationAgent:
             few_shots_params=self.params_user_message)
         print(few_shots)
         self.human_llm_identify_best_task.user_message_few_shots = self.params_user_message
+ 
+        primitives = extract_functions_ast("\n".join(get_primitives(self.primitives_dir)), include_docstring=False, return_string=True)
+        successful_tasks = "\n".join(HumanLLMMonitor.get_learnt_tasks())
+        failed_tasks = "\n".join(HumanLLMMonitor.get_failed_tasks())
 
         # User message template
         user_message_template = """
     {few_shots}
+    - Existing code:[[[\n# helpers primitives:\n{primitives}\n# Successful tasks implemented:\n{successful_tasks}\n# failed tasks / not implemented:\n{failed_tasks}\n]]]
     - Current status of examples on which the task will be tested on: {envs_status}
     """
 
         # Create user_message
-        user_message = user_message_template.format(
-            few_shots=few_shots,
-            envs_status=envs_status
-        )
+        user_message = user_message_template.format( few_shots=few_shots, envs_status=envs_status, primitives=primitives, successful_tasks=successful_tasks, failed_tasks=failed_tasks)
 
         if hasattr(self, 'log_user_message') and self.log_user_message:
             with open(self.log_user_message, "a") as f:
@@ -221,41 +224,6 @@ class TaskIdentificationAgent:
         )
 
         return task
-
-    def expand_criteria_aligned(self, criteria):
-        """
-        Étend les critères où les valeurs sont des listes en alignant les indices ensemble.
-        Par exemple, si les critères sont :
-        {
-            'sources': ['learnt', 'failed'],
-            'num': [3, 2],
-            'format': ['Json', 'Markdown']
-        }
-        Cette méthode générera :
-        [
-            {'sources': 'learnt', 'num': 3, 'format': 'Json'},
-            {'sources': 'failed', 'num': 2, 'format': 'Markdown'}
-        ]
-        """
-        # Déterminer la longueur maximale parmi les listes
-        lengths = [len(value) if isinstance(value, list) else 1 for value in criteria.values()]
-        max_length = max(lengths)
-
-        expanded_criteria = []
-
-        for i in range(max_length):
-            new_criteria = {}
-            for key, value in criteria.items():
-                if isinstance(value, list):
-                    if i < len(value):
-                        new_criteria[key] = value[i]
-                    else:
-                        # Si la liste est plus courte, utiliser le dernier élément
-                        new_criteria[key] = value[-1]
-                else:
-                    new_criteria[key] = value
-            expanded_criteria.append(new_criteria)
-        return expanded_criteria
 
 # Agent 2: Code Task
 class CodingAgent:
@@ -458,7 +426,7 @@ class CodingAgent:
         error_patches, _ = HumanLLMMonitor.get_agent_data(self.name, 'error_patches', metadata_filter=metadata)
         error_patches = error_patches if error_patches else []
 
-        primitives = self.get_primitives(self.primitives_dir)
+        primitives = get_primitives(self.primitives_dir)
         parsed_code = getattr(self, 'parsed_code', None) if parsed_code is None else parsed_code
         current_skip_rounds = self.human_llm_code_task.skip_rounds  # save the initial value to align it for code validation
 
@@ -498,13 +466,13 @@ class CodingAgent:
                     # Concatenate common code with program and tests or runnable code
                     code_to_run = common_code + parsed_code["program_code"] + "\n" + "\n".join(matching_tests)
                     smart_print("TESTING GENERATED CODE.....", custom_agent if custom_agent else self.name,
-                                "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                                "code_task_and_run_test SystemMessage", append=True, optional=False, column_id=output_id, column_max=self.human_llm_code_task.num_parallel_inferences)
                     
                     t1 = time.time()
                     no_runtime_error, exec_result = env.step(code_to_run)
                     # Show score
                     scores = self.generate_score(idx, no_runtime_error, env.get_score(), time.time() - t1)
-                    smart_print(scores, custom_agent if custom_agent else self.name, "Scores", optional=False, column_id=output_id)
+                    smart_print(scores, custom_agent if custom_agent else self.name, "Scores", append=True, optional=False, column_id=output_id, column_max=self.human_llm_code_task.num_parallel_inferences)
 
                     if no_runtime_error:
                         smart_print("TEST SUCCESSFUL", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
@@ -617,23 +585,6 @@ class CodingAgent:
                 env.restore_last_state()
         return result
 
-    def get_primitives(self, path_folder):
-        primitives = []
-        folder_path = os.path.join(os.path.dirname(__file__), path_folder)
-        # Utiliser os.listdir pour ne pas parcourir les sous-répertoires
-
-        for file in os.listdir(folder_path):
-            if file.endswith(".py"):
-                smart_print(f"File load: {file}", "CodingAgent", "Files loaded", optional=True)
-                file_path = os.path.join(folder_path, file)
-                with open(file_path, "r") as f:
-                    primitives.append(f.read())
-        with open('primitives_checking.txt', 'w') as file:
-          sys.stdout = file  # Redirect standard output to the file
-
-        sys.stdout = sys.__stdout__
-        return primitives
-
     def code_task_and_run_test(self, refined_task):
 
         print('Starting code_task_and_run_test')
@@ -692,7 +643,7 @@ class CodingAgent:
         error_patches = flatten_and_pair(error_patches) if error_patches else []
 
         env_states = "\n".join([env.get_state() for env in self.envs])
-        primitives = "\n".join(self.get_primitives(self.primitives_dir))
+        primitives = "\n".join(get_primitives(self.primitives_dir))
         successful_tasks = "\n".join(HumanLLMMonitor.get_learnt_tasks())
         failed_tasks = "\n".join(HumanLLMMonitor.get_failed_tasks())
         validation_response_um = "\n".join(HumanLLMMonitor.get_validation_results())
@@ -1316,6 +1267,36 @@ class PlannerAgent:
             smart_print(f"Error during LLM call: {e}", agent_name=self.name)
             return ""
 
+def get_primitives(path_folder: str) -> List[str]:
+    """
+    Loads and returns the content of all Python files in the specified folder.
+
+    Args:
+        path_folder (str): The path to the folder containing the primitive files.
+
+    Returns:
+        List[str]: A list of strings, each containing the content of a Python file.
+    """
+    primitives = []
+    folder_path = os.path.join(os.path.dirname(__file__), path_folder)
+
+    for file in os.listdir(folder_path):
+        if file.endswith(".py"):
+            #smart_print(f"File load: {file}", "Shared Utility", "Files loaded", optional=True)
+            print(f"File load: {file} - Shared Utility")
+            file_path = os.path.join(folder_path, file)
+            with open(file_path, "r") as f:
+                primitives.append(f.read())
+
+    # Optional: Redirect stdout to a file for debugging purposes
+    with open('primitives_checking.txt', 'w') as file:
+        sys.stdout = file  # Redirect standard output to the file
+        # Print something if needed
+        sys.stdout = sys.__stdout__  # Restore stdout
+
+    return primitives
+
+
 def extract_function_code(task_content, function_name, current_function_code=None):
     """
     Extracts the complete code block for the specified function from the given task content.
@@ -1336,14 +1317,14 @@ def extract_function_code(task_content, function_name, current_function_code=Non
 
     return function_code
 
-def import_functions_from_directory(regex=".*"):
+def import_functions_from_directory(regex=".*", functions_path="functions"):
     """
     Imports functions from files in the functions directory that match the given regex pattern,
     excluding directories.
     """
     functions = {}
-    for file in os.listdir("functions"):
-        file_path = os.path.join("functions", file)
+    for file in os.listdir(functions_path):
+        file_path = os.path.join(functions_path, file)
         if os.path.isfile(file_path) and re.match(regex, file):
             with open(file_path, "r") as f:
                 code = f.read()
@@ -1428,6 +1409,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             temperature_max=temperature_max,
             num_parallel_inferences=agcoach_num_parallel_inferences,
                                              fixed_coach=fixed_coach,
+                                             primitives_dir=primitives_dir,
             special_criteria=special_criteria)
 
     agent_coding = CodingAgent(default_llm_key, test_environments, premium_llm_choice=premium_llm_key,
@@ -1541,7 +1523,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                     # Apply the code to the environments without restoring their state
                     test_results = agent_coding.run_tests_on_code(message="", parsed_code=parsed_code,
                                                                   skip_already_processed=False, restore_state=False,
-                                                                  custom_agent="orchestrate_agents")
+                                                                  custom_agent="orchestrate_agents", output_id=0)
                     # Unpack the results if needed
                     _parsed_code_, _success_, exec_results, _scores_, _env_states_, _execution_time_ = test_results
 

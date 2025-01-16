@@ -838,7 +838,7 @@
                 $("#message-accordion").append($agentAccordion);
             }
 
-            let $messageContainer = $(`<h4>${title}</h4><div class="column-container">${content}</div>`);
+            let $messageContainer = $(`<h4>${title}</h4><div class="column-container"><pre>${content}</pre></div>`);
             $agentAccordion.children("div").append($messageContainer);
 
             if (data.input) {
