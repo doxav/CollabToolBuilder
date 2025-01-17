@@ -2001,6 +2001,8 @@ if __name__ == "__main__":
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
     if unique_id is not False and UnifiedVectorDB.unique_collection_id is None:
         UnifiedVectorDB.set_unique_collection_id(unique_id)
+    if 'discord_webhook' in globals():
+        HumanLLMMonitor.discord_webhook = globals()['discord_webhook']
     # Initialize HumanLLMMonitor databases
     HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
     HumanLLMMonitor.check_init_class_db(force=True)
