@@ -50,8 +50,6 @@ AGENT = ''
 
 import asyncio
 import websockets
-import discord
-from discord.ext import commands
 
 def smart_print(message: str, agent_name=None, message_type=None, append=False, column_id=None, column_max=None, optional=False):
     global AgentDisplayManager, AGENT
@@ -602,7 +600,7 @@ class InferenceCheck:
 
 
 class HumanLLMMonitor:
-    discord_bot = None
+    discord_webhook = "https://discord.com/api/webhooks/1329927709106638930/FaFm6Dozd0xlQvL8hBHn3JHczDazfe2V9hHBWKWj7-igTniTHtsJBCmiFLCh-oKeZ6Mz"
     default_skip_rounds = 0
     step_id = 0
     function_list = None
@@ -851,10 +849,10 @@ class HumanLLMMonitor:
 
                 if "WebSocket Remote URL via proxy: " in line:
                     link = line.split("WebSocket Remote URL via proxy: ")[1].strip()
-                    print(f"Link: {link}")
                     # display it on discord
-                    #message = (f"**Task Link:** {link}\n**Task Details:** {task_details}")
-                    #asyncio.run(HumanLLMMonitor.send_to_discord(message))
+                    message = (f"**XP ID:** {UnifiedVectorDB.unique_collection_id}\n**User ID:** {HumanLLMMonitor.user_id}\n**Task Link:** {link}\n**Task Details:** {task_details}")
+                    print(f"Discord message: {message}")
+                    HumanLLMMonitor.send_to_discord(message)
                     break
 
         # Return the link if found
@@ -883,15 +881,14 @@ class HumanLLMMonitor:
             )
 
     @staticmethod
-    async def send_to_discord(message: str, channel_id: int = 1329864057515409532):
-        if HumanLLMMonitor.discord_bot is None:
-            intents = discord.Intents.default()
-            HumanLLMMonitor.discord_bot = commands.Bot(command_prefix="!", intents=intents)
-            HumanLLMMonitor.discord_channel = HumanLLMMonitor.discord_bot.get_channel(channel_id)
-        if HumanLLMMonitor.discord_channel:
-            await HumanLLMMonitor.discord_channel.send(message)
+    def send_to_discord(message: str):
+        payload = { "content": message}
+        headers = { "Content-Type": "application/json"}
+        response = requests.post(HumanLLMMonitor.discord_webhook, data=json.dumps(payload), headers=headers)
+        if response.status_code == 204:
+            print("Message sent to Discord successfully.")
         else:
-            print(f"Channel with ID {channel_id} not found.")
+            print(f"Failed to send message to Discord. Status code: {response.status_code}")
 
     @classmethod
     def check_init_class_db(cls, force=False):
