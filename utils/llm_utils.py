@@ -50,6 +50,8 @@ AGENT = ''
 
 import asyncio
 import websockets
+import discord
+from discord.ext import commands
 
 def smart_print(message: str, agent_name=None, message_type=None, append=False, column_id=None, column_max=None, optional=False):
     global AgentDisplayManager, AGENT
@@ -600,6 +602,7 @@ class InferenceCheck:
 
 
 class HumanLLMMonitor:
+    discord_bot = None
     default_skip_rounds = 0
     step_id = 0
     function_list = None
@@ -768,6 +771,8 @@ class HumanLLMMonitor:
                 ret[-1]['step_id'] = task.metadata['step_id']
             if "type_tache" in task.metadata:
                 ret[-1]['type_tache'] = task.metadata['type_tache']
+            if "task_details" in task.metadata:
+                ret[-1]['task_details'] = task.metadata['task_details']
 
         # Trier la liste par la clé 'date', du plus récent au plus ancien
         ret = sorted(ret, key=lambda x: x['date'], reverse=True)
@@ -775,7 +780,7 @@ class HumanLLMMonitor:
         return json.dumps(ret)
 
     @classmethod
-    def goto_task(cls, id_task: str, automatic: str = None, special_criteria : dict =  None):
+    def goto_task(cls, id_task: str, automatic: str = None, special_criteria: dict = None, task_details: str = None):
         """
         Retrieve the task from the database and start processing the task.
         Parameters:
@@ -796,7 +801,8 @@ class HumanLLMMonitor:
         }
         if 'user_id' in saved_task[0].metadata:
             task['user_id'] = saved_task[0].metadata['user_id']
-
+        if task_details:
+            task['task_details'] = task_details
         # Create a pickle directory if it does not exist
         if not os.path.exists('pickle'):
             os.makedirs('pickle')
@@ -846,6 +852,9 @@ class HumanLLMMonitor:
                 if "WebSocket Remote URL via proxy: " in line:
                     link = line.split("WebSocket Remote URL via proxy: ")[1].strip()
                     print(f"Link: {link}")
+                    # display it on discord
+                    #message = (f"**Task Link:** {link}\n**Task Details:** {task_details}")
+                    #asyncio.run(HumanLLMMonitor.send_to_discord(message))
                     break
 
         # Return the link if found
@@ -872,6 +881,17 @@ class HumanLLMMonitor:
                 persist_directory=HumanLLMMonitor.common_vectordb_persist_directory,
                 reset_db_indices=reset_db_indices
             )
+
+    @staticmethod
+    async def send_to_discord(message: str, channel_id: int = 1329864057515409532):
+        if HumanLLMMonitor.discord_bot is None:
+            intents = discord.Intents.default()
+            HumanLLMMonitor.discord_bot = commands.Bot(command_prefix="!", intents=intents)
+            HumanLLMMonitor.discord_channel = HumanLLMMonitor.discord_bot.get_channel(channel_id)
+        if HumanLLMMonitor.discord_channel:
+            await HumanLLMMonitor.discord_channel.send(message)
+        else:
+            print(f"Channel with ID {channel_id} not found.")
 
     @classmethod
     def check_init_class_db(cls, force=False):
