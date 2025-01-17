@@ -334,8 +334,11 @@
             // Show the task-list and update the task list
             $("#task-selection").show();
             $("#search-task-toggle").show();
-            updateTaskList("None");
-            init_task_list = true;
+            if (!init_task_list) {
+                console.log("Initializing task list...");
+                updateTaskList("None");
+                init_task_list = true;
+            }
             return;
         }
 
@@ -1545,10 +1548,7 @@ z-index: -1;
             <div class="sidebar-toggle" id="toggle-history-main">Show history</div>
             <input id="search-task-toggle" placeholder="Search a task" style="margin-right: 10px; background-color: mediumspringgreen;"/>
             <select id="task-selection" style="margin-right: 10px; background-color: mediumspringgreen;" >
-                <option value="TASK 1">TASK 1</option>
-                <option value="TASK 2">TASK 2</option>
-                <option value="TASK 3">TASK 3</option>
-                <option value="TASK 4">TASK 4</option>
+                <option value="TASK 1">CLICK TO INTIALIZE TASK LIST</option>
             </select>
             <div class="sidebar-toggle" id="toggle-settings-main">Show settings</div>
         </div>
@@ -2678,6 +2678,8 @@ function getColumnsToKeep(agent) {
                 <p style="text-align: center; margin-bottom: 20px;">`+selectedTaskText+`</p>
                 <p style="text-align: center; margin-bottom: 20px;">You are configuring settings for the selected task. Customize the automatic mode for each agent below.</p>
                 <h3 style="text-align: center;">Automatic Configuration</h3>
+                <div style="text-align: center; margin-bottom: 15px;"><input type="text" id="task-details" placeholder="ENTER info, next user or action on the collaboration..." style="width: 80%; padding: 10px; border-radius: 5px; border: 1px solid #ccc;"></div>
+                <style>#task-details::placeholder{color: red;}</style>
                 <div style="display: flex; justify-content: space-between; gap: 20px;">
                     ${['TaskIdentificationAgent', 'CodingAgent', 'ValidationAgent', 'CapitalizationAgent'].map((agent, index) => {
                         const agentId = index + 1;
@@ -2828,7 +2830,8 @@ function getColumnsToKeep(agent) {
                 if(is_automatic){
                     automatic = "True"
                 }
-                sendFunctionCall(currentAgent,"goto_task",[selectedTaskId, automatic, specialCriteria], function(response) {
+                let taskDetails = document.getElementById('task-details').value.trim();
+                sendFunctionCall(currentAgent,"goto_task",[selectedTaskId, automatic, specialCriteria, taskDetails], function(response) {
                     const url = response
                     console.log("Link to goto", url);
                     // Open the URL in a new tab
@@ -2859,16 +2862,14 @@ function getColumnsToKeep(agent) {
                 // Vider la liste actuelle
                 selectElement.innerHTML = "";
 
-
                 // Ajouter chaque tâche au <select>
                 tasks.forEach(task => {
                     const option = document.createElement("option");
                     option.value = task.id_task; // On peut utiliser l'ID comme valeur
                     let username = task.user_id;
-                    if(task.user_id === uniqueId.toString().toUpperCase()){
-                        username = "You";
-                    }
-                    option.textContent = `${task.id_task} - ${task.date.substring(0, 16)} - ${task.agent_name} - ${task.function_name} - ${task.before_after.charAt(0).toUpperCase() + task.before_after.slice(1)} - ${username}`; // Texte visible pour l'utilisateur
+                    if(task.user_id === uniqueId.toString().toUpperCase()){username = "You";}
+                    let details = task.task_details ? ` - ${task.task_details}` : "";
+                    option.textContent = `${task.id_task} - ${task.date.substring(0, 16)} - ${task.agent_name} - ${task.function_name} - ${task.before_after.charAt(0).toUpperCase() + task.before_after.slice(1)} - ${username}${details}`;
                     selectElement.appendChild(option);
                 });
                 filterTaskList();
@@ -2891,10 +2892,9 @@ function getColumnsToKeep(agent) {
                     const option = document.createElement("option");
                     option.value = task.id_task; // On peut utiliser l'ID comme valeur
                     let username = task.user_id;
-                    if(task.user_id === uniqueId.toString().toUpperCase()){
-                        username = "You";
-                    }
-                    option.textContent = `${task.date.substring(0, 16)} - ${task.agent_name} - ${username}`; // Texte visible pour l'utilisateur
+                    if(task.user_id === uniqueId.toString().toUpperCase()){username = "You";}
+                    let details = task.task_details ? ` - ${task.task_details}` : "";
+                    option.textContent = `${task.date.substring(0, 16)} - ${task.agent_name} - ${username}${details}`; // Texte visible by user
                     selectElement.appendChild(option);
                 });
                 filterTaskList();

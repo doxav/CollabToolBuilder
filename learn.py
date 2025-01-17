@@ -1346,6 +1346,9 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               continue_each_loop=False,unique_id=None, primitives_dir=None, functions_to_import=None,
                               embedding_function=None, human_evaluation_required=False):
     scores = None
+    if HumanLLMMonitor.user_id is None and automation is None:
+        HumanLLMMonitor.user_id = smart_input("User ID ?", "Learning Loop", message_type="USER_ID")
+
 
     # Definition of automation depending on the task given
     if functions_to_import:
@@ -1614,8 +1617,6 @@ def run_planner(*args, **kwargs):  # NEW VERSION
             tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": HumanLLMMonitor.step_id}
             print("Adding learnt task:", HumanLLMMonitor.add_learnt_task(serialized_entry, tags))
 
-    smart_print(str(kwargs.get('max_execution_time')), "orchestrate_agents", "time_end")
-
     successful_tasks = HumanLLMMonitor.get_learnt_tasks()
     successful_tasks_list = [task for task in successful_tasks]
     print(f"{len(successful_tasks)} successful tasks:<<<\n{successful_tasks_list}>>>")
@@ -1633,7 +1634,8 @@ def run_planner(*args, **kwargs):  # NEW VERSION
 
     smart_print(json.dumps(successful_tasks_list), "orchestrate_agents", "successful_tasks_list")
 
-    HumanLLMMonitor.user_id = smart_input("User ID ?", "PlannerAgent", message_type="USER_ID")
+    if HumanLLMMonitor.user_id is None:
+        HumanLLMMonitor.user_id = smart_input("User ID ?", "PlannerAgent", message_type="USER_ID")
 
     # Initialize WebSocket server if used
     if HumanLLMMonitor.use_websocket:
@@ -2111,6 +2113,9 @@ if __name__ == "__main__":
     # Run the planner agent
     envs_swe = None
 
+    max_execution_time = 3600
+    smart_print(str(max_execution_time), "orchestrate_agents", "time_end")
+
     run_4agents_learning_loop(default_llm_key="default_llm", # ALTERNATIVES: run_4agents_learning_loop, run_planner, run_4agents_learning_loop
                 premium_llm_key="premium_llm",
                 llmORchains_list=llmORchains_list,
@@ -2121,7 +2126,7 @@ if __name__ == "__main__":
                 include_code=False,
                 selected_successful_functions=[],
                 selected_failed_functions=[],
-                max_execution_time=3600,
+                max_execution_time=max_execution_time,
                 agtask_premium_llm_by_default=False,
                 agtask_skip_rounds=0,  # Auto-test: 1
                 agcoding_skip_rounds=0,  # Auto-test: 4
