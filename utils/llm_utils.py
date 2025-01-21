@@ -1393,7 +1393,7 @@ class HumanLLMMonitor:
         self.premium_llm_by_default = premium_llm_by_default
         self.synthesize_mode = synthesize_mode
         self.inference_checks = inference_checks if inference_checks else {}
-        self.excluded_inference_checks = []
+        self.excluded_inference_checks = ["Recommend Critics"]
         self.last_inference_check_results = None
         self.user_message = ""
         self.envs = envs
