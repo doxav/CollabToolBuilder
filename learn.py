@@ -1344,7 +1344,7 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               agcoach_num_parallel_inferences=1, fixed_coach=False, return_array=False,
                               agcoding_num_parallel_inferences=1,
                               continue_each_loop=False,unique_id=None, primitives_dir=None, functions_to_import=None,
-                              embedding_function=None, human_evaluation_required=False):
+                              embedding_function=None, human_evaluation_required=False, date_start=None):
     scores = None
     if HumanLLMMonitor.user_id is None and automation is None:
         HumanLLMMonitor.user_id = smart_input("User ID ?", "Learning Loop", message_type="USER_ID")
@@ -1443,6 +1443,10 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                                                    'capitalize' if 'capitalize' in model_choice else 'capitalizer'] if type(
                                                    model_choice) == dict else model_choice),
                                            special_criteria=special_criteria)
+    duration = datetime.now() - date_start
+
+    seconds = duration.total_seconds()
+    smart_print(str(max_execution_time - seconds), agent_taskreco.name, "time_end")
 
     #agent_capitalize.retrieve_saved_tasks_in_db(include_code=include_code, selected_successful_functions=selected_successful_functions, selected_failed_functions=selected_failed_functions)
     continue_identifying_tasks = True
@@ -2116,7 +2120,7 @@ if __name__ == "__main__":
     envs_swe = None
 
     max_execution_time = 3600
-    smart_print(str(max_execution_time), "orchestrate_agents", "time_end")
+    date_start = datetime.now()
 
     run_4agents_learning_loop(default_llm_key="default_llm", # ALTERNATIVES: run_4agents_learning_loop, run_planner, run_4agents_learning_loop
                 premium_llm_key="premium_llm",
@@ -2144,4 +2148,5 @@ if __name__ == "__main__":
                 automation=automation if 'automation' in globals() else automatic,
                 model_choice={"coach": "default_llm", "coder": "premium_llm", "critic": "default_llm",
                               "capitalizer": "default_llm"},
-                embedding_function=embedding_function)  # Auto-test: 0"""
+                embedding_function=embedding_function,
+                date_start=date_start)  # Auto-test: 0"""
