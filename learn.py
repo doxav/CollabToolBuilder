@@ -863,19 +863,21 @@ class CapitalizationAgent:
 
         function_name = parsed_code.get("main_function_name",
                                         parsed_code.get("main_function", {}).get("name", "unknown"))
-        db_function_names = self.human_llm_generate_function_description.get_learnt_tasks(k=100)
-        tmp = [json.loads(item) for item in db_function_names]
-        db_function_names = [item["main_function_name"] for item in tmp]
+        query = {
+            "query": {
+                "term": {
+                    "metadata.main_function_name.keyword": function_name
+                }
+            }
+        }
+        response = UnifiedVectorDB.elastic_client.search(index=HumanLLMMonitor.db_learnt_tasks.collection_name, body=query)
 
-        if function_name in db_function_names:
-            if self.replace_if_exists_function:
-                if self.automation:
-                    function_name += f"_auto_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
-                else :
-                    function_name = smart_input("This function already exists, please provide a new function name: ",
-                                            message_type="VALIDATION_INFO", agent_name=self.name)
-            else :
-                function_name += datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        if response['hits']['total']['value'] > 0:
+            for hit in response['hits']['hits']:
+                doc_id = hit["_id"]
+                UnifiedVectorDB.elastic_client.delete(index=HumanLLMMonitor.db_learnt_tasks.collection_name, id=doc_id)
+                print(f"Document deleted : {doc_id}")
+
         if self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/":
 
             pipeline_file_path = os.path.join("pipelines/pipelines", function_name + ".py")
@@ -964,7 +966,7 @@ class CapitalizationAgent:
         print('Adding learnt task')
 
         # Add to vector database with tags
-        tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": int(HumanLLMMonitor.step_id)}
+        tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": int(HumanLLMMonitor.step_id), ("class_name" if (self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/") else "main_function_name"): function_name,}
         HumanLLMMonitor.add_learnt_task(serialized_entry, tags)
 
     def capitalize_failed_tasks(self, task_description: str, parsed_code: str) -> None:
@@ -2000,7 +2002,7 @@ if __name__ == "__main__":
     if not ('unique_id' in globals()):
         from datetime import datetime
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
-    #unique_id = "OUI"
+    unique_id = "OUI"
 
     if unique_id is None: # SET unique_id in config.py if you need to fix it for experiments
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"

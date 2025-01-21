@@ -426,6 +426,7 @@ class UnifiedVectorDB:
     OpenAI_embedding_function_name = "text-embedding-ada-002"
     db_connection_check_done = False
     unique_collection_id = None
+    elastic_client = None
 
     @classmethod
     def set_unique_collection_id(cls, unique_id):
@@ -473,14 +474,14 @@ class UnifiedVectorDB:
             )
             self._collection = self.db._collection
         elif UnifiedVectorDB.db_type == 'elasticsearch':
-            elastic_client = Elasticsearch(UnifiedVectorDB.es_url,
+            UnifiedVectorDB.elastic_client = Elasticsearch(UnifiedVectorDB.es_url,
                                            http_auth=(UnifiedVectorDB.es_user,
                                                       UnifiedVectorDB.es_password) if (UnifiedVectorDB.es_user not in [False, "", None]) else None,
                                            verify_certs=True, ssl_show_warn=False)
             self.db = ElasticsearchStore(
                 index_name=self.collection_name,
                 embedding=embedding_function,
-                es_connection=elastic_client,
+                es_connection=UnifiedVectorDB.elastic_client,
                 distance_strategy="COSINE"
             )
             self._collection = self.db
