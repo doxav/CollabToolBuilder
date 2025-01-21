@@ -647,6 +647,8 @@ class HumanLLMMonitor:
         })
         print(f"Adding agent data: {tags}")
         print(f"User ID: {user_id}")
+        if user_id is None:
+            HumanLLMMonitor.user_id = smart_input("User ID ?", "Learning Loop", message_type="USER_ID")
         if function_name:
             tags["function_name"] = function_name
         if id_task:

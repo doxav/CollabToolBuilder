@@ -2000,6 +2000,7 @@ if __name__ == "__main__":
     if not ('unique_id' in globals()):
         from datetime import datetime
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+    #unique_id = "OUI"
 
     if unique_id is None: # SET unique_id in config.py if you need to fix it for experiments
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
@@ -2120,6 +2121,7 @@ if __name__ == "__main__":
     envs_swe = None
 
     max_execution_time = 3600
+    from datetime import datetime
     date_start = datetime.now()
 
     run_4agents_learning_loop(default_llm_key="default_llm", # ALTERNATIVES: run_4agents_learning_loop, run_planner, run_4agents_learning_loop
