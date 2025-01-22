@@ -11,6 +11,9 @@ from langchain_community.document_loaders import WikipediaLoader
 from langchain_core.messages import get_buffer_string
 from langgraph.constants import Send
 
+from langchain_openai import ChatOpenAI
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
 ########################################################
 #                 MODELS ET SCHÉMAS
 ########################################################
@@ -541,7 +544,7 @@ def multi_agent_research_generation_persist_each_agent(bot, max_analysts: int = 
     Lance un workflow multi-agents et persiste chaque section dans le document via `bot`.
     """
     title = bot.document.title
-    topic = bot.document.abstract
+    topic = bot.document.context
 
     # État initial
     initial_state: GenerateAnalystsState = {

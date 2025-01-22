@@ -11,6 +11,8 @@ from langchain_community.document_loaders import WikipediaLoader
 from langchain_core.messages import get_buffer_string
 from langgraph.constants import Send
 
+from langchain_openai import ChatOpenAI
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 class Analyst(BaseModel):
     affiliation: str = Field(
@@ -749,7 +751,7 @@ def multi_agent_research_generation_persist_at_the_end(bot, max_analysts: int = 
     Returns:
         str: The final markdown research report
     """
-    title, topic = bot.document.title, bot.document.abstract
+    title, topic = bot.document.title, bot.document.context
     # Create initial state with topic and max_analysts
     initial_state: GenerateAnalystsState = { "topic": topic, "max_analysts": max_analysts, "human_analyst_feedback": None, "analysts": []}
     initial_state["bot"] = bot
