@@ -266,7 +266,7 @@ class CodingAgent:
         self.primitives_dir = primitives_dir
 
     def parse_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None,
-                                automatic_tests=True, output_id=None):
+                                automatic_tests=False, output_id=None):
         import ast, time, re
         # Convert text to dictionary
         try:
@@ -367,16 +367,14 @@ class CodingAgent:
                     program_code = "\n".join(imports) + "\n"
                     program_code += "\n\n".join(function["body"] for function in functions)
 
-                    if automatic_tests:
-                        tests = [(env.id, main_function["name"] + "(bot)") for env in self.envs]
-                        #[test for doc_id, test in parsed_code["tests"] if doc_id == env.id]
+                    tests_pattern = re.compile(r'\n#\s+document #([a-z0-9-]+)\s+.*test[^\n]*?\n([^\n]+)|{.*?\"documentid\":\s*\"#(.*?)\",\s*\"FunctionCall\":\s*\"([^\"]+)\".*?}', re.IGNORECASE)
+                    matches = tests_pattern.findall(task_definition if task_definition is not None else self.last_user_message)
+
+                    if matches and not automatic_tests:
+                        tests = [match[:2] if match[0] != "" else match[2:] for match in matches]
                     else:
-                        tests = []
-                        tests_pattern = re.compile(
-                            r'\n#\s+[Dd]ocument #([a-z0-9-]+)\s+usage test[^\n]*\n([^\n]+)|{.*?"DocumentID":\s*"#(.*?)",\s*"FunctionCall":\s*"([^"]+)".*?}')
-                        matches = tests_pattern.findall(task_definition if task_definition is not None else message)
-                        for match in matches:
-                            tests.append(match[:2] if match[0] != "" else match[2:])
+                        print("Running default tests with bot argument to main function")
+                        tests = [(env.id, main_function["name"] + "(bot)") for env in self.envs]
 
                     for doc_id, test in tests:
                         try:
@@ -1209,7 +1207,7 @@ class PlannerAgent:
         parse_success, parsed_code_or_error = self.coding_agent.parse_ai_generated_code(
             message=code_str,
             required_bot_arg='bot',  # If your main function needs to accept 'bot' as an argument
-            automatic_tests=True
+            automatic_tests=False
         )
 
         if parse_success:
