@@ -653,9 +653,93 @@ def finalize_report(state: ResearchGraphState):
         final_report += "\n\n## Sources\n" + sources
     return {"final_report": final_report}
 
-#def research_assistant(bot, max_analysts=3):
+def persist_final_report_in_bot(bot, final_report: str):
+    """
+    Convertit le rapport Markdown final en sections du document,
+    et extrait les sources à stocker dans bot.add_or_update_results_in_resources.
     
-def research_assistant(bot, max_analysts: int = 3):
+    Args:
+        bot: L'objet ayant les méthodes:
+             - create_and_add_section_then_return_id(title, content, section_id=None, parent_id=None)
+             - add_or_update_results_in_resources(results, metadatas_to_add: dict=None, store_linked_document_content: bool=False)
+        final_report (str): Le rapport final (Markdown) généré par les agents.
+    """
+
+    # 1) Extraire toutes les sections (repérées par un titre Markdown, ex. "## ...")
+    #    Naïvement, on peut capturer les sections via une expression régulière.
+    #    Exemple de pattern pour repérer "## Titre" jusqu'à la prochaine "##" ou fin de texte.
+    #    Note: ceci est une simplification, on peut affiner pour gérer différents niveaux de titre.
+    
+    section_pattern = re.compile(r"(##\s+.+?)(?=##\s|$)", re.DOTALL)
+    # On va aussi chercher s'il y a un "# Titre principal" avant tout
+    # ex. "# My Title\n## Introduction..."
+    
+    # 2) Trouver un éventuel grand titre (optionnel) : "# ...\n"
+    grand_titre_match = re.search(r"^#\s+(.*)", final_report)
+    if grand_titre_match:
+        grand_titre = grand_titre_match.group(1).strip()
+        # On crée une section "Document Title" ou "Global Title"
+        bot.create_and_add_section_then_return_id(
+            title=grand_titre,
+            content=f"(Main Title)\n\n{grand_titre}"
+        )
+    
+    # 3) Extraire toutes les sections de niveau "##"
+    sections = section_pattern.findall(final_report)
+
+    # 4) Parcourir les sections extraites
+    for section_md in sections:
+        # Le pattern renvoie : "## NomDeSection\ncontenu..."
+        # On peut séparer le titre du contenu
+        lines = section_md.split('\n', 1)
+        if len(lines) == 2:
+            section_title_line, section_body = lines
+        else:
+            section_title_line = lines[0]
+            section_body = ""
+
+        # Nettoyer le titre : enlever "## " + espaces
+        section_title = section_title_line.replace("##", "").strip()
+
+        # Créer la section via bot
+        bot.create_and_add_section_then_return_id(title=section_title, content=section_body)
+
+    # 5) Détecter un bloc de sources, par exemple si le rapport contient "## Sources" ...
+    sources_block_match = re.search(r"(##\s+Sources.*)", final_report, re.IGNORECASE | re.DOTALL)
+    if sources_block_match:
+        sources_block = sources_block_match.group(1)
+        # Ex: 
+        #  ## Sources
+        #  [1] Some Link
+        #  [2] Another Link ...
+        # On peut parser chaque ligne de la forme `[1] le lien`.
+        
+        lines = sources_block.split('\n')
+        resources_to_add = []
+        for line in lines:
+            # Chercher pattern "[1] https://..."
+            m = re.match(r"\[(\d+)\]\s+(.*)", line.strip())
+            if m:
+                index = m.group(1)
+                url_or_name = m.group(2)
+                # On prépare un resource item
+                resource_item = {
+                    "name": f"Source_{index}",
+                    "content": {"url": url_or_name},
+                    "metadatas": {"index": index}
+                }
+                resources_to_add.append(resource_item)
+        
+        if resources_to_add:
+            # Appel "add_or_update_results_in_resources"
+            bot.add_or_update_results_in_resources(
+                results=resources_to_add, 
+                metadatas_to_add={"type": "reference"},
+                store_linked_document_content=False
+            )
+
+
+def multi_agent_research_generation_persist_at_the_end(bot, max_analysts: int = 3):
     """
     Generate a full research report using multi-agent LangGraph workflow
     
@@ -753,91 +837,6 @@ def research_assistant(bot, max_analysts: int = 3):
 
     persist_final_report_in_bot(bot, report)
     return report
-
-def persist_final_report_in_bot(bot, final_report: str):
-    """
-    Convertit le rapport Markdown final en sections du document,
-    et extrait les sources à stocker dans bot.add_or_update_results_in_resources.
-    
-    Args:
-        bot: L'objet ayant les méthodes:
-             - create_and_add_section_then_return_id(title, content, section_id=None, parent_id=None)
-             - add_or_update_results_in_resources(results, metadatas_to_add: dict=None, store_linked_document_content: bool=False)
-        final_report (str): Le rapport final (Markdown) généré par les agents.
-    """
-
-    # 1) Extraire toutes les sections (repérées par un titre Markdown, ex. "## ...")
-    #    Naïvement, on peut capturer les sections via une expression régulière.
-    #    Exemple de pattern pour repérer "## Titre" jusqu'à la prochaine "##" ou fin de texte.
-    #    Note: ceci est une simplification, on peut affiner pour gérer différents niveaux de titre.
-    
-    section_pattern = re.compile(r"(##\s+.+?)(?=##\s|$)", re.DOTALL)
-    # On va aussi chercher s'il y a un "# Titre principal" avant tout
-    # ex. "# My Title\n## Introduction..."
-    
-    # 2) Trouver un éventuel grand titre (optionnel) : "# ...\n"
-    grand_titre_match = re.search(r"^#\s+(.*)", final_report)
-    if grand_titre_match:
-        grand_titre = grand_titre_match.group(1).strip()
-        # On crée une section "Document Title" ou "Global Title"
-        bot.create_and_add_section_then_return_id(
-            title=grand_titre,
-            content=f"(Main Title)\n\n{grand_titre}"
-        )
-    
-    # 3) Extraire toutes les sections de niveau "##"
-    sections = section_pattern.findall(final_report)
-
-    # 4) Parcourir les sections extraites
-    for section_md in sections:
-        # Le pattern renvoie : "## NomDeSection\ncontenu..."
-        # On peut séparer le titre du contenu
-        lines = section_md.split('\n', 1)
-        if len(lines) == 2:
-            section_title_line, section_body = lines
-        else:
-            section_title_line = lines[0]
-            section_body = ""
-
-        # Nettoyer le titre : enlever "## " + espaces
-        section_title = section_title_line.replace("##", "").strip()
-
-        # Créer la section via bot
-        bot.create_and_add_section_then_return_id(title=section_title, content=section_body)
-
-    # 5) Détecter un bloc de sources, par exemple si le rapport contient "## Sources" ...
-    sources_block_match = re.search(r"(##\s+Sources.*)", final_report, re.IGNORECASE | re.DOTALL)
-    if sources_block_match:
-        sources_block = sources_block_match.group(1)
-        # Ex: 
-        #  ## Sources
-        #  [1] Some Link
-        #  [2] Another Link ...
-        # On peut parser chaque ligne de la forme `[1] le lien`.
-        
-        lines = sources_block.split('\n')
-        resources_to_add = []
-        for line in lines:
-            # Chercher pattern "[1] https://..."
-            m = re.match(r"\[(\d+)\]\s+(.*)", line.strip())
-            if m:
-                index = m.group(1)
-                url_or_name = m.group(2)
-                # On prépare un resource item
-                resource_item = {
-                    "name": f"Source_{index}",
-                    "content": {"url": url_or_name},
-                    "metadatas": {"index": index}
-                }
-                resources_to_add.append(resource_item)
-        
-        if resources_to_add:
-            # Appel "add_or_update_results_in_resources"
-            bot.add_or_update_results_in_resources(
-                results=resources_to_add, 
-                metadatas_to_add={"type": "reference"},
-                store_linked_document_content=False
-            )
 
 # topics = ["Sustainable Technologies in Renewable Energy"]
 

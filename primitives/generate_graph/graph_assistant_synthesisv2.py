@@ -48,7 +48,7 @@ class GenerateAnalystsState(TypedDict):
 #             CRÉATION ET GESTION DES ANALYSTES
 ########################################################
 
-def create_analysts(state: GenerateAnalystsState):
+def create_analysts_bot(state: GenerateAnalystsState):
     """ Create analysts """
     if "analyst_instructions" not in state:
         state['analyst_instructions'] = """You are tasked with creating a set of AI analyst personas. Follow these instructions carefully:
@@ -132,7 +132,7 @@ def create_analysts(state: GenerateAnalystsState):
         ]
         return {"analysts": default_analysts}
 
-def human_feedback(state: GenerateAnalystsState):
+def human_feedback_bot(state: GenerateAnalystsState):
     """ No-op node that should be interrupted on """
     pass
 
@@ -158,7 +158,7 @@ class InterviewState(MessagesState):
 class SearchQuery(BaseModel):
     search_query: str = Field(None, description="Search query for retrieval.")
 
-def generate_question(state: InterviewState):
+def generate_question_bot(state: InterviewState):
     """ Node to generate a question """
     if "question_instructions" not in state:
         state["question_instructions"] = """You are an analyst tasked with interviewing an expert to learn about a specific topic.
@@ -187,7 +187,7 @@ def generate_question(state: InterviewState):
 
     return {"messages": [question]}
 
-def search_web(state: InterviewState):
+def search_web_bot(state: InterviewState):
     """ Retrieve academic papers from OpenAlex """
     import requests
     OPENALEX_API_URL = "https://api.openalex.org/works"
@@ -251,7 +251,7 @@ def search_web(state: InterviewState):
 
     return {"context": [formatted_search_docs]}
 
-def search_wikipedia(state: InterviewState):
+def search_wikipedia_bot(state: InterviewState):
     """ Retrieve docs from wikipedia """
     if "search_instructions" not in state:
         state["search_instructions"] = SystemMessage(content="""You will be given a conversation between an analyst and an expert.
@@ -289,7 +289,7 @@ def search_wikipedia(state: InterviewState):
 
     return {"context": [formatted_search_docs]}
 
-def generate_answer(state: InterviewState):
+def generate_answer_bot(state: InterviewState):
     """ Node to answer a question """
     if "answer_instructions" not in state:
         state["answer_instructions"] = """You are an expert being interviewed by an analyst.
@@ -311,7 +311,7 @@ def generate_answer(state: InterviewState):
 
     return {"messages": [answer]}
 
-def save_interview(state: InterviewState):
+def save_interview_bot(state: InterviewState):
     """ Save the interview transcript """
     messages = state["messages"]
     interview = get_buffer_string(messages)
@@ -336,7 +336,7 @@ def route_messages(state: InterviewState,
 #          CRÉATION DE SECTION PERSISTANTE
 ########################################################
 
-def write_section(state: InterviewState):
+def write_section_bot(state: InterviewState):
     """ Génère une section de rapport à partir de l’interview + context, puis la sauvegarde. """
     if "section_writer_instructions" not in state:
         state["section_writer_instructions"] = """You are an expert technical writer.
@@ -410,7 +410,7 @@ def initiate_all_interviews(state: ResearchGraphState):
             }) for analyst in state["analysts"]
         ]
 
-def write_report(state: ResearchGraphState):
+def write_report_bot(state: ResearchGraphState):
     """ Regroupe toutes les sections en un rapport consolidé """
     if "report_writer_instructions" not in state:
         state['report_writer_instructions'] = """You are a technical writer creating a consolidated report on {topic}.
@@ -448,7 +448,7 @@ Write in Markdown:
 
     return {"content": report.content}
 
-def write_introduction(state: ResearchGraphState):
+def write_introduction_bot(state: ResearchGraphState):
     if "intro_conclusion_instructions" not in state:
         state['intro_conclusion_instructions'] = """You are a technical writer finishing a report on {topic}.
 Here are the sections you have so far:
@@ -481,7 +481,7 @@ Write a crisp introduction in Markdown:
 
     return {"introduction": intro.content}
 
-def write_conclusion(state: ResearchGraphState):
+def write_conclusion_bot(state: ResearchGraphState):
     if "intro_conclusion_instructions" not in state:
         state['intro_conclusion_instructions'] = """You are a technical writer finishing a report on {topic}.
 Here are the sections you have so far:
@@ -513,7 +513,7 @@ Write a crisp conclusion in Markdown:
 
     return {"conclusion": conclusion.content}
 
-def finalize_report(state: ResearchGraphState):
+def finalize_report_bot(state: ResearchGraphState):
     """ Combine introduction + content + conclusion """
     content = state["content"]
     introduction = state["introduction"]
@@ -532,96 +532,11 @@ def finalize_report(state: ResearchGraphState):
 
     return {"final_report": final_report}
 
-def persist_final_report_in_bot(bot, final_report: str):
-    """
-    Convertit le rapport Markdown final en sections du document,
-    et extrait les sources à stocker dans bot.add_or_update_results_in_resources.
-    
-    Args:
-        bot: L'objet ayant les méthodes:
-             - create_and_add_section_then_return_id(title, content, section_id=None, parent_id=None)
-             - add_or_update_results_in_resources(results, metadatas_to_add: dict=None, store_linked_document_content: bool=False)
-        final_report (str): Le rapport final (Markdown) généré par les agents.
-    """
-
-    # 1) Extraire toutes les sections (repérées par un titre Markdown, ex. "## ...")
-    #    Naïvement, on peut capturer les sections via une expression régulière.
-    #    Exemple de pattern pour repérer "## Titre" jusqu'à la prochaine "##" ou fin de texte.
-    #    Note: ceci est une simplification, on peut affiner pour gérer différents niveaux de titre.
-    
-    section_pattern = re.compile(r"(##\s+.+?)(?=##\s|$)", re.DOTALL)
-    # On va aussi chercher s'il y a un "# Titre principal" avant tout
-    # ex. "# My Title\n## Introduction..."
-    
-    # 2) Trouver un éventuel grand titre (optionnel) : "# ...\n"
-    grand_titre_match = re.search(r"^#\s+(.*)", final_report)
-    if grand_titre_match:
-        grand_titre = grand_titre_match.group(1).strip()
-        # On crée une section "Document Title" ou "Global Title"
-        bot.create_and_add_section_then_return_id(
-            title=grand_titre,
-            content=f"(Main Title)\n\n{grand_titre}"
-        )
-    
-    # 3) Extraire toutes les sections de niveau "##"
-    sections = section_pattern.findall(final_report)
-
-    # 4) Parcourir les sections extraites
-    for section_md in sections:
-        # Le pattern renvoie : "## NomDeSection\ncontenu..."
-        # On peut séparer le titre du contenu
-        lines = section_md.split('\n', 1)
-        if len(lines) == 2:
-            section_title_line, section_body = lines
-        else:
-            section_title_line = lines[0]
-            section_body = ""
-
-        # Nettoyer le titre : enlever "## " + espaces
-        section_title = section_title_line.replace("##", "").strip()
-
-        # Créer la section via bot
-        bot.create_and_add_section_then_return_id(title=section_title, content=section_body)
-
-    # 5) Détecter un bloc de sources, par exemple si le rapport contient "## Sources" ...
-    sources_block_match = re.search(r"(##\s+Sources.*)", final_report, re.IGNORECASE | re.DOTALL)
-    if sources_block_match:
-        sources_block = sources_block_match.group(1)
-        # Ex: 
-        #  ## Sources
-        #  [1] Some Link
-        #  [2] Another Link ...
-        # On peut parser chaque ligne de la forme `[1] le lien`.
-        
-        lines = sources_block.split('\n')
-        resources_to_add = []
-        for line in lines:
-            # Chercher pattern "[1] https://..."
-            m = re.match(r"\[(\d+)\]\s+(.*)", line.strip())
-            if m:
-                index = m.group(1)
-                url_or_name = m.group(2)
-                # On prépare un resource item
-                resource_item = {
-                    "name": f"Source_{index}",
-                    "content": {"url": url_or_name},
-                    "metadatas": {"index": index}
-                }
-                resources_to_add.append(resource_item)
-        
-        if resources_to_add:
-            # Appel "add_or_update_results_in_resources"
-            bot.add_or_update_results_in_resources(
-                results=resources_to_add, 
-                metadatas_to_add={"type": "reference"},
-                store_linked_document_content=False
-            )
-
 ########################################################
 #              WORKFLOW PRINCIPAL
 ########################################################
 
-def research_assistant(bot, max_analysts: int = 3):
+def multi_agent_research_generation_persist_each_agent(bot, max_analysts: int = 3):
     """
     Lance un workflow multi-agents et persiste chaque section dans le document via `bot`.
     """
@@ -639,12 +554,12 @@ def research_assistant(bot, max_analysts: int = 3):
 
     # Construction du sous-graph "interview"
     interview_builder = StateGraph(InterviewState)
-    interview_builder.add_node("ask_question", generate_question)
-    interview_builder.add_node("search_web", search_web)
-    interview_builder.add_node("search_wikipedia", search_wikipedia)
-    interview_builder.add_node("answer_question", generate_answer)
-    interview_builder.add_node("save_interview", save_interview)
-    interview_builder.add_node("write_section", write_section)
+    interview_builder.add_node("ask_question", generate_question_bot)
+    interview_builder.add_node("search_web", search_web_bot)
+    interview_builder.add_node("search_wikipedia", search_wikipedia_bot)
+    interview_builder.add_node("answer_question", generate_answer_bot)
+    interview_builder.add_node("save_interview", save_interview_bot)
+    interview_builder.add_node("write_section", write_section_bot)
 
     interview_builder.add_edge(START, "ask_question")
     interview_builder.add_edge("ask_question", "search_web")
@@ -656,17 +571,17 @@ def research_assistant(bot, max_analysts: int = 3):
     interview_builder.add_edge("write_section", END)
 
     memory = MemorySaver()
-    interview_graph = interview_builder.compile(checkpointer=memory).with_config(run_name="Conduct Interviews")
+    interview_graph_bot = interview_builder.compile(checkpointer=memory).with_config(run_name="Conduct Interviews")
 
     # Workflow global
     builder = StateGraph(ResearchGraphState)
-    builder.add_node("create_analysts", create_analysts)
-    builder.add_node("human_feedback", human_feedback)
-    builder.add_node("conduct_interview", interview_graph)
-    builder.add_node("write_report", write_report)
-    builder.add_node("write_introduction", write_introduction)
-    builder.add_node("write_conclusion", write_conclusion)
-    builder.add_node("finalize_report", finalize_report)
+    builder.add_node("create_analysts", create_analysts_bot)
+    builder.add_node("human_feedback", human_feedback_bot)
+    builder.add_node("conduct_interview", interview_graph_bot)
+    builder.add_node("write_report", write_report_bot)
+    builder.add_node("write_introduction", write_introduction_bot)
+    builder.add_node("write_conclusion", write_conclusion_bot)
+    builder.add_node("finalize_report", finalize_report_bot)
 
     builder.add_edge(START, "create_analysts")
     builder.add_edge("create_analysts", "human_feedback")
@@ -727,7 +642,7 @@ def example_usage(bot):
     """
     topic = bot.document.abstract  # ou tout autre concept
     print(f"\n--- Generating Report for Topic: {topic} ---")
-    final_report = research_assistant(bot, max_analysts=3)
+    final_report = multi_agent_research_generation_persist_each_agent(bot, max_analysts=3)
     print("=== FINAL REPORT ===")
     print(final_report)
     return final_report
