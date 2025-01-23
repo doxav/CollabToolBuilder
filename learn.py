@@ -2145,7 +2145,7 @@ if __name__ == "__main__":
                 unique_id=unique_id,
                 # functions_to_import=".*",
                 functions_to_import=None,
-                primitives_dir="primitives",
+                primitives_dir="primitives/generate_graph",
                 special_criteria=special_criteria,
                 automation=automation if 'automation' in globals() else automatic,
                 model_choice={"coach": "default_llm", "coder": "premium_llm", "critic": "default_llm",

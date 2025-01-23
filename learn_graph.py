@@ -4,7 +4,8 @@ import time
 import random  # Import random for generating step_id
 from datetime import datetime
 from utils.llm_utils import HumanLLMMonitor
-from learn import TaskIdentificationAgent, CodingAgent, ValidationAgent, CapitalizationAgent, calculate_total_score, create_Nmajority_chain # TODO: move those functions to a separate file agents.py
+from learn import TaskIdentificationAgent, CodingAgent, ValidationAgent, CapitalizationAgent, calculate_total_score, \
+    create_Nmajority_chain, get_success_value_in_text  # TODO: move those functions to a separate file agents.py
 
 # 2 IMPLEMENTATIONS OF THE LEARNING LOOP: 1 MODULAR AND ADVANCED IN STATE MANAGEMENT, 1 SIMPLE IN 1 FUNCTION
 
@@ -342,7 +343,8 @@ def run_4agents_learning_loop_graph(
             temperature_max=temperature_max,
             num_parallel_inferences=agcoach_num_parallel_inferences,
             fixed_coach=fixed_coach,
-            special_criteria=special_criteria
+            special_criteria=special_criteria,
+            primitives_dir="primitives/generate_graph"
         )
         task = agent.identify_best_task()
         return {"task": task[0].content, **state}  # Extract content from first task
