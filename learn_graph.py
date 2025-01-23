@@ -344,7 +344,7 @@ def run_4agents_learning_loop_graph(
             num_parallel_inferences=agcoach_num_parallel_inferences,
             fixed_coach=fixed_coach,
             special_criteria=special_criteria,
-            primitives_dir="primitives"
+            primitives_dir="primitives/generate_graph"
         )
         task = agent.identify_best_task()
         return {"task": task[0].content, **state}  # Extract content from first task
