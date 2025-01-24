@@ -33,7 +33,7 @@
 response = llm(prompt)
 # print(response)
 
-    10) Your only allowed research on Internet are Arxiv
+    10) Your only allowed to research on free scientific API (e.g. Arxiv, Semantic Scholar, OpenAlex, Wikipedia...)
 
     You should then respond with:
     - Reasoning: how to best implement the task with maximum efficiency

@@ -368,16 +368,20 @@ def write_section_bot(state: InterviewState):
     # Persistance : on crée physiquement la section dans le document (si bot est défini)
     bot = state.get("bot")
     if bot:
-        # On peut nommer la section d'après l'analyste
+        # Create under main content section
+        main_content_id = bot.create_and_add_section_then_return_id(
+            title="Main Content",
+            content=""  # Empty parent section
+        )
+        # Create analyst section as child
         section_id = bot.create_and_add_section_then_return_id(
             title=f"Memo by {analyst.name}",
-            content=section.content
+            content=section.content,
+            parent_id=main_content_id  # Set parent relationship
         )
-        # On peut suivre l'ID si besoin, ici on n'en a pas forcément besoin
-        # Juste on garde la trace dans state['sections'] par ex.
-        return {"sections": [section.content]}
     else:
-        return {"sections": [section.content]}
+        print("WARNING: No bot available to persist section in write_section_bot.")
+    return {"sections": [section.content]}
 
 ########################################################
 #         SQUELETTE DU WORKFLOW DE RESEARCH
@@ -444,11 +448,14 @@ Write in Markdown:
     # Persister la section "Insights" dans le doc
     bot = state.get("bot")
     if bot:
-        bot.create_and_add_section_then_return_id(
+        # Create insights section after intro
+        insights_id = bot.create_and_add_section_then_return_id(
             title="Consolidated Insights",
-            content=report.content
+            content=report.content,
+            section_id=2  # After intro
         )
-
+    else:
+        print("WARNING: No bot available to persist section in write_report_bot.")
     return {"content": report.content}
 
 def write_introduction_bot(state: ResearchGraphState):
@@ -477,11 +484,14 @@ Write a crisp introduction in Markdown:
     
     bot = state.get("bot")
     if bot:
-        bot.create_and_add_section_then_return_id(
-            title="Introduction Section",
-            content=intro.content
+        # Create intro as first section
+        intro_id = bot.create_and_add_section_then_return_id(
+            title="Introduction",
+            content=intro.content,
+            section_id=1  # Ensure it's first
         )
-
+    else:
+        print("WARNING: No bot available to persist section in write_introduction_bot.")
     return {"introduction": intro.content}
 
 def write_conclusion_bot(state: ResearchGraphState):
@@ -509,11 +519,14 @@ Write a crisp conclusion in Markdown:
     
     bot = state.get("bot")
     if bot:
-        bot.create_and_add_section_then_return_id(
-            title="Conclusion Section",
-            content=conclusion.content
+        # Create conclusion as last section
+        conclusion_id = bot.create_and_add_section_then_return_id(
+            title="Conclusion",
+            content=conclusion.content,
+            section_id=3  # After insights
         )
-
+    else:
+        print("WARNING: No bot available to persist section in write_conclusion_bot.")
     return {"conclusion": conclusion.content}
 
 def finalize_report_bot(state: ResearchGraphState):
@@ -524,15 +537,6 @@ def finalize_report_bot(state: ResearchGraphState):
 
     final_report = f"{introduction}\n\n---\n\n{content}\n\n---\n\n{conclusion}"
     state["final_report"] = final_report
-
-    # Persiste le rapport final
-    bot = state.get("bot")
-    if bot:
-        bot.create_and_add_section_then_return_id(
-            title="Final Report",
-            content=final_report
-        )
-
     return {"final_report": final_report}
 
 ########################################################
