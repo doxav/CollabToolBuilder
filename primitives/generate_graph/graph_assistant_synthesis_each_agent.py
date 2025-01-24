@@ -555,7 +555,7 @@ def multi_agent_research_generation_persist_each_agent(bot, max_analysts: int = 
     title = bot.document.title
     topic = bot.document.context
 
-    # État initial
+    # Initial state
     initial_state: GenerateAnalystsState = {
         "topic": topic, 
         "max_analysts": max_analysts, 
@@ -564,7 +564,7 @@ def multi_agent_research_generation_persist_each_agent(bot, max_analysts: int = 
         "bot": bot
     }
 
-    # Construction du sous-graph "interview"
+    # Build interview sub-graph
     interview_builder = StateGraph(InterviewState)
     interview_builder.add_node("ask_question", generate_question_bot)
     interview_builder.add_node("search_web", search_web_bot)
@@ -585,7 +585,7 @@ def multi_agent_research_generation_persist_each_agent(bot, max_analysts: int = 
     memory = MemorySaver()
     interview_graph_bot = interview_builder.compile(checkpointer=memory).with_config(run_name="Conduct Interviews")
 
-    # Workflow global
+    # Global workflow
     builder = StateGraph(ResearchGraphState)
     builder.add_node("create_analysts", create_analysts_bot)
     builder.add_node("human_feedback", human_feedback_bot)
@@ -609,35 +609,23 @@ def multi_agent_research_generation_persist_each_agent(bot, max_analysts: int = 
     builder.add_edge("finalize_report", END)
 
     memory2 = MemorySaver()
-    graph = builder.compile(interrupt_before=['human_feedback'], checkpointer=memory2)
-
-    # Affichage du graph
-    display(Image(graph.get_graph(xray=1).draw_mermaid_png()))
+    graph = builder.compile(checkpointer=memory2)
 
     thread = {"configurable": {"thread_id": "1"}}
+    final_state = None
 
-    # Démarrer le graph pour créer les analysts
-    for event in graph.stream(initial_state, thread, stream_mode="values"):
-        analysts = event.get('analysts', '')
-        if analysts:
-            print("Generated Analysts:")
-            for analyst in analysts:
-                print(f"Name: {analyst.name}\nAffiliation: {analyst.affiliation}\nRole: {analyst.role}\nDescription: {analyst.description}")
-                print("-" * 50)
-            # On simule la fin de feedback humain
-            graph.update_state(thread, {"human_analyst_feedback": None}, as_node="human_feedback")
-            break
-
-    # Poursuivre l'exécution jusqu'à la fin
     try:
-        for event in graph.stream(None, thread, stream_mode="values"):
-            print("Processing:", event)
+        # Execute the entire graph
+        graph.run(initial_state, thread)
+        
+        # Get the final state after complete execution
+        final_state = graph.get_state(thread)
+        
+        return final_state.values.get('final_report')
+    
     except Exception as e:
         print(f"Error during graph execution: {e}")
-
-    final_state = graph.get_state(thread)
-    report = final_state.values.get('final_report')
-    return report
+        return None
 
 
 ########################################################
