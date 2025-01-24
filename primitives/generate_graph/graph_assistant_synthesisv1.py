@@ -740,14 +740,15 @@ def persist_final_report_in_bot(bot, final_report: str):
                 store_linked_document_content=False
             )
 
-
+# In the docstring, describre the full process and agents involved in a long line
 def multi_agent_research_generation_persist_at_the_end(bot, max_analysts: int = 3):
     """
-    Generate a full research report using multi-agent LangGraph workflow
+    Generate a full research report using multi-agent LangGraph workflow:  Create a list of analysts, Conduct interviews, Write sections (no plan yet and sections except introduction and conclusion are merged in one section), Write report, Write introduction, Write conclusion, Finalize report
+    Persist document in the bot object by agent action 
     
     Args:
         bot: The bot object with the necessary methods
-        max_analysts (int): The number of analysts to generate
+        max_analysts (int): OPTIONAL (default: 3) - The number of analysts to generate
     Returns:
         str: The final markdown research report
     """

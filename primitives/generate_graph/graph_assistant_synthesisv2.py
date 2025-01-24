@@ -541,7 +541,12 @@ def finalize_report_bot(state: ResearchGraphState):
 
 def multi_agent_research_generation_persist_each_agent(bot, max_analysts: int = 3):
     """
-    Lance un workflow multi-agents et persiste chaque section dans le document via `bot`.
+    Generate a full research report using multi-agent LangGraph workflow:  Create a list of analysts, Conduct interviews, Write sections (no plan yet and sections except introduction and conclusion are merged in one section), Write report, Write introduction, Write conclusion, Finalize report
+    Persist document in the bot object by agent action 
+        
+    Args:
+        bot: The bot object with the necessary methods
+        max_analysts (int): OPTIONAL (default: 3) - The number of analysts to generate
     """
     title = bot.document.title
     topic = bot.document.context

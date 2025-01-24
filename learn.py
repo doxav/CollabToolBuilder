@@ -187,7 +187,7 @@ class TaskIdentificationAgent:
         print(few_shots)
         self.human_llm_identify_best_task.user_message_few_shots = self.params_user_message
  
-        primitives = extract_functions_ast("\n".join(get_primitives(self.primitives_dir)), include_docstring=False, return_string=True)
+        primitives = extract_functions_ast("\n".join(get_primitives(self.primitives_dir)), include_docstring=True, return_string=True)
         successful_tasks = "\n".join(HumanLLMMonitor.get_learnt_tasks())
         failed_tasks = "\n".join(HumanLLMMonitor.get_failed_tasks())
 
