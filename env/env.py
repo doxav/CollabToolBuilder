@@ -42,7 +42,7 @@ class Environment:
             helper = ""
 
         # Setup for capturing stdout and stderr
-        stdout, stderr = io.StringIO(), io.StringIO()
+        stdout, stderr, std_out_err = io.StringIO(), io.StringIO(), {}
 
         try:
             # Execute code with redirected stdout and stderr
