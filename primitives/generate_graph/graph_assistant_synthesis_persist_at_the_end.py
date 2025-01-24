@@ -637,62 +637,77 @@ Here are the sections to reflect on for writing: {formatted_str_sections}"""
     return {"conclusion": conclusion.content}
 
 def finalize_report(state: ResearchGraphState):
-    """ The is the "reduce" step where we gather all the sections, combine them, and reflect on them to write the intro/conclusion """
+    """ This is the "reduce" step where we gather all the sections, combine them, and reflect on them to write the intro/conclusion """
+    if not state:
+        return {"final_report": ""}
+        
     # Save full final report
-    content = state["content"]
+    content = state.get("content", "")
+    introduction = state.get("introduction", "")
+    conclusion = state.get("conclusion", "")
+    
     if content.startswith("## Insights"):
         content = content.strip("## Insights")
+    
+    sources = None
     if "## Sources" in content:
         try:
             content, sources = content.split("\n## Sources\n")
         except:
             sources = None
-    else:
-        sources = None
 
-    final_report = state["introduction"] + "\n\n---\n\n" + content + "\n\n---\n\n" + state["conclusion"]
-    if sources is not None:
+    final_report = ""
+    if introduction:
+        final_report += introduction + "\n\n---\n\n"
+    if content:
+        final_report += content
+    if conclusion:
+        final_report += "\n\n---\n\n" + conclusion
+    if sources:
         final_report += "\n\n## Sources\n" + sources
+
     return {"final_report": final_report}
 
-def persist_final_report_in_bot(bot, final_report: str):
+def persist_final_report_in_bot(bot, final_report):
     """
-    Convertit le rapport Markdown final en sections du document,
-    et extrait les sources à stocker dans bot.add_or_update_results_in_resources.
+    Converts the final Markdown report into document sections,
+    and extracts sources to store in bot.add_or_update_results_in_resources.
+    """
+    # Handle None or empty input
+    if final_report is None:
+        final_report = {"final_report": ""}  # Create empty report instead of raising error
+        
+    # Handle dictionary input
+    if isinstance(final_report, dict):
+        final_report = final_report.get("final_report", "")
     
-    Args:
-        bot: L'objet ayant les méthodes:
-             - create_and_add_section_then_return_id(title, content, section_id=None, parent_id=None)
-             - add_or_update_results_in_resources(results, metadatas_to_add: dict=None, store_linked_document_content: bool=False)
-        final_report (str): Le rapport final (Markdown) généré par les agents.
-    """
+    # Ensure we have a string
+    final_report = str(final_report)
+    
+    # If empty report, create minimal section
+    if not final_report.strip():
+        bot.create_and_add_section_then_return_id(
+            title="Empty Report",
+            content="No content was generated."
+        )
+        return
 
-    # 1) Extraire toutes les sections (repérées par un titre Markdown, ex. "## ...")
-    #    Naïvement, on peut capturer les sections via une expression régulière.
-    #    Exemple de pattern pour repérer "## Titre" jusqu'à la prochaine "##" ou fin de texte.
-    #    Note: ceci est une simplification, on peut affiner pour gérer différents niveaux de titre.
+    import re
     
+    # The rest of the function remains the same...
     section_pattern = re.compile(r"(##\s+.+?)(?=##\s|$)", re.DOTALL)
-    # On va aussi chercher s'il y a un "# Titre principal" avant tout
-    # ex. "# My Title\n## Introduction..."
     
-    # 2) Trouver un éventuel grand titre (optionnel) : "# ...\n"
     grand_titre_match = re.search(r"^#\s+(.*)", final_report)
     if grand_titre_match:
         grand_titre = grand_titre_match.group(1).strip()
-        # On crée une section "Document Title" ou "Global Title"
         bot.create_and_add_section_then_return_id(
             title=grand_titre,
             content=f"(Main Title)\n\n{grand_titre}"
         )
     
-    # 3) Extraire toutes les sections de niveau "##"
     sections = section_pattern.findall(final_report)
 
-    # 4) Parcourir les sections extraites
     for section_md in sections:
-        # Le pattern renvoie : "## NomDeSection\ncontenu..."
-        # On peut séparer le titre du contenu
         lines = section_md.split('\n', 1)
         if len(lines) == 2:
             section_title_line, section_body = lines
@@ -700,31 +715,20 @@ def persist_final_report_in_bot(bot, final_report: str):
             section_title_line = lines[0]
             section_body = ""
 
-        # Nettoyer le titre : enlever "## " + espaces
         section_title = section_title_line.replace("##", "").strip()
-
-        # Créer la section via bot
         bot.create_and_add_section_then_return_id(title=section_title, content=section_body)
 
-    # 5) Détecter un bloc de sources, par exemple si le rapport contient "## Sources" ...
     sources_block_match = re.search(r"(##\s+Sources.*)", final_report, re.IGNORECASE | re.DOTALL)
     if sources_block_match:
         sources_block = sources_block_match.group(1)
-        # Ex: 
-        #  ## Sources
-        #  [1] Some Link
-        #  [2] Another Link ...
-        # On peut parser chaque ligne de la forme `[1] le lien`.
         
         lines = sources_block.split('\n')
         resources_to_add = []
         for line in lines:
-            # Chercher pattern "[1] https://..."
             m = re.match(r"\[(\d+)\]\s+(.*)", line.strip())
             if m:
                 index = m.group(1)
                 url_or_name = m.group(2)
-                # On prépare un resource item
                 resource_item = {
                     "name": f"Source_{index}",
                     "content": {"url": url_or_name},
@@ -733,29 +737,28 @@ def persist_final_report_in_bot(bot, final_report: str):
                 resources_to_add.append(resource_item)
         
         if resources_to_add:
-            # Appel "add_or_update_results_in_resources"
             bot.add_or_update_results_in_resources(
                 results=resources_to_add, 
                 metadatas_to_add={"type": "reference"},
                 store_linked_document_content=False
             )
 
-# In the docstring, describre the full process and agents involved in a long line
-def multi_agent_research_generation_persist_at_the_end(bot, max_analysts: int = 3):
+def improve_multi_agent_research_generation(bot, max_analysts: int = 3):
     """
-    Generate a full research report using multi-agent LangGraph workflow:  Create a list of analysts, Conduct interviews, Write sections (no plan yet and sections except introduction and conclusion are merged in one section), Write report, Write introduction, Write conclusion, Finalize report
-    Persist document in the bot object by agent action 
+    Generate a full research report using a multi-agent LangGraph workflow:  
+    Create a list of analysts, Conduct interviews, Write sections (no plan yet and sections except introduction and conclusion are merged into one section), 
+    Write report, Write introduction, Write conclusion, Finalize report.
+    Persist the document in the bot object through agent action.
     
     Args:
-        bot: The bot object with the necessary methods
-        max_analysts (int): OPTIONAL (default: 3) - The number of analysts to generate
+        bot: The bot object with the necessary methods.
+        max_analysts (int): OPTIONAL (default: 3) - The number of analysts to generate.
     Returns:
-        str: The final markdown research report
+        str: The final markdown research report.
     """
     title, topic = bot.document.title, bot.document.context
     # Create initial state with topic and max_analysts
     initial_state: GenerateAnalystsState = { "topic": topic, "max_analysts": max_analysts, "human_analyst_feedback": None, "analysts": []}
-    initial_state["bot"] = bot
 
     # Recreate the interview graph within the function
     interview_builder = StateGraph(InterviewState)
@@ -795,7 +798,7 @@ def multi_agent_research_generation_persist_at_the_end(bot, max_analysts: int = 
     builder.add_node("write_conclusion", write_conclusion)
     builder.add_node("finalize_report", finalize_report)
 
-    # # Logic
+    # Logic
     builder.add_edge(START, "create_analysts")
     builder.add_edge("create_analysts", "human_feedback")
     builder.add_conditional_edges("human_feedback", initiate_all_interviews, ["create_analysts", "conduct_interview"])
@@ -807,32 +810,11 @@ def multi_agent_research_generation_persist_at_the_end(bot, max_analysts: int = 
 
     # Compile the graph
     memory2 = MemorySaver()
-    graph = builder.compile(interrupt_before=['human_feedback'], checkpointer=memory2)
-    display(Image(graph.get_graph(xray=1).draw_mermaid_png()))
+    graph = builder.compile(checkpointer=memory2)
+    #display(Image(graph.get_graph(xray=1).draw_mermaid_png()))
 
-    # Set up the thread configuration
-    thread = {"configurable": {"thread_id": "1"}}
-
-    # Run the graph to generate initial analysts
-    for event in graph.stream(initial_state, thread, stream_mode="values"):
-        analysts = event.get('analysts', '')
-        if analysts:
-            print("Generated Analysts:")
-            for analyst in analysts:
-                print(f"Name: {analyst.name}\nAffiliation: {analyst.affiliation}\nRole: {analyst.role}\nDescription: {analyst.description}")
-                print("-" * 50)
-            
-            # Automatically proceed past human_feedback
-            graph.update_state(thread, {"human_analyst_feedback": None}, as_node="human_feedback")
-            break
-
-    # Continue graph execution to completion
-    try:
-        for event in graph.stream(None, thread, stream_mode="values"):
-            # You can add more detailed logging here if needed
-            print("Processing:", event)
-    except Exception as e:
-        print(f"Error during graph execution: {e}")
+    # Invoke the graph
+    graph.invoke(initial_state, thread)
 
     # Retrieve the final report
     final_state = graph.get_state(thread)
@@ -840,41 +822,3 @@ def multi_agent_research_generation_persist_at_the_end(bot, max_analysts: int = 
 
     persist_final_report_in_bot(bot, report)
     return report
-
-# topics = ["Sustainable Technologies in Renewable Energy"]
-
-# for topic in topics:
-#     print(f"\n--- Generating Report for Topic: {topic} ---")
-#     report = research_assistant(topic, f"Research on {topic}")
-#     print(report)
-
-
-# Example usage
-    # from env.env import EnvironmentManager
-    # llmORchains_list = {"default_llm": ChatOpenAI(model="gpt-4o-mini", temperature=0)}
-    # embedding_function = "text-embedding-ada-002"
-
-    # # Set the documents to test/validate as a list of environments
-    # documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
-    #             'title':"Complex QA and language models hybrid architectures, Survey",
-    #         'context':"This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
-    #         'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"},
-    #         { 'id':"42252c6c-12f3-4edf-9045-8acd69bc3356",
-    #         'title':"Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
-    #         'context':"This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
-    #         'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
-
-    # envs_tech_synthesis = []
-    # for doc in documents:
-    #     env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
-    #                              target_file_path=doc['target_file_path'], id=doc['id'],
-    #                              llm=llmORchains_list["default_llm"], embedding_model_name=embedding_function).get_environment()
-    #     envs_tech_synthesis.append(env)
-
-    # Example topics to test the function
-    # topics = ["The benefits of adopting LangGraph as an agent framework","Sustainable Technologies in Renewable Energy"]
-
-    # for topic in topics:
-    #     print(f"\n--- Generating Report for Topic: {topic} ---")
-    #     report = research_assistant(topic, f"Research on {topic}")
-    #     print(report)
