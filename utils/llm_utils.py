@@ -797,9 +797,10 @@ class HumanLLMMonitor:
             'agent_name': saved_task[0].metadata['agent_name'],
             'type_tache': saved_task[0].metadata['type_tache'],
             'content': saved_task[0].page_content,
-            'step_id': saved_task[0].metadata['step_id'],
             'date': saved_task[0].metadata['date']
         }
+        if 'step_id' in saved_task[0].metadata:
+            task['step_id'] = saved_task[0].metadata['step_id']
         if 'user_id' in saved_task[0].metadata:
             task['user_id'] = saved_task[0].metadata['user_id']
         if task_details:
