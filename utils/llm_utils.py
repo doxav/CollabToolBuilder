@@ -1670,7 +1670,7 @@ class HumanLLMMonitor:
                           callable_system_message=None, use_premium_llm=None, model_choice=None, task_name=None):
         self.mode = 'before'
         comments = None
-        initial_user_message = messages[1].content
+        self.user_message = initial_user_message = messages[1].content
         function_name = inspect.stack()[2].function
         use_premium_llm = use_premium_llm if use_premium_llm is not None else self.premium_llm_by_default
         forced_llm_output = False  # TODO: try to set it to None
@@ -1764,7 +1764,7 @@ class HumanLLMMonitor:
                         premium_llm_function = self.premium_llm
 
             elif action == "B":  # Add instruction or information to agent
-                self.add_instruction(initial_user_message, messages)
+                self.add_instruction(initial_user_message)
 
             elif action == "C":  # Set LLM output by re-using past
                 forced_llm_output = self.reuse_past(forced_llm_output, function_name)
@@ -1824,6 +1824,7 @@ class HumanLLMMonitor:
             self.agent_name, optional=True)
 
         self.mode = None
+        messages[1].content = self.user_message
         return messages, comments, forced_llm_output, use_premium_llm, default_llm_function, premium_llm_function, function_calling
 
     def activate_deactivate_inference_checks(self):
@@ -1915,10 +1916,10 @@ class HumanLLMMonitor:
                     'output_contents'])['content']
         return forced_llm_output
 
-    def add_instruction(self, initial_user_message, messages):
+    def add_instruction(self, initial_user_message):
         instructions = smart_input(f"ENTER ADDITIONAL INSTRUCTIONS FOR THE AGENT: ", self.agent_name,
                                    message_type="ADDITIONAL_INFO", optional=False)
-        messages[1].content = initial_user_message + f"\n\nADDITIONAL INSTRUCTIONS: << {instructions} >>"
+        self.user_message = initial_user_message + f"\n\nADDITIONAL INSTRUCTIONS: << {instructions} >>"
 
     def modify_prompt(self, callable_system_message, comments, default_llm_function, forced_llm_output, messages,
                       premium_llm_function, use_premium_llm):
