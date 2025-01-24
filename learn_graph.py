@@ -414,7 +414,7 @@ def run_4agents_learning_loop_graph(
             state["total_scores"].append(total_score)
 
         # Determine whether to continue
-        should_continue = continue_each_loop if agent.automation else get_user_continue_input()
+        should_continue = continue_each_loop if agent.automation else smart_input("Do you want to continue (y) or stop the loop (n)?") == "y"
 
         return {"should_continue": should_continue, **state}
 
@@ -450,6 +450,10 @@ def run_4agents_learning_loop_graph(
 
     # Compile graph
     app = workflow.compile()
+
+    png_data = app.get_graph().draw_mermaid_png()
+    with open("graph_visualization.png", "wb") as f:
+        f.write(png_data)
 
     # Initialize state
     initial_state = {
@@ -566,7 +570,7 @@ if __name__ == "__main__":
         from datetime import datetime
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
 
-    unique_id = "XP_21_12_24"
+    # unique_id = "XP_21_12_24"
 
     if unique_id is None:
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
@@ -694,7 +698,7 @@ if __name__ == "__main__":
                 include_code=False,
                 selected_successful_functions=[],
                 selected_failed_functions=[],
-                max_execution_time=3600,
+                max_execution_time=2400,
                 agtask_premium_llm_by_default=False,
                 agtask_skip_rounds=0,  # Auto-test: 1
                 agcoding_skip_rounds=0,  # Auto-test: 4

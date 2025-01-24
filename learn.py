@@ -1760,8 +1760,7 @@ def coding_and_validation_loop(agent_coding: CodingAgent, agent_validation: Vali
     previous_scores, _ = HumanLLMMonitor.get_agent_data(agent_coding.name, 'previous_scores',
                                                         metadata_filter=metadata) or []
     unique_codes = HumanLLMMonitor.get_agent_data(agent_coding.name, 'unique_codes', metadata_filter=metadata)[0]
-    if unique_codes != [{}]:
-        unique_codes = set(unique_codes)
+    unique_codes = set(unique_codes) if unique_codes != [{}] else set()
     successful_codes, _ = HumanLLMMonitor.get_agent_data(agent_coding.name, 'successful_codes',
                                                          metadata_filter=metadata) or []
     all_results, _ = HumanLLMMonitor.get_agent_data(agent_coding.name, 'all_results', metadata_filter=metadata) or []
@@ -1774,7 +1773,7 @@ def coding_and_validation_loop(agent_coding: CodingAgent, agent_validation: Vali
         # Filter out duplicates
         temp_errors, temp_codes, temp_scores = [], [], []
         for err, code, score in zip(previous_errors, previous_codes, previous_scores):
-            if code not in unique_codes:
+            if code and code not in unique_codes:
                 unique_codes.add(code)
                 temp_errors.append(err)
                 temp_codes.append(code)
