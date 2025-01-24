@@ -1625,8 +1625,8 @@ z-index: -1;
     </div>
     <div id="your-goal-section" style="font-size: small; margin-top: 10px; cursor: pointer;">
         <div><select id="button-visibility-selector">
+            <option value="SESSION_3">SESSION STUDENTS</option>
             <option value="ALL_SEND">ALL + force display of input/send</option>
-            <option value="SESSION_3">SESSION 3 CHOICE & CONTEXT</option>
             <!--<option value="SESSION_1">SESSION 1 FOCUS SELECTION</option>-->
             <!--<option value="SESSION_2">SESSION 2 FOCUS TEXT FEEDBACK</option>-->
             <option value="ALL">ALL (no BUTTON FILTER)</option>
@@ -1819,6 +1819,7 @@ function updateButtonVisibility() {
     ];
     const session3HideSelectors = [];
 
+
     // First, reset any previous visibility changes
     // Show all elements that might have been hidden in previous sessions
     if (continueButton_isVisible)
@@ -1857,6 +1858,26 @@ function updateButtonVisibility() {
         $('.menu-option').hide();
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('go back');}).show();
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('give instruction or');}).show();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('modify agent');}).show();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('skip for');}).show();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('set num of parallel');}).show();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('inferences checks');}).show();
+        $('.menu-option').filter(function() {return $(this).attr('id') === 'llm-select';}).show();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('change default agent');}).show();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('critic to improve');}).show();
+        //$('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('edit answer');}).show();
+    }
+    else if (
+        selection === 'SESSION_3') {
+        session3HideSelectors.forEach(selector => {$(selector).hide();});
+        if (continueButton_isVisible)
+            session3ShowSelectors.forEach(selector => {$(selector).show();});
+        else
+            $('button#custom-autofix-button, button#autofix-button').show();
+        $('.menu-option').hide();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('go back');}).show();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('give instruction or');}).show();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('critic to improve');}).show();
         //$('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('change default agent');}).show();
         //$('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('edit answer');}).show();
     }
