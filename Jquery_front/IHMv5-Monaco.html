@@ -3351,6 +3351,8 @@ $(document).on('click', '.collapsible-header', function() {
     $(document).on("mouseup", function(e) {
         // If "show-annotation-menu" is disabled, return
         if (!document.getElementById("show-annotation-menu").checked) return;
+        // If the selection is without a monaco-editor, return
+        if (!$(e.target).closest(".monaco-editor").length) return;
         let selection = window.getSelection();
         let selectedText = selection.toString();
         if (selectedText) {
