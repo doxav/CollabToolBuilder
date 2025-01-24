@@ -2120,7 +2120,7 @@ if __name__ == "__main__":
     # Run the planner agent
     envs_swe = None
 
-    max_execution_time = 3600
+    max_execution_time = 2400
     from datetime import datetime
     date_start = datetime.now()
 
