@@ -18,6 +18,10 @@ llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 #                 MODELS ET SCHÉMAS
 ########################################################
 
+def get_bot():
+    print("NOT implemented at this stage of the code")
+    return None
+
 class Analyst(BaseModel):
     affiliation: str = Field(
         description="Primary affiliation of the analyst.",
@@ -45,7 +49,6 @@ class GenerateAnalystsState(TypedDict):
     max_analysts: int # Number of analysts
     human_analyst_feedback: str # Human feedback
     analysts: List[Analyst] # Analysts list
-    bot: object  # Pour manipuler le document
 
 ########################################################
 #             CRÉATION ET GESTION DES ANALYSTES
@@ -151,13 +154,11 @@ def should_continue(state: GenerateAnalystsState):
 ########################################################
 
 class InterviewState(MessagesState):
-    max_num_turns: int 
-    context: Annotated[list, operator.add]
-    analyst: Analyst 
-    interview: str 
-    sections: list
-    bot: object  # pour manipuler le document si nécessaire
-
+    max_num_turns: int = 2  # DEFAULT VALUE
+    context: Annotated[list, operator.add] = []  # DEFAULT
+    analyst: Analyst  # Required
+    interview: str = ""  # DEFAULT
+    sections: list = []  # DEFAULT
 class SearchQuery(BaseModel):
     search_query: str = Field(None, description="Search query for retrieval.")
 
@@ -234,7 +235,7 @@ def search_web_bot(state: InterviewState):
     ])
 
     # PERSISTANCE: on stocke ces résultats en "Resources" du document si bot est dispo
-    bot = state.get("bot")
+    bot = get_bot()
     if bot:
         # On crée une liste de "results" suivant la signature add_or_update_results_in_resources
         # Ex. un "result" = {"name": "OpenAlexDoc_1", "content": doc_info, "metadatas": {...}}
@@ -272,7 +273,7 @@ def search_wikipedia_bot(state: InterviewState):
     ])
 
     # PERSISTANCE: stocker dans bot resources
-    bot = state.get("bot")
+    bot = get_bot()
     if bot:
         results_for_bot = []
         for i, doc in enumerate(search_docs):
@@ -366,18 +367,22 @@ def write_section_bot(state: InterviewState):
                           HumanMessage(content=f"Write one short markdown section for {analyst.name}'s memo.")])
 
     # Persistance : on crée physiquement la section dans le document (si bot est défini)
-    bot = state.get("bot")
+    bot = get_bot()
     if bot:
-        # On peut nommer la section d'après l'analyste
+        # Create under main content section
+        main_content_id = bot.create_and_add_section_then_return_id(
+            title="Main Content",
+            content=""  # Empty parent section
+        )
+        # Create analyst section as child
         section_id = bot.create_and_add_section_then_return_id(
             title=f"Memo by {analyst.name}",
-            content=section.content
+            content=section.content,
+            parent_id=main_content_id  # Set parent relationship
         )
-        # On peut suivre l'ID si besoin, ici on n'en a pas forcément besoin
-        # Juste on garde la trace dans state['sections'] par ex.
-        return {"sections": [section.content]}
     else:
-        return {"sections": [section.content]}
+        print("WARNING: No bot available to persist section in write_section_bot.")
+    return {"sections": [section.content]}
 
 ########################################################
 #         SQUELETTE DU WORKFLOW DE RESEARCH
@@ -393,7 +398,6 @@ class ResearchGraphState(TypedDict):
     content: str 
     conclusion: str 
     final_report: str
-    bot: object  # Pour manipuler la doc
 
 def initiate_all_interviews(state: ResearchGraphState):
     """ Lance les interviews en parallèle via Send() """
@@ -406,10 +410,10 @@ def initiate_all_interviews(state: ResearchGraphState):
         return [
             Send("conduct_interview", {
                 "analyst": analyst,
-                "bot": state["bot"],  # IMPORTANT pour persister dans le sous-graph
-                "messages": [HumanMessage(
-                    content=f"So you said you were writing an article on {topic}?"
-                )]
+                "messages": [HumanMessage(content=f"So you said you were writing an article on {topic}?")],
+                "max_num_turns": 2,  # ADD THIS
+                "context": [],  # ADD THIS 
+                "sections": []  # ADD THIS
             }) for analyst in state["analysts"]
         ]
 
@@ -442,13 +446,16 @@ Write in Markdown:
                          HumanMessage(content="Write the consolidated report")])
     
     # Persister la section "Insights" dans le doc
-    bot = state.get("bot")
+    bot = get_bot()
     if bot:
-        bot.create_and_add_section_then_return_id(
+        # Create insights section after intro
+        insights_id = bot.create_and_add_section_then_return_id(
             title="Consolidated Insights",
-            content=report.content
+            content=report.content,
+            section_id=2  # After intro
         )
-
+    else:
+        print("WARNING: No bot available to persist section in write_report_bot.")
     return {"content": report.content}
 
 def write_introduction_bot(state: ResearchGraphState):
@@ -475,13 +482,16 @@ Write a crisp introduction in Markdown:
     intro = llm.invoke([instructions, 
                         HumanMessage(content="Write the report introduction")])
     
-    bot = state.get("bot")
+    bot = get_bot()
     if bot:
-        bot.create_and_add_section_then_return_id(
-            title="Introduction Section",
-            content=intro.content
+        # Create intro as first section
+        intro_id = bot.create_and_add_section_then_return_id(
+            title="Introduction",
+            content=intro.content,
+            section_id=1  # Ensure it's first
         )
-
+    else:
+        print("WARNING: No bot available to persist section in write_introduction_bot.")
     return {"introduction": intro.content}
 
 def write_conclusion_bot(state: ResearchGraphState):
@@ -507,13 +517,16 @@ Write a crisp conclusion in Markdown:
     conclusion = llm.invoke([instructions, 
                              HumanMessage(content="Write the report conclusion")])
     
-    bot = state.get("bot")
+    bot = get_bot()
     if bot:
-        bot.create_and_add_section_then_return_id(
-            title="Conclusion Section",
-            content=conclusion.content
+        # Create conclusion as last section
+        conclusion_id = bot.create_and_add_section_then_return_id(
+            title="Conclusion",
+            content=conclusion.content,
+            section_id=3  # After insights
         )
-
+    else:
+        print("WARNING: No bot available to persist section in write_conclusion_bot.")
     return {"conclusion": conclusion.content}
 
 def finalize_report_bot(state: ResearchGraphState):
@@ -524,15 +537,6 @@ def finalize_report_bot(state: ResearchGraphState):
 
     final_report = f"{introduction}\n\n---\n\n{content}\n\n---\n\n{conclusion}"
     state["final_report"] = final_report
-
-    # Persiste le rapport final
-    bot = state.get("bot")
-    if bot:
-        bot.create_and_add_section_then_return_id(
-            title="Final Report",
-            content=final_report
-        )
-
     return {"final_report": final_report}
 
 ########################################################
@@ -550,17 +554,24 @@ def multi_agent_research_generation_persist_each_agent(bot, max_analysts: int = 
     """
     title = bot.document.title
     topic = bot.document.context
+    # Implement get_bot() function to return the bot object and make it accessible to all functions accessed by the graph
+    global get_bot 
+    get_bot = lambda: bot
 
-    # État initial
-    initial_state: GenerateAnalystsState = {
-        "topic": topic, 
-        "max_analysts": max_analysts, 
-        "human_analyst_feedback": None, 
+    # Initial state
+    initial_state: ResearchGraphState = {
+        "topic": topic,
+        "max_analysts": max_analysts,
+        "human_analyst_feedback": None,
         "analysts": [],
-        "bot": bot
+        "sections": [],
+        "introduction": "", 
+        "content": "",  
+        "conclusion": "", 
+        "final_report": ""
     }
 
-    # Construction du sous-graph "interview"
+    # Build interview sub-graph
     interview_builder = StateGraph(InterviewState)
     interview_builder.add_node("ask_question", generate_question_bot)
     interview_builder.add_node("search_web", search_web_bot)
@@ -570,7 +581,7 @@ def multi_agent_research_generation_persist_each_agent(bot, max_analysts: int = 
     interview_builder.add_node("write_section", write_section_bot)
 
     interview_builder.add_edge(START, "ask_question")
-    interview_builder.add_edge("ask_question", "search_web")
+    interview_builder.add_edge("ask_question", "search_web") 
     interview_builder.add_edge("ask_question", "search_wikipedia")
     interview_builder.add_edge("search_web", "answer_question")
     interview_builder.add_edge("search_wikipedia", "answer_question")
@@ -581,7 +592,7 @@ def multi_agent_research_generation_persist_each_agent(bot, max_analysts: int = 
     memory = MemorySaver()
     interview_graph_bot = interview_builder.compile(checkpointer=memory).with_config(run_name="Conduct Interviews")
 
-    # Workflow global
+    # Global workflow
     builder = StateGraph(ResearchGraphState)
     builder.add_node("create_analysts", create_analysts_bot)
     builder.add_node("human_feedback", human_feedback_bot)
@@ -605,52 +616,14 @@ def multi_agent_research_generation_persist_each_agent(bot, max_analysts: int = 
     builder.add_edge("finalize_report", END)
 
     memory2 = MemorySaver()
-    graph = builder.compile(interrupt_before=['human_feedback'], checkpointer=memory2)
-
-    # Affichage du graph
-    display(Image(graph.get_graph(xray=1).draw_mermaid_png()))
+    graph = builder.compile(checkpointer=memory2)
 
     thread = {"configurable": {"thread_id": "1"}}
+    final_state = None
 
-    # Démarrer le graph pour créer les analysts
-    for event in graph.stream(initial_state, thread, stream_mode="values"):
-        analysts = event.get('analysts', '')
-        if analysts:
-            print("Generated Analysts:")
-            for analyst in analysts:
-                print(f"Name: {analyst.name}\nAffiliation: {analyst.affiliation}\nRole: {analyst.role}\nDescription: {analyst.description}")
-                print("-" * 50)
-            # On simule la fin de feedback humain
-            graph.update_state(thread, {"human_analyst_feedback": None}, as_node="human_feedback")
-            break
-
-    # Poursuivre l'exécution jusqu'à la fin
-    try:
-        for event in graph.stream(None, thread, stream_mode="values"):
-            print("Processing:", event)
-    except Exception as e:
-        print(f"Error during graph execution: {e}")
-
+    graph.invoke(initial_state, thread)
+        
+    # Get the final state after complete execution
     final_state = graph.get_state(thread)
-    report = final_state.values.get('final_report')
-    return report
-
-
-########################################################
-#          EXEMPLE DE LANCEMENT FINAL
-########################################################
-
-def example_usage(bot):
-    """
-    Exemple d'appel de la fonction `research_assistant(bot)`
-    où `bot` est un objet implémentant :
-      - create_and_add_section_then_return_id
-      - add_or_update_results_in_resources
-      - etc.
-    """
-    topic = bot.document.abstract  # ou tout autre concept
-    print(f"\n--- Generating Report for Topic: {topic} ---")
-    final_report = multi_agent_research_generation_persist_each_agent(bot, max_analysts=3)
-    print("=== FINAL REPORT ===")
-    print(final_report)
-    return final_report
+    
+    return final_state.values.get('final_report')
