@@ -467,7 +467,9 @@ class CodingAgent:
                                 "code_task_and_run_test SystemMessage", append=True, optional=False, column_id=output_id, column_max=self.human_llm_code_task.num_parallel_inferences)
                     
                     t1 = time.time()
-                    no_runtime_error, exec_result = env.step(code_to_run)
+                    no_runtime_error, exec_result, std_out_err = env.step(code_to_run)
+                    # Smart print the std_out_err
+                    smart_print(f"FUNCTION DISPLAY OUTPUTS:\n{std_out_err}", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", append=True, optional=False, column_id=output_id)
                     # Show score
                     scores = self.generate_score(idx, no_runtime_error, env.get_score(), time.time() - t1)
                     smart_print(scores, custom_agent if custom_agent else self.name, "Scores", append=True, optional=False, column_id=output_id, column_max=self.human_llm_code_task.num_parallel_inferences)
@@ -544,7 +546,9 @@ class CodingAgent:
                                     "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
 
                         t1 = time.time()
-                        no_runtime_error, exec_result = env.step(code_to_run)
+                        no_runtime_error, exec_result, std_out_err = env.step(code_to_run)
+                        # Smart print the std_out_err
+                        smart_print(f"FUNCTION DISPLAY OUTPUTS:\n{std_out_err}", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
                         # Show score
                         scores = self.generate_score(idx, no_runtime_error, env.get_score(), time.time() - t1)
                         smart_print(scores, custom_agent if custom_agent else self.name, "Scores", optional=False, column_id=output_id)
@@ -1144,7 +1148,9 @@ class PlannerAgent:
                     print("Program code: ", parsed_code['program_code'])
                     print("Main function: ", parsed_code['main_function']['name'])
                     for env in self.envs:
-                        no_runtime_error, exec_result = env.step(f"{prebuilt_code + parsed_code['program_code']}\n{parsed_code['main_function']['name']}(bot)")
+                        no_runtime_error, exec_result, std_out_err = env.step(f"{prebuilt_code + parsed_code['program_code']}\n{parsed_code['main_function']['name']}(bot)")
+                        # Smart print the output
+                        smart_print(f"Response for document {env.id}: {exec_result}", agent_name=self.name)
                         if no_runtime_error:
                             smart_print(f"Executed successfully for environment {env.id}", agent_name=self.name)
                         else:
@@ -1169,7 +1175,7 @@ class PlannerAgent:
         #                 if isinstance(env, SWEBenchEnvironment):
         #                     print("Executing code on SWEBench environment")
         #                     print("Code to run:", code_to_run)
-        #                     no_runtime_error, exec_result = env.step(f"{code_to_run}\n{parsed_code['main_function']['name']}(bot)")
+        #                     no_runtime_error, exec_result, std_out_err = env.step(f"{code_to_run}\n{parsed_code['main_function']['name']}(bot)")
         #                     if no_runtime_error:
         #                         print(f"Executed successfully for environment {env.id}")
         #                         smart_print(f"Executed successfully for environment {env.id} with output {exec_result}", agent_name=self.name)

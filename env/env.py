@@ -49,7 +49,7 @@ class Environment:
             print(f"Code execution contect: <<<{context}>>>")
             with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                 exec(action_code + helper, context)
-            print(f"Stdout:\n{stdout.getvalue()}\nStderr:\n{stderr.getvalue()}")
+            std_out_err = {"stdout": stdout.getvalue(), "stderr": stderr.getvalue()}
             # Safely evaluate and retrieve result
             exec_result = ast.literal_eval(repr(context.get('result', True)))
             no_runtime_error = True
@@ -62,7 +62,7 @@ class Environment:
             # Restore original directory
             # os.chdir(current_dir)
 
-        return no_runtime_error, exec_result
+        return no_runtime_error, exec_result, std_out_err
 
     def close(self, backup_previous_temp_dir=True):
         # move temp directory and its content including the data link to backups directory
