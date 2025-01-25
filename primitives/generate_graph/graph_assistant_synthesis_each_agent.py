@@ -27,9 +27,10 @@ from langchain_openai import ChatOpenAI
 from langchain_community.document_loaders import WikipediaLoader
 from langchain_core.messages import get_buffer_string
 
-os.environ['OPENAI_BASE_URL'] = 'https://api.openai.com/v1'
-os.environ['OPENROUTER_API_KEY'] = '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'
-os.environ['OPENAI_API_KEY'] = os.environ['OPENROUTER_API_KEY']
+# os.environ['OPENAI_BASE_URL'] = 'https://api.openai.com/v1'
+# os.environ['OPENROUTER_API_KEY'] = '
+# os.environ['OPENAI_API_KEY'] = os.environ['OPENROUTER_API_KEY']
+
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 class Analyst(BaseModel):
@@ -100,9 +101,10 @@ def create_analysts_bot(state: GenerateAnalystsState):
     # print type of analysts
     print(f"Type of analysts: {type(analysts)}")
     # Write the list of analysis to state
-    #return {"analysts": analysts.analysts}
     #return { "analysts": analysts.analysts, "sections": state.get("sections", []), "context": state.get("context", []) }
-    return {"analysts": analysts.analysts, "sections": state.get("sections", []), "messages": state.get("messages", []), "context": state.get("context", []), "human_analyst_feedback": state.get("human_analyst_feedback", None)}
+    #return {"analysts": analysts.analysts, "sections": state.get("sections", []), "messages": state.get("messages", []), "context": state.get("context", []), "human_analyst_feedback": state.get("human_analyst_feedback", None)}
+    return {"analysts": analysts.analysts}
+
 def human_feedback_bot(state: GenerateAnalystsState):
     """ No-op node that should be interrupted on """
     pass
@@ -121,12 +123,12 @@ def should_continue(state: GenerateAnalystsState):
 #further_feedack = None
 #graph.update_state(thread, {"human_analyst_feedback":further_feedack}, as_node="human_feedback")
 class InterviewState(MessagesState):
-    max_num_turns: int
-    context: Annotated[list, operator.add]
+    max_num_turns: int = 2  # Add default value
+    context: Annotated[list, operator.add] = []  # Add default value
     analyst: Analyst
-    interview: str
-    sections: Annotated[list, operator.add]  # Make sure this matches ResearchGraphState
-    messages: list  # Add this field
+    interview: str = ""  # Add default value
+    sections: Annotated[list, operator.add] = []  # Add default value
+    messages: list = []  # Add default value
 
 class SearchQuery(BaseModel):
     search_query: str = Field(None, description="Search query for retrieval.")
@@ -161,8 +163,8 @@ def generate_question_bot(state: InterviewState):
     question = llm.invoke([SystemMessage(content=system_message)]+messages)
 
     # Write messages to state
-    #return {"messages": [question]}
-    return { "messages": [question], "context": state.get("context", []), "sections": state.get("sections", [])}
+    #return { "messages": [question], "context": state.get("context", []), "sections": state.get("sections", [])}
+    return {"messages": [question]}
 
 # Search query writing
 search_instructions = SystemMessage(content=f"""You will be given a conversation between an analyst and an expert.
@@ -472,12 +474,20 @@ def initiate_all_interviews(state: ResearchGraphState):
     # Otherwise kick off interviews in parallel via Send() API
     else:
         topic = state["topic"]
-        return [Send("conduct_interview", {"analyst": analyst,
-                                           "messages": [HumanMessage(
-                                               content=f"So you said you were writing an article on {topic}?"
-                                           )
-                                                       ]}) for analyst in state["analysts"]]
-
+        # return [Send("conduct_interview", {"analyst": analyst,
+        #                                    "messages": [HumanMessage(
+        #                                        content=f"So you said you were writing an article on {topic}?"
+        #                                    )
+        #                                                ]}) for analyst in state["analysts"]]
+        return [Send("conduct_interview", {
+                    "analyst": analyst, "messages": [ HumanMessage( content=f"So you said you were writing an article on {topic}?")],
+                    "max_num_turns": 2,  # Add explicit max_num_turns
+                    "context": [],  # Add empty context
+                    "sections": [],  # Add empty sections
+                    "interview": ""  # Add empty interview
+                }
+            ) for analyst in state["analysts"]
+        ]
 report_writer_instructions = """You are a technical writer creating a report on this overall topic:
 
 {topic}
@@ -651,7 +661,8 @@ def multi_agent_research_generation_persist_each_agent(bot, max_analysts: int = 
     get_bot = lambda: bot
 
     # Create initial state with topic and max_analysts
-    initial_state: GenerateAnalystsState = { "topic": topic, "max_analysts": max_analysts, "human_analyst_feedback": None, "analysts": [], "sections": [],  "messages": [], "context": [] }
+    #initial_state: GenerateAnalystsState = { "topic": topic, "max_analysts": max_analysts, "human_analyst_feedback": None, "analysts": [], "sections": [],  "messages": [], "context": [] }
+    initial_state: GenerateAnalystsState = { "topic": topic, "max_analysts": max_analysts, "human_analyst_feedback": None, "analysts": []}
     # Recreate the interview graph within the function
     interview_builder = StateGraph(InterviewState)
     interview_builder.add_node("ask_question", generate_question_bot)
@@ -706,11 +717,14 @@ def multi_agent_research_generation_persist_each_agent(bot, max_analysts: int = 
     #display(Image(graph.get_graph(xray=1).draw_mermaid_png()))
 
     # Invoke the graph
-    graph.invoke(initial_state, thread)
-
-    # Retrieve the final report
-    final_state = graph.get_state(thread)
-    report = final_state.values.get('final_report')
+    try:
+        result = graph.invoke(initial_state, thread)
+        final_state = graph.get_state(thread)
+        report = final_state.values.get('final_report', '')
+    except Exception as e:
+        print(f"Error in graph execution: {e}")
+        print(f"Current state: {graph.get_state(thread)}")
+        raise
 
     return report
 
