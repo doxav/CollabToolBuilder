@@ -823,7 +823,7 @@ def multi_agent_research_generation_persist_at_the_end(bot, max_analysts: int = 
     persist_final_report_in_bot(bot, report)
     return report
 
-
+if __name__ == "__main__":
     from dataclasses import dataclass
     from typing import List, Dict, Any, Optional
     from datetime import datetime
