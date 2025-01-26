@@ -151,13 +151,16 @@ class WebsocketServer:
                     print(f"Port {self.port} is in use, trying the next one...")
                     self.port += 1
 
-    def start_localtunnel(self):
+    def start_localtunnel(self, custom_host="https://tpcollabgpt.duckdns.org"):
         """Start localtunnel if it's enabled and available on the system."""
         if self.proxy_enabled and shutil.which("lt") is not None:
             print("Starting localtunnel...")
             try:
+                lt_command = ["lt", "--port", str(self.port)]
+                if custom_host:
+                    lt_command.extend(["--host", custom_host])
                 self.process_lt = subprocess.Popen(
-                    ["lt", "--port", str(self.port)],
+                    lt_command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True
@@ -201,7 +204,7 @@ class WebsocketServer:
 
         # Get the absolute path of IHMv5-Monaco..html
         current_directory = os.getcwd()
-        hmi_file_path = os.path.join(current_directory, "Jquery_front", "IHMv5-Monaco..html")
+        hmi_file_path = os.path.join(current_directory, "Jquery_front", "IHMv5-Monaco.html")
         absolute_hmi_file_path = f"file://{hmi_file_path}"
         print(f"Access to HMI via : {absolute_hmi_file_path}")
 
