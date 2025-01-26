@@ -743,7 +743,7 @@ def persist_final_report_in_bot(bot, final_report):
                 store_linked_document_content=False
             )
 
-def improve_multi_agent_research_generation(bot, max_analysts: int = 3):
+def multi_agent_research_generation_persist_at_the_end(bot, max_analysts: int = 3):
     """
     Generate a full research report using a multi-agent LangGraph workflow:  
     Create a list of analysts, Conduct interviews, Write sections (no plan yet and sections except introduction and conclusion are merged into one section), 
@@ -822,3 +822,163 @@ def improve_multi_agent_research_generation(bot, max_analysts: int = 3):
 
     persist_final_report_in_bot(bot, report)
     return report
+
+if __name__ == "__main__":
+    from dataclasses import dataclass
+    from typing import List, Dict, Any, Optional
+    from datetime import datetime
+
+    @dataclass
+    class Section:
+        section_id: int
+        title: str
+        content: str
+        parent_id: Optional[int] = None
+
+    @dataclass
+    class Document:
+        title: str
+        context: str
+
+    class MockBot:
+        def __init__(self, title: str, context: str):
+            self.document = Document(title=title, context=context)
+            self.sections: List[Section] = []
+            self.resources: List[Dict] = []
+            self.next_section_id = 1
+            self.next_resource_id = 1
+            print(f"MockBot initialized with title: {title} and context: {context}")
+
+        def create_and_add_section_then_return_id(self, title: str, content: str, section_id: int = None, parent_id: int = None) -> int:
+            if section_id is None:
+                section_id = self.next_section_id
+                self.next_section_id += 1
+            
+            section = Section(section_id=section_id, title=title, content=content, parent_id=parent_id)
+            self.sections.append(section)
+            print(f"Created section {section_id}: {title} (parent: {parent_id})")
+            return section_id
+
+        def get_all_sections(self) -> List[Section]:
+            return self.sections
+
+        def get_sections(self, ids: List[int]) -> List[Section]:
+            return [s for s in self.sections if s.section_id in ids]
+
+        def edit_section(self, section_id: int, new_content: str = None, new_title: str = None, new_parent_id: int = None) -> bool:
+            for section in self.sections:
+                if section.section_id == section_id:
+                    if new_content is not None:
+                        section.content = new_content
+                    if new_title is not None:
+                        section.title = new_title
+                    if new_parent_id is not None:
+                        section.parent_id = new_parent_id
+                    print(f"Edited section {section_id}")
+                    return True
+            return False
+
+        def add_or_update_results_in_resources(self, results: List[Dict], metadatas_to_add: dict = None, store_linked_document_content: bool = False):
+            for result in results:
+                resource_id = self.next_resource_id
+                self.next_resource_id += 1
+                
+                resource = {
+                    'id': resource_id,
+                    'document': {
+                        'name': result.get('name', ''),
+                        'link': result.get('link', ''),
+                        'content': result.get('content', {})
+                    },
+                    'metadatas': metadatas_to_add or {}
+                }
+                
+                self.resources.append(resource)
+                print(f"Added resource {resource_id}: {result.get('name', '')}")
+            return self
+
+        def add_or_update_result_in_resources(self, metadatas: dict, name: str = None, content: dict = None, link: str = None, store_linked_document_content: bool = False):
+            resource_id = self.next_resource_id
+            self.next_resource_id += 1
+            
+            resource = {
+                'id': resource_id,
+                'document': {
+                    'name': name,
+                    'link': link,
+                    'content': content or {}
+                },
+                'metadatas': metadatas
+            }
+            
+            self.resources.append(resource)
+            print(f"Added single resource {resource_id}: {name}")
+            return self
+
+        def get_all_resources(self) -> List[Dict[str, Any]]:
+            return self.resources
+
+        def semantic_search_resources(self, query_texts, n_results=10):
+            print(f"Mock semantic search for: {query_texts}")
+            return []  # Mock empty results
+
+        def remove_resource(self, resource_id):
+            self.resources = [r for r in self.resources if r['id'] != resource_id]
+            print(f"Removed resource {resource_id}")
+            return self
+
+    # Test usage example:
+    def test_mock_bot():
+        # Initialize mock bot
+        mock_bot = MockBot(
+            title="Test Research",
+            context="Testing the research assistant framework"
+        )
+        
+        # Test section creation
+        section_id = mock_bot.create_and_add_section_then_return_id(
+            title="Introduction",
+            content="This is a test introduction"
+        )
+        
+        # Test resource addition
+        mock_bot.add_or_update_results_in_resources([
+            {
+                "name": "Test Resource",
+                "link": "https://test.com",
+                "content": {"description": "Test content"}
+            }
+        ], metadatas_to_add={"source": "test"})
+        
+        # Print current state
+        print("\nCurrent sections:")
+        for section in mock_bot.get_all_sections():
+            print(f"Section {section.section_id}: {section.title}")
+        
+        print("\nCurrent resources:")
+        for resource in mock_bot.get_all_resources():
+            print(f"Resource {resource['id']}: {resource['document']['name']}")
+
+        return mock_bot
+
+    mock_bot = MockBot(
+        title="Test Research @ Toulon M2 Master",
+        context="Testing the research assistant framework in Toulon M2 Master"
+    )
+
+    # Run with explicit error handling
+    if True: # try:
+        result = multi_agent_research_generation_persist_at_the_end(mock_bot, max_analysts=2)
+        
+        print("\nFinal Results:")
+        print("Sections:", len(mock_bot.get_all_sections()))
+        print("Resources:", len(mock_bot.get_all_resources()))
+        
+        if result:
+            print("\nReport preview:", result[:200] + "..." if result else "No report")
+            
+    # except Exception as e:
+    #     print(f"Error running research generation: {e}")
+    #     print("\nFinal bot state:")
+    #     print("Sections:", mock_bot.get_all_sections())
+    #     print("Resources:", mock_bot.get_all_resources())
