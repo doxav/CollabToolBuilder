@@ -151,7 +151,7 @@ class WebsocketServer:
                     print(f"Port {self.port} is in use, trying the next one...")
                     self.port += 1
 
-    def start_localtunnel(self, custom_host="https://tpcollabgpt.duckdns.org"):
+    def start_localtunnel(self, custom_host=None): #"https://tpcollabgpt.duckdns.org"):
         """Start localtunnel if it's enabled and available on the system."""
         if self.proxy_enabled and shutil.which("lt") is not None:
             print("Starting localtunnel...")
