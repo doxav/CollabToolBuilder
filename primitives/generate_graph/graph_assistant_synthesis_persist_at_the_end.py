@@ -12,7 +12,7 @@ from langchain_core.messages import get_buffer_string
 from langgraph.constants import Send
 
 from langchain_openai import ChatOpenAI
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+llm_custom = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 class Analyst(BaseModel):
     affiliation: str = Field(
@@ -72,7 +72,7 @@ def create_analysts(state: GenerateAnalystsState):
     human_analyst_feedback=state.get('human_analyst_feedback', '')
 
     # Enforce structured output
-    structured_llm = llm.with_structured_output(Perspectives)
+    structured_llm = llm_custom.with_structured_output(Perspectives)
 
     # System message
     system_message = analyst_instructions.format(topic=topic,
@@ -116,7 +116,7 @@ def create_analysts(state: GenerateAnalystsState):
     human_analyst_feedback = state.get('human_analyst_feedback', '')
 
     # Enforce structured output
-    structured_llm = llm.with_structured_output(Perspectives)
+    structured_llm = llm_custom.with_structured_output(Perspectives)
 
     # System message
     system_message = analyst_instructions.format(
@@ -230,7 +230,7 @@ def generate_question(state: InterviewState):
 
     # Generate question
     system_message = question_instructions.format(goals=analyst.persona)
-    question = llm.invoke([SystemMessage(content=system_message)]+messages)
+    question = llm_custom.invoke([SystemMessage(content=system_message)]+messages)
 
     # Write messages to state
     return {"messages": [question]}
@@ -241,7 +241,7 @@ def search_web(state: InterviewState):
     OPENALEX_API_URL = "https://api.openalex.org/works"
 
     # Search query
-    structured_llm = llm.with_structured_output(SearchQuery)
+    structured_llm = llm_custom.with_structured_output(SearchQuery)
     if "search_instructions" not in state:
         state["search_instructions"] = SystemMessage(content=f"""You will be given a conversation between an analyst and an expert.
 
@@ -303,7 +303,7 @@ def search_wikipedia(state: InterviewState):
     search_instructions = state["search_instructions"]
 
     # Search query
-    structured_llm = llm.with_structured_output(SearchQuery)
+    structured_llm = llm_custom.with_structured_output(SearchQuery)
     search_query = structured_llm.invoke([search_instructions]+state['messages'])
 
     # Search
@@ -361,7 +361,7 @@ def generate_answer(state: InterviewState):
 
     # Answer question
     system_message = answer_instructions.format(goals=analyst.persona, context=context)
-    answer = llm.invoke([SystemMessage(content=system_message)]+messages)
+    answer = llm_custom.invoke([SystemMessage(content=system_message)]+messages)
 
     # Name the message as coming from the expert
     answer.name = "expert"
@@ -472,7 +472,7 @@ def write_section(state: InterviewState):
 
     # Write section using either the gathered source docs from interview (context) or the interview itself (interview)
     system_message = section_writer_instructions.format(focus=analyst.description)
-    section = llm.invoke([SystemMessage(content=system_message)]+[HumanMessage(content=f"Use this source to write your section: {context}")])
+    section = llm_custom.invoke([SystemMessage(content=system_message)]+[HumanMessage(content=f"Use this source to write your section: {context}")])
 
     # Append it to state
     return {"sections": [section.content]}
@@ -554,7 +554,7 @@ Here are the memos from your analysts to build your report from:
 
     # Summarize the sections into a final report
     system_message = report_writer_instructions.format(topic=topic, context=formatted_str_sections)
-    report = llm.invoke([SystemMessage(content=system_message)]+[HumanMessage(content=f"Write a report based upon these memos.")])
+    report = llm_custom.invoke([SystemMessage(content=system_message)]+[HumanMessage(content=f"Write a report based upon these memos.")])
     return {"content": report.content}
 
 def write_introduction(state: ResearchGraphState):
@@ -594,7 +594,7 @@ Here are the sections to reflect on for writing: {formatted_str_sections}"""
     # Summarize the sections into a final report
 
     instructions = intro_conclusion_instructions.format(topic=topic, formatted_str_sections=formatted_str_sections)
-    intro = llm.invoke([instructions]+[HumanMessage(content=f"Write the report introduction")])
+    intro = llm_custom.invoke([instructions]+[HumanMessage(content=f"Write the report introduction")])
     return {"introduction": intro.content}
 
 def write_conclusion(state: ResearchGraphState):
@@ -633,7 +633,7 @@ Here are the sections to reflect on for writing: {formatted_str_sections}"""
     # Summarize the sections into a final report
 
     instructions = intro_conclusion_instructions.format(topic=topic, formatted_str_sections=formatted_str_sections)
-    conclusion = llm.invoke([instructions]+[HumanMessage(content=f"Write the report conclusion")])
+    conclusion = llm_custom.invoke([instructions]+[HumanMessage(content=f"Write the report conclusion")])
     return {"conclusion": conclusion.content}
 
 def finalize_report(state: ResearchGraphState):

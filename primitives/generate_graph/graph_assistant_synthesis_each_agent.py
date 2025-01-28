@@ -31,7 +31,7 @@ from langchain_core.messages import get_buffer_string
 # os.environ['OPENROUTER_API_KEY'] = '
 # os.environ['OPENAI_API_KEY'] = os.environ['OPENROUTER_API_KEY']
 
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+llm_custom = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 class Analyst(BaseModel):
     affiliation: str = Field(
@@ -88,7 +88,7 @@ def create_analysts_bot(state: GenerateAnalystsState):
     print(f"Human analyst feedback: {human_analyst_feedback}")
 
     # Enforce structured output
-    structured_llm = llm.with_structured_output(Perspectives)
+    structured_llm = llm_custom.with_structured_output(Perspectives)
 
     # System message
     system_message = analyst_instructions.format(topic=topic,
@@ -160,7 +160,7 @@ def generate_question_bot(state: InterviewState):
 
     # Generate question
     system_message = question_instructions.format(goals=analyst.persona)
-    question = llm.invoke([SystemMessage(content=system_message)]+messages)
+    question = llm_custom.invoke([SystemMessage(content=system_message)]+messages)
 
     # Write messages to state
     #return { "messages": [question], "context": state.get("context", []), "sections": state.get("sections", [])}
@@ -183,7 +183,7 @@ def search_web_bot(state: InterviewState):
     OPENALEX_API_URL = "https://api.openalex.org/works"
     
     # Get search query
-    structured_llm = llm.with_structured_output(SearchQuery)
+    structured_llm = llm_custom.with_structured_output(SearchQuery)
     search_query = structured_llm.invoke([search_instructions] + state['messages'])
     
     # Search OpenAlex
@@ -244,7 +244,7 @@ def search_wikipedia_bot(state: InterviewState):
     """ Retrieve docs from wikipedia """
 
     # Search query
-    structured_llm = llm.with_structured_output(SearchQuery)
+    structured_llm = llm_custom.with_structured_output(SearchQuery)
     search_query = structured_llm.invoke([search_instructions]+state['messages'])
 
     # Search
@@ -300,7 +300,7 @@ def generate_answer_bot(state: InterviewState):
 
     # Answer question
     system_message = answer_instructions.format(goals=analyst.persona, context=context)
-    answer = llm.invoke([SystemMessage(content=system_message)]+messages)
+    answer = llm_custom.invoke([SystemMessage(content=system_message)]+messages)
 
     # Name the message as coming from the expert
     answer.name = "expert"
@@ -404,7 +404,7 @@ def write_section_bot(state: InterviewState):
     context = state["context"]
     analyst = state["analyst"]
     
-    section = llm.invoke([
+    section = llm_custom.invoke([
         SystemMessage(content=section_writer_instructions),
         HumanMessage(content=f"Write a section based on: {context}")
     ])
@@ -532,7 +532,7 @@ def write_report_bot(state: ResearchGraphState):
 
     # Summarize the sections into a final report
     system_message = report_writer_instructions.format(topic=topic, context=formatted_str_sections)
-    report = llm.invoke([SystemMessage(content=system_message)]+[HumanMessage(content=f"Write a report based upon these memos.")])
+    report = llm_custom.invoke([SystemMessage(content=system_message)]+[HumanMessage(content=f"Write a report based upon these memos.")])
     return {"content": report.content}
 
 intro_conclusion_instructions = """You are a technical writer finishing a report on {topic}
@@ -568,7 +568,7 @@ def write_introduction_bot(state: ResearchGraphState):
     # Summarize the sections into a final report
 
     instructions = intro_conclusion_instructions.format(topic=topic, formatted_str_sections=formatted_str_sections)
-    intro = llm.invoke([instructions]+[HumanMessage(content=f"Write the report introduction")])
+    intro = llm_custom.invoke([instructions]+[HumanMessage(content=f"Write the report introduction")])
     return {"introduction": intro.content}
 
 def write_conclusion_bot(state: ResearchGraphState):
@@ -582,7 +582,7 @@ def write_conclusion_bot(state: ResearchGraphState):
     # Summarize the sections into a final report
 
     instructions = intro_conclusion_instructions.format(topic=topic, formatted_str_sections=formatted_str_sections)
-    conclusion = llm.invoke([instructions]+[HumanMessage(content=f"Write the report conclusion")])
+    conclusion = llm_custom.invoke([instructions]+[HumanMessage(content=f"Write the report conclusion")])
     return {"conclusion": conclusion.content}
 
 def finalize_report_bot(state: ResearchGraphState):

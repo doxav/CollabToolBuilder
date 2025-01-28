@@ -111,6 +111,50 @@ def search_arxiv_sync(query, output_format='json', max_results=10, fetch_full_pa
     import asyncio
     return asyncio.run(search_arxiv(query, output_format=output_format, max_results=max_results, fetch_full_paper=fetch_full_paper))
 
+def search_openalex(query: str, max_results: int = 10):
+    """Retrieve academic papers from OpenAlex based on a query."""
+    import requests
+    OPENALEX_API_URL = "https://api.openalex.org/works"
+    
+    params = {
+        "search": query,
+        "filter": "is_paratext:false",  # Exclude non-research content
+        "sort": "relevance_score:desc",
+        "per_page": max_results
+    }
+    
+    response = requests.get(OPENALEX_API_URL, params=params)
+    search_docs = []
+    
+    if response.status_code == 200:
+        data = response.json()
+        for result in data.get("results", []):
+            search_docs.append({
+                "title": result.get("title", "Unknown Title"),
+                "authors": ", ".join([auth["author"]["display_name"] for auth in result.get("authorships", [])]),
+                "abstract": result.get("abstract", "No abstract available"),
+                "url": result.get("id", "Unknown URL")
+            })
+    else:
+        print(f"Error retrieving data from OpenAlex: {response.status_code}")
+    
+    return search_docs
+
+def search_wikipedia(query: str, max_results: int = 10):
+    """Retrieve Wikipedia documents based on a query."""
+    from langchain_community.document_loaders import WikipediaLoader
+    search_docs = WikipediaLoader(query=query, load_max_docs=max_results).load()
+    
+    formatted_docs = []
+    for doc in search_docs:
+        formatted_docs.append({
+            "title": doc.metadata.get("title", "Unknown Title"),
+            "source": doc.metadata.get("source", "Unknown Source"),
+            "page": doc.metadata.get("page", "Unknown Page"),
+            "content": doc.page_content
+        })
+    
+    return formatted_docs
 
 # Example usage:
 # if __name__ == "__main__":
