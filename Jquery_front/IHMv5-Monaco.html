@@ -1625,7 +1625,10 @@ z-index: -1;
     </div>
     <div id="your-goal-section" style="font-size: small; margin-top: 10px; cursor: pointer;">
         <div><select id="button-visibility-selector">
-            <option value="SESSION_3">SESSION STUDENTS</option>
+            <option value="SESSION_STUDENT">STUDENT</option>
+            <option value="SESSION_STUDENT_EXPERT">STUDENT EXPERT</option>
+            <option value="SESSION_TP3">TP3</option>
+            <option value="SESSION_TP4">TP4</option>
             <option value="ALL_SEND">ALL + force display of input/send</option>
             <!--<option value="SESSION_1">SESSION 1 FOCUS SELECTION</option>-->
             <!--<option value="SESSION_2">SESSION 2 FOCUS TEXT FEEDBACK</option>-->
@@ -1820,6 +1823,63 @@ function updateButtonVisibility() {
     const session3HideSelectors = [];
 
 
+    const studentShowSelectors = [
+        'button#autofix-button',
+        'button[id^="delete-"]',
+        'button[id^="suggestions-"]',
+        'button[id^="evaluate-"]',
+        'button[id^="regenwithmymodifbutton-"]',
+        'button[id^="regenallbutton-"]',
+        'input[id^="comment-"]',
+        'button#custom-autofix-button',
+        // Include any other session 2 specific buttons or inputs here
+    ];
+    const studentHideSelectors = [];
+
+
+    const studentExpertShowSelectors = [
+        'button#autofix-button',
+        'button[id^="delete-"]',
+        'button[id^="suggestions-"]',
+        'button[id^="evaluate-"]',
+        'button[id^="regenwithmymodifbutton-"]',
+        'button[id^="regenallbutton-"]',
+        'input[id^="comment-"]',
+        'button#custom-autofix-button',
+        // Include any other session 2 specific buttons or inputs here
+    ];
+    const studentExpertHideSelectors = [];
+
+    const TP4ShowSelectors = [
+        'button#autofix-button',
+        'button[id^="delete-"]',
+        'button[id^="suggestions-"]',
+        'button[id^="evaluate-"]',
+        'input[id^="comment-"]',
+        'button#custom-autofix-button',
+        // Include any other session 2 specific buttons or inputs here
+    ];
+    const TP4HideSelectors = [
+        'button[id^="regenwithmymodifbutton-"]',
+        'button[id^="regenallbutton-"]'
+        ];
+
+    const TP3ShowSelectors = [
+        'button#autofix-button',
+        'button[id^="delete-"]',
+        'button[id^="evaluate-"]',
+        'input[id^="comment-"]',
+        'button#custom-autofix-button',
+        // Include any other session 2 specific buttons or inputs here
+    ];
+    const TP3HideSelectors = [
+        'button[id^="regenwithmymodifbutton-"]',
+        'button[id^="regenallbutton-"]',
+        'button[id^="suggestions-"]'
+        ];
+
+
+
     // First, reset any previous visibility changes
     // Show all elements that might have been hidden in previous sessions
     if (continueButton_isVisible)
@@ -1849,10 +1909,29 @@ function updateButtonVisibility() {
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('give instruction or');}).show();
     }
     else if (
-        selection === 'SESSION_3') {
-        session3HideSelectors.forEach(selector => {$(selector).hide();});
+        selection === 'SESSION_STUDENT') {
+        studentHideSelectors.forEach(selector => {$(selector).hide();});
         if (continueButton_isVisible)
-            session3ShowSelectors.forEach(selector => {$(selector).show();});
+            studentShowSelectors.forEach(selector => {$(selector).show();});
+        else
+            $('button#custom-autofix-button, button#autofix-button').show();
+        $('.menu-option').hide();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('go back');}).show();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('give instruction or');}).show();
+        //$('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('modify agent');}).show();
+        //$('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('skip for');}).show();
+        //$('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('set num of parallel');}).show();
+        //$('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('inferences checks');}).show();
+        //$('.menu-option').filter(function() {return $(this).attr('id') === 'llm-select';}).show();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('change default agent');}).show();
+        //$('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('critic to improve');}).show();
+        //$('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('edit answer');}).show();
+    }
+    else if (
+        selection === 'SESSION_STUDENT_EXPERT') {
+        studentExpertHideSelectors.forEach(selector => {$(selector).hide();});
+        if (continueButton_isVisible)
+            studentShowSelectors.forEach(selector => {$(selector).show();});
         else
             $('button#custom-autofix-button, button#autofix-button').show();
         $('.menu-option').hide();
@@ -1864,22 +1943,32 @@ function updateButtonVisibility() {
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('inferences checks');}).show();
         $('.menu-option').filter(function() {return $(this).attr('id') === 'llm-select';}).show();
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('change default agent');}).show();
-        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('critic to improve');}).show();
+        //$('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('critic to improve');}).show();
         //$('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('edit answer');}).show();
     }
     else if (
-        selection === 'SESSION_3') {
-        session3HideSelectors.forEach(selector => {$(selector).hide();});
+        selection === 'SESSION_TP4') {
+        TP4HideSelectors.forEach(selector => {$(selector).hide();});
         if (continueButton_isVisible)
-            session3ShowSelectors.forEach(selector => {$(selector).show();});
+            TP4ShowSelectors.forEach(selector => {$(selector).show();});
         else
             $('button#custom-autofix-button, button#autofix-button').show();
         $('.menu-option').hide();
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('go back');}).show();
         $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('give instruction or');}).show();
-        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('critic to improve');}).show();
-        //$('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('change default agent');}).show();
-        //$('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('edit answer');}).show();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('change default agent');}).show();
+    }
+    else if (
+        selection === 'SESSION_TP3') {
+        TP3HideSelectors.forEach(selector => {$(selector).hide();});
+        if (continueButton_isVisible)
+            TP3ShowSelectors.forEach(selector => {$(selector).show();});
+        else
+            $('button#custom-autofix-button, button#autofix-button').show();
+        $('.menu-option').hide();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('go back');}).show();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('give instruction or');}).show();
+        $('.menu-option').filter(function() {return $(this).text().toLowerCase().includes('change default agent');}).show();
     }
     else if (selection === 'ALL' || selection === 'ALL_SEND') {
         $('.menu-option').show();
