@@ -1402,6 +1402,26 @@ Here is the paper you are asked to review:
         content = VoyagerEnvIR_CPS_TechSynthesis.llm(base_prompt)
         return extract_json_between_markers(content)
 
+    def get_review(self):
+        # load the prompt
+        prompt_path = os.path.join('prompts/ai_scientist/review.txt')
+        
+        base_prompt = ''
+        try:
+            with open(prompt_path, 'r') as file:
+                base_prompt = file.read()
+        except Exception as e:
+            raise Exception(f"Error occured while reading prompt!")
+        
+        text = self.document.get_document_content()
+        base_prompt += f"""
+Here is the paper you are asked to review:
+```
+{text}
+```"""
+        content = VoyagerEnvIR_CPS_TechSynthesis.llm(base_prompt)
+        return extract_json_between_markers(content)
+
     def get_score(self):
         review = self.get_review()
         
