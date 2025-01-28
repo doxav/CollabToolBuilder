@@ -1006,20 +1006,27 @@ class SynthesisManager:
         return self.document.resources
 
     @method_call_counter
-    def add_or_update_results_in_resources(self, results, metadatas_to_add: dict = {}, store_linked_document_content: bool = False):
-        if isinstance(results, dict): results = [results]
+    def add_or_update_results_in_resources(self, results, metadatas_to_add=None, store_linked_document_content=False):
+        results = [results] if isinstance(results, dict) else results or []
+        
         for result in results:
-            content = {'description': result['description']} if isinstance(result['description'], str) else result['description']
-            self.add_or_update_result_in_resources(metadatas=metadatas_to_add, name=result['title'], link=result['link'], content=content, store_linked_document_content=store_linked_document_content)
+            content = {'description': str(result.get('description', result)).strip()} if isinstance(result, dict) else {'description': str(result)}
+            self.add_or_update_result_in_resources(
+                metadatas=metadatas_to_add or {}, 
+                name=str(result.get('title', '')).strip() if isinstance(result, dict) else '', 
+                link=str(result.get('link', '')).strip() if isinstance(result, dict) else '', 
+                content=content, 
+                store_linked_document_content=store_linked_document_content
+            )
         return self
-
+    
     @method_call_counter
     def add_or_update_result_in_resources(self, metadatas: dict, name: str=None, content: dict = None, link: str = None, store_linked_document_content: bool = False, chaining: bool = True):
         # Move metadatas to content if content data were provided into metadatas
         if metadatas.get('title') and not name:
             name = metadatas.get('title')
             metadatas.pop('title')
-        if metadatas.get('link') and not link:
+        if metadatas.get('link', metadatas.get('source', metadatas.get('url'))) and not link:
             link = metadatas.get('link')
             metadatas.pop('link')
         if metadatas.get('description') and not content:
@@ -1357,7 +1364,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
     # llm static method
     @staticmethod
     def llm(prompt: str):
-        return VoyagerEnvIR_CPS_TechSynthesis.llm_model.invoke([SystemMessage(content=""), HumanMessage(content=prompt)]).content
+        return VoyagerEnvIR_CPS_TechSynthesis.llm_model.invoke([SystemMessage(content=""), HumanMessage(content=prompt)] if isinstance(prompt, str) else prompt).content
 
     def get_score(self):
         embed_id = "1" if self.document.embedding_model_name == "text-embedding-ada-002" else "2"
