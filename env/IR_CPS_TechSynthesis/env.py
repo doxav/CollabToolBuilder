@@ -1326,6 +1326,12 @@ class SynthesisManager:
         if hasattr(self, '_method_counts'):
             self._method_counts = {}
 
+class LLMResponse:
+    def __init__(self, response): self.content = response.content  # Always access the .content property
+    def __str__(self): return self.content  # Ensure it behaves like a string
+    def __repr__(self): return f"LLMResponse(content={repr(self.content)})"
+    def __getattr__(self, _): return self.content  # Any unexpected attribute access returns the content
+
 class VoyagerEnvIR_CPS_TechSynthesis(Environment):
     def __init__(self,
                  synthesis_type: str = "",
@@ -1364,7 +1370,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
     # llm static method
     @staticmethod
     def llm(prompt: str):
-        return VoyagerEnvIR_CPS_TechSynthesis.llm_model.invoke([SystemMessage(content=""), HumanMessage(content=prompt)] if isinstance(prompt, str) else prompt).content
+        return LLMResponse(VoyagerEnvIR_CPS_TechSynthesis.llm_model.invoke([SystemMessage(content=""), HumanMessage(content=prompt)] if isinstance(prompt, str) else prompt))
 
     def get_score(self):
         embed_id = "1" if self.document.embedding_model_name == "text-embedding-ada-002" else "2"
