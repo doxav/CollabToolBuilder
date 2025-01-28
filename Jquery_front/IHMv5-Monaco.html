@@ -2074,7 +2074,10 @@ function getColumnsToKeep(agent) {
 
             dataArray.forEach(dict => {
                 for (const [key, value] of Object.entries(dict)) {
-                    const formattedValue = typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(2) : value;
+                    let formattedValue = typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(2) : value;
+                    if (Array.isArray(value)) {
+                        formattedValue = `[${value.join(',')}]`
+                    }
                     tableContent += `${formattedValue}\t${key}\n`;}
                 if (includeHeader) {
                     tableContent += '------------------------------------------\n';}
@@ -2725,7 +2728,7 @@ function getColumnsToKeep(agent) {
                         button.textContent += "\n" + fullText.substring(0, 70) + "...[see DETAILS]";
 
                         const detailScores = formatPythonDict2Table(codeMatch[1]);
-
+                        console.log(">>>>>", detailScores)
                         // Remove any previously attached listener
                         if (button._clickListener) {
                             button.removeEventListener('click', button._clickListener);

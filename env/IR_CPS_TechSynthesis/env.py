@@ -30,7 +30,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_openai import OpenAIEmbeddings
 
 from utils.file_utils import save_to_pickle, load_from_pickle
-from utils.llm_utils import UnifiedVectorDB
+from utils.llm_utils import UnifiedVectorDB, extract_json_between_markers
 #from langchain_community.cache import InMemoryCache, SQLiteCache
 #langchain.llm_cache = SQLiteCache(database_path="sqlite/langchain_cache.db")
 
@@ -118,12 +118,12 @@ class DocumentStructure:
         self.document_content = Document()  # self.document_content = copy.deepcopy(DOCUMENT_SCHEMA)
         # self.document_content.sections_list = []
         self.title = title
-        if title and title != "":
+        if title:
             self.set_plan_field_with_embedding('title', title)
         self.context = context
-        if context and context != "":
+        if context:
             self.set_plan_field_with_embedding('context', context)
-        if resources and resources != "":
+        if resources:
             self.set_plan_field_with_embedding('resources', resources)
         self.dumb_embedding = self.embedding_model.embed_query(".")  # Used to compute min_cosine_similarity
         self.embedding_size = len(self.dumb_embedding)
@@ -285,7 +285,7 @@ class DocumentStructure:
         self.resources = state['resources']
         self.events = state['events']
         return self.get_state()
-      
+
     def reset(self):
     # TODO: check if refined_goals should be reset or not
         # this code might be redundant but ensure sections_list embeddings memory are cleared (might be removed later)
@@ -308,6 +308,16 @@ class DocumentStructure:
     
     def get_events(self):
         return self.events
+    
+    def get_document_content(self):
+        content = ''
+        content += self.document_content.title + '\n'
+        content += self.document_content.context + '\n'
+        for section in self.document_content.sections_list:
+            content += section.title + '\n'
+            content += section.content + '\n'
+            content += section.resource + '\n'
+        content += self.document_content.resource + '\n'
 
 class SynthesisManager:
     def __init__(self, document: DocumentStructure, target_file_path: str = None):
@@ -1334,20 +1344,20 @@ class LLMResponse:
 
 class VoyagerEnvIR_CPS_TechSynthesis(Environment):
     def __init__(self,
-                 synthesis_type: str = "",
-                 goal: str = "",
-                 refined_goals: [str] = None,
-                 #server_host='http://127.0.0.1', server_port=3000, request_timeout=600,
-                 log_path='./logs',
-                 CPS_env_type="techsynthesis",
-                 title: str = "",
-                 context: str = None,
-                 embedding_model_name: str = "intfloat/e5-base-v2", # nomic-embed-text:latest, intfloat/e5-base-v2
-                 openai_api_key: str = None,
-                 target_file_path: str = None,
-                 llm = None,
-                 id: str = None,
-                 ):
+                synthesis_type: str = "",
+                goal: str = "",
+                refined_goals: [str] = None,
+                #server_host='http://127.0.0.1', server_port=3000, request_timeout=600,
+                log_path='./logs',
+                CPS_env_type="techsynthesis",
+                title: str = "",
+                context: str = None,
+                embedding_model_name: str = "intfloat/e5-base-v2", # nomic-embed-text:latest, intfloat/e5-base-v2
+                openai_api_key: str = None,
+                target_file_path: str = None,
+                llm = None,
+                id: str = None,
+                ):
         super().__init__()
         self.id = str(uuid.uuid4()) if id is None else id
         if CPS_env_type != "techsynthesis":
@@ -1372,7 +1382,29 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
     def llm(prompt: str):
         return LLMResponse(VoyagerEnvIR_CPS_TechSynthesis.llm_model.invoke([SystemMessage(content=""), HumanMessage(content=prompt)] if isinstance(prompt, str) else prompt))
 
+    def get_review(self):
+        # load the prompt
+        prompt_path = os.path.join('prompts/ai_scientist/review.txt')
+        
+        base_prompt = ''
+        try:
+            with open(prompt_path, 'r') as file:
+                base_prompt = file.read()
+        except Exception as e:
+            raise Exception(f"Error occured while reading prompt!")
+        
+        text = self.document.get_document_content()
+        base_prompt += f"""
+Here is the paper you are asked to review:
+```
+{text}
+```"""
+        content = VoyagerEnvIR_CPS_TechSynthesis.llm(base_prompt)
+        return extract_json_between_markers(content)
+
     def get_score(self):
+        review = self.get_review()
+        
         embed_id = "1" if self.document.embedding_model_name == "text-embedding-ada-002" else "2"
         distance = self.synthesis_manager.get_distance_to_targetJSON(
             target_section_title_embedding_label="section_embedding_"+embed_id,
@@ -1380,7 +1412,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
             target_plan_embedding_label="plan_embedding_"+embed_id,
             target_resource_embedding_label="resource_embedding_"+embed_id
         )
-        return {'plan/titles similarity (top:1, worst:0)': distance['plan_titles_embedding_similarity'],
+        score = {'plan/titles similarity (top:1, worst:0)': distance['plan_titles_embedding_similarity'],
                 'sections contents similarity (top:1, worst:0)': distance['plan_contents_embedding_similarity'],
                 'sections resources similarity (top:1, worst:0)': distance['plan_resources_embedding_similarity'],
                 'sections count (top:1, <1:too short, >1:too long)': distance['sections_count_ratio_to_target'],
@@ -1389,6 +1421,8 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
                     'content_length_ratio_to_target'],
                 'sections contents non-empty (top:1, <1:too short, >1:too long)': distance[
                     'content_non_empty_count_ratio_to_target']}
+        score.update(review)
+        return score
 
     def reset(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         self.has_reset_once = True
