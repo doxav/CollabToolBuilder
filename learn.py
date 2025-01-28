@@ -42,7 +42,7 @@ from typing import TypedDict, Sequence
 
 import torch
 import gc
-from transformers import PreTrainedModel
+# from transformers import PreTrainedModel
 from torch.nn.modules.sparse import Embedding
 
 #set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
@@ -414,7 +414,7 @@ class CodingAgent:
         else:
             str_score += "\033[31mFAILED"
         str_score += "\033[0m / SCORE: "
-        str_score += f"[{','.join(f'{a:.2f}' for a in list(score.values()))}]"
+        str_score += f"[{','.join(f'{a}' for a in list(score.values()))}]"
         str_score += f" / TIME: {elapsed_time}s"
         str_score += f" / CODE: [{json.dumps(score)}]"
         return str_score
@@ -2134,12 +2134,12 @@ if __name__ == "__main__":
                 agcoding_skip_rounds=0,  # Auto-test: 4
                 agvalidation_skip_rounds=0,  # Auto-test: 4
                 agcapitalize_skip_rounds=0,
-                agcoding_num_parallel_inferences=2,
-                agcoach_num_parallel_inferences=2,
+                agcoding_num_parallel_inferences=1,
+                agcoach_num_parallel_inferences=1,
                 unique_id=unique_id,
                 # functions_to_import=".*",
                 functions_to_import=None,
-                primitives_dir="primitives",
+                primitives_dir="primitives/ai_scientist",
                 special_criteria=special_criteria,
                 automation=automation if 'automation' in globals() else automatic,
                 model_choice={"coach": "default_llm", "coder": "premium_llm", "critic": "default_llm",

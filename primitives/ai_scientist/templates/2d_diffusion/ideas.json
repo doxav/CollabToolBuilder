@@ -1,0 +1,29 @@
+[
+    {
+        "Name": "learning_rate_schedule",
+        "Title": "Adaptive Learning Rate Schedules: Comparing different learning rate schedules for diffusion models.",
+        "Experiment": "In this experiment, we compare the performance of different learning rate schedules on diffusion model performance. We use the final estimated KL as the evaluation metric.",
+        "Interestingness": 4,
+        "Feasibility": 10,
+        "Novelty": 3,
+        "novel": true
+    },
+    {
+        "Name": "conditional_generation",
+        "Title": "Conditional Generation in Diffusion Models: Steering Output Towards Desired Modes.",
+        "Experiment": "Modify the MLPDenoiser to accept a simplified conditional input (e.g., two to three discrete modes indicating different shapes to generate). During training, these conditions will be concatenated to the embeddings. Evaluate the model's ability to generate samples conditioned on these inputs and analyze the diversity and quality of the outputs compared to unconditional sampling.",
+        "Interestingness": 8,
+        "Feasibility": 8,
+        "Novelty": 7,
+        "novel": false
+    },
+    {
+        "Name": "enhanced_embedding",
+        "Title": "Improving Sinusoidal Embeddings with Learnable Components for Diffusion Models.",
+        "Experiment": "Modify the SinusoidalEmbedding class to include an additional learnable layer that adapts the sinusoidal outputs based on the data distribution. This layer will allow the model to capture more complex patterns while retaining the benefits of sinusoidal embeddings. Evaluate model performance on sample quality, diversity, and KL divergence against the baseline sinusoidal embedding model.",
+        "Interestingness": 8,
+        "Feasibility": 8,
+        "Novelty": 7,
+        "novel": false
+    }
+]

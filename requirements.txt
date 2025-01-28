@@ -84,3 +84,17 @@ langchain-text-splitters==0.3.0
 langgraph==0.2.35
 langgraph-checkpoint==2.0.1
 langsmith==0.1.133
+
+# LLM APIs
+anthropic
+aider-chat
+backoff
+
+# Viz
+matplotlib
+pypdf
+pymupdf4llm
+
+# Common Requirements
+wandb
+tqdm

@@ -1,0 +1,38 @@
+[
+    {
+        "Name": "adaptive_block_size",
+        "Title": "Adaptive Block Size: Dynamic Context Window Adjustment for Efficient Training",
+        "Experiment": "Modify the model to dynamically adjust its block size during training, starting with a smaller block size and gradually increasing it. This could potentially lead to faster initial training and better long-range dependency learning.",
+        "Interestingness": 6,
+        "Feasibility": 4,
+        "Novelty": 4,
+        "novel": false
+    },
+    {
+        "Name": "layerwise_learning_rates",
+        "Title": "Layer-wise Learning Rate Adaptation: Optimizing Training Dynamics in Transformer Models",
+        "Experiment": "Implement layer-wise learning rates, where each transformer layer has its own learning rate. Modify the configure_optimizers function to assign different learning rates to different layers, with deeper layers having lower learning rates. Compare the training dynamics, convergence speed, and final performance with the baseline model.",
+        "Interestingness": 4,
+        "Feasibility": 6,
+        "Novelty": 2,
+        "novel": false
+    },
+    {
+        "Name": "controlled_text_data_augmentation",
+        "Title": "Controlled Text Data Augmentation for Improving Robustness in Character-Level Language Models",
+        "Experiment": "Enhance the get_batch function to selectively apply random character insertion, deletion, or substitution based on specific criteria, such as sequence length or model confidence, with an adjustable parameter to control the intensity of augmentation. Evaluate the effects on training and validation loss, comparing the augmented model's performance to a baseline model trained without any augmentation.",
+        "Interestingness": 8,
+        "Feasibility": 7,
+        "Novelty": 7,
+        "novel": false
+    },
+    {
+        "Name": "dynamic_curriculum_learning",
+        "Title": "Dynamic Curriculum Learning: Adaptive Complexity Training for Enhanced Model Robustness",
+        "Experiment": "Modify the get_batch function to sort training samples based on their lengths and implement a mechanism to dynamically adjust the complexity threshold based on training performance. Start with shorter sequences and progressively sample longer ones as the model improves. Compare training and validation performance against a baseline model trained on randomly sampled data.",
+        "Interestingness": 9,
+        "Feasibility": 7,
+        "Novelty": 9,
+        "novel": false
+    }
+]
