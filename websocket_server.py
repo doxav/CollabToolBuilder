@@ -28,11 +28,13 @@ class WebsocketServer:
 #        self.loop = asyncio.new_event_loop()
         self.process_lt = None  # To store the localtunnel process
         self.max_connections = 10
+        if not os.path.exists("websocket_logs"):
+            os.makedirs("websocket_logs")
         if unique_id:
-            self.log_filename = f'websocketdata_{unique_id}_{self.port}.txt'
+            self.log_filename = f'websocket_logs/websocketdata_{unique_id}_{self.port}.txt'
         else:
             date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            self.log_filename = f'websocketdata_{self.host}_{self.port}_{date_str}.txt'
+            self.log_filename = f'websocket_logs/websocketdata_{self.host}_{self.port}_{date_str}.txt'
 
     def add_monitor(self, monitor):
         self.monitors[monitor.agent_name] = monitor
