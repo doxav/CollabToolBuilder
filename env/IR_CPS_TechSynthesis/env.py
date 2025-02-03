@@ -1419,8 +1419,8 @@ Here is the paper you are asked to review:
 ```
 {text}
 ```"""
-        content = VoyagerEnvIR_CPS_TechSynthesis.llm(base_prompt)
-        return extract_json_between_markers(content)
+        result = VoyagerEnvIR_CPS_TechSynthesis.llm(base_prompt)
+        return extract_json_between_markers(result.content)
 
     def get_score(self):
         review = self.get_review()
