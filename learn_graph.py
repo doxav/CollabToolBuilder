@@ -304,7 +304,6 @@ def run_4agents_learning_loop_graph(
     return_array=False,
     agcoding_num_parallel_inferences=1,
     continue_each_loop=False,
-    unique_id=None,
     primitives_dir=None,
     functions_to_import=None,
     embedding_function=None
@@ -559,30 +558,14 @@ if __name__ == "__main__":
             saved_task = variables_from_pickle.get('saved_task')
             saved_task['content'] = json.loads(saved_task['content'])
             automatic = variables_from_pickle.get('automatic')
-            unique_id = variables_from_pickle.get('unique_id')
             special_criteria = variables_from_pickle.get('special_criteria')
 
         # Suppression du fichier pickle après utilisation pour éviter les conflits lors des prochains lancements
         os.remove(f'pickle/{args.pickle_name}.pkl')
 
-    # Initialize the WebSocket server with port autodetection and proxy
-    if not ('unique_id' in globals()):
-        from datetime import datetime
-        unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
-
-    # unique_id = "XP_21_12_24"
-
-    if unique_id is None:
-        unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
-    if unique_id is not False and UnifiedVectorDB.unique_collection_id is None:
-        UnifiedVectorDB.set_unique_collection_id(unique_id)
     # Initialize HumanLLMMonitor databases
     HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
     HumanLLMMonitor.check_init_class_db(force=True)
-
-
-    HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy,
-                                                unique_id=unique_id)
 
     # Allow some time for the WebSocket server to start
     time.sleep(1)  # Adjust if necessary
@@ -706,7 +689,6 @@ if __name__ == "__main__":
                 agcapitalize_skip_rounds=0,
                 agcoding_num_parallel_inferences=1,
                 agcoach_num_parallel_inferences=1,
-                unique_id=unique_id,
                 # functions_to_import=".*",
                 functions_to_import=None,
                 primitives_dir="primitives/generate_graph",

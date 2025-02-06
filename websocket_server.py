@@ -13,7 +13,7 @@ import shutil  # To check if localtunnel is available
 
 class WebsocketServer:
     parallel_functions = ["updateAnswer", "criticAnswer", "get_tasks", "generate_best_improvement_suggestions", "goto_task"]
-    def __init__(self, port=6789, secret=None, proxy_enabled=False, unique_id=None):
+    def __init__(self, port=6789, secret=None, proxy_enabled=False):
         self.server_id = str(uuid.uuid4())
         self.monitors = {}  # Stores agent monitors
         self.current_instances = {}  # Track current active monitor instances
@@ -30,8 +30,8 @@ class WebsocketServer:
         self.max_connections = 10
         if not os.path.exists("websocket_logs"):
             os.makedirs("websocket_logs")
-        if unique_id:
-            self.log_filename = f'websocket_logs/websocketdata_{unique_id}_{self.port}.txt'
+        if os.environ.get('unique_id'):
+            self.log_filename = f'websocket_logs/websocketdata_{os.environ.get('unique_id')}_{self.port}.txt'
         else:
             date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             self.log_filename = f'websocket_logs/websocketdata_{self.host}_{self.port}_{date_str}.txt'
