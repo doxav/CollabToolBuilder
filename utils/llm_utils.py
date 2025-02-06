@@ -4,6 +4,7 @@ import threading
 import urllib.request
 import subprocess
 import uuid
+import socket
 
 from typing import List, Optional, Union
 from dataclasses import dataclass, field
@@ -20,12 +21,15 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry # type: ignore
 
 from langchain_community.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
-from langchain_core.runnables import RunnableSequence, ConfigurableField
+from langchain_core.runnables import RunnableSequence, ConfigurableField, Runnable
 #from langchain.schema import AIMessage, HumanMessage, SystemMessage, FunctionMessage
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.ai import AIMessage
 from langchain_core.messages.system import SystemMessage
 from langchain_core.messages.function import FunctionMessage
+from langchain_openai import ChatOpenAI
+from langchain_community.chat_models import ChatOllama
+from langchain_core.prompts import ChatPromptTemplate
 
 import tkinter as tk
 from tkinter import scrolledtext
@@ -34,7 +38,7 @@ from utils.file_utils import *
 import concurrent.futures
 
 from langchain_community.vectorstores import Chroma, ElasticsearchStore
-from config import PickleCacheActivated
+from config import PickleCacheActivated, MODELS_CONFIG_LIST
 import os
 import openai
 from requests.auth import HTTPBasicAuth
@@ -50,6 +54,75 @@ AGENT = ''
 
 import asyncio
 import websockets
+
+
+class ExtractMessage(Runnable):
+    def invoke(self, input_msg, config):
+        return "\n".join(getattr(message, 'content', message) for message in getattr(input_msg, 'messages', input_msg))
+    
+
+def format_prompt(messages):
+    prompt_str = ""
+    for message in messages:
+        if isinstance(message, SystemMessage):
+            prompt_str += "System: " + message.content + "\n"
+        elif isinstance(message, HumanMessage):
+            prompt_str += "Human: " + message.content + "\n"
+        elif isinstance(message, AIMessage):
+            prompt_str += "AI: " + message.content + "\n"
+        else:
+            prompt_str += f"Type {type(message)}: " + str(message.content) + "\n"
+    return prompt_str
+
+class PrintPromptRunnable(Runnable):
+    def invoke(self, input_msg, config):
+        smart_print(f"PrintPromptRunnable type of input_msg: {type(input_msg)}")
+        # Extract and format the prompt
+        formatted_prompt = format_prompt(input_msg if isinstance(input_msg, list) else input_msg.messages)
+        # Print the prompt in RED
+        smart_print("\033[31m" + formatted_prompt + "\033[0m")
+        return input_msg
+
+def create_Nmajority_chain(num_models=3, map_model_name=None, reduce_model_name=None, map_temperature=0.7,
+                           reduce_temperature=0.):
+    # Initialize the OpenAI models
+    if map_model_name is None:
+        map_model_name = MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"]
+    if reduce_model_name is None:
+        reduce_model_name = MODELS_CONFIG_LIST["smart_gpt" if "smart_gpt" in MODELS_CONFIG_LIST else "gpt"]
+    # Ensure if we use GPT model or not
+    if "gpt" in map_model_name:
+        models = [ChatOpenAI(model_name=map_model_name, temperature=map_temperature, cache=False) for _ in
+                range(num_models)]
+        final_model = ChatOpenAI(model_name=reduce_model_name, temperature=reduce_temperature, cache=False)
+    else:
+        models = [ChatOllama(model=map_model_name, temperature=map_temperature, cache=False) for _ in
+                range(num_models)]
+        final_model = ChatOllama(model=reduce_model_name, temperature=reduce_temperature, cache=False)
+
+    # Define the chain using LCEL
+    response_keys = [f"response_{i + 1}" for i in range(num_models)]
+    multi_reponse = {key: model for key, model in zip(response_keys, models)}
+    multi_reponse["cleaned_input"] = ExtractMessage()
+
+    final_prompt_template_str = (
+            "Given the following responses below and the initial question below, provide an optimal response to the question mixing best elements of each and following the same answer output structure:\n\n"
+            "Initial question:\n{cleaned_input}\n\n" +
+            "\n\n".join(
+                [f"Response {i + 1}:\n{{{response_keys[i]}}}" for i in range(num_models)]) +  # Access content directly
+            "\n\nOptimal Response:\n"
+    )
+
+    # Insert the PrintPromptRunnable just to print the prompt for control
+    print_prompt_runnable = PrintPromptRunnable()
+
+    # Print in RED the final prompt template: print("\033[31m"+final_prompt_template_str+"\033[0m")
+    final_prompt_template = ChatPromptTemplate.from_template(final_prompt_template_str)
+
+    chain = multi_reponse | final_prompt_template | print_prompt_runnable | final_model  # No ERROR but bad output: "I'm sorry, but I cannot fulfill this request" or "I'm sorry, but I cannot fulfill this request as it is too complex for me to process." or "I'm sorry, but I cannot fulfill this request as it involves creating a Python function and providing a specific response format." or "I'm sorry, but I cannot fulfill this request as it requires a level of understanding and reasoning that is beyond my current capabilities."
+
+    return chain
+
 
 def smart_print(message: str, agent_name=None, message_type=None, append=False, column_id=None, column_max=None, optional=False):
     global AgentDisplayManager, AGENT
@@ -72,6 +145,12 @@ def smart_print(message: str, agent_name=None, message_type=None, append=False, 
         IN_WEBSOCKET = globals()['IN_WEBSOCKET']
 
     if IN_WEBSOCKET:
+        # Ensure websocket server is not none
+        if HumanLLMMonitor.websocket_server is None:
+            print("WebSocket server not initialized, initializing...")
+            HumanLLMMonitor.initialize_websocket_server()
+            print("WebSocket server initialized.")
+
         # Check if in the message there are no unexpected non-whitespace characters
         if re.search(r'[^\x20-\x7E\t\n\r]', message):
             # Remove unexpected characters
@@ -134,6 +213,12 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
         #     print("No WebSocket clients connected. Waiting for clients...")
         #     while not HumanLLMMonitor.websocket_server.connected_clients:
         #         time.sleep(1)
+
+        # Ensure websocket server is not none
+        if HumanLLMMonitor.websocket_server is None:
+            print("WebSocket server not initialized, initializing...")
+            HumanLLMMonitor.initialize_websocket_server()
+            print("WebSocket server initialized.")
 
         # # Retrieve port and secret from WebsocketServer
         port = HumanLLMMonitor.websocket_server.port
@@ -429,8 +514,14 @@ class UnifiedVectorDB:
     elastic_client = None
 
     @classmethod
-    def set_unique_collection_id(cls, unique_id):
-        cls.unique_collection_id = unique_id
+    def get_unique_id(cls):
+        """
+        Method to get the unique id for the collection. If not defined in config.py, automatically generate one.
+        :return: unique id (str).
+        """
+        if cls.unique_collection_id is None:
+            cls.unique_collection_id = os.environ.get('unique_id') if os.environ.get('unique_id', None) else f"{socket.gethostname()}_{datetime.datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+        return cls.unique_collection_id
 
     @staticmethod
     def check_db():
@@ -456,10 +547,12 @@ class UnifiedVectorDB:
             UnifiedVectorDB.db_connection_check_done = True
         else:
             raise ValueError(f"Unsupported DB type: {UnifiedVectorDB.db_type}")
-
+        
     def __init__(self, collection_name, embedding_function, persist_directory, reset_db_indices=False):
         UnifiedVectorDB.check_db()
+
         self.collection_name = collection_name.lower()
+        UnifiedVectorDB.get_unique_id()
         if UnifiedVectorDB.unique_collection_id is not None:
             self.collection_name += f"_{UnifiedVectorDB.unique_collection_id}"
             self.collection_name = self.collection_name.lower()
@@ -611,7 +704,8 @@ class HumanLLMMonitor:
     common_vectordb_collection_name = "human_llm_monitor_logs"
     common_vectordb_persist_directory = "human_llm_monitor_vectordb"
     websocket_server = None
-    use_websocket = True
+    use_websocket = False
+    websocket_params = {"port" : 6789, "proxy" : False, "secret" : False}
     ws_thread = None
     stop_event = threading.Event()
 
@@ -623,6 +717,13 @@ class HumanLLMMonitor:
     db_failed_tasks = None
 
     user_id = None
+    llmOrchains_list = None
+
+    @classmethod
+    def get_user_id(cls):
+        if cls.user_id is None:
+            cls.user_id = os.environ.get('user_id') if os.environ.get('user_id', None) else smart_input("Please enter your user id: ", message_type="USER ID")
+        return cls.user_id
 
     @classmethod
     def add_agent_data(cls, agent_name, data_key, data_value, function_name=None, id_task=False,
@@ -647,9 +748,8 @@ class HumanLLMMonitor:
             "data_key": data_key
         })
         print(f"Adding agent data: {tags}")
-        print(f"User ID: {user_id}")
         if user_id is None:
-            HumanLLMMonitor.user_id = smart_input("User ID ?", "Learning Loop", message_type="USER_ID")
+            HumanLLMMonitor.get_user_id()
         if function_name:
             tags["function_name"] = function_name
         if id_task:
@@ -817,29 +917,28 @@ class HumanLLMMonitor:
         variables_to_pickle = {
             'saved_task': task,
             'automatic': bool(automatic),
-            'unique_id': UnifiedVectorDB.unique_collection_id,
             'special_criteria': special_criteria
         }
 
         # Save variables to pickle file
-        filename = f"variables_{HumanLLMMonitor.user_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        filename = f"variables_{HumanLLMMonitor.get_user_id()}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         with open(f"pickle/{filename}.pkl", 'wb') as f:
             pickle.dump(variables_to_pickle, f)
 
         if not os.path.exists('goto_output'):
             os.makedirs('goto_output')
 
-        with open(f'./goto_output/output_{id_task}_{HumanLLMMonitor.user_id}.log', 'w') as f:
+        with open(f'./goto_output/output_{id_task}_{HumanLLMMonitor.get_user_id()}.log', 'w') as f:
             f.write("")
 
         # Execute the bash command with unbuffered output and capture its output
-        process = subprocess.Popen(['bash', '-c', f'python3 -u learn.py --proxy --secret --pickle_name {filename} > ./goto_output/output_{id_task}_{HumanLLMMonitor.user_id}.log 2>&1'],
+        process = subprocess.Popen(['bash', '-c', f'python3 -u learn.py --proxy --secret --pickle_name {filename} > ./goto_output/output_{id_task}_{HumanLLMMonitor.get_user_id()}.log 2>&1'],
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT,
                                    text=True)
         # Initialize the link variable
         link = None
-        with open(f"./goto_output/output_{id_task}_{HumanLLMMonitor.user_id}.log", "r") as logfile:
+        with open(f"./goto_output/output_{id_task}_{HumanLLMMonitor.get_user_id()}.log", "r") as logfile:
             # Move to end of file
             logfile.seek(0, 2)  # 2 means "from the end of the file"
 
@@ -854,7 +953,7 @@ class HumanLLMMonitor:
                 if "WebSocket Remote URL via proxy: " in line:
                     link = line.split("WebSocket Remote URL via proxy: ")[1].strip()
                     # display it on discord
-                    message = (f"**XP ID:** {UnifiedVectorDB.unique_collection_id}\n**User ID:** {HumanLLMMonitor.user_id}\n**Task Link:** {link}\n**Task Details:** {task_details}")
+                    message = (f"**XP ID:** {UnifiedVectorDB.unique_collection_id}\n**User ID:** {HumanLLMMonitor.get_user_id()}\n**Task Link:** {link}\n**Task Details:** {task_details}")
                     print(f"Discord message: {message}")
                     HumanLLMMonitor.send_to_discord(message)
                     break
@@ -864,11 +963,6 @@ class HumanLLMMonitor:
             print("The link was not found in the output file.")
 
         return link
-
-    @classmethod
-    def set_id(cls, user_id):
-        print(f"Setting user_id to {user_id}")
-        cls.user_id = user_id
 
     @staticmethod
     def _check_and_init_vector_db(embedding_function=None, reset_db_indices=False):
@@ -1115,9 +1209,9 @@ class HumanLLMMonitor:
         cls.db_failed_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
 
     @classmethod
-    def initialize_websocket_server(cls, port=6789, secret=None, proxy_enabled=False, unique_id=None):
+    def initialize_websocket_server(cls):
         if cls.use_websocket and cls.websocket_server is None:
-            cls.websocket_server = WebsocketServer(port=port, secret=secret, proxy_enabled=proxy_enabled, unique_id=unique_id)
+            cls.websocket_server = WebsocketServer(port=cls.websocket_params["port"], secret=cls.websocket_params["secret"], proxy_enabled=cls.websocket_params["proxy"])
             cls.stop_event.clear()
             cls.ws_thread = threading.Thread(target=cls.run_websocket_server)
             cls.ws_thread.daemon = True  # Run the WebSocket server in a daemon thread
@@ -1309,9 +1403,6 @@ class HumanLLMMonitor:
     def set_default_llmORchain(self, llm_name, temperature=0.1):
         return self.set_llmORchain(llm_name, is_premium=False, temperature=temperature)
 
-    def set_userid(self, user_id):
-        HumanLLMMonitor.user_id = user_id
-        print(f"Setting user_id to {user_id}")
 
 
 
@@ -1345,6 +1436,33 @@ class HumanLLMMonitor:
                 return attr
 
         raise ValueError("No Pydantic BaseModel class found in the provided file.")
+    
+    @classmethod
+    def get_llmORchains_list(cls):
+        if cls.llmOrchains_list is None:
+            if MODELS_CONFIG_LIST is not None:
+                # We assume there is no gpt model in the MODELS_CONFIG_LIST
+                cls.llmOrchains_list = {
+                    "default_llm": ChatOllama(model=MODELS_CONFIG_LIST["basic_gpt"], cache=False, temperature=0.),
+                    "premium_llm": ChatOllama(model=MODELS_CONFIG_LIST["smart_gpt"], cache=False, temperature=0.),
+                    "coder_llm": ChatOllama(model=MODELS_CONFIG_LIST["code_gpt"], cache=False, temperature=0.),
+                    "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
+                                                          reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=3),
+                    "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
+                                                          reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=10)
+                }
+            else:
+                # Default, if not precised, we take GPT from OpenAI.
+                cls.llmOrchains_list = {
+                    "default_llm": ChatOpenAI(model_name="gpt-4o-mini-2024-07-18", cache=False, temperature=0.),
+                    "premium_llm": ChatOpenAI(model_name="gpt-4o-mini-2024-07-18", cache=False, temperature=0.),
+                    "coder_llm": ChatOpenAI(model_name="gpt-4o-mini-2024-07-18", cache=False, temperature=0.),
+                    "3_majority_chain": create_Nmajority_chain(map_model_name="gpt-4o-mini-2024-07-18",
+                                                            reduce_model_name="gpt-4o-mini-2024-07-18", num_models=3),
+                    "10_majority_chain": create_Nmajority_chain(map_model_name="gpt-4o-mini-2024-07-18",
+                                                                reduce_model_name="gpt-4o-mini-2024-07-18", num_models=10)
+                }
+        return cls.llmOrchains_list
 
     def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_max_context_size=16000,
                  default_llmORchain=None,
@@ -1362,8 +1480,7 @@ class HumanLLMMonitor:
         self.start_time = None
         self.current_inference_context = None
         self.user_message_few_shots = None
-        if llmORchains_list is None: raise ValueError("llmORchains_list must be provided")
-        self.llmORchains_list = llmORchains_list
+        self.llmORchains_list = HumanLLMMonitor.get_llmORchains_list()
         self.temperature_min = temperature_min
         self.temperature_max = temperature_max if temperature_max else (temperature_min + 0.2)
         self.prompt_critic = prompt_critic
@@ -1679,7 +1796,7 @@ class HumanLLMMonitor:
                                        {'prompt': messages[0].content + messages[1].content,
                                         'num_parallel_inferences': self.num_parallel_inferences,
                                         'task_parameters': self.task_parameters},
-                                       before_after='before', user_id=HumanLLMMonitor.user_id, step_id=self.step_id,
+                                       before_after='before', user_id=HumanLLMMonitor.get_user_id(), step_id=self.step_id,
                                        type_tache="IR_CPS_TechSynthesis", id_task=True)
 
         while self.skip_rounds <= 0:
@@ -2179,7 +2296,7 @@ class HumanLLMMonitor:
                                                                                    'input_contents'][1].content,
                                                                            'num_parallel_inferences': self.num_parallel_inferences,
                                                                            'task_parameters': self.task_parameters},
-                                           before_after='after', user_id=HumanLLMMonitor.user_id, step_id=self.step_id,
+                                           before_after='after', user_id=HumanLLMMonitor.get_user_id(), step_id=self.step_id,
                                            type_tache="IR_CPS_TechSynthesis", id_task=True, function_name=task_name)
             menu = (
                 f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n{check_display}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")

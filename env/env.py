@@ -71,18 +71,18 @@ class Environment:
         else:
             shutil.rmtree(self.current_temp_dir)
 
-    def backup_state(self, unique_id: str = None):
+    def backup_state(self):
         # copy all the temp directory (excluding data directory) into a folder named by unique_id into backups directory
-        if unique_id is None:
-            self.last_unique_id_backup = unique_id = str(uuid.uuid4())
-        if self.get_state(unique_id) != self.get_state():
-            shutil.copytree(self.current_temp_dir, os.path.join(self.temp_root_dir, "backups", unique_id), ignore=shutil.ignore_patterns('data'))
-        return unique_id
+        if os.environ.get("unique_id") is None:
+            self.last_unique_id_backup = os.environ["unique_id"] = str(uuid.uuid4())
+        if self.get_state(os.environ.get("unique_id")) != self.get_state():
+            shutil.copytree(self.current_temp_dir, os.path.join(self.temp_root_dir, "backups", os.environ.get("unique_id")), ignore=shutil.ignore_patterns('data'))
+        return os.environ.get("unique_id")
 
-    def restore_state(self, unique_id):
-        from_folder = os.path.join(self.temp_root_dir, "backups", unique_id)
+    def restore_state(self):
+        from_folder = os.path.join(self.temp_root_dir, "backups", os.environ.get("unique_id"))
         if not os.path.exists(from_folder): return "Restore state folder not found"
-        if self.get_state(unique_id) != self.get_state():
+        if self.get_state(os.environ.get("unique_id")) != self.get_state():
             # copy all the content of the backup directory into the temp directory (excluding data directory)
             self.reset(backup_previous_temp_dir=False)
             # copy all the content of the backup directory into the temp directory which already contains the data directory
@@ -99,10 +99,10 @@ class Environment:
         else:
             return "No last state to restore"
 
-    def get_state(self, unique_id=None, extended_comparison=False):
+    def get_state(self, extended_comparison=False):
         # return a dictionary containing the content of the temp directory
         state = {}
-        state_folder = self.current_temp_dir if unique_id is None else os.path.join(self.temp_root_dir, "backups", unique_id)
+        state_folder = self.current_temp_dir if os.environ.get("unique_id") is None else os.path.join(self.temp_root_dir, "backups", os.environ.get("unique_id"))
         if not os.path.exists(state_folder):
             return "No state found"
         for root, dirs, files in os.walk(state_folder):

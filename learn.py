@@ -62,9 +62,6 @@ embedding_function = "text-embedding-ada-002" if embedding_function is None else
 if not 'reset_db_indices' in locals():
     reset_db_indices = False  # Set it in your config.py to True if you want to reset "after changing embeddings"
 
-HumanLLMMonitor.use_websocket = True
-
-
 def apply_special_criteria(agent, special_criteria, available_locals=None):
     """
     Apply special criteria to the attributes and parameters of an agent.
@@ -1349,12 +1346,9 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
                               temperature_max=1,
                               agcoach_num_parallel_inferences=1, fixed_coach=False, return_array=False,
                               agcoding_num_parallel_inferences=1,
-                              continue_each_loop=False,unique_id=None, primitives_dir=None, functions_to_import=None,
+                              continue_each_loop=False, primitives_dir=None, functions_to_import=None,
                               embedding_function=None, human_evaluation_required=False, date_start=None):
     scores = None
-    if HumanLLMMonitor.user_id is None and automation is None:
-        HumanLLMMonitor.user_id = smart_input("User ID ?", "Learning Loop", message_type="USER_ID")
-
 
     # Definition of automation depending on the task given
     if functions_to_import:
@@ -1376,7 +1370,6 @@ def run_4agents_learning_loop(default_llm_key, premium_llm_key, test_environment
             'num': [2, 3, 2],
             'format': ["json", "Jinja2", "Markdown"]
         }
-        # smart_print(unique_id, "orchestrate_agents", "XP_unique_id", optional=True)
 
     time_end = time.time() + max_execution_time
 
@@ -1643,9 +1636,6 @@ def run_planner(*args, **kwargs):  # NEW VERSION
                 successful_tasks_list.append(serialized_entry)
 
     smart_print(json.dumps(successful_tasks_list), "orchestrate_agents", "successful_tasks_list")
-
-    if HumanLLMMonitor.user_id is None:
-        HumanLLMMonitor.user_id = smart_input("User ID ?", "PlannerAgent", message_type="USER_ID")
 
     # Initialize WebSocket server if used
     if HumanLLMMonitor.use_websocket:
@@ -1918,66 +1908,6 @@ def sanitized_task_name(task):
     # Implement task name sanitization logic
     return task
 
-class PrintPromptRunnable(Runnable):
-    def invoke(self, input_msg, config):
-        smart_print(f"PrintPromptRunnable type of input_msg: {type(input_msg)}")
-        # Extract and format the prompt
-        formatted_prompt = format_prompt(input_msg if isinstance(input_msg, list) else input_msg.messages)
-        # Print the prompt in RED
-        smart_print("\033[31m" + formatted_prompt + "\033[0m")
-        return input_msg
-
-class ExtractMessage(Runnable):
-    def invoke(self, input_msg, config):
-        return "\n".join(getattr(message, 'content', message) for message in getattr(input_msg, 'messages', input_msg))
-
-def format_prompt(messages):
-    prompt_str = ""
-    for message in messages:
-        if isinstance(message, SystemMessage):
-            prompt_str += "System: " + message.content + "\n"
-        elif isinstance(message, HumanMessage):
-            prompt_str += "Human: " + message.content + "\n"
-        elif isinstance(message, AIMessage):
-            prompt_str += "AI: " + message.content + "\n"
-        else:
-            prompt_str += f"Type {type(message)}: " + str(message.content) + "\n"
-    return prompt_str
-
-def create_Nmajority_chain(num_models=3, map_model_name=None, reduce_model_name=None, map_temperature=0.7,
-                           reduce_temperature=0.):
-    # Initialize the OpenAI models
-    if map_model_name is None:
-        map_model_name = MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"]
-    if reduce_model_name is None:
-        reduce_model_name = MODELS_CONFIG_LIST["smart_gpt" if "smart_gpt" in MODELS_CONFIG_LIST else "gpt"]
-    models = [ChatOpenAI(model_name=map_model_name, temperature=map_temperature, cache=False) for _ in
-              range(num_models)]
-    final_model = ChatOpenAI(model_name=reduce_model_name, temperature=reduce_temperature, cache=False)
-
-    # Define the chain using LCEL
-    response_keys = [f"response_{i + 1}" for i in range(num_models)]
-    multi_reponse = {key: model for key, model in zip(response_keys, models)}
-    multi_reponse["cleaned_input"] = ExtractMessage()
-
-    final_prompt_template_str = (
-            "Given the following responses below and the initial question below, provide an optimal response to the question mixing best elements of each and following the same answer output structure:\n\n"
-            "Initial question:\n{cleaned_input}\n\n" +
-            "\n\n".join(
-                [f"Response {i + 1}:\n{{{response_keys[i]}}}" for i in range(num_models)]) +  # Access content directly
-            "\n\nOptimal Response:\n"
-    )
-
-    # Insert the PrintPromptRunnable just to print the prompt for control
-    print_prompt_runnable = PrintPromptRunnable()
-
-    # Print in RED the final prompt template: print("\033[31m"+final_prompt_template_str+"\033[0m")
-    final_prompt_template = ChatPromptTemplate.from_template(final_prompt_template_str)
-
-    chain = multi_reponse | final_prompt_template | print_prompt_runnable | final_model  # No ERROR but bad output: "I'm sorry, but I cannot fulfill this request" or "I'm sorry, but I cannot fulfill this request as it is too complex for me to process." or "I'm sorry, but I cannot fulfill this request as it involves creating a Python function and providing a specific response format." or "I'm sorry, but I cannot fulfill this request as it requires a level of understanding and reasoning that is beyond my current capabilities."
-
-    return chain
-
 if __name__ == "__main__":
     import argparse
     import pickle
@@ -1996,48 +1926,28 @@ if __name__ == "__main__":
             saved_task = variables_from_pickle.get('saved_task')
             saved_task['content'] = json.loads(saved_task['content'])
             automatic = variables_from_pickle.get('automatic')
-            unique_id = variables_from_pickle.get('unique_id')
             special_criteria = variables_from_pickle.get('special_criteria')
 
         # Suppression du fichier pickle après utilisation pour éviter les conflits lors des prochains lancements
         os.remove(f'pickle/{args.pickle_name}.pkl')
+    
+    # Initialize the HumanLLMMonitor websocket parameters from command line arguments
+    if args.port:
+        HumanLLMMonitor.websocket_params["port"] = args.port
+    if args.secret:
+        HumanLLMMonitor.websocket_params["secret"] = True
+    if args.proxy:
+        HumanLLMMonitor.websocket_params["proxy"] = True
 
-    # Initialize the WebSocket server with port autodetection and proxy
-    if not ('unique_id' in globals()):
-        from datetime import datetime
-        unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
-
-    if unique_id is None: # SET unique_id in config.py if you need to fix it for experiments
-        unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
-    if unique_id is not False and UnifiedVectorDB.unique_collection_id is None:
-        UnifiedVectorDB.set_unique_collection_id(unique_id)
     if 'discord_webhook' in globals():
         HumanLLMMonitor.discord_webhook = globals()['discord_webhook']
     # Initialize HumanLLMMonitor databases
     HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
-    HumanLLMMonitor.check_init_class_db(force=True)
-
-
-    HumanLLMMonitor.initialize_websocket_server(port=args.port, secret=args.secret, proxy_enabled=args.proxy,
-                                                unique_id=unique_id)
-
-    # Allow some time for the WebSocket server to start
-    time.sleep(1)  # Adjust if necessary
+    # HumanLLMMonitor.check_init_class_db(force=True)
 
     # Initialize the default and premium LLMs
     # from langchain_groq import ChatGroq
-    llmORchains_list = {
-        "default_llm": ChatOpenAI(
-            model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False,
-            temperature=0.),
-        "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"], cache=False, temperature=0.),
-        #"default_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"], cache=False),#, temperature=0.),
-        #"premium_llm": ChatGroq(model_name=MODELS_CONFIG_LIST["code_gpt"], cache=False),#, temperature=0.),
-        "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
-                                                   reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=3),
-        "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
-                                                    reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=10)
-    }
+    llmORchains_list = HumanLLMMonitor.get_llmORchains_list()
 
     # Set the documents to test/validate as a list of environments
     documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
@@ -2147,13 +2057,12 @@ if __name__ == "__main__":
                 agcapitalize_skip_rounds=0,
                 agcoding_num_parallel_inferences=2,
                 agcoach_num_parallel_inferences=2,
-                unique_id=unique_id,
                 # functions_to_import=".*",
                 functions_to_import=None,
                 primitives_dir="primitives/generate_primitives",
                 special_criteria=special_criteria,
                 automation=automation if 'automation' in globals() else automatic,
-                model_choice={"coach": "default_llm", "coder": "premium_llm", "critic": "default_llm",
+                model_choice={"coach": "premium_llm", "coder": "coder_llm", "critic": "default_llm",
                               "capitalizer": "default_llm"},
                 embedding_function=embedding_function,
                 date_start=date_start)  # Auto-test: 0"""
