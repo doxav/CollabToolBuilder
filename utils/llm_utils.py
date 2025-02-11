@@ -520,7 +520,7 @@ class UnifiedVectorDB:
         :return: unique id (str).
         """
         if cls.unique_collection_id is None:
-            cls.unique_collection_id = os.environ.get('unique_id') if os.environ.get('unique_id', None) else f"{socket.gethostname()}_{datetime.datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+            cls.unique_collection_id = os.environ.get('unique_id') if os.environ.get('unique_id', None) else f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
         return cls.unique_collection_id
 
     @staticmethod

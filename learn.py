@@ -42,8 +42,8 @@ from typing import TypedDict, Sequence
 
 import torch
 import gc
-from transformers import PreTrainedModel
-from torch.nn.modules.sparse import Embedding
+# from transformers import PreTrainedModel
+# from torch.nn.modules.sparse import Embedding
 
 #set_llm_cache(SQLiteCache(database_path=".langchain_caching.db"))
 
@@ -1280,6 +1280,9 @@ def get_primitives(path_folder: str) -> List[str]:
     Returns:
         List[str]: A list of strings, each containing the content of a Python file.
     """
+    if path_folder is None:
+        return []
+    
     primitives = []
     folder_path = os.path.join(os.path.dirname(__file__), path_folder)
 
