@@ -90,15 +90,9 @@ def create_Nmajority_chain(num_models=3, map_model_name=None, reduce_model_name=
         map_model_name = MODELS_CONFIG_LIST["basic_gpt" if "basic_gpt" in MODELS_CONFIG_LIST else "gpt"]
     if reduce_model_name is None:
         reduce_model_name = MODELS_CONFIG_LIST["smart_gpt" if "smart_gpt" in MODELS_CONFIG_LIST else "gpt"]
-    # Ensure if we use GPT model or not
-    if "gpt" in map_model_name:
-        models = [ChatOpenAI(model_name=map_model_name, temperature=map_temperature, cache=False) for _ in
-                range(num_models)]
-        final_model = ChatOpenAI(model_name=reduce_model_name, temperature=reduce_temperature, cache=False)
-    else:
-        models = [ChatOllama(model=map_model_name, temperature=map_temperature, cache=False) for _ in
-                range(num_models)]
-        final_model = ChatOllama(model=reduce_model_name, temperature=reduce_temperature, cache=False)
+    models = [ChatOpenAI(model_name=map_model_name, temperature=map_temperature, cache=False) for _ in
+            range(num_models)]
+    final_model = ChatOpenAI(model_name=reduce_model_name, temperature=reduce_temperature, cache=False)
 
     # Define the chain using LCEL
     response_keys = [f"response_{i + 1}" for i in range(num_models)]
@@ -1440,28 +1434,15 @@ class HumanLLMMonitor:
     @classmethod
     def get_llmORchains_list(cls):
         if cls.llmOrchains_list is None:
-            if MODELS_CONFIG_LIST is not None:
-                # We assume there is no gpt model in the MODELS_CONFIG_LIST
-                cls.llmOrchains_list = {
-                    "default_llm": ChatOllama(model=MODELS_CONFIG_LIST["basic_gpt"], cache=False, temperature=0.),
-                    "premium_llm": ChatOllama(model=MODELS_CONFIG_LIST["smart_gpt"], cache=False, temperature=0.),
-                    "coder_llm": ChatOllama(model=MODELS_CONFIG_LIST["code_gpt"], cache=False, temperature=0.),
-                    "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
-                                                          reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=3),
-                    "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
-                                                          reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=10)
-                }
-            else:
-                # Default, if not precised, we take GPT from OpenAI.
-                cls.llmOrchains_list = {
-                    "default_llm": ChatOpenAI(model_name="gpt-4o-mini-2024-07-18", cache=False, temperature=0.),
-                    "premium_llm": ChatOpenAI(model_name="gpt-4o-mini-2024-07-18", cache=False, temperature=0.),
-                    "coder_llm": ChatOpenAI(model_name="gpt-4o-mini-2024-07-18", cache=False, temperature=0.),
-                    "3_majority_chain": create_Nmajority_chain(map_model_name="gpt-4o-mini-2024-07-18",
-                                                            reduce_model_name="gpt-4o-mini-2024-07-18", num_models=3),
-                    "10_majority_chain": create_Nmajority_chain(map_model_name="gpt-4o-mini-2024-07-18",
-                                                                reduce_model_name="gpt-4o-mini-2024-07-18", num_models=10)
-                }
+            cls.llmOrchains_list = {
+                "default_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["basic_gpt"] if MODELS_CONFIG_LIST else "gpt-4o-mini-2024-07-18", cache=False, temperature=0.),
+                "premium_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["smart_gpt"] if MODELS_CONFIG_LIST else "gpt-4o-mini-2024-07-18", cache=False, temperature=0.),
+                "coder_llm": ChatOpenAI(model_name=MODELS_CONFIG_LIST["code_gpt"] if MODELS_CONFIG_LIST else "gpt-4o-mini-2024-07-18", cache=False, temperature=0.),
+                "3_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"] if MODELS_CONFIG_LIST else "gpt-4o-mini-2024-07-18",
+                                                        reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"] if MODELS_CONFIG_LIST else "gpt-4o-mini-2024-07-18", num_models=3),
+                "10_majority_chain": create_Nmajority_chain(map_model_name=MODELS_CONFIG_LIST["basic_gpt"] if MODELS_CONFIG_LIST else "gpt-4o-mini-2024-07-18",
+                                                                reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"] if MODELS_CONFIG_LIST else "gpt-4o-mini-2024-07-18", num_models=10)
+            }
         return cls.llmOrchains_list
 
     def __init__(self, system_prompt=None, CPS_env_type=None, agent_name=None, model_max_context_size=16000,
