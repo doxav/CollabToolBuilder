@@ -1,0 +1,750 @@
+# -*- coding: utf-8 -*-
+"""Iterative Research Document Generation with Self-Critique and Improvement
+
+This script demonstrates a multi-agent LangGraph workflow that:
+1. Generates an initial research document (plan, interviews, sections, citations).
+2. Self-critiques the report and updates the plan.
+3. Loops back to re-run the process for a fixed number of iterations (default 2)
+   so that the report can be improved iteratively.
+
+Key changes:
+- New nodes: `self_critique` (to critique and update the plan)
+             `reset_for_iteration` (to clear prior outputs)
+- A conditional edge that loops from the self-critique stage back to the planning stage.
+- The state now includes `iteration` and `max_iterations`.
+"""
+
+from IPython.display import Image, display
+from langgraph.graph import START, END, StateGraph
+from langgraph.checkpoint.memory import MemorySaver
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from pydantic import BaseModel, Field
+from langgraph.graph import MessagesState
+import operator
+from typing import List, Annotated
+from typing_extensions import TypedDict
+from langchain_community.document_loaders import WikipediaLoader
+from langchain_core.messages import get_buffer_string
+from langgraph.constants import Send
+from langchain_community.chat_models import ChatOllama
+
+import json
+import re
+from json import JSONDecoder
+
+from utils.llm_utils import HumanLLMMonitor, UnifiedVectorDB, smart_print
+from config import embedding_function, reset_db_indices
+
+import os
+os.environ['OPENAI_API_KEY'] = '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'
+
+from langchain_openai import ChatOpenAI
+
+HumanLLMMonitor.use_websocket = True
+planner = HumanLLMMonitor(agent_name="Planner")
+analyst = HumanLLMMonitor(agent_name="Create Analysts")
+question = HumanLLMMonitor(agent_name="Generate Questions")
+answer = HumanLLMMonitor(agent_name="Generate Aswers")
+writerr = HumanLLMMonitor(agent_name="Write Report")
+writers = HumanLLMMonitor(agent_name="Write Section")
+writeri = HumanLLMMonitor(agent_name="Write Introduction")
+writerrl = HumanLLMMonitor(agent_name="Write Resource List")
+writerc = HumanLLMMonitor(agent_name="Write Conclusion")
+critic = HumanLLMMonitor(agent_name="Self Critic")
+HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
+
+llm_custom = ChatOpenAI(model="gpt-4o-mini-2024-07-18", temperature=.0)
+
+def extract_json(data):
+    """
+    Extract and return a JSON object from the given input 'data'.
+
+    If 'data' is already a dict or list, it is returned as-is.
+    If 'data' is a string:
+      - First, it attempts to parse it entirely as JSON.
+      - If that fails, it uses two alternative methods:
+        
+        Method 1: Regex-based extraction.
+          - Uses a regex pattern to extract a substring that looks like JSON.
+          - Advantage: Very simple and concise.
+          - Drawback: It may fail or capture too little/much if the string contains extra text
+            or if the JSON has nested structures with inner braces/brackets.
+
+        Method 2: Decoder-based extraction.
+          - Iterates over the string and uses JSONDecoder.raw_decode() to try to decode a JSON
+            object from positions where a '{' or '[' appears.
+          - Advantage: This method leverages the JSON parser’s own grammar, making it more
+            robust for nested objects or arrays.
+          - Drawback: It may be slightly less intuitive than a one-line regex.
+
+    Returns:
+        A parsed JSON object (usually a dict or list).
+
+    Raises:
+        ValueError: If no valid JSON can be extracted from the input.
+    """
+    # If the data is already a dict or list, assume it's valid JSON.
+    if isinstance(data, (dict, list)):
+        return data
+
+    # Ensure we have a string (if not, convert it).
+    if not isinstance(data, str):
+        data = str(data)
+
+    data = data.strip()
+
+    # First attempt: Try to parse the whole string as JSON.
+    try:
+        return json.loads(data)
+    except json.JSONDecodeError:
+        print("Not a pure JSON string, so we try to extract the JSON part.")
+
+    # --- Method 1: Regex-based extraction ---
+    regex_pattern = r'(\{.*\}|\[.*\])'
+    match = re.search(regex_pattern, data, re.DOTALL)
+    if match:
+        candidate = match.group(0)
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            print("If the candidate isn't valid JSON, we try the next method.")
+
+    # --- Method 2: Using JSONDecoder's raw_decode method ---
+    decoder = JSONDecoder()
+    # Iterate over the string; try to decode JSON starting at every '{' or '['.
+    for i in range(len(data)):
+        if data[i] in ['{', '[']:
+            try:
+                obj, idx = decoder.raw_decode(data[i:])
+                return obj
+            except json.JSONDecodeError:
+                continue
+
+    # If both methods fail, raise an error.
+    print("No valid JSON found in the input data.")
+
+def remove_think_tags(text: str) -> str:
+    """
+    Remove any <think>...</think> sections from the given text using regex.
+    
+    Args:
+        text (str): The input string containing potential <think> tags.
+    
+    Returns:
+        str: The string with all <think>...</think> sections removed.
+    """
+    # re.DOTALL allows the dot to match newline characters as well.
+    cleaned_text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    return cleaned_text.strip()
+
+
+### -------------------------------
+# ANALYST AND PERSPECTIVE SETUP
+### -------------------------------
+
+class Analyst(BaseModel):
+    affiliation: str = Field(
+        description="Primary affiliation of the analyst.",
+    )
+    name: str = Field(
+        description="Name of the analyst."
+    )
+    role: str = Field(
+        description="Role of the analyst in the context of the topic.",
+    )
+    description: str = Field(
+        description="Description of the analyst focus, concerns, and motives.",
+    )
+    @property
+    def persona(self) -> str:
+        return f"Name: {self.name}\nRole: {self.role}\nAffiliation: {self.affiliation}\nDescription: {self.description}\n"
+
+class Perspectives(BaseModel):
+    analysts: List[Analyst] = Field(
+        description="Comprehensive list of analysts with their roles and affiliations.",
+    )
+
+class GenerateAnalystsState(TypedDict):
+    topic: str         # Research topic
+    max_analysts: int  # Number of analysts
+    human_analyst_feedback: str  # Human feedback
+    analysts: List[Analyst]      # List of analysts
+
+def create_analysts(state: GenerateAnalystsState):
+    """Create analysts using a structured output from the LLM."""
+    print("Create_analysts")
+    if "analyst_instructions" not in state:
+        state['analyst_instructions'] = (
+            "You are tasked with creating a set of AI analyst personas. Follow these instructions carefully:\n\n"
+            "1. Review the research topic:\n{topic}\n\n"
+            "2. Consider any editorial feedback provided:\n{human_analyst_feedback}\n\n"
+            "3. Identify the top {max_analysts} interesting themes.\n"
+            "4. Assign one analyst to each theme.\n\n"
+            "Respond with a JSON object containing a list of analysts NOTHING ELSE THAN THE JSON, where each analyst has:\n"
+            "- name: string\n- role: string\n- affiliation: string\n- description: string\n"
+        )
+    analyst_instructions = state["analyst_instructions"]
+    topic = state['topic']
+    max_analysts = state['max_analysts']
+    human_analyst_feedback = state.get('human_analyst_feedback', '')
+    system_message = analyst_instructions.format(
+        topic=topic,
+        human_analyst_feedback=human_analyst_feedback,
+        max_analysts=max_analysts
+    )
+    try:
+        analysts_response = analyst.CallHumanLLM(original_input_messages=[SystemMessage(content=system_message), HumanMessage(content="Generate the set of analysts.")] , stream_output=False, return_message_content_only=True)[0]
+
+        analysts_response = extract_json(remove_think_tags(analysts_response))
+
+        if isinstance(analysts_response, Perspectives):
+            generated_analysts = analysts_response.analysts
+        elif isinstance(analysts_response, dict):
+            generated_analysts = analysts_response.get('analysts', [])
+        elif hasattr(analysts_response, 'analysts'):
+            generated_analysts = analysts_response.analysts
+        elif isinstance(analysts_response, list):
+            generated_analysts = analysts_response
+        else:
+            generated_analysts = [
+                Analyst(
+                    name=f"Analyst {i+1}",
+                    role=f"Research Specialist {i+1}",
+                    affiliation="Research Institute",
+                    description=f"Analyzing aspects of {topic}"
+                ) for i in range(max_analysts)
+            ]
+        # Use model_dump if available (Pydantic v2+)
+        generated_analysts = [
+            Analyst(**(a.model_dump() if hasattr(a, "model_dump") else a.dict() if hasattr(a, "dict") else a))
+            for a in generated_analysts
+        ]
+        return {"analysts": generated_analysts}
+    except Exception as e:
+        print(f"Error generating analysts: {e}")
+        default_analysts = [
+            Analyst(
+                name=f"Analyst {i+1}",
+                role=f"Research Specialist {i+1}",
+                affiliation="Research Institute",
+                description=f"Analyzing aspects of {topic}"
+            ) for i in range(max_analysts)
+        ]
+        return {"analysts": default_analysts}
+
+def human_feedback(state: GenerateAnalystsState):
+    """No-op node that can be interrupted for human feedback."""
+    print("Human_feedback")
+    pass
+
+def should_continue(state: GenerateAnalystsState):
+    print("Should_continue")
+    human_analyst_feedback = state.get('human_analyst_feedback', None)
+    if human_analyst_feedback:
+        return "create_analysts"
+    return END
+
+### -------------------------------
+# INTERVIEW AND SEARCH NODES
+### -------------------------------
+
+class InterviewState(MessagesState):
+    max_num_turns: int  # Number of conversation turns
+    context: Annotated[list, operator.add]  # Source docs
+    analyst: Analyst  # Analyst persona
+    interview: str  # Interview transcript
+    sections: list  # Collected sections for the report
+
+class SearchQuery(BaseModel):
+    search_query: str = Field(None, description="Search query for retrieval.")
+
+def generate_question(state: InterviewState):
+    print("Generate_question")
+    if "question_instructions" not in state:
+        state["question_instructions"] = (
+            "You are an analyst interviewing an expert to learn about a specific topic.\n\n"
+            "Your goal is to ask interesting and specific questions to gain deep insights.\n\n"
+            "Here is your area of focus:\n{goals}\n\n"
+            "Introduce yourself with a persona-appropriate name, then ask your question. "
+            "Continue asking until you feel you have enough insight. "
+            "Conclude with: 'Thank you so much for your help!'\n"
+            "Remain in character throughout your response."
+        )
+    question_instructions = state["question_instructions"]
+    analyst = state["analyst"]
+    messages = state["messages"]
+    system_message = question_instructions.format(goals=analyst.persona)
+    question_answer = llm_custom.invoke([SystemMessage(content=system_message)] + messages)
+    smart_print(message=question_answer.content if isinstance(question_answer, AIMessage) else question_answer, agent_name="Generate Question", message_type="NEW inference result recieved")
+    return {"messages": [question_answer]}
+
+def search_web(state: InterviewState):
+    print("Search_web")
+    import requests
+    OPENALEX_API_URL = "https://api.openalex.org/works"
+    structured_llm = llm_custom.with_structured_output(SearchQuery)
+    if "search_instructions" not in state:
+        state["search_instructions"] = SystemMessage(content=(
+            "You will be given a conversation between an analyst and an expert. "
+            "Your goal is to generate a well-structured query for retrieval. "
+            "Analyze the conversation—especially the final question—and convert it into a search query."
+        ))
+    search_instructions = state["search_instructions"]
+    search_query = structured_llm.invoke([search_instructions] + state['messages'])
+    params = {
+        "search": search_query.search_query,
+        "filter": "is_paratext:false",
+        "sort": "relevance_score:desc",
+        "per_page": 5
+    }
+    response = requests.get(OPENALEX_API_URL, params=params)
+    search_docs = []
+    "Testing a research assistant framework in Toulon M2 Master's program: curriculum design, pedagogical strategies, diverse learning needs, collaboration between researchers and educators, student dynamics, dissemination of findings."
+
+    if response.status_code == 200:
+        data = response.json()
+        for result in data.get("results", []):
+            title = result.get("title") or "Unknown Title"
+            abstract = result.get("abstract") or "No abstract available"
+            url = result.get("id") or "Not Available"
+            authors = ", ".join([auth["author"]["display_name"] for auth in result.get("authorships", [])]) or "Not Available"
+            search_docs.append({
+                "title": title,
+                "authors": authors,
+                "abstract": abstract,
+                "url": url
+            })
+    else:
+        print(f"Error retrieving data from OpenAlex: {response.status_code}")
+    formatted_search_docs = "\n\n---\n\n".join(
+        [
+            f'<Document title="{doc["title"]}" href="{doc["url"]}">\nAuthors: {doc["authors"]}\n\nAbstract: {doc["abstract"]}\n</Document>'
+            for doc in search_docs
+        ]
+    )
+    smart_print(message=formatted_search_docs, agent_name="Search Web", message_type="NEW inference result recieved")
+    return {"context": [formatted_search_docs]}
+
+def search_wikipedia(state: InterviewState):
+    print("Search_wikipedia")
+    if "search_instructions" not in state:
+        state["search_instructions"] = SystemMessage(content=(
+            "You will be given a conversation between an analyst and an expert. "
+            "Your goal is to generate a well-structured query for retrieval. "
+            "Analyze the conversation and convert the final question into a search query."
+        ))
+    search_instructions = state["search_instructions"]
+    structured_llm = llm_custom.with_structured_output(SearchQuery)
+    search_query = structured_llm.invoke([search_instructions] + state['messages'])
+    search_docs = WikipediaLoader(query=search_query.search_query, load_max_docs=2).load()
+    formatted_search_docs = "\n\n---\n\n".join(
+        [
+            f'<Document source="{doc.metadata.get("source", "Not Available")}" page="{doc.metadata.get("page", "Not Available")}"/>\n{doc.page_content}\n</Document>'
+            for doc in search_docs
+        ]
+    )
+    smart_print(message=formatted_search_docs, agent_name="Search Wikipedia", message_type="NEW inference result recieved")
+    return {"context": [formatted_search_docs]}
+
+def generate_answer(state: InterviewState):
+    print("Generate_answer")
+    if "answer_instructions" not in state:
+        state["answer_instructions"] = (
+            "You are an expert being interviewed.\n\n"
+            "Your focus is:\n{goals}\n\n"
+            "Answer the following question using only the provided context:\n{context}\n\n"
+            "Guidelines:\n"
+            "1. Use only the information in the context.\n"
+            "2. Do not introduce external information.\n"
+            "3. Cite sources from the context using bracketed numbers (e.g., [1]).\n"
+            "4. List all sources at the end as [1] Source1, [2] Source2, etc."
+        )
+    answer_instructions = state["answer_instructions"]
+    analyst = state["analyst"]
+    messages = state["messages"]
+    context = state["context"]
+    system_message = answer_instructions.format(goals=analyst.persona, context=context)
+    answer_resp = llm_custom.invoke([SystemMessage(content=system_message)] + messages)
+    smart_print(message=answer_resp.content if isinstance(answer_resp, AIMessage) else answer_resp, agent_name="Generate Answer", message_type="NEW inference result recieved")
+    # answer.name = "expert"
+    return {"messages": [answer_resp]}
+
+def save_interview(state: InterviewState):
+    print("Save_interview")
+    messages = state["messages"]
+    interview = get_buffer_string(messages)
+    return {"interview": interview}
+
+def route_messages(state: InterviewState, name: str = "expert"):
+    print("Route_messages")
+    messages = state["messages"]
+    max_num_turns = state.get('max_num_turns', 2)
+    num_responses = len([m for m in messages if isinstance(m, AIMessage) and m.name == name])
+    if num_responses >= max_num_turns:
+        return 'save_interview'
+    last_question = messages[-2]
+    if "Thank you so much for your help" in last_question.content:
+        return 'save_interview'
+    return "ask_question"
+
+def write_section(state: InterviewState):
+    print("Write_section")
+    if "section_writer_instructions" not in state:
+        state["section_writer_instructions"] = (
+            "You are an expert technical writer.\n\n"
+            "Your task is to create a concise section of a report from the provided source documents.\n\n"
+            "Follow these steps:\n"
+            "1. Analyze the provided documents (each begins with a <Document tag).\n"
+            "2. Structure your section using Markdown with appropriate headers (e.g., ## for titles).\n"
+            "3. Your section should include:\n"
+            "   a. A compelling title (## header) based on the analyst’s focus: {focus}\n"
+            "   b. A summary (### header) that provides context and highlights novel insights, including a numbered list of sources.\n"
+            "   c. A sources list (### header) with full links or document paths. For any missing details, use 'Not Available'.\n"
+            "Aim for a maximum of 400 words."
+        )
+    section_writer_instructions = state["section_writer_instructions"]
+    analyst = state["analyst"]
+    context = state["context"]
+    system_message = section_writer_instructions.format(focus=analyst.description)
+    sections = llm_custom.invoke([
+        SystemMessage(content=system_message),
+        HumanMessage(content=f"Use this source to write your section: {context}")
+    ])
+    if isinstance(sections, list):
+        for section in sections:
+            smart_print(message=section.content if isinstance(section, AIMessage) else section, agent_name="Write Section", message_type="NEW inference result recieved")
+    else:
+        smart_print(message=str([sections.content if isinstance(sections, AIMessage) else sections]), agent_name="Write Section", message_type="NEW inference result recieved")
+    return {"sections": [section.content if isinstance(section, AIMessage) else section for section in sections ]}
+
+### -------------------------------
+# RESEARCH REPORT NODES (INCLUDING PLAN, RESOURCE LIST, AND SELF-CRITIQUE)
+"## Advancements in Sound Interaction Research: Dr. Martinez's Innovative Approaches\n\n### Summary\nDr. Martinez is at the forefront of research exploring the physical properties of sound and its interaction with various materials. Her work focuses on developing novel materials and technologies aimed at reducing leading-edge noise, which is crucial in numerous applications, including aviation and urban environments. By leveraging advanced acoustic principles and material science, Dr. Martinez's research not only addresses the pressing issue of noise pollution but also enhances the performance and sustainability of sound-related technologies. \n\nKey insights from her research include:\n1. **Material Innovation**: Development of new materials that can effectively absorb or deflect sound waves, thereby minimizing noise pollution.\n2. **Technological Integration**: Implementation of sound-reducing technologies in existing infrastructures, such as aircraft and urban settings, to improve quality of life.\n3. **Interdisciplinary Collaboration**: Engaging with experts from various fields, including engineering and environmental science, to create comprehensive solutions to noise-related challenges.\n4. **Future Directions**: Exploration of the potential for smart materials that can adapt their acoustic properties in real-time based on environmental conditions.\n\n### Sources\n1. [Waste Not, Want Not: Why Rarefying Microbiome Data Is Inadmissible](https://openalex.org/W2004014148)\n2. [Whatever next? Predictive brains, situated agents, and the future of cognitive science](https://openalex.org/W2153791616)\n3. [ADVANCED SPECTRAL METHODS FOR CLIMATIC TIME SERIES](https://openalex.org/W2166361350)\n4. [Visual attention within and around the field of focal attention: A zoom lens model](https://openalex.org/W2015987438)\n5. [Bayesian model averaging: a tutorial](https://openalex.org/W1603903339)\n6. [A critical analysis of the impacts of COVID-19 on the global economy and ecosystems and opportunities for circular economy strategies](https://openalex.org/W3087347130)\n7. [Hydrogen energy systems: A critical review of technologies, applications, trends and challenges](https://openalex.org/W3159296886)\n8. [A review of surface engineering issues critical to wind turbine performance](https://openalex.org/W2059323964)\n9. [Digital Twin: Values, Challenges and Enablers From a Modeling Perspective](https://openalex.org/W3003667836)\n10. [Opinion Paper: “So what if ChatGPT wrote it?”](https://openalex.org/W4360620450)"
+### -------------------------------
+
+# Extend state to include new keys for iterative improvement.
+class ResearchGraphState(TypedDict):
+    topic: str                      # Research topic
+    max_analysts: int               # Number of analysts
+    human_analyst_feedback: str     # Human feedback
+    analysts: List[Analyst]         # List of analysts
+    sections: Annotated[list, operator.add]  # Collected sections from interviews
+    plan: str                       # Overall plan for the document
+    introduction: str               # Introduction text
+    content: str                    # Main report content (without a conclusion)
+    conclusion: str                 # Conclusion text
+    resource_list: str              # Consolidated resource list (citations)
+    final_report: str               # The final combined report
+    iteration: int                  # Current iteration count
+    max_iterations: int             # Maximum allowed iterations
+
+def plan_document(state: ResearchGraphState):
+    """Plan Agent: Create a detailed plan for the research document."""
+    print("Plan_document")
+    if "plan_instructions" not in state:
+        state["plan_instructions"] = (
+            "You are a planning assistant.\n\n"
+            "Your task is to create a detailed plan for a research document on the following topic:\n{topic}\n\n"
+            "Outline the key sections (e.g., Introduction, Main Content, Conclusion) and provide a brief description for each. "
+            "Format the plan clearly."
+        )
+    plan_instructions = state["plan_instructions"]
+    system_message = plan_instructions.format(topic=state["topic"])
+    plan = planner.CallHumanLLM(original_input_messages=[
+        SystemMessage(content=system_message),
+        HumanMessage(content="Generate a detailed plan for the research document.")
+    ], stream_output=False, return_message_content_only=True)[0]
+    plan_text = plan.content if hasattr(plan, "content") else plan
+    print(f"plan generated : {remove_think_tags(plan_text)}")
+    return {"plan": remove_think_tags(plan_text)}
+
+def write_report(state: ResearchGraphState):
+    print("Write_report")
+    # Instruct the LLM to consolidate memos WITHOUT including concluding remarks.
+    if "report_writer_instructions" not in state:
+        state['report_writer_instructions'] = (
+            "You are a technical writer creating a report on the overall topic:\n\n{topic}\n\n"
+            "Follow the plan for the report:\n{plan}\n\n"
+            "You have a team of analysts who conducted interviews and wrote memos. "
+            "Consolidate these memos into a cohesive narrative of insights. "
+            "DO NOT include any concluding remarks; a conclusion will be generated separately.\n\n"
+            "Format the report in Markdown with a title header '## Insights'. "
+            "Do not mention analyst names. Preserve any citations in the memos.\n\n"
+            "Here are the memos from your analysts:\n{context}"
+        )
+    report_writer_instructions = state["report_writer_instructions"]
+    sections = state["sections"]
+    topic = state["topic"]
+    formatted_str_sections = "\n\n".join(sections.content if isinstance(sections, AIMessage) else sections)
+    system_message = report_writer_instructions.format(topic=topic, plan=state["plan"], context=formatted_str_sections)
+    report = writerr.CallHumanLLM(original_input_messages=[
+        SystemMessage(content=system_message),
+        HumanMessage(content="Write a report based on these memos (without a conclusion).")
+    ], stream_output=False, return_message_content_only=True)[0]
+    print(f"report generated : {remove_think_tags(report)}")
+    return {"content": remove_think_tags(report)}
+
+def write_introduction(state: ResearchGraphState):
+    print("Write_introduction")
+    if "intro_conclusion_instructions" not in state:
+        state['intro_conclusion_instructions'] = (
+            "You are a technical writer finishing a report on {topic}.\n\n"
+            "Follow the plan for the report:\n{plan}\n\n"
+            "You will be given all sections of the report. Your task is to write a crisp and compelling introduction.\n"
+            "- Begin with a title using the '#' header.\n"
+            "- Use '## Introduction' as the section header.\n"
+            "- Aim for approximately 100 words that clearly preview the report sections.\n"
+            "Here are the sections to reflect on:\n{formatted_str_sections}"
+        )
+    intro_conclusion_instructions = state["intro_conclusion_instructions"]
+    sections = state["sections"]
+    topic = state["topic"]
+    formatted_str_sections = "\n\n".join(sections).content if isinstance(sections, AIMessage) else sections
+    instructions = intro_conclusion_instructions.format(topic=topic, plan=state["plan"], formatted_str_sections=formatted_str_sections)
+    intro = writeri.CallHumanLLM(original_input_messages=[
+        SystemMessage(content=instructions),
+        HumanMessage(content="Write the report introduction.")
+    ], stream_output=False, return_message_content_only=True)[0]
+    print(f"introduction generated : {remove_think_tags(intro)}")
+    return {"introduction": remove_think_tags(intro)}
+
+def write_conclusion(state: ResearchGraphState):
+    filepath = "./prompts/write_conclusion.txt"
+    if not os.path.exists(filepath):
+        with open(filepath, "w") as f:
+            f.write("You are a technical writer tasked with finalizing a technical report. You excel at distilling complex topics "
+        "into clear, concise conclusions. Your job is to write a crisp and compelling conclusion that starts with '## Conclusion', "
+        "recapping the key insights from the report in approximately 100 words. Use best practices and clarity in your writing.")
+    topic, plan = state["topic"], state["plan"]
+    sections = state["sections"]
+    formatted_str_sections = sections.content if hasattr(sections, "content") else "\n\n".join(sections)
+
+    user_message = (
+        f"- TOPIC: <<< {topic} >>>\n"
+        f"- PLAN: <<< {plan} >>>\n"
+        f"- SECTIONS: <<< {formatted_str_sections} >>>"
+    )
+
+    conclusion = writerc.CallHumanLLM(
+        system_prompt_template=filepath,
+        user_message=user_message,
+        stream_output=False,
+        return_message_content_only=True
+    )[0]
+    print(f"conclusion generated : {remove_think_tags(conclusion)}")
+    return {"conclusion": remove_think_tags(conclusion)}
+
+def write_resource_list(state: ResearchGraphState):
+    """
+    Node to generate a consolidated resource list (citations) from the report sections.
+    Analyze the sections and extract all inline citations and resource details.
+    Format the resource list in Markdown under the header '## Sources'.
+    Each source should be on its own line in the format: "[n] <source details>".
+    Use 'Not Available' for any missing details.
+    """
+    print("Write_resource_list")
+    if "resource_list_instructions" not in state:
+        state["resource_list_instructions"] = (
+            "You are an expert technical writer.\n\n"
+            "Your task is to extract and consolidate all resource citations from the following report sections. "
+            "These citations may appear as inline references such as [Source 1], [Source 2], etc. "
+            "Generate a consolidated resource list in Markdown under the header '## Sources'.\n"
+            "Each source should be on a new line in the format: '[n] <source details>'. "
+            "If any details are missing, indicate them as 'Not Available'.\n\n"
+            "Here are the report sections:\n{sections}"
+        )
+    instructions = state["resource_list_instructions"].format(sections="\n\n".join(state["sections"]))
+    resource_list = writerrl.CallHumanLLM(original_input_messages=[
+        SystemMessage(content=instructions),
+        HumanMessage(content="Extract and generate a consolidated resource list.")
+    ], stream_output=False, return_message_content_only=True)[0]
+    resource_list_text = resource_list.content if hasattr(resource_list, "content") else resource_list
+    print(f"resources generated : {remove_think_tags(resource_list_text)}")
+    return {"resource_list": remove_think_tags(resource_list_text)}
+
+def finalize_report(state: ResearchGraphState):
+    """Combine the introduction, main content, conclusion, and resource list into the final report."""
+    print("Finalize_report")
+    if not state:
+        return {"final_report": ""}
+    content = state.get("content", "")
+    introduction = state.get("introduction", "")
+    conclusion = state.get("conclusion", "")
+    resource_list = state.get("resource_list", "")
+    if content.startswith("## Insights"):
+        content = content.lstrip("## Insights").strip()
+    final_report = ""
+    if introduction:
+        final_report += introduction + "\n\n---\n\n"
+    if content:
+        final_report += content
+    if conclusion and "Conclusion" not in content:
+        final_report += "\n\n---\n\n" + conclusion
+    if resource_list and resource_list.strip():
+        final_report += "\n\n" + resource_list
+    return {"final_report": final_report}
+
+def self_critique(state: ResearchGraphState):
+    """
+    Node that critiques the current final report and generates an updated plan.
+    The LLM is prompted to analyze the report, identify areas for improvement,
+    and output a revised plan. Also, increment the iteration counter.
+    """
+    print("Self_critique")
+    current_report = state.get("final_report", "")
+    instructions = (
+        "You are an expert critic. Please review the following research report and provide constructive criticism "
+        "with suggestions for improvement. Then, generate an updated plan for the document that addresses the identified issues.\n\n"
+        "Current report:\n\n{report}\n\n"
+        "Provide your updated plan below."
+    ).format(report=current_report)
+    critique_response = critic.CallHumanLLM(original_input_messages=[
+        SystemMessage(content=instructions),
+        HumanMessage(content="Critique the report and update the plan.")
+    ], stream_output=False, return_message_content_only=True)[0]
+    updated_plan = remove_think_tags(critique_response.content if hasattr(critique_response, "content") else critique_response)
+    print(f"Critique : {updated_plan}")
+    state["iteration"] = state.get("iteration", 0) + 1
+    return {"plan": updated_plan, "iteration": state["iteration"]}
+
+def reset_for_iteration(state: ResearchGraphState):
+    """
+    Node to clear previous iteration's outputs.
+    Resets the sections, introduction, content, conclusion, resource list, and final report.
+    """
+    print("Reset_for_iteration")
+    state["sections"] = []
+    state["introduction"] = ""
+    state["content"] = ""
+    state["conclusion"] = ""
+    state["resource_list"] = ""
+    state["final_report"] = ""
+    return state
+
+def should_iterate(state: ResearchGraphState):
+    """
+    Conditional function for looping.
+    Returns the next node:
+    - If current iteration is less than max_iterations, return "reset_for_iteration"
+    - Otherwise, return END.
+    """
+    if state.get("iteration", 0) < state.get("max_iterations", 2):
+        print(f"-----------### END OF ITERATION {state.get('iteration', 0)} ###-----------")
+        return "reset_for_iteration"
+    else:
+        print(f"-----------### END OF ITERATION {state.get('iteration', 0)} ###-----------")
+        return END
+
+def multi_agent_research_generation_persist_at_the_end(title, topic, max_analysts: int = 3, max_iterations: int = 2):
+    """
+    Generate a full research report using a multi-agent LangGraph workflow.
+    The workflow:
+      1. Begins with a plan agent, creates analysts, conducts interviews,
+         writes each section (introduction, main content, conclusion),
+         and generates a consolidated resource list.
+      2. Finalizes the report.
+      3. Then, critiques the current report and updates the plan.
+      4. If the number of iterations is less than max_iterations, it resets key state fields and loops back to re-run the process.
+      5. When max_iterations is reached, the final improved report is output.
+    """
+    print("Multi_agent_research_generation_persist_at_the_end")
+    # Initialize state with new iterative fields.
+    initial_state: ResearchGraphState = {
+        "topic": topic,
+        "max_analysts": max_analysts,
+        "human_analyst_feedback": None,
+        "analysts": [],
+        "sections": [],
+        "plan": "",
+        "introduction": "",
+        "content": "",
+        "conclusion": "",
+        "resource_list": "",
+        "final_report": "",
+        "iteration": 0,
+        "max_iterations": max_iterations
+    }
+
+    # Build the interview sub-graph (unchanged)
+    interview_builder = StateGraph(InterviewState)
+    interview_builder.add_node("ask_question", generate_question)
+    interview_builder.add_node("search_web", search_web)
+    interview_builder.add_node("search_wikipedia", search_wikipedia)
+    interview_builder.add_node("answer_question", generate_answer)
+    interview_builder.add_node("save_interview", save_interview)
+    interview_builder.add_node("write_section", write_section)
+    interview_builder.add_edge(START, "ask_question")
+    interview_builder.add_edge("ask_question", "search_web")
+    interview_builder.add_edge("ask_question", "search_wikipedia")
+    interview_builder.add_edge("search_web", "answer_question")
+    interview_builder.add_edge("search_wikipedia", "answer_question")
+    interview_builder.add_conditional_edges("answer_question", route_messages, ['ask_question', 'save_interview'])
+    interview_builder.add_edge("save_interview", "write_section")
+    interview_builder.add_edge("write_section", END)
+    memory = MemorySaver()
+    interview_graph = interview_builder.compile(checkpointer=memory).with_config(run_name="Conduct Interviews")
+    params = {"configurable": {"thread_id": "1"}, "recursion_limit": 100}
+
+    # Build the main research graph with iterative self-critique.
+    builder = StateGraph(ResearchGraphState)
+    builder.add_node("plan_document", plan_document)
+    builder.add_node("create_analysts", create_analysts)
+    builder.add_node("human_feedback", human_feedback)
+    builder.add_node("conduct_interview", interview_graph)
+    builder.add_node("write_report", write_report)
+    builder.add_node("write_introduction", write_introduction)
+    builder.add_node("write_conclusion", write_conclusion)
+    builder.add_node("write_resource_list", write_resource_list)
+    builder.add_node("finalize_report", finalize_report)
+    builder.add_node("self_critique", self_critique)
+    builder.add_node("reset_for_iteration", reset_for_iteration)
+    # Define conditional edge based on iteration count.
+    builder.add_conditional_edges("self_critique", should_iterate, ["reset_for_iteration", END])
+    builder.add_edge("reset_for_iteration", "plan_document")
+
+    # Graph flow:
+    # START -> plan_document -> create_analysts -> human_feedback -> (initiate interviews) ->
+    # write_introduction, write_report, write_conclusion -> write_resource_list -> finalize_report -> self_critique ->
+    # [if iteration < max_iterations -> reset_for_iteration -> plan_document] else END.
+    builder.add_edge(START, "plan_document")
+    builder.add_edge("plan_document", "create_analysts")
+    builder.add_edge("create_analysts", "human_feedback")
+    # Use a conditional edge from human_feedback to either re-run analyst creation or start interviews.
+    def initiate_all_interviews(state: ResearchGraphState):
+      print("Initiate_all_interviews")
+      human_analyst_feedback = state.get('human_analyst_feedback')
+      if human_analyst_feedback:
+          return "create_analysts"
+      else:
+          topic = state["topic"]
+          return [Send("conduct_interview", {"analyst": analyst,
+                                             "messages": [HumanMessage(content=f"So you said you were writing an article on {topic}?")]})
+                  for analyst in state["analysts"]]
+    builder.add_conditional_edges("human_feedback", initiate_all_interviews, ["create_analysts", "conduct_interview"])
+    builder.add_edge("conduct_interview", "write_introduction")
+    builder.add_edge("conduct_interview", "write_report")
+    builder.add_edge("conduct_interview", "write_conclusion")
+    builder.add_edge(["write_conclusion", "write_report", "write_introduction"], "write_resource_list")
+    builder.add_edge("write_resource_list", "finalize_report")
+    builder.add_edge("finalize_report", "self_critique")
+    # The conditional edge from self_critique will either loop back via reset_for_iteration or end.
+    memory2 = MemorySaver()
+    graph = builder.compile(checkpointer=memory2)
+    # Optionally, visualize the graph:
+    # Image(graph.get_graph(xray=1).draw_mermaid_png())
+    # with open("images/graph_png.png", "wb") as f:
+    #     f.write(graph.get_graph(xray=1).draw_mermaid_png())
+    graph.invoke(initial_state, params)
+    final_state = graph.get_state(params)
+    report = final_state.values.get('final_report')
+    return report
+
+# Invoke the multi-agent iterative workflow:
+report = multi_agent_research_generation_persist_at_the_end(
+    title="State of the art on Leading Edge Noise",
+    topic = "Research assistant framework for State of the art on Leading Edge Noise",
+    max_analysts=5,
+    max_iterations=2  # Default number of iterations is 2.
+)
+
+print(report)
