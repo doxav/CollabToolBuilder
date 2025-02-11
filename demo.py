@@ -410,16 +410,18 @@ def write_section(state: InterviewState):
         SystemMessage(content=system_message),
         HumanMessage(content=f"Use this source to write your section: {context}")
     ])
+    section_final = ""
     if isinstance(sections, list):
         for section in sections:
-            smart_print(message=section.content if isinstance(section, AIMessage) else section, agent_name="Write Section", message_type="NEW inference result recieved")
+            section_final += section.content if isinstance(section, AIMessage) else section
     else:
-        smart_print(message=str([sections.content if isinstance(sections, AIMessage) else sections]), agent_name="Write Section", message_type="NEW inference result recieved")
-    return {"sections": [section.content if isinstance(section, AIMessage) else section for section in sections ]}
+        section_final = sections.content if isinstance(sections, AIMessage) else sections
+    
+    smart_print(message=section_final, agent_name="Write Section", message_type="NEW inference result recieved")
+    return {"sections": [section_final]}
 
 ### -------------------------------
 # RESEARCH REPORT NODES (INCLUDING PLAN, RESOURCE LIST, AND SELF-CRITIQUE)
-"## Advancements in Sound Interaction Research: Dr. Martinez's Innovative Approaches\n\n### Summary\nDr. Martinez is at the forefront of research exploring the physical properties of sound and its interaction with various materials. Her work focuses on developing novel materials and technologies aimed at reducing leading-edge noise, which is crucial in numerous applications, including aviation and urban environments. By leveraging advanced acoustic principles and material science, Dr. Martinez's research not only addresses the pressing issue of noise pollution but also enhances the performance and sustainability of sound-related technologies. \n\nKey insights from her research include:\n1. **Material Innovation**: Development of new materials that can effectively absorb or deflect sound waves, thereby minimizing noise pollution.\n2. **Technological Integration**: Implementation of sound-reducing technologies in existing infrastructures, such as aircraft and urban settings, to improve quality of life.\n3. **Interdisciplinary Collaboration**: Engaging with experts from various fields, including engineering and environmental science, to create comprehensive solutions to noise-related challenges.\n4. **Future Directions**: Exploration of the potential for smart materials that can adapt their acoustic properties in real-time based on environmental conditions.\n\n### Sources\n1. [Waste Not, Want Not: Why Rarefying Microbiome Data Is Inadmissible](https://openalex.org/W2004014148)\n2. [Whatever next? Predictive brains, situated agents, and the future of cognitive science](https://openalex.org/W2153791616)\n3. [ADVANCED SPECTRAL METHODS FOR CLIMATIC TIME SERIES](https://openalex.org/W2166361350)\n4. [Visual attention within and around the field of focal attention: A zoom lens model](https://openalex.org/W2015987438)\n5. [Bayesian model averaging: a tutorial](https://openalex.org/W1603903339)\n6. [A critical analysis of the impacts of COVID-19 on the global economy and ecosystems and opportunities for circular economy strategies](https://openalex.org/W3087347130)\n7. [Hydrogen energy systems: A critical review of technologies, applications, trends and challenges](https://openalex.org/W3159296886)\n8. [A review of surface engineering issues critical to wind turbine performance](https://openalex.org/W2059323964)\n9. [Digital Twin: Values, Challenges and Enablers From a Modeling Perspective](https://openalex.org/W3003667836)\n10. [Opinion Paper: “So what if ChatGPT wrote it?”](https://openalex.org/W4360620450)"
 ### -------------------------------
 
 # Extend state to include new keys for iterative improvement.
@@ -509,9 +511,9 @@ def write_introduction(state: ResearchGraphState):
     return {"introduction": remove_think_tags(intro)}
 
 def write_conclusion(state: ResearchGraphState):
-    filepath = "./prompts/write_conclusion.txt"
+    filepath = "write_conclusion"
     if not os.path.exists(filepath):
-        with open(filepath, "w") as f:
+        with open(f"./prompts/{filepath}.txt", "w") as f:
             f.write("You are a technical writer tasked with finalizing a technical report. You excel at distilling complex topics "
         "into clear, concise conclusions. Your job is to write a crisp and compelling conclusion that starts with '## Conclusion', "
         "recapping the key insights from the report in approximately 100 words. Use best practices and clarity in your writing.")
