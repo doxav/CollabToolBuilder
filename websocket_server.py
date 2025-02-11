@@ -30,8 +30,9 @@ class WebsocketServer:
         self.max_connections = 10
         if not os.path.exists("websocket_logs"):
             os.makedirs("websocket_logs")
-        if os.environ.get('unique_id'):
-            self.log_filename = f'websocket_logs/websocketdata_{os.environ.get('unique_id')}_{self.port}.txt'
+        unique_id = os.environ.get('unique_id')
+        if unique_id:
+            self.log_filename = f'websocket_logs/websocketdata_{unique_id}_{self.port}.txt'
         else:
             date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             self.log_filename = f'websocket_logs/websocketdata_{self.host}_{self.port}_{date_str}.txt'
