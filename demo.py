@@ -171,32 +171,39 @@ class GenerateAnalystsState(TypedDict):
     analysts: List[Analyst]      # List of analysts
 
 def create_analysts(state: GenerateAnalystsState):
-    """Create analysts using a structured output from the LLM."""
+    """Create Analysts Agent: Générer une liste d'analystes en JSON."""
     print("Create_analysts")
-    if "analyst_instructions" not in state:
-        state['analyst_instructions'] = (
-            "You are tasked with creating a set of AI analyst personas. Follow these instructions carefully:\n\n"
-            "1. Review the research topic:\n{topic}\n\n"
-            "2. Consider any editorial feedback provided:\n{human_analyst_feedback}\n\n"
-            "3. Identify the top {max_analysts} interesting themes.\n"
-            "4. Assign one analyst to each theme.\n\n"
-            "Respond with a JSON object containing a list of analysts NOTHING ELSE THAN THE JSON, where each analyst has:\n"
-            "- name: string\n- role: string\n- affiliation: string\n- description: string\n"
-        )
-    analyst_instructions = state["analyst_instructions"]
+    filepath = "create_analysts"
+    prompt_file = f"./prompts/{filepath}.txt"
+    if not os.path.exists(prompt_file):
+        with open(prompt_file, "w") as f:
+            f.write(
+                "You are tasked with creating a set of AI analyst personas. Your goal is to generate a list of analysts in JSON format and nothing else. "
+                "In the user message, you will receive the following values:\n"
+                "  - 'TOPIC': the research topic,\n"
+                "  - 'FEEDBACK': any editorial feedback,\n"
+                "  - 'MAX_ANALYSTS': the maximum number of analysts to generate.\n\n"
+                "Review the topic and feedback, identify the top themes, and assign one analyst per theme. "
+                "Each analyst must have the following fields: name (string), role (string), affiliation (string), and description (string)."
+            )
     topic = state['topic']
     max_analysts = state['max_analysts']
     human_analyst_feedback = state.get('human_analyst_feedback', '')
-    system_message = analyst_instructions.format(
-        topic=topic,
-        human_analyst_feedback=human_analyst_feedback,
-        max_analysts=max_analysts
+    user_message = (
+        f"TOPIC: <<< {topic} >>>\n"
+        f"MAX_ANALYSTS: <<< {max_analysts} >>>\n"
+        f"FEEDBACK: <<< {human_analyst_feedback} >>>\n"
+        f"TASK: Generate the set of analysts in JSON format."
     )
     try:
-        analysts_response = analyst.CallHumanLLM(original_input_messages=[SystemMessage(content=system_message), HumanMessage(content="Generate the set of analysts.")] , stream_output=False, return_message_content_only=True)[0]
-
+        analysts_response = analyst.CallHumanLLM(
+            system_prompt_template=filepath,
+            user_message=user_message,
+            stream_output=False,
+            return_message_content_only=True
+        )[0]
+        # Extraction du JSON et conversion en objets Analyst
         analysts_response = extract_json(remove_think_tags(analysts_response))
-
         if isinstance(analysts_response, Perspectives):
             generated_analysts = analysts_response.analysts
         elif isinstance(analysts_response, dict):
@@ -214,7 +221,7 @@ def create_analysts(state: GenerateAnalystsState):
                     description=f"Analyzing aspects of {topic}"
                 ) for i in range(max_analysts)
             ]
-        # Use model_dump if available (Pydantic v2+)
+        # Conversion compatible Pydantic v1/v2
         generated_analysts = [
             Analyst(**(a.model_dump() if hasattr(a, "model_dump") else a.dict() if hasattr(a, "dict") else a))
             for a in generated_analysts
@@ -441,79 +448,119 @@ class ResearchGraphState(TypedDict):
     max_iterations: int             # Maximum allowed iterations
 
 def plan_document(state: ResearchGraphState):
-    """Plan Agent: Create a detailed plan for the research document."""
+    """Plan Agent: Créer un plan détaillé pour le document de recherche."""
     print("Plan_document")
-    if "plan_instructions" not in state:
-        state["plan_instructions"] = (
-            "You are a planning assistant.\n\n"
-            "Your task is to create a detailed plan for a research document on the following topic:\n{topic}\n\n"
-            "Outline the key sections (e.g., Introduction, Main Content, Conclusion) and provide a brief description for each. "
-            "Format the plan clearly."
-        )
-    plan_instructions = state["plan_instructions"]
-    system_message = plan_instructions.format(topic=state["topic"])
-    plan = planner.CallHumanLLM(original_input_messages=[
-        SystemMessage(content=system_message),
-        HumanMessage(content="Generate a detailed plan for the research document.")
-    ], stream_output=False, return_message_content_only=True)[0]
+    filepath = "plan_document"
+    prompt_file = f"./prompts/{filepath}.txt"
+    if not os.path.exists(prompt_file):
+        with open(prompt_file, "w") as f:
+            f.write(
+                "You are a planning assistant. Your task is to create a detailed plan for a research document. "
+                "In the user message, you will receive a value labeled 'TOPIC' which represents the research topic. "
+                "Please outline the key sections (for example, Introduction, Main Content, Conclusion) and provide a brief description for each section. "
+                "Ensure that the plan is clear, detailed, and well-structured."
+            )
+    # Toutes les informations dynamiques sont passées dans le user_message.
+    user_message = f"TOPIC: <<< {state['topic']} >>>"
+    plan = planner.CallHumanLLM(
+        system_prompt_template=filepath,
+        user_message=user_message,
+        stream_output=False,
+        return_message_content_only=True
+    )[0]
     plan_text = plan.content if hasattr(plan, "content") else plan
-    print(f"plan generated : {remove_think_tags(plan_text)}")
-    return {"plan": remove_think_tags(plan_text)}
+    plan_text = remove_think_tags(plan_text)
+    print(f"plan generated : {plan_text}")
+    return {"plan": plan_text}
 
 def write_report(state: ResearchGraphState):
+    """Write Agent: Consolider les memos en un rapport cohérent (sans conclusion)."""
     print("Write_report")
-    # Instruct the LLM to consolidate memos WITHOUT including concluding remarks.
-    if "report_writer_instructions" not in state:
-        state['report_writer_instructions'] = (
-            "You are a technical writer creating a report on the overall topic:\n\n{topic}\n\n"
-            "Follow the plan for the report:\n{plan}\n\n"
-            "You have a team of analysts who conducted interviews and wrote memos. "
-            "Consolidate these memos into a cohesive narrative of insights. "
-            "DO NOT include any concluding remarks; a conclusion will be generated separately.\n\n"
-            "Format the report in Markdown with a title header '## Insights'. "
-            "Do not mention analyst names. Preserve any citations in the memos.\n\n"
-            "Here are the memos from your analysts:\n{context}"
-        )
-    report_writer_instructions = state["report_writer_instructions"]
+    filepath = "write_report"
+    prompt_file = f"./prompts/{filepath}.txt"
+    if not os.path.exists(prompt_file):
+        with open(prompt_file, "w") as f:
+            f.write(
+                "You are a technical writer tasked with creating a report based on provided inputs. "
+                "In the user message, you will receive the following values:\n"
+                "  - 'TOPIC': the research topic,\n"
+                "  - 'PLAN': the report plan,\n"
+                "  - 'MEMOS': a collection of memos from analysts.\n\n"
+                "Your job is to consolidate these memos into a cohesive narrative of insights, following the provided plan. "
+                "Do not include concluding remarks, as they will be generated separately. "
+                "Format the report in Markdown with a title header '## Insights'. "
+                "Avoid mentioning analyst names and preserve any citations present in the memos."
+            )
     sections = state["sections"]
-    topic = state["topic"]
-    formatted_str_sections = "\n\n".join(sections.content if isinstance(sections, AIMessage) else sections)
-    system_message = report_writer_instructions.format(topic=topic, plan=state["plan"], context=formatted_str_sections)
-    report = writerr.CallHumanLLM(original_input_messages=[
-        SystemMessage(content=system_message),
-        HumanMessage(content="Write a report based on these memos (without a conclusion).")
-    ], stream_output=False, return_message_content_only=True)[0]
-    print(f"report generated : {remove_think_tags(report)}")
-    return {"content": remove_think_tags(report)}
+    if hasattr(sections, "content"):
+        formatted_str_sections = sections.content
+    elif isinstance(sections, list):
+        formatted_str_sections = "\n\n".join(sections)
+    else:
+        formatted_str_sections = sections
+
+    user_message = (
+        f"TOPIC: <<< {state['topic']} >>>\n"
+        f"PLAN: <<< {state['plan']} >>>\n"
+        f"MEMOS: <<< {formatted_str_sections} >>>"
+    )
+    report = writerr.CallHumanLLM(
+        system_prompt_template=filepath,
+        user_message=user_message,
+        stream_output=False,
+        return_message_content_only=True
+    )[0]
+    report_text = report.content if hasattr(report, "content") else report
+    report_text = remove_think_tags(report_text)
+    print(f"report generated : {report_text}")
+    return {"content": report_text}
 
 def write_introduction(state: ResearchGraphState):
+    """Introduction Agent: Rédiger une introduction concise pour le rapport."""
     print("Write_introduction")
-    if "intro_conclusion_instructions" not in state:
-        state['intro_conclusion_instructions'] = (
-            "You are a technical writer finishing a report on {topic}.\n\n"
-            "Follow the plan for the report:\n{plan}\n\n"
-            "You will be given all sections of the report. Your task is to write a crisp and compelling introduction.\n"
-            "- Begin with a title using the '#' header.\n"
-            "- Use '## Introduction' as the section header.\n"
-            "- Aim for approximately 100 words that clearly preview the report sections.\n"
-            "Here are the sections to reflect on:\n{formatted_str_sections}"
-        )
-    intro_conclusion_instructions = state["intro_conclusion_instructions"]
+    filepath = "write_introduction"
+    prompt_file = f"./prompts/{filepath}.txt"
+    if not os.path.exists(prompt_file):
+        with open(prompt_file, "w") as f:
+            f.write(
+                "You are a technical writer tasked with writing the introduction for a research report. "
+                "In the user message, you will receive the following values:\n"
+                "  - 'TOPIC': the research topic,\n"
+                "  - 'PLAN': the report plan,\n"
+                "  - 'SECTIONS': the sections of the report.\n\n"
+                "Your task is to craft a crisp and compelling introduction. Begin with a title using a '#' header, followed by a section header '## Introduction'. "
+                "The introduction should be approximately 100 words and clearly preview the report sections."
+            )
     sections = state["sections"]
-    topic = state["topic"]
-    formatted_str_sections = "\n\n".join(sections).content if isinstance(sections, AIMessage) else sections
-    instructions = intro_conclusion_instructions.format(topic=topic, plan=state["plan"], formatted_str_sections=formatted_str_sections)
-    intro = writeri.CallHumanLLM(original_input_messages=[
-        SystemMessage(content=instructions),
-        HumanMessage(content="Write the report introduction.")
-    ], stream_output=False, return_message_content_only=True)[0]
-    print(f"introduction generated : {remove_think_tags(intro)}")
-    return {"introduction": remove_think_tags(intro)}
+    if hasattr(sections, "content"):
+        formatted_str_sections = sections.content
+    elif isinstance(sections, list):
+        formatted_str_sections = "\n\n".join(sections)
+    else:
+        formatted_str_sections = sections
+
+    user_message = (
+        f"TOPIC: <<< {state['topic']} >>>\n"
+        f"PLAN: <<< {state['plan']} >>>\n"
+        f"SECTIONS: <<< {formatted_str_sections} >>>\n"
+        f"TASK: Write the report introduction."
+    )
+    intro = writeri.CallHumanLLM(
+        system_prompt_template=filepath,
+        user_message=user_message,
+        stream_output=False,
+        return_message_content_only=True
+    )[0]
+    intro_text = intro.content if hasattr(intro, "content") else intro
+    intro_text = remove_think_tags(intro_text)
+    print(f"introduction generated : {intro_text}")
+    return {"introduction": intro_text}
 
 def write_conclusion(state: ResearchGraphState):
     filepath = "write_conclusion"
-    if not os.path.exists(filepath):
-        with open(f"./prompts/{filepath}.txt", "w") as f:
+    prompt_file = f"./prompts/{filepath}.txt"
+    if not os.path.exists(prompt_file):
+        with open(prompt_file, "w") as f:
             f.write("You are a technical writer tasked with finalizing a technical report. You excel at distilling complex topics "
         "into clear, concise conclusions. Your job is to write a crisp and compelling conclusion that starts with '## Conclusion', "
         "recapping the key insights from the report in approximately 100 words. Use best practices and clarity in your writing.")
@@ -538,31 +585,40 @@ def write_conclusion(state: ResearchGraphState):
 
 def write_resource_list(state: ResearchGraphState):
     """
-    Node to generate a consolidated resource list (citations) from the report sections.
-    Analyze the sections and extract all inline citations and resource details.
-    Format the resource list in Markdown under the header '## Sources'.
-    Each source should be on its own line in the format: "[n] <source details>".
-    Use 'Not Available' for any missing details.
+    Resource List Agent: Extraire et consolider les citations/références du rapport.
+    Format en Markdown sous le header '## Sources'.
     """
     print("Write_resource_list")
-    if "resource_list_instructions" not in state:
-        state["resource_list_instructions"] = (
-            "You are an expert technical writer.\n\n"
-            "Your task is to extract and consolidate all resource citations from the following report sections. "
-            "These citations may appear as inline references such as [Source 1], [Source 2], etc. "
-            "Generate a consolidated resource list in Markdown under the header '## Sources'.\n"
-            "Each source should be on a new line in the format: '[n] <source details>'. "
-            "If any details are missing, indicate them as 'Not Available'.\n\n"
-            "Here are the report sections:\n{sections}"
-        )
-    instructions = state["resource_list_instructions"].format(sections="\n\n".join(state["sections"]))
-    resource_list = writerrl.CallHumanLLM(original_input_messages=[
-        SystemMessage(content=instructions),
-        HumanMessage(content="Extract and generate a consolidated resource list.")
-    ], stream_output=False, return_message_content_only=True)[0]
+    filepath = "write_resource_list"
+    prompt_file = f"./prompts/{filepath}.txt"
+    if not os.path.exists(prompt_file):
+        with open(prompt_file, "w") as f:
+            f.write(
+                "You are an expert technical writer. Your task is to extract and consolidate all resource citations from report sections. "
+                "In the user message, you will receive a value labeled 'SECTIONS' which contains the report sections. "
+                "The citations may appear as inline references (e.g., [Source 1], [Source 2]). "
+                "Generate a consolidated resource list in Markdown under the header '## Sources', with each source on a new line in the format: '[n] <source details>'. "
+                "If any details are missing, indicate them as 'Not Available'."
+            )
+    sections = state["sections"]
+    if hasattr(sections, "content"):
+        formatted_str_sections = sections.content
+    elif isinstance(sections, list):
+        formatted_str_sections = "\n\n".join(sections)
+    else:
+        formatted_str_sections = sections
+
+    user_message = f"SECTIONS: <<< {formatted_str_sections} >>>"
+    resource_list = writerrl.CallHumanLLM(
+        system_prompt_template=filepath,
+        user_message=user_message,
+        stream_output=False,
+        return_message_content_only=True
+    )[0]
     resource_list_text = resource_list.content if hasattr(resource_list, "content") else resource_list
-    print(f"resources generated : {remove_think_tags(resource_list_text)}")
-    return {"resource_list": remove_think_tags(resource_list_text)}
+    resource_list_text = remove_think_tags(resource_list_text)
+    print(f"resources generated : {resource_list_text}")
+    return {"resource_list": resource_list_text}
 
 def finalize_report(state: ResearchGraphState):
     """Combine the introduction, main content, conclusion, and resource list into the final report."""
@@ -588,23 +644,30 @@ def finalize_report(state: ResearchGraphState):
 
 def self_critique(state: ResearchGraphState):
     """
-    Node that critiques the current final report and generates an updated plan.
-    The LLM is prompted to analyze the report, identify areas for improvement,
-    and output a revised plan. Also, increment the iteration counter.
+    Critique Agent: Analyser le rapport final et générer un plan mis à jour.
+    Incrémente également le compteur d'itération.
     """
     print("Self_critique")
+    filepath = "self_critique"
+    prompt_file = f"./prompts/{filepath}.txt"
+    if not os.path.exists(prompt_file):
+        with open(prompt_file, "w") as f:
+            f.write(
+                "You are an expert critic. Your task is to review a research report and provide constructive criticism with suggestions for improvement. "
+                "In the user message, you will receive a value labeled 'REPORT' which contains the current research report. "
+                "After analyzing the report, generate an updated plan that addresses the identified issues. "
+                "Return only the updated plan."
+            )
     current_report = state.get("final_report", "")
-    instructions = (
-        "You are an expert critic. Please review the following research report and provide constructive criticism "
-        "with suggestions for improvement. Then, generate an updated plan for the document that addresses the identified issues.\n\n"
-        "Current report:\n\n{report}\n\n"
-        "Provide your updated plan below."
-    ).format(report=current_report)
-    critique_response = critic.CallHumanLLM(original_input_messages=[
-        SystemMessage(content=instructions),
-        HumanMessage(content="Critique the report and update the plan.")
-    ], stream_output=False, return_message_content_only=True)[0]
-    updated_plan = remove_think_tags(critique_response.content if hasattr(critique_response, "content") else critique_response)
+    user_message = f"REPORT: <<< {current_report} >>>\nTASK: Critique the report and update the plan."
+    critique_response = critic.CallHumanLLM(
+        system_prompt_template=filepath,
+        user_message=user_message,
+        stream_output=False,
+        return_message_content_only=True
+    )[0]
+    updated_plan = critique_response.content if hasattr(critique_response, "content") else critique_response
+    updated_plan = remove_think_tags(updated_plan)
     print(f"Critique : {updated_plan}")
     state["iteration"] = state.get("iteration", 0) + 1
     return {"plan": updated_plan, "iteration": state["iteration"]}
@@ -669,6 +732,8 @@ def multi_agent_research_generation_persist_at_the_end(title, topic, max_analyst
 
     # Build the interview sub-graph (unchanged)
     interview_builder = StateGraph(InterviewState)
+    # TODO: Move out the Ask Question (make it generate 10 questions for each analysts before going in interview) and Write Section nodes to main graph so we can still parallelize the interviews and also use HumanLLMMonitor for
+    # these 2 nodes. 
     interview_builder.add_node("ask_question", generate_question)
     interview_builder.add_node("search_web", search_web)
     interview_builder.add_node("search_wikipedia", search_wikipedia)
@@ -723,10 +788,11 @@ def multi_agent_research_generation_persist_at_the_end(title, topic, max_analyst
                                              "messages": [HumanMessage(content=f"So you said you were writing an article on {topic}?")]})
                   for analyst in state["analysts"]]
     builder.add_conditional_edges("human_feedback", initiate_all_interviews, ["create_analysts", "conduct_interview"])
+    # Modify to sequential edge after interviews to avoid infinite loop when using HumnaLLMMonitor as llm.
     builder.add_edge("conduct_interview", "write_introduction")
-    builder.add_edge("conduct_interview", "write_report")
-    builder.add_edge("conduct_interview", "write_conclusion")
-    builder.add_edge(["write_conclusion", "write_report", "write_introduction"], "write_resource_list")
+    builder.add_edge("write_introduction", "write_report")
+    builder.add_edge("write_report", "write_conclusion")
+    builder.add_edge("write_conclusion", "write_resource_list")
     builder.add_edge("write_resource_list", "finalize_report")
     builder.add_edge("finalize_report", "self_critique")
     # The conditional edge from self_critique will either loop back via reset_for_iteration or end.
