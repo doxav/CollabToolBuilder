@@ -26,14 +26,16 @@ from typing_extensions import TypedDict
 from langchain_community.document_loaders import WikipediaLoader
 from langchain_core.messages import get_buffer_string
 from langgraph.constants import Send
-from langchain_community.chat_models import ChatOllama
+
+import requests
 
 import json
 import re
 from json import JSONDecoder
 
-from utils.llm_utils import HumanLLMMonitor, UnifiedVectorDB, smart_print
-from config import embedding_function, reset_db_indices
+from utils.llm_utils import HumanLLMMonitor, smart_print
+from utils.file_utils import save_to_pickle, load_from_pickle
+from config import embedding_function, reset_db_indices, MODELS_CONFIG_LIST
 
 import os
 os.environ['OPENAI_API_KEY'] = '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'
@@ -51,9 +53,10 @@ writeri = HumanLLMMonitor(agent_name="Write Introduction")
 writerrl = HumanLLMMonitor(agent_name="Write Resource List")
 writerc = HumanLLMMonitor(agent_name="Write Conclusion")
 critic = HumanLLMMonitor(agent_name="Self Critic")
+latex_gen = HumanLLMMonitor(agent_name="Generate Latex")
 HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
 
-llm_custom = ChatOpenAI(model="gpt-4o-mini-2024-07-18", temperature=.0)
+llm_custom = ChatOpenAI(model=MODELS_CONFIG_LIST["code_gpt"] if MODELS_CONFIG_LIST else "gpt-4o-mini-2024-07-18", temperature=.0)
 
 def extract_json(data):
     """
@@ -137,6 +140,57 @@ def remove_think_tags(text: str) -> str:
     cleaned_text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     return cleaned_text.strip()
 
+def extract_latex_and_bib_from_llm_output(text: str):
+    """
+    Extrait le contenu LaTeX et BibTeX d’un texte généré par un LLM.
+    
+    Recherche :
+    1) Soit des sections "Latex:" et "Bibtex:" suivies de leur contenu.
+    2) Soit des blocs Markdown ```latex ... ``` et ```bibtex ... ```.
+    
+    Retourne :
+    - latex_str : contenu LaTeX proprement extrait.
+    - bibtex_str : contenu BibTeX s'il existe, sinon None.
+    """
+
+    # Vérifier si le format Markdown est utilisé
+    latex_md_match = re.search(r'```latex\s*([\s\S]*?)\s*```', text, re.IGNORECASE)
+    bibtex_md_match = re.search(r'```bibtex\s*([\s\S]*?)\s*```', text, re.IGNORECASE)
+
+    if latex_md_match:
+        # Extraire le contenu entre les balises ```latex ... ```
+        latex_str = latex_md_match.group(1).strip()
+        
+        if bibtex_md_match:
+            # Extraire le contenu entre les balises ```bibtex ... ```
+            bibtex_str = bibtex_md_match.group(1).strip()
+        else:
+            bibtex_str = None
+
+        return latex_str, bibtex_str
+
+    # Sinon, on revient à la détection "Latex:" et "Bibtex:"
+    lower_text = text.lower()
+    
+    latex_label = lower_text.find("latex:")
+    bibtex_label = lower_text.find("bibtex:")
+
+    if latex_label == -1:
+        # Si "Latex:" n'est pas trouvé, on considère tout comme du LaTeX
+        return text.strip(), None
+
+    if bibtex_label == -1:
+        # Si "Bibtex:" n'est pas trouvé, tout après "Latex:" est du LaTeX
+        latex_str = text[latex_label + len("Latex:"):].strip()
+        return latex_str, None
+
+    # Si les deux labels sont trouvés, extraire chaque partie
+    latex_str = text[latex_label + len("Latex:"):bibtex_label].strip()
+    bibtex_str = text[bibtex_label + len("Bibtex:"):].strip()
+    
+    return latex_str, bibtex_str
+
+
 
 ### -------------------------------
 # ANALYST AND PERSPECTIVE SETUP
@@ -200,7 +254,8 @@ def create_analysts(state: GenerateAnalystsState):
             system_prompt_template=filepath,
             user_message=user_message,
             stream_output=False,
-            return_message_content_only=True
+            return_message_content_only=True,
+            use_default_llm=False
         )[0]
         # Extraction du JSON et conversion en objets Analyst
         analysts_response = extract_json(remove_think_tags(analysts_response))
@@ -287,7 +342,6 @@ def generate_question(state: InterviewState):
 
 def search_web(state: InterviewState):
     print("Search_web")
-    import requests
     OPENALEX_API_URL = "https://api.openalex.org/works"
     structured_llm = llm_custom.with_structured_output(SearchQuery)
     if "search_instructions" not in state:
@@ -331,6 +385,132 @@ def search_web(state: InterviewState):
     )
     smart_print(message=formatted_search_docs, agent_name="Search Web", message_type="NEW inference result recieved")
     return {"context": [formatted_search_docs]}
+
+def search_arxiv(state: InterviewState):
+    print("Search_arxiv")
+    import xml.etree.ElementTree as ET
+
+    ARXIV_API_URL = "http://export.arxiv.org/api/query"
+
+    # On suppose que llm_custom, SearchQuery et SystemMessage sont déjà définis ailleurs dans le code.
+    structured_llm = llm_custom.with_structured_output(SearchQuery)
+
+    # Si aucune instruction de recherche n'est présente dans l'état, on en crée une par défaut.
+    if "search_instructions" not in state:
+        state["search_instructions"] = SystemMessage(content=(
+            "You are given a research topic. Your task is to generate a concise and effective search query "
+            "optimized for the arXiv API. Make sure to include relevant keywords to retrieve the most pertinent scientific articles."
+        ))
+    search_instructions = state["search_instructions"]
+
+    # On utilise le topic présent dans l'état pour guider la génération de la requête de recherche.
+    # (Dans l'exemple search_web, on utilisait une conversation complète via state['messages'];
+    # ici, on se contente du topic.)
+    search_query = structured_llm.invoke([
+        search_instructions
+    ] + state["messages"])
+
+    # Préparation des paramètres pour l'API d'arXiv.
+    params = {
+        "search_query": search_query.search_query,  # La chaîne de recherche générée par le LLM.
+        "max_results": 5
+    }
+
+    response = requests.get(ARXIV_API_URL, params=params)
+    search_docs = []
+
+    if response.status_code == 200:
+        try:
+            root = ET.fromstring(response.content)
+            ns = {"atom": "http://www.w3.org/2005/Atom"}
+            for entry in root.findall("atom:entry", ns):
+                title = entry.find("atom:title", ns).text.strip() if entry.find("atom:title", ns) is not None else "Unknown Title"
+                summary = entry.find("atom:summary", ns).text.strip() if entry.find("atom:summary", ns) is not None else "No abstract available"
+                link = entry.find("atom:id", ns).text.strip() if entry.find("atom:id", ns) is not None else "Not Available"
+                authors = ", ".join([
+                    author.find("atom:name", ns).text.strip()
+                    for author in entry.findall("atom:author", ns)
+                ]) or "Not Available"
+                search_docs.append({
+                    "title": title,
+                    "authors": authors,
+                    "summary": summary,
+                    "link": link
+                })
+        except Exception as e:
+            print(f"Error parsing arXiv XML: {e}")
+    else:
+        print(f"Error retrieving data from arXiv: {response.status_code}")
+
+    # Formatage des résultats pour affichage.
+    formatted_search_docs = "\n\n---\n\n".join([
+        f'<Document title="{doc["title"]}" href="{doc["link"]}">\nAuthors: {doc["authors"]}\n\nAbstract: {doc["summary"]}\n</Document>'
+        for doc in search_docs
+    ])
+
+    smart_print(message=formatted_search_docs, agent_name="Search Arxiv", message_type="NEW inference result recieved")
+    return {"context": [formatted_search_docs]}
+
+def search_semantic_scholar(state: InterviewState):
+    print("Search_semantic_scholar")
+    SEMANTIC_SCHOLAR_API_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
+    structured_llm = llm_custom.with_structured_output(SearchQuery)
+    
+    # Set default search instructions if not already present
+    if "search_instructions" not in state:
+        state["search_instructions"] = SystemMessage(content=(
+            "You are given a research topic. Your task is to generate a concise and effective search query "
+            "optimized for the Semantic Scholar API. Ensure that the query includes relevant keywords to retrieve the most pertinent scientific articles."
+        ))
+    search_instructions = state["search_instructions"]
+    
+    # Generate the search query using the conversation messages
+    search_query = structured_llm.invoke([search_instructions] + state["messages"])
+    
+    # Prepare API request parameters
+    params = {
+        "query": search_query.search_query,
+        "limit": 5,
+        "fields": "paperId,title,abstract,authors"
+    }
+    
+    response = requests.get(SEMANTIC_SCHOLAR_API_URL, params=params)
+    search_docs = []
+    
+    if response.status_code == 200:
+        data = response.json()
+        # 'data' key holds the list of papers
+        for paper in data.get("data", []):
+            title = paper.get("title") or "Unknown Title"
+            abstract = paper.get("abstract") or "No abstract available"
+            # Process authors list: each author is a dict with at least a "name" key
+            authors_list = paper.get("authors", [])
+            authors = ", ".join([author.get("name", "Unknown") for author in authors_list])
+            if not authors:
+                authors = "Not Available"
+            paper_id = paper.get("paperId")
+            url = f"https://www.semanticscholar.org/paper/{paper_id}" if paper_id else "Not Available"
+            
+            search_docs.append({
+                "title": title,
+                "authors": authors,
+                "abstract": abstract,
+                "url": url
+            })
+    else:
+        print(f"Error retrieving data from Semantic Scholar: {response.status_code}")
+    
+    # Format the retrieved documents for display
+    formatted_search_docs = "\n\n---\n\n".join(
+        [
+            f'<Document title="{doc["title"]}" href="{doc["url"]}">\nAuthors: {doc["authors"]}\n\nAbstract: {doc["abstract"]}\n</Document>'
+            for doc in search_docs
+        ]
+    )
+    
+    smart_print(message=formatted_search_docs, agent_name="Search Semantic Scholar", message_type="NEW inference result recieved")
+    return {"context": [formatted_search_docs]}
+
 
 def search_wikipedia(state: InterviewState):
     print("Search_wikipedia")
@@ -446,6 +626,7 @@ class ResearchGraphState(TypedDict):
     final_report: str               # The final combined report
     iteration: int                  # Current iteration count
     max_iterations: int             # Maximum allowed iterations
+    latex_report: str               # The final report in latex
 
 def plan_document(state: ResearchGraphState):
     """Plan Agent: Créer un plan détaillé pour le document de recherche."""
@@ -466,7 +647,8 @@ def plan_document(state: ResearchGraphState):
         system_prompt_template=filepath,
         user_message=user_message,
         stream_output=False,
-        return_message_content_only=True
+        return_message_content_only=True,
+        use_default_llm=False
     )[0]
     plan_text = plan.content if hasattr(plan, "content") else plan
     plan_text = remove_think_tags(plan_text)
@@ -508,7 +690,8 @@ def write_report(state: ResearchGraphState):
         system_prompt_template=filepath,
         user_message=user_message,
         stream_output=False,
-        return_message_content_only=True
+        return_message_content_only=True,
+        use_default_llm=False
     )[0]
     report_text = report.content if hasattr(report, "content") else report
     report_text = remove_think_tags(report_text)
@@ -549,7 +732,8 @@ def write_introduction(state: ResearchGraphState):
         system_prompt_template=filepath,
         user_message=user_message,
         stream_output=False,
-        return_message_content_only=True
+        return_message_content_only=True,
+        use_default_llm=False
     )[0]
     intro_text = intro.content if hasattr(intro, "content") else intro
     intro_text = remove_think_tags(intro_text)
@@ -578,7 +762,8 @@ def write_conclusion(state: ResearchGraphState):
         system_prompt_template=filepath,
         user_message=user_message,
         stream_output=False,
-        return_message_content_only=True
+        return_message_content_only=True,
+        use_default_llm=False
     )[0]
     print(f"conclusion generated : {remove_think_tags(conclusion)}")
     return {"conclusion": remove_think_tags(conclusion)}
@@ -613,7 +798,8 @@ def write_resource_list(state: ResearchGraphState):
         system_prompt_template=filepath,
         user_message=user_message,
         stream_output=False,
-        return_message_content_only=True
+        return_message_content_only=True,
+        use_default_llm=False
     )[0]
     resource_list_text = resource_list.content if hasattr(resource_list, "content") else resource_list
     resource_list_text = remove_think_tags(resource_list_text)
@@ -664,7 +850,8 @@ def self_critique(state: ResearchGraphState):
         system_prompt_template=filepath,
         user_message=user_message,
         stream_output=False,
-        return_message_content_only=True
+        return_message_content_only=True,
+        use_default_llm=False
     )[0]
     updated_plan = critique_response.content if hasattr(critique_response, "content") else critique_response
     updated_plan = remove_think_tags(updated_plan)
@@ -698,7 +885,98 @@ def should_iterate(state: ResearchGraphState):
         return "reset_for_iteration"
     else:
         print(f"-----------### END OF ITERATION {state.get('iteration', 0)} ###-----------")
-        return END
+        return "generate_latex"
+    
+def generate_latex(state : ResearchGraphState):
+    """
+    This function will take the report and generate a latex file from it. No informations will be modified.
+    :param state: The current state of the report.
+    :type state: ResearchGraphState
+    :return: The state of the report.
+    :rtype: ResearchGraphState
+    """
+    print("Generate_latex")
+    report = state.get("final_report", "")
+    filepath = "generate_latex"
+    prompt_file = f"./prompts/{filepath}.txt"
+    if not os.path.exists(prompt_file):
+        with open(prompt_file, "w") as f:
+            f.write(
+                "Vous êtes un outil expert dans la conversion de texte en document LaTeX."
+                "Votre rôle est de transformer un rapport, fourni dans le message de l’utilisateur (sous le label REPORT), en un fichier .tex entièrement compilable et fidèle au contenu d’origine.\n"
+                "Exigences générales :"
+                "Reproduction totale du contenu\n"
+                "Chaque mot, chaque phrase, chaque équation, chaque tableau, chaque référence bibliographique ou tout autre élément du texte source doit apparaître intégralement dans la version LaTeX."
+                "Aucune information ne doit être supprimée, modifiée ou résumée."
+                "Ne corrigez pas les fautes d\’orthographe ou de grammaire, n\’ajoutez aucun texte supplémentaire, ne reformulez rien."
+                "Structure et formatage LaTeX soignés\n"
+                "Créez une structure claire : \\documentclass{...}, \\begin{document}, \\title{...}, \\section{...}, \\subsection{...}, etc."
+                "Utilisez des environnements LaTeX appropriés pour :"
+                "Les formules mathématiques : \\(...\\) ou \\begin{equation} ... \\end{equation}, etc."
+                "Les tableaux : \\begin{tabular}{...}, etc."
+                "Les figures et images, le cas échéant : \\begin{figure} ... \\end{figure}."
+                "Les listes : itemize ou enumerate si besoin."
+                "Les références et citations : \\cite{...} ou équivalent, selon le cas."
+                "Bibliographie et références\n"
+                "Si le rapport contient des références bibliographiques ou des sources, vous pouvez :"
+                "Générer un fichier .bib séparé et y faire appel depuis le document principal via \\bibliography{...} et \\bibliographystyle{...}, ou"
+                "Regrouper les références dans une section dédiée (ex. : \\section*{Références}) en fin de document."
+                "Conservez tous les détails de citation tels qu’ils apparaissent dans le texte d’origine (noms, dates, titres, liens, DOI, etc.)."
+                "Respect strict du contenu\n"
+                "Ne pas insérer d\’interprétations ou de commentaires personnels."
+                "Ne pas ajouter de marqueurs de correction, de surlignage ou de couleurs qui ne seraient pas prévus par le texte."
+                "Ne pas modifier le sens ou l’ordre des paragraphes."
+                "Si le rapport semble contenir des coquilles (fautes, redites, etc.), laissez-les telles quelles."
+                "Document complet et autonome\n"
+                "Le .tex produit doit être directement compilable (ex. : pdflatex document.tex ou similaire)."
+                "Assurez-vous d’inclure tous les packages nécessaires dans le préambule (\\usepackage{...}) s\’ils sont requis par certains éléments du texte (math, tableaux avancés, hyperliens, etc.)."
+                "Ne produisez aucune sortie autre que le code LaTeX final (pas de texte explicatif avant ou après)."
+                "Règles supplémentaires pour des cas spécifiques :"
+                "Formules mathématiques dans le texte :\n"
+                "Si le contenu d’origine emploie un format “inline” (par ex. $x^2$), utilisez \\(x^2\\) ou $x^2$."
+                "Si le contenu comporte des équations sur leur propre ligne, utilisez les environnements LaTeX adaptés (\\[ ... \\],\\begin{equation}...\\end{equation}, etc.)."
+                "Tableaux :\n"
+                "Si un tableau est fourni dans le texte brut (par ex., cellules séparées par tabulations ou barres verticales), reproduisez ce tableau avec l’environnement LaTeX adéquat (par ex. \\begin{tabular} ...)."
+                "Conservez tous les intitulés de colonnes, légendes et notes du tableau."
+                "Notes de bas de page ou annotations :\n"
+                "Transformez-les en véritables footnotes (\\footnote{...}) si cela correspond à l’intention d’origine."
+                "Images et figures :\n"
+                "Si le texte mentionne l\’insertion d’images (ex. “cf. Figure 1”), créez un environnement figure avec légende, même si le fichier image n\’est pas fourni."
+                "Placez un commentaire dans le code LaTeX (ex. % Image placeholder : figure1.png) indiquant le nom du fichier s\’il est mentionné."
+                "Liens externes :\n"
+                "Si vous rencontrez des URL (ex. https://...), conservez-les tels quels et envisagez l\’usage de \\href{...}{...} si le contexte l\’exige."
+                "Commencez votre réponse par la ligne Latex:"
+                "Juste après, insérez tous les éléments .tex (code LaTeX) contenant l\’entièreté du rapport."
+                "Si vous utilisez un fichier .bib séparé, alors après avoir terminé la partie LaTeX, insérez une nouvelle ligne Bibtex:"
+                "Juste après, mettez toutes les entrées BibTeX nécessaires."
+                "Si aucun .bib séparé n\’est généré (références incluses directement dans le .tex), n\’incluez pas la section Bibtex:."
+                "Exemple de structure :\n"
+                "python-repl"
+                "Copier"
+                "Modifier"
+                "Latex:"
+                "\\documentclass{article}"
+                "..."
+                "\\end{document}"
+                "Bibtex:"
+                "@article{...}"
+                "..."
+                "Aucune autre forme de sortie : pas de texte avant Latex:, pas d\’explication supplémentaire, pas de résumé ou de commentaires."
+                "Résumé :"
+                "Vous recevez en entrée un bloc de texte REPORT."
+                "Vous le convertissez intégralement en LaTeX, sans rien omettre ni modifier."
+                "Vous rendez un texte unique contenant :"
+                "La section Latex: avec tout le code .tex."
+                "Optionnellement, la section Bibtex: si un fichier .bib distinct est requis."
+                "Rien d’autre ne doit être produit."
+                )
+        
+    user_message = f"REPORT: <<< {report} >>>"
+    latex_report = latex_gen.CallHumanLLM(system_prompt_template=filepath, user_message=user_message, stream_output=False, return_message_content_only=True, use_default_llm=False)[0]
+    latex_report_text = latex_report.content if hasattr(latex_report, "content") else latex_report
+    latex_report_text = remove_think_tags(latex_report_text)
+    print(f"latex generated : {latex_report_text}")
+    return {'latex_report': latex_report_text}
 
 def multi_agent_research_generation_persist_at_the_end(title, topic, max_analysts: int = 3, max_iterations: int = 2):
     """
@@ -737,14 +1015,20 @@ def multi_agent_research_generation_persist_at_the_end(title, topic, max_analyst
     interview_builder.add_node("ask_question", generate_question)
     interview_builder.add_node("search_web", search_web)
     interview_builder.add_node("search_wikipedia", search_wikipedia)
+    interview_builder.add_node("search_arxiv", search_arxiv)
+    interview_builder.add_node("search_semantic_scholar", search_semantic_scholar)
     interview_builder.add_node("answer_question", generate_answer)
     interview_builder.add_node("save_interview", save_interview)
     interview_builder.add_node("write_section", write_section)
     interview_builder.add_edge(START, "ask_question")
     interview_builder.add_edge("ask_question", "search_web")
     interview_builder.add_edge("ask_question", "search_wikipedia")
+    interview_builder.add_edge("ask_question", "search_arxiv")
+    interview_builder.add_edge("ask_question", "search_semantic_scholar")
     interview_builder.add_edge("search_web", "answer_question")
     interview_builder.add_edge("search_wikipedia", "answer_question")
+    interview_builder.add_edge("search_arxiv", "answer_question")
+    interview_builder.add_edge("search_semantic_scholar", "answer_question")
     interview_builder.add_conditional_edges("answer_question", route_messages, ['ask_question', 'save_interview'])
     interview_builder.add_edge("save_interview", "write_section")
     interview_builder.add_edge("write_section", END)
@@ -765,8 +1049,11 @@ def multi_agent_research_generation_persist_at_the_end(title, topic, max_analyst
     builder.add_node("finalize_report", finalize_report)
     builder.add_node("self_critique", self_critique)
     builder.add_node("reset_for_iteration", reset_for_iteration)
+    builder.add_node("generate_latex", generate_latex)
     # Define conditional edge based on iteration count.
-    builder.add_conditional_edges("self_critique", should_iterate, ["reset_for_iteration", END])
+    builder.add_conditional_edges("self_critique", should_iterate, ["reset_for_iteration", "generate_latex"])
+    # Add the final latex generation node.
+    builder.add_edge("generate_latex", END)
     builder.add_edge("reset_for_iteration", "plan_document")
 
     # Graph flow:
@@ -800,11 +1087,21 @@ def multi_agent_research_generation_persist_at_the_end(title, topic, max_analyst
     graph = builder.compile(checkpointer=memory2)
     # Optionally, visualize the graph:
     # Image(graph.get_graph(xray=1).draw_mermaid_png())
-    # with open("images/graph_png.png", "wb") as f:
-    #     f.write(graph.get_graph(xray=1).draw_mermaid_png())
+    with open("images/graph_png.png", "wb") as f:
+        f.write(graph.get_graph(xray=1).draw_mermaid_png())
     graph.invoke(initial_state, params)
     final_state = graph.get_state(params)
     report = final_state.values.get('final_report')
+    latex_report, bibtex_report = extract_latex_and_bib_from_llm_output(final_state.values.get('latex_report', ""))
+    report_folder = "./report_outputs"
+    if not os.path.exists(report_folder):
+        os.makedirs(report_folder)
+    if latex_report:
+        with open(f"{report_folder}/{topic}.tex", "w") as f:
+            f.write(latex_report)
+    if bibtex_report:
+        with open(f"{report_folder}/{topic}.bib", "w") as f:
+            f.write(bibtex_report)
     return report
 
 # Invoke the multi-agent iterative workflow:
@@ -812,7 +1109,7 @@ report = multi_agent_research_generation_persist_at_the_end(
     title="State of the art on Leading Edge Noise",
     topic = "Research assistant framework for State of the art on Leading Edge Noise",
     max_analysts=5,
-    max_iterations=2  # Default number of iterations is 2.
+    max_iterations=1  # Default number of iterations is 2.
 )
 
 print(report)
