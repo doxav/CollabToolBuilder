@@ -160,18 +160,3 @@ class EnvironmentManager:
     def get_environment(self):
         return self.env
 
-def validate_function_code(code, function_name, local_scope=None, compile_test_only=False):
-    if local_scope is None:
-        local_scope = {}
-    try:
-        compiled_code = compile(code, '<string>', 'exec')
-        if compile_test_only:
-            return True
-        exec(compiled_code, globals(), local_scope)
-        func = local_scope.get(function_name)
-        if func is None or not callable(func):
-            raise ValueError(f"Function {function_name} is not defined or not callable.")
-        return func
-    except Exception as e:
-
-        return None

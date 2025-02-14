@@ -4,7 +4,7 @@ import os
 import openai
 import json
 from config import *
-from learn import TaskIdentificationAgent, HumanLLMMonitor, apply_special_criteria, apply_criteria_and_prepare_monitor_args
+from learn import TaskIdentificationAgent, HumanLLM, apply_special_criteria, apply_criteria_and_prepare_monitor_args
 from langchain_core.messages.ai import AIMessage
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -51,7 +51,7 @@ class TestCollabGPTCreator(unittest.TestCase):
     @patch('learn.HumanLLMMonitor._log_entry')
     def test_CallHumanLLM(self, mock_log, mock_llm_ouput, mock_after_inference, mock_before_inference, mock_load_prompt, mock_add_agent_data, mock_smart_input):
         # Create an instance of HumanLLMMonitor
-        monitor = HumanLLMMonitor(agent_name="TestAgent")
+        monitor = HumanLLM(agent_name="TestAgent")
         
         # Mock input messages
         original_input_messages = [
@@ -98,10 +98,10 @@ class TestCollabGPTCreator(unittest.TestCase):
     @patch('learn.HumanLLMMonitor._log_entry')  # Mock WebSocket send_message method
     def test_CallHumanLLM_socket_mode(self, mock_log, mock_send_message, mock_process_llm_output, mock_after_infer, mock_before_infer, mock_add_agent_data, mock_smart_input):
         # Enable WebSocket mode
-        HumanLLMMonitor.use_websocket = True
+        HumanLLM.use_websocket = True
 
         # Create an instance of HumanLLMMonitor
-        monitor = HumanLLMMonitor(agent_name="TestAgent")
+        monitor = HumanLLM(agent_name="TestAgent")
         
         # Mock input messages
         original_input_messages = [
@@ -146,14 +146,14 @@ class TestCollabGPTCreator(unittest.TestCase):
     @patch('utils.llm_utils.smart_input', return_value='Z')  # Mock smart_input to always return 'Z' (continue)
     @patch('learn.HumanLLMMonitor._before_inference', return_value=([SystemMessage(content="System prompt"), HumanMessage(content="User message")], "", True, False, None, None, None))
     @patch('learn.HumanLLMMonitor._after_inference', return_value=("", "", 0))
-    @patch.object(HumanLLMMonitor, 'process_llm_output', return_value=(AIMessage(content="Processed LLM output"), None, None))  # Mock process_llm_output
+    @patch.object(HumanLLM, 'process_llm_output', return_value=(AIMessage(content="Processed LLM output"), None, None))  # Mock process_llm_output
     @patch('utils.llm_utils.WebsocketServer.send_message')  # Mock WebSocket send_message method
     def test_CallHumanLLM_socket_mode(self, mock_send_message, mock_process_llm_output, mock_after_infer, mock_before_infer, mock_smart_input):
         # Enable WebSocket mode
-        HumanLLMMonitor.use_websocket = False
+        HumanLLM.use_websocket = False
 
         # Create an instance of HumanLLMMonitor
-        monitor = HumanLLMMonitor(agent_name="TestAgent")
+        monitor = HumanLLM(agent_name="TestAgent")
         
         # Mock input messages
         original_input_messages = [
@@ -202,13 +202,13 @@ class TestCollabGPTCreator(unittest.TestCase):
         mock_vectordb_instance = MockUnifiedVectorDB.return_value
 
         # Create an instance of HumanLLMMonitor
-        monitor = HumanLLMMonitor(agent_name="TestAgent")
+        monitor = HumanLLM(agent_name="TestAgent")
 
         # Ensure the database is initialized
-        HumanLLMMonitor._check_and_init_vector_db(embedding_function="text-embedding-ada-002", reset_db_indices=True)
+        HumanLLM._check_and_init_vector_db(embedding_function="text-embedding-ada-002", reset_db_indices=True)
         
         # Set the common_vectordb to the mock instance
-        HumanLLMMonitor.common_vectordb = mock_vectordb_instance
+        HumanLLM.common_vectordb = mock_vectordb_instance
 
         # Call the method to add agent data
         monitor.add_agent_data(
@@ -252,13 +252,13 @@ class TestCollabGPTCreator(unittest.TestCase):
         mock_vectordb_instance.query.return_value = [MagicMock(page_content='{"test_key":"test_value"}', metadata={"metadata_key": "metadata_value"})]
 
         # Create an instance of HumanLLMMonitor
-        monitor = HumanLLMMonitor(agent_name="TestAgent")
+        monitor = HumanLLM(agent_name="TestAgent")
 
         # Ensure the database is initialized
-        HumanLLMMonitor._check_and_init_vector_db(embedding_function="text-embedding-ada-002", reset_db_indices=True)
+        HumanLLM._check_and_init_vector_db(embedding_function="text-embedding-ada-002", reset_db_indices=True)
         
         # Set the common_vectordb to the mock instance
-        HumanLLMMonitor.common_vectordb = mock_vectordb_instance
+        HumanLLM.common_vectordb = mock_vectordb_instance
         
         # Call the method to get agent data
         data, results = monitor.get_agent_data(agent_name="TestAgent", data_key="test_key")
