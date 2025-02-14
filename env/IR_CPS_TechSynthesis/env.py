@@ -30,7 +30,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_openai import OpenAIEmbeddings
 
 from utils.file_utils import save_to_pickle, load_from_pickle
-from utils.llm_utils import UnifiedVectorDB, VectorDBConfig
+from utils.llm_utils import UnifiedVectorDB, UnifiedVectorDBConfig
 #from langchain_community.cache import InMemoryCache, SQLiteCache
 #langchain.llm_cache = SQLiteCache(database_path="sqlite/langchain_cache.db")
 
@@ -149,7 +149,7 @@ class DocumentStructure:
             return s
         friendly_collection = filename_friendly_collection_string(self.synthesis_type)+"__"+filename_friendly_collection_string(self.title)
         self.resources_vectordb = UnifiedVectorDB(
-            VectorDBConfig(
+            UnifiedVectorDBConfig(
                 collection_name=friendly_collection[1:63],
                 embedding_function=self.embedding_model,
                 persist_directory=f"ckpt/doc/{friendly_collection}",

@@ -95,18 +95,16 @@ class WebsocketServer:
                 f'websocket_logs/websocketdata_{self.host}_{self.port}_{date_str}.txt'
             )
 
-        # Thread for running the WebSocket server
-        self.ws_thread = None
+        # Initialize the server thread
         # Event to stop the server
         self.stop_event = threading.Event()
-        # Initialize the server thread
-        self.ws_thread = threading.Thread(target=self.main, args=(self.stop_event,), daemon=True)
+        self.ws_thread = threading.Thread(target=self.run_server, daemon=True)
         self.ws_thread.start()
 
     def run_server(self):
         """Start the WebSocket server in a separate thread."""
         self.stop_event.clear()
-        self.ws_thread.start()
+        asyncio.run(self.main(self.stop_event))
 
     def stop_server(self):
         """Stop the WebSocket server and wait for the thread to terminate."""
@@ -182,7 +180,7 @@ class WebsocketServer:
 
                     if agent_name in self.monitors:
                         monitor = self.monitors[agent_name]
-                        self.logger(
+                        self.logger.info(
                             f"Executing function '{function_name}' for monitor '{agent_name}' "
                             f"with params: {params}"
                         )
@@ -216,6 +214,8 @@ class WebsocketServer:
                     if client != websocket and message is not None:
                         await client.send(message)
         except Exception as e:
+            import traceback
+            print(traceback.format_exc())
             self.logger.error(f"Error in WebSocket handler: {e}")
         finally:
             self.connected_clients.remove(websocket)

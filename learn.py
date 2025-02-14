@@ -7,7 +7,7 @@ from env.env import EnvironmentManager
 from env.IR_CPS_TechSynthesis.env import *
 from env.SWEBench.env import *
 from utils.constants import ELASTIC_DATABASE
-from utils.human_llm import HumanLLM
+from utils.human_llm import HumanLLM, HumanLLMConfig
 from utils.llm_utils import (
     smart_print, smart_input,
     import_functions_from_directory,
@@ -67,9 +67,12 @@ def run_4agents_learning_loop(
     human_evaluation_required=False,
     date_start=None
 ):
-    humanLLM = HumanLLM()
+    config = HumanLLMConfig()
     scores = None
-
+    if config.user_session.user_id is None and automation is None:
+        config.user_session.user_id = smart_input("User ID ?", "Learning Loop", message_type="USER_ID")
+    # config.get_user_id()
+    
     # Definition of automation depending on the task given
     if functions_to_import:
         # Imports the functions with the regex pattern given from functions directory into the elastic database
@@ -90,9 +93,9 @@ def run_4agents_learning_loop(
             )
             tags = {
                 "host": f"{socket.gethostname()}-{uuid.getnode()}",
-                "step_id": humanLLM.step_id
+                "step_id": config.step_id
             }
-            print("Adding learnt task:", humanLLM.add_learnt_task(serialized_entry, tags))
+            print("Adding learnt task:", config.add_learnt_task(serialized_entry, tags))
 
     logging.info("Starting learning loop...")
 
@@ -128,7 +131,7 @@ def run_4agents_learning_loop(
             print(f"Special criteria: default_llm_choice set to {default_llm_key}")
     logging.info(f"Special criteria: {special_criteria}")
     logging.info(f"Automation: {automation}")
-    humanLLM.special_criteria = special_criteria
+    config.special_criteria = special_criteria
 
     # Pour chaque agent, tester si saved_task['agent_name'] est égal a eux, si non => automation = 'skip_once', si oui => automation = saved_task['before_after']
     agent_taskreco: TaskIdentificationAgent = TaskIdentificationAgent(
@@ -199,6 +202,7 @@ def run_4agents_learning_loop(
         ),
         special_criteria=special_criteria
     )
+
     duration = datetime.now() - date_start
 
     seconds = duration.total_seconds()
@@ -211,7 +215,7 @@ def run_4agents_learning_loop(
 
     # Global learn loop
     while continue_identifying_tasks and time.time() < time_end:
-        humanLLM.step_id = str(random.randint(0, 1000000))
+        config.step_id = str(random.randint(0, 1000000))
         task = agent_taskreco.identify_best_task()
 
         # Handle multiple-tasks case
@@ -822,33 +826,33 @@ def coding_and_validation_loop(
     return None, "failed", all_scores
 
 def prepare_configs(args):
-    humanLLM = HumanLLM()
-    humanLLM.use_websocket = True
-    humanLLM.smart_input = smart_input
-    humanLLM.smart_print = smart_print
-    humanLLM.websocket_server_config.port = args.port
-    humanLLM.websocket_server_config.secret = args.secret
-    humanLLM.websocket_server_config.proxy_enabled = args.proxy
+    config = HumanLLMConfig()
+    config.use_websocket = True
+    config.smart_input = smart_input
+    config.smart_print = smart_print
+    config.websocket_server_config.port = args.port
+    config.websocket_server_config.secret = args.secret
+    config.websocket_server_config.proxy_enabled = args.proxy
     
     if 'discord_webhook' in globals():
-        humanLLM.discord_webhook = globals()['discord_webhook']
+        config.discord_webhook = globals()['discord_webhook']
 
     if 'embedding_function' in globals():
         embedding_function = globals()['embedding_function']
     if embedding_function is None:
         embedding_function = "text-embedding-ada-002"
-    humanLLM.vector_db_conf.embedding_function = embedding_function
+    config.common_vectordb_config.embedding_function = embedding_function
 
     if not 'reset_db_indices' in locals():
-        humanLLM.vector_db_conf.reset_indices = False
+        config.common_vectordb_config.reset_indices = False
 
-    humanLLM.vector_db_conf.db_type = ELASTIC_DATABASE
+    config.common_vectordb_config.db_type = ELASTIC_DATABASE
     if elastic_url_port:
-        humanLLM.vector_db_conf.es_config.es_url = elastic_url_port
+        config.common_vectordb_config.es_config.es_url = elastic_url_port
     if elastic_user:
-        humanLLM.vector_db_conf.es_config.es_user = elastic_user
+        config.common_vectordb_config.es_config.es_user = elastic_user
     if elastic_password:
-        humanLLM.vector_db_conf.es_config.es_password = elastic_password
+        config.common_vectordb_config.es_config.es_password = elastic_password
     
     openai.api_key = os.environ['OPENAI_API_KEY']
     if 'OPENAI_BASE_URL' in os.environ:
@@ -873,8 +877,8 @@ def prepare_configs(args):
 
     if unique_id is None:
         unique_id = f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
-    if unique_id is not False and humanLLM.vector_db_conf.unique_collection_id is None:
-        humanLLM.vector_db_conf.set_unique_collection_id(unique_id)
+    if unique_id is not False and config.common_vectordb_config.unique_collection_id is None:
+        config.common_vectordb_config.set_unique_collection_id(unique_id)
 
     if 'saved_task' in globals():
         special_criteria["all#saved_task"] = saved_task
@@ -923,11 +927,11 @@ def prepare_configs(args):
         automation = None
     else:
         automation = globals()["automation"]
-    humanLLM.special_criteria = special_criteria
-    humanLLM.automation = automation
+    config.special_criteria = special_criteria
+    config.automation = automation
 
-    humanLLM.initialize()
-    return humanLLM
+    config.initialize()
+    return config
 
 
 if __name__ == "__main__":
@@ -940,14 +944,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     
-    humanLLM = prepare_configs(args)
-
-    # Initialize HumanLLMMonitor databases
-    humanLLM._check_and_init_vector_db()
-
+    config = prepare_configs(args)
+    
     # Initialize the default and premium LLMs
     # from langchain_groq import ChatGroq
-    llmORchains_list = humanLLM.get_llmORchains_list()
+    llmORchains_list = config.get_llmORchains_list()
 
     # Set the documents to test/validate as a list of environments
     documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
@@ -968,7 +969,7 @@ if __name__ == "__main__":
             target_file_path=doc['target_file_path'],
             id=doc['id'],
             llm=llmORchains_list["default_llm"],
-            embedding_model_name=humanLLM.vector_db_conf.embedding_function
+            embedding_model_name=config.common_vectordb_config.embedding_function
         ).get_environment()
         envs_tech_synthesis.append(env)
 
@@ -995,14 +996,14 @@ if __name__ == "__main__":
         # functions_to_import=".*",
         functions_to_import=None,
         primitives_dir="primitives/generate_primitives",
-        special_criteria=humanLLM.special_criteria,
-        automation=humanLLM.automation,
+        special_criteria=config.special_criteria,
+        automation=config.automation,
         model_choice={
             "coach": "premium_llm",
             "coder": "coder_llm",
             "critic": "default_llm",
             "capitalizer": "default_llm"
         },
-        embedding_function=humanLLM.vector_db_conf.embedding_function,
+        embedding_function=config.common_vectordb_config.embedding_function,
         date_start=datetime.now()
     )

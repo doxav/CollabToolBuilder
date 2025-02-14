@@ -4,7 +4,7 @@ import os
 import openai
 import json
 from config import *
-from learn import TaskIdentificationAgent, HumanLLM, apply_special_criteria, apply_criteria_and_prepare_monitor_args
+from learn import TaskIdentificationAgent, HumanLLM, apply_special_criteria
 from langchain_core.messages.ai import AIMessage
 from langchain_core.messages import HumanMessage, SystemMessage
 

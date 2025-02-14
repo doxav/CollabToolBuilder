@@ -51,9 +51,8 @@ class TaskIdentificationAgent:
         
         kw_common_args = apply_criteria_and_prepare_monitor_args(self, special_criteria, locals())
 
-        self.human_llm_identify_best_task = HumanLLM()
-        for key, value in kw_common_args.items():
-            setattr(self.human_llm_identify_best_task, key, value)
+        self.human_llm_identify_best_task = HumanLLM(**kw_common_args)
+        
 
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         if self.additional_check_list:
@@ -146,7 +145,7 @@ class CodingAgent:
         self.automation = automation
         self.model_choice = model_choice
         self.processed_codes = set()
-        saved_task, auto_n_rounds, recommend_critics = None, None, None
+
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
         self.last_user_message = None
         if hasattr(self, 'num_parallel_inferences') and self.num_parallel_inferences == 0:
@@ -155,6 +154,7 @@ class CodingAgent:
         kw_common_args = apply_criteria_and_prepare_monitor_args(self, special_criteria, locals())
 
         self.human_llm_code_task = HumanLLM(**kw_common_args)
+
         self.human_llm_code_task.skip_rounds = skip_rounds
         self.human_llm_code_task.add_inference_check("Code Parsing", self.parse_ai_generated_code)
         self.human_llm_code_task.add_inference_check("Run Tests", self.run_tests_on_code)
@@ -1040,7 +1040,19 @@ class PlannerAgent:
         kw_common_args = apply_criteria_and_prepare_monitor_args(self, special_criteria, locals())
 
         self.human_llm_planner = HumanLLM(**kw_common_args)
-        self.coding_agent = CodingAgent( default_llm_choice=self.llm, primitives_dir=primitives_dir, envs=self.envs, premium_llm_choice=None, problem_prompts_subdir=self.problem_prompts_subdir, skip_rounds=self.skip_rounds, llmORchains_list=self.llmORchains_list, automation=self.automation, model_choice=self.model_choice, special_criteria=None, num_parallel_inferences=1)
+        self.coding_agent = CodingAgent(
+            default_llm_choice=self.llm,
+            primitives_dir=primitives_dir,
+            envs=self.envs,
+            premium_llm_choice=None,
+            problem_prompts_subdir=self.problem_prompts_subdir,
+            skip_rounds=self.skip_rounds,
+            llmORchains_list=self.llmORchains_list,
+            automation=self.automation,
+            model_choice=self.model_choice,
+            special_criteria=None,
+            num_parallel_inferences=1
+        )
         self.special_criteria = special_criteria
         self.primitives_dir = primitives_dir
 

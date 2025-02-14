@@ -64,7 +64,6 @@ class InferenceCheck:
         return self.check_function(*args, **kwargs, output_id=output_id)
 
 
-
 class PrintPromptRunnable(Runnable):
     """Runnable to print the formatted prompt in red."""
 
@@ -77,8 +76,7 @@ class PrintPromptRunnable(Runnable):
         return input_msg
 
 
-
-class VectorDBConfig:
+class UnifiedVectorDBConfig:
     """Configuration for the vector database."""
 
     def __init__(
@@ -127,6 +125,7 @@ class VectorDBConfig:
     def set_unique_collection_id(self, unique_id):
         self.unique_collection_id = unique_id
 
+
 class LLMConfig:
     """Configuration for Language Model (LLM) settings."""
 
@@ -170,7 +169,7 @@ class UserSession:
         if self.user_id is None:
             self.user_id = os.environ.get(
                 'user_id',
-                smart_input("Please enter your user id: ", message_type="USER ID")
+                smart_input("Please enter your user id: ", "Learning Loop", message_type="USER_ID")
             )
         return self.user_id
 
@@ -218,7 +217,7 @@ class UnifiedVectorDB:
             cls._instance = super(UnifiedVectorDB, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self, config: Optional[VectorDBConfig]=None):
+    def __init__(self, config: Optional[UnifiedVectorDBConfig]=None):
         if hasattr(self, '_initialized'):
             return
 
@@ -230,7 +229,7 @@ class UnifiedVectorDB:
         self.elastic_client: Optional[Any] = None
         self.db: Optional[Any] = None
         self._collection: Optional[Any] = None
-        self.config: Optional[VectorDBConfig] = config
+        self.config: Optional[UnifiedVectorDBConfig] = config
         self.check_db()
         self.get_unique_id()
         if self.config.unique_collection_id is not None:
@@ -255,7 +254,7 @@ class UnifiedVectorDB:
             )
             self.db = ElasticsearchStore(
                 index_name=self.config.collection_name,
-                embedding=self.config.embedding_function,
+                embedding=self.config.common_vectordb_embedding_function,
                 es_connection=self.elastic_client,
                 distance_strategy="COSINE"
             )
@@ -494,7 +493,7 @@ def smart_print(
         optional=False
     ):
     logger = logging.getLogger(__name__)
-    from utils.human_llm import HumanLLM
+    from utils.human_llm import HumanLLM, HumanLLMConfig
     global AgentDisplayManager, AGENT
     if 'IN_NOTEBOOK' not in globals():
         try:  # test if IN_NOTEBOOK
@@ -507,7 +506,7 @@ def smart_print(
         IN_NOTEBOOK = globals()['IN_NOTEBOOK']
 
     if 'IN_WEBSOCKET' not in globals():
-        if HumanLLM().use_websocket:
+        if HumanLLMConfig().use_websocket:
             globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = True
         else:
             globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = False
@@ -516,9 +515,9 @@ def smart_print(
 
     if IN_WEBSOCKET:
         # Ensure websocket server is not none
-        if HumanLLM().websocket_server is None:
+        if HumanLLMConfig().websocket_server is None:
             logger.info("WebSocket server not initialized, initializing...")
-            HumanLLM().initialize_websocket_server()
+            HumanLLMConfig().initialize_websocket_server()
             logger.info("WebSocket server initialized.")
 
         # Check if in the message there are no unexpected non-whitespace characters
@@ -527,14 +526,14 @@ def smart_print(
             message = re.sub(r'[^\x20-\x7E\t\n\r]', "", message)
         message_dict = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'append': append,
                         'column_id': column_id, 'column_max': column_max, 'optional': optional,
-                        'step_id': HumanLLM().step_id}
+                        'step_id': HumanLLMConfig().step_id}
         # convert message_dict to json
         message = json.dumps(message_dict)
         time.sleep(0.05)
         # Wait a second every 500 messages to avoid flooding the WebSocket server
-        if HumanLLM().websocket_server.message_count % 500 == 0:
+        if HumanLLMConfig().websocket_server.message_count % 500 == 0:
             time.sleep(0.5)
-        HumanLLM().websocket_server.send_message(message)
+        HumanLLMConfig().websocket_server.send_message(message)
 
     elif IN_NOTEBOOK and agent_name:
         # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
@@ -556,7 +555,7 @@ def smart_print(
 
 def smart_input(message: str, agent_name=None, message_type=None, column_id=None, column_max=None, optional=False):
     logger = logging.getLogger(__name__)
-    from utils.human_llm import HumanLLM
+    from utils.human_llm import HumanLLMConfig
     # Determine if running in a notebook environment
     if 'IN_NOTEBOOK' not in globals():
         try:  # test if IN_NOTEBOOK
@@ -570,7 +569,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
 
     # Determine if using WebSocket
     if 'IN_WEBSOCKET' not in globals():
-        if HumanLLM().use_websocket:
+        if HumanLLMConfig().use_websocket:
             globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = True
         else:
             globals()['IN_WEBSOCKET'] = IN_WEBSOCKET = False
@@ -585,14 +584,14 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
         #         time.sleep(1)
 
         # Ensure websocket server is not none
-        if HumanLLM().websocket_server is None:
+        if HumanLLMConfig().websocket_server is None:
             logger.info("WebSocket server not initialized, initializing...")
-            HumanLLM().initialize_websocket_server()
+            HumanLLMConfig().initialize_websocket_server()
             logger.info("WebSocket server initialized.")
 
         # # Retrieve port and secret from WebsocketServer
-        port = HumanLLM().websocket_server.port
-        secret = HumanLLM().websocket_server.secret
+        port = HumanLLMConfig().websocket_server.port
+        secret = HumanLLMConfig().websocket_server.secret
         ws_url = f"ws://localhost:{port}"
         if secret:
             ws_url += f"?secret={secret}"
@@ -606,12 +605,12 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
             'column_max': column_max,
             'input': True,
             'optional': optional,
-            'step_id': HumanLLM().step_id
+            'step_id': HumanLLMConfig().step_id
         }
         message_json = json.dumps(structured_message)
 
         # Send the message via WebsocketServer
-        HumanLLM().websocket_server.send_message(message_json)
+        HumanLLMConfig().websocket_server.send_message(message_json)
 
         async def receive_message(timeout=86400):
             async with websockets.connect(ws_url, ping_interval=30, ping_timeout=60) as websocket:
@@ -641,17 +640,16 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
                             logger.error(f"Error decoding JSON: {e}")
                             return None
                         # Ignore messages from self
-                        if 'sender_id' in json_data and json_data[
-                            'sender_id'] == HumanLLM().websocket_server.server_id:
+                        if 'sender_id' in json_data and json_data['sender_id'] == HumanLLMConfig().websocket_server.server_id:
                             logger.error("Received message from self, ignoring")
                             continue
 
                         # Handle function results
                         if 'result' in json_data:
                             logger.info("Received function result, ignoring")
-                            json_data['sender_id'] = HumanLLM().websocket_server.server_id
+                            json_data['sender_id'] = HumanLLMConfig().websocket_server.server_id
                             response = json.dumps(json_data)
-                            HumanLLM().websocket_server.send_notasync_message(response)
+                            HumanLLMConfig().websocket_server.send_notasync_message(response)
                             continue
                         else:
                             break
@@ -661,7 +659,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
                         answer = json_data['result']
                     else:
                         raise ValueError("No 'message' or 'result' in WebSocket response")
-                    logger.info("SMART INPUT Answer: ", answer)
+                    logger.info(f"SMART INPUT Answer: {answer}")
                     return str(answer).upper()
                 except asyncio.TimeoutError:
                     logger.error("Timeout waiting for response from WebSocket")
@@ -931,10 +929,10 @@ def apply_criteria_and_prepare_monitor_args(agent, special_criteria, available_l
     # Prepare HumanLLMMonitor arguments
     from utils.human_llm import HumanLLM
     HumanLLMM_args = set(inspect.signature(HumanLLM.__init__).parameters) - {'self'}
-    print(HumanLLMM_args)
+    # print(HumanLLMM_args)
     kw_common_args = {param: available_locals[param] for param in HumanLLMM_args if param in available_locals}
     kw_common_args.update(new_params)
-    print(kw_common_args)
+    # print(kw_common_args)
 
     return kw_common_args
 
