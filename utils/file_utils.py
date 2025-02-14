@@ -73,6 +73,8 @@ def save_to_pickle(func):
             return result
         filename = get_hashed_filename(func.__name__, *args, **kwargs)
         # update filename given pkl files are in pkl_cache folder
+        if not os.path.exists("pkl_cache"):
+            os.makedirs("pkl_cache")
         filename = os.path.join("pkl_cache", filename)
         with open(filename, 'wb') as file:
             pickle.dump(result, file)

@@ -200,18 +200,18 @@ class Analyst(BaseModel):
     affiliation: str = Field(
         description="Primary affiliation of the analyst.",
     )
-    name: str = Field(
-        description="Name of the analyst."
-    )
+    # name: str = Field(
+    #     description="Name of the analyst."
+    # )
     role: str = Field(
-        description="Role of the analyst in the context of the topic.",
+        description="Role/expertise of the analyst in the context of the topic.",
     )
     description: str = Field(
         description="Description of the analyst focus, concerns, and motives.",
     )
     @property
     def persona(self) -> str:
-        return f"Name: {self.name}\nRole: {self.role}\nAffiliation: {self.affiliation}\nDescription: {self.description}\n"
+        return f"Role: {self.role}\nAffiliation: {self.affiliation}\nDescription: {self.description}\n"
 
 class Perspectives(BaseModel):
     analysts: List[Analyst] = Field(
@@ -238,7 +238,7 @@ def create_analysts(state: GenerateAnalystsState):
                 "  - 'FEEDBACK': any editorial feedback,\n"
                 "  - 'MAX_ANALYSTS': the maximum number of analysts to generate.\n\n"
                 "Review the topic and feedback, identify the top themes, and assign one analyst per theme. "
-                "Each analyst must have the following fields: name (string), role (string), affiliation (string), and description (string)."
+                "Each analyst must have the following fields: role (string), affiliation (string), and description (string)."
             )
     topic = state['topic']
     max_analysts = state['max_analysts']
@@ -270,7 +270,6 @@ def create_analysts(state: GenerateAnalystsState):
         else:
             generated_analysts = [
                 Analyst(
-                    name=f"Analyst {i+1}",
                     role=f"Research Specialist {i+1}",
                     affiliation="Research Institute",
                     description=f"Analyzing aspects of {topic}"
@@ -286,7 +285,6 @@ def create_analysts(state: GenerateAnalystsState):
         print(f"Error generating analysts: {e}")
         default_analysts = [
             Analyst(
-                name=f"Analyst {i+1}",
                 role=f"Research Specialist {i+1}",
                 affiliation="Research Institute",
                 description=f"Analyzing aspects of {topic}"
@@ -294,10 +292,10 @@ def create_analysts(state: GenerateAnalystsState):
         ]
         return {"analysts": default_analysts}
 
-def human_feedback(state: GenerateAnalystsState):
-    """No-op node that can be interrupted for human feedback."""
-    print("Human_feedback")
-    pass
+# def human_feedback(state: GenerateAnalystsState):
+#     """No-op node that can be interrupted for human feedback."""
+#     print("Human_feedback")
+#     pass
 
 def should_continue(state: GenerateAnalystsState):
     print("Should_continue")
@@ -337,30 +335,27 @@ def generate_question(state: InterviewState):
     messages = state["messages"]
     system_message = question_instructions.format(goals=analyst.persona)
     question_answer = llm_custom.invoke([SystemMessage(content=system_message)] + messages)
-    smart_print(message=question_answer.content if isinstance(question_answer, AIMessage) else question_answer, agent_name="Generate Question", message_type="NEW inference result recieved")
+    smart_print(message=question_answer.content if isinstance(question_answer, AIMessage) else question_answer, agent_name="Generate Question", message_type="NEW inference result recieved", column_id=0, column_max=1)
     return {"messages": [question_answer]}
 
-def search_web(state: InterviewState):
-    print("Search_web")
+
+@load_from_pickle
+@save_to_pickle
+def search_llm_query(search_instructions : SystemMessage, user_message : str):
+    return llm_custom.with_structured_output(SearchQuery).invoke([search_instructions] + user_message)
+
+@load_from_pickle
+@save_to_pickle
+def search_web_query_get(search_query):
     OPENALEX_API_URL = "https://api.openalex.org/works"
-    structured_llm = llm_custom.with_structured_output(SearchQuery)
-    if "search_instructions" not in state:
-        state["search_instructions"] = SystemMessage(content=(
-            "You will be given a conversation between an analyst and an expert. "
-            "Your goal is to generate a well-structured query for retrieval. "
-            "Analyze the conversation—especially the final question—and convert it into a search query."
-        ))
-    search_instructions = state["search_instructions"]
-    search_query = structured_llm.invoke([search_instructions] + state['messages'])
     params = {
-        "search": search_query.search_query,
+        "search": search_query.search_query,  # La chaîne de recherche générée par le LLM.
         "filter": "is_paratext:false",
         "sort": "relevance_score:desc",
         "per_page": 5
     }
     response = requests.get(OPENALEX_API_URL, params=params)
     search_docs = []
-    "Testing a research assistant framework in Toulon M2 Master's program: curriculum design, pedagogical strategies, diverse learning needs, collaboration between researchers and educators, student dynamics, dissemination of findings."
 
     if response.status_code == 200:
         data = response.json()
@@ -377,40 +372,32 @@ def search_web(state: InterviewState):
             })
     else:
         print(f"Error retrieving data from OpenAlex: {response.status_code}")
-    formatted_search_docs = "\n\n---\n\n".join(
-        [
-            f'<Document title="{doc["title"]}" href="{doc["url"]}">\nAuthors: {doc["authors"]}\n\nAbstract: {doc["abstract"]}\n</Document>'
-            for doc in search_docs
-        ]
-    )
-    smart_print(message=formatted_search_docs, agent_name="Search Web", message_type="NEW inference result recieved")
-    return {"context": [formatted_search_docs]}
 
-def search_arxiv(state: InterviewState):
-    print("Search_arxiv")
-    import xml.etree.ElementTree as ET
+    # Formatage des résultats pour affichage.
+    formatted_search_docs = "\n\n---\n\n".join([
+        '<Document title="' + doc["title"] + '" href="' + doc["url"] + '">\nAuthors:' + doc["authors"] + '\n\nAbstract:' + doc["abstract"] + '\n</Document>'
+        for doc in search_docs
+    ])
+    return formatted_search_docs
 
-    ARXIV_API_URL = "http://export.arxiv.org/api/query"
-
-    # On suppose que llm_custom, SearchQuery et SystemMessage sont déjà définis ailleurs dans le code.
-    structured_llm = llm_custom.with_structured_output(SearchQuery)
-
-    # Si aucune instruction de recherche n'est présente dans l'état, on en crée une par défaut.
+def search_web(state: InterviewState):
+    print("Search_web")
     if "search_instructions" not in state:
         state["search_instructions"] = SystemMessage(content=(
-            "You are given a research topic. Your task is to generate a concise and effective search query "
-            "optimized for the arXiv API. Make sure to include relevant keywords to retrieve the most pertinent scientific articles."
+            "You will be given a conversation between an analyst and an expert. "
+            "Your goal is to generate a well-structured query for retrieval. "
+            "Analyze the conversation—especially the final question—and convert it into a search query."
         ))
-    search_instructions = state["search_instructions"]
+    search_query = search_llm_query(state["search_instructions"], state["messages"])
+    formatted_search_docs = search_web_query_get(search_query)
+    smart_print(message=formatted_search_docs, agent_name="Search Web", message_type="NEW inference result recieved", column_id=0, column_max=1)
+    return {"context": [formatted_search_docs]}
 
-    # On utilise le topic présent dans l'état pour guider la génération de la requête de recherche.
-    # (Dans l'exemple search_web, on utilisait une conversation complète via state['messages'];
-    # ici, on se contente du topic.)
-    search_query = structured_llm.invoke([
-        search_instructions
-    ] + state["messages"])
-
-    # Préparation des paramètres pour l'API d'arXiv.
+@load_from_pickle
+@save_to_pickle
+def search_arxiv_query_get(search_query):
+    import xml.etree.ElementTree as ET
+    ARXIV_API_URL = "http://export.arxiv.org/api/query"
     params = {
         "search_query": search_query.search_query,  # La chaîne de recherche générée par le LLM.
         "max_results": 5
@@ -444,53 +431,50 @@ def search_arxiv(state: InterviewState):
 
     # Formatage des résultats pour affichage.
     formatted_search_docs = "\n\n---\n\n".join([
-        f'<Document title="{doc["title"]}" href="{doc["link"]}">\nAuthors: {doc["authors"]}\n\nAbstract: {doc["summary"]}\n</Document>'
+        '<Document title="' + doc["title"] + '" href="' + doc["link"] + '">\nAuthors:' + doc["authors"] + '\n\nAbstract:' + doc["summary"] + '\n</Document>'
         for doc in search_docs
     ])
+    return formatted_search_docs
 
-    smart_print(message=formatted_search_docs, agent_name="Search Arxiv", message_type="NEW inference result recieved")
+def search_arxiv(state: InterviewState):
+    print("Search_arxiv")
+
+    # On suppose que llm_custom, SearchQuery et SystemMessage sont déjà définis ailleurs dans le code.
+    if not 'search_instructions' in state:
+        state['search_instructions'] = SystemMessage(content=(
+            "You are given a research topic. Your task is to generate a concise and effective search query "
+            "optimized for the arXiv API. Make sure to include relevant keywords to retrieve the most pertinent scientific articles."
+        ))
+    search_query = search_llm_query(state['search_instructions'], state["messages"])
+    # Préparation des paramètres pour l'API d'arXiv.
+    formatted_search_docs = search_arxiv_query_get(search_query)
+
+    smart_print(message=formatted_search_docs, agent_name="Search Arxiv", message_type="NEW inference result recieved", column_id=0, column_max=1)
     return {"context": [formatted_search_docs]}
 
-def search_semantic_scholar(state: InterviewState):
-    print("Search_semantic_scholar")
+@load_from_pickle
+@save_to_pickle
+def search_semantic_scholar_query_get(search_query):
     SEMANTIC_SCHOLAR_API_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
-    structured_llm = llm_custom.with_structured_output(SearchQuery)
-    
-    # Set default search instructions if not already present
-    if "search_instructions" not in state:
-        state["search_instructions"] = SystemMessage(content=(
-            "You are given a research topic. Your task is to generate a concise and effective search query "
-            "optimized for the Semantic Scholar API. Ensure that the query includes relevant keywords to retrieve the most pertinent scientific articles."
-        ))
-    search_instructions = state["search_instructions"]
-    
-    # Generate the search query using the conversation messages
-    search_query = structured_llm.invoke([search_instructions] + state["messages"])
-    
-    # Prepare API request parameters
     params = {
-        "query": search_query.search_query,
+        "query": search_query.search_query,  # La chaîne de recherche générée par le LLM.
         "limit": 5,
         "fields": "paperId,title,abstract,authors"
     }
-    
     response = requests.get(SEMANTIC_SCHOLAR_API_URL, params=params)
     search_docs = []
-    
+
     if response.status_code == 200:
         data = response.json()
-        # 'data' key holds the list of papers
         for paper in data.get("data", []):
             title = paper.get("title") or "Unknown Title"
             abstract = paper.get("abstract") or "No abstract available"
-            # Process authors list: each author is a dict with at least a "name" key
             authors_list = paper.get("authors", [])
             authors = ", ".join([author.get("name", "Unknown") for author in authors_list])
             if not authors:
                 authors = "Not Available"
             paper_id = paper.get("paperId")
             url = f"https://www.semanticscholar.org/paper/{paper_id}" if paper_id else "Not Available"
-            
             search_docs.append({
                 "title": title,
                 "authors": authors,
@@ -499,18 +483,40 @@ def search_semantic_scholar(state: InterviewState):
             })
     else:
         print(f"Error retrieving data from Semantic Scholar: {response.status_code}")
+
+    # Formatage des résultats pour affichage.
+    formatted_search_docs = "\n\n---\n\n".join([
+        '<Document title="' + doc["title"] + '" href="' + doc["url"] + '">\nAuthors:' + doc["authors"] + '\n\nAbstract:' + doc["abstract"] + '\n</Document>'
+        for doc in search_docs
+    ])
+    return formatted_search_docs
+
+def search_semantic_scholar(state: InterviewState):
+    print("Search_semantic_scholar")
+    # Set default search instructions if not already present
+    if "search_instructions" not in state:
+        state["search_instructions"] = SystemMessage(content=(
+            "You are given a research topic. Your task is to generate a concise and effective search query "
+            "optimized for the Semantic Scholar API. Ensure that the query includes relevant keywords to retrieve the most pertinent scientific articles."
+        ))    
+    # Generate the search query using the conversation messages
+    search_query = search_llm_query(state['search_instructions'], state["messages"])
     
-    # Format the retrieved documents for display
+    formatted_search_docs = search_semantic_scholar_query_get(search_query)
+    smart_print(message=formatted_search_docs, agent_name="Search Semantic Scholar", message_type="NEW inference result recieved", column_id=0, column_max=1)
+    return {"context": [formatted_search_docs]}
+
+@load_from_pickle
+@save_to_pickle
+def search_wikipedia_query_get(search_query):
+    search_docs = WikipediaLoader(query=search_query.search_query, load_max_docs=2).load()
     formatted_search_docs = "\n\n---\n\n".join(
         [
-            f'<Document title="{doc["title"]}" href="{doc["url"]}">\nAuthors: {doc["authors"]}\n\nAbstract: {doc["abstract"]}\n</Document>'
+            '<Document source="'+ doc.metadata.get("source", "Not Available") + ' page="' + doc.metadata.get("page", "Not Available") + '"/>\n' + doc.page_content + '\n</Document>'
             for doc in search_docs
         ]
     )
-    
-    smart_print(message=formatted_search_docs, agent_name="Search Semantic Scholar", message_type="NEW inference result recieved")
-    return {"context": [formatted_search_docs]}
-
+    return formatted_search_docs
 
 def search_wikipedia(state: InterviewState):
     print("Search_wikipedia")
@@ -520,17 +526,9 @@ def search_wikipedia(state: InterviewState):
             "Your goal is to generate a well-structured query for retrieval. "
             "Analyze the conversation and convert the final question into a search query."
         ))
-    search_instructions = state["search_instructions"]
-    structured_llm = llm_custom.with_structured_output(SearchQuery)
-    search_query = structured_llm.invoke([search_instructions] + state['messages'])
-    search_docs = WikipediaLoader(query=search_query.search_query, load_max_docs=2).load()
-    formatted_search_docs = "\n\n---\n\n".join(
-        [
-            f'<Document source="{doc.metadata.get("source", "Not Available")}" page="{doc.metadata.get("page", "Not Available")}"/>\n{doc.page_content}\n</Document>'
-            for doc in search_docs
-        ]
-    )
-    smart_print(message=formatted_search_docs, agent_name="Search Wikipedia", message_type="NEW inference result recieved")
+    search_query = search_llm_query(state['search_instructions'], state['messages'])
+    formatted_search_docs = search_wikipedia_query_get(search_query)
+    smart_print(message=formatted_search_docs, agent_name="Search Wikipedia", message_type="NEW inference result recieved", column_id=0, column_max=1)
     return {"context": [formatted_search_docs]}
 
 def generate_answer(state: InterviewState):
@@ -552,7 +550,7 @@ def generate_answer(state: InterviewState):
     context = state["context"]
     system_message = answer_instructions.format(goals=analyst.persona, context=context)
     answer_resp = llm_custom.invoke([SystemMessage(content=system_message)] + messages)
-    smart_print(message=answer_resp.content if isinstance(answer_resp, AIMessage) else answer_resp, agent_name="Generate Answer", message_type="NEW inference result recieved")
+    smart_print(message=answer_resp.content if isinstance(answer_resp, AIMessage) else answer_resp, agent_name="Generate Answer", message_type="NEW inference result recieved", column_id=0, column_max=1)
     # answer.name = "expert"
     return {"messages": [answer_resp]}
 
@@ -604,7 +602,7 @@ def write_section(state: InterviewState):
     else:
         section_final = sections.content if isinstance(sections, AIMessage) else sections
     
-    smart_print(message=section_final, agent_name="Write Section", message_type="NEW inference result recieved")
+    smart_print(message=section_final, agent_name="Write Section", message_type="NEW inference result recieved", column_id=0, column_max=1)
     return {"sections": [section_final]}
 
 ### -------------------------------
@@ -1040,7 +1038,7 @@ def multi_agent_research_generation_persist_at_the_end(title, topic, max_analyst
     builder = StateGraph(ResearchGraphState)
     builder.add_node("plan_document", plan_document)
     builder.add_node("create_analysts", create_analysts)
-    builder.add_node("human_feedback", human_feedback)
+    # builder.add_node("human_feedback", human_feedback)
     builder.add_node("conduct_interview", interview_graph)
     builder.add_node("write_report", write_report)
     builder.add_node("write_introduction", write_introduction)
@@ -1062,7 +1060,7 @@ def multi_agent_research_generation_persist_at_the_end(title, topic, max_analyst
     # [if iteration < max_iterations -> reset_for_iteration -> plan_document] else END.
     builder.add_edge(START, "plan_document")
     builder.add_edge("plan_document", "create_analysts")
-    builder.add_edge("create_analysts", "human_feedback")
+    # builder.add_edge("create_analysts", "human_feedback")
     # Use a conditional edge from human_feedback to either re-run analyst creation or start interviews.
     def initiate_all_interviews(state: ResearchGraphState):
       print("Initiate_all_interviews")
@@ -1074,7 +1072,8 @@ def multi_agent_research_generation_persist_at_the_end(title, topic, max_analyst
           return [Send("conduct_interview", {"analyst": analyst,
                                              "messages": [HumanMessage(content=f"So you said you were writing an article on {topic}?")]})
                   for analyst in state["analysts"]]
-    builder.add_conditional_edges("human_feedback", initiate_all_interviews, ["create_analysts", "conduct_interview"])
+    # builder.add_conditional_edges("human_feedback", initiate_all_interviews, ["create_analysts", "conduct_interview"])
+    builder.add_edge("create_analysts", "conduct_interview")
     # Modify to sequential edge after interviews to avoid infinite loop when using HumnaLLMMonitor as llm.
     builder.add_edge("conduct_interview", "write_introduction")
     builder.add_edge("write_introduction", "write_report")
