@@ -42,7 +42,7 @@ os.environ['OPENAI_API_KEY'] = 'sk-proj-06MIqWk-k160shwmP18NyJOSwTCoSzvrzQx4vy2a
 
 from langchain_openai import ChatOpenAI
 
-HumanLLMMonitor.use_websocket = True
+# HumanLLMMonitor.use_websocket = True
 planner = HumanLLMMonitor(agent_name="Planner")
 analyst = HumanLLMMonitor(agent_name="Create Analysts")
 question = HumanLLMMonitor(agent_name="Generate Questions")
@@ -1084,8 +1084,20 @@ def multi_agent_research_generation_persist_at_the_end(title, topic, max_analyst
     graph = builder.compile(checkpointer=memory2)
     # Optionally, visualize the graph:
     # Image(graph.get_graph(xray=1).draw_mermaid_png())
-    with open("images/graph_png.png", "wb") as f:
-        f.write(graph.get_graph(xray=1).draw_mermaid_png())
+    # with open("images/graph_png.png", "wb") as f:
+    #     f.write(graph.get_graph(xray=1).draw_mermaid_png())
+
+    print("Save files in db")
+    
+    # Take every files in 'BIBLIO-TEST' folder and push it in the database
+    bib_files = [f for f in os.listdir("BIBLIO-TEST") if os.path.isfile(os.path.join("BIBLIO-TEST", f))]
+    for file in bib_files:
+        print(file)
+        if not (file == '.DS_Store'):
+            HumanLLMMonitor.add_rag_document(file, folder_path="BIBLIO-TEST")
+
+    print("Starting the graph")
+
     graph.invoke(initial_state, params)
     final_state = graph.get_state(params)
     report = final_state.values.get('final_report')
