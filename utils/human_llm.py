@@ -1959,8 +1959,8 @@ class HumanLLM:
                     outputs = []
 
                     with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_parallel_inferences) as executor:
-                        if type(self.premium_llm if use_premium_llm else self.default_llm) == type(
-                                self.llmORchains_list.get('3_majority_chain')):
+                        if type(self.premium_llm if use_premium_llm else self.default_llm) == \
+                            type(self.llmORchains_list.get('3_majority_chain')):
                             stream_output = True
                         futures = [
                             executor.submit(

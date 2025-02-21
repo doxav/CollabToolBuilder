@@ -511,7 +511,7 @@ def smart_print(
         # Ensure websocket server is not none
         if HumanLLMConfig().ws_server is None:
             logger.info("WebSocket server not initialized, initializing...")
-            HumanLLMConfig().initialize_websocket_server()
+            HumanLLMConfig().init_ws_server()
             logger.info("WebSocket server initialized.")
 
         # Check if in the message there are no unexpected non-whitespace characters
