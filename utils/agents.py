@@ -1,18 +1,17 @@
-import sys, json, time, os, difflib, random, pickle
+import sys, json, time, os, difflib, random, pickle, logging, re
+import socket, uuid, datetime
 from typing import List, Dict
 from utils.llm_utils import (
     apply_criteria_and_prepare_monitor_args, get_primitives,
     smart_print, smart_input, _visual_input
 )
-from env.env import Environment, EnvironmentManager
+from env.env import Environment
 from utils.file_utils import extract_functions_ast
-from utils.human_llm import HumanLLM
+from utils.human_llm import HumanLLM, HumanLLMConfig
 from env.SWEBench.env import SWEBenchEnvironment
 
 from langchain_core.messages.human import HumanMessage
-from langchain_core.messages.ai import AIMessage
 from langchain_core.messages.system import SystemMessage
-from langchain_core.messages.base import BaseMessage
 
 # Agent 1: Task Identification
 class TaskIdentificationAgent:
@@ -37,6 +36,7 @@ class TaskIdentificationAgent:
         special_criteria=None,
         primitives_dir=None
     ):
+        self.logger = logging.getLogger(__name__)
         self.additional_check_list = None
         self.name = self.__class__.__name__
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
@@ -53,7 +53,6 @@ class TaskIdentificationAgent:
 
         self.human_llm_identify_best_task = HumanLLM(**kw_common_args)
         
-
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
@@ -73,14 +72,14 @@ class TaskIdentificationAgent:
     def identify_best_task(self):
         # Prepare data
         envs_status = "\n".join([env.get_state() for env in self.envs])
-        few_shots = self.human_llm_identify_best_task.get_multiple_few_shots(
+        few_shots = HumanLLMConfig().get_multiple_few_shots(
             few_shots_params=self.params_user_message)
-        print(few_shots)
+        # print(few_shots)
         self.human_llm_identify_best_task.user_message_few_shots = self.params_user_message
  
         primitives = extract_functions_ast("\n".join(get_primitives(self.primitives_dir)), include_docstring=True, return_string=True)
-        successful_tasks = "\n".join(self.human_llm_identify_best_task.get_learnt_tasks())
-        failed_tasks = "\n".join(self.human_llm_identify_best_task.get_failed_tasks())
+        successful_tasks = "\n".join(HumanLLMConfig().get_learnt_tasks())
+        failed_tasks = "\n".join(HumanLLMConfig().get_failed_tasks())
 
         # User message template
         user_message_template = """
@@ -103,7 +102,7 @@ class TaskIdentificationAgent:
 
         original_stdout = sys.stdout
         sys.stdout = open('user_message.txt', 'w')
-        print(f"User message: {user_message}")
+        # print(f"User message: {user_message}")
         sys.stdout=original_stdout
 
         task = self.human_llm_identify_best_task.CallHumanLLM(
@@ -137,6 +136,7 @@ class CodingAgent:
         primitives_dir=None
     ):
         #super().__init__(llm)
+        self.logger = logging.getLogger(__name__)
         self.additional_check_list = None
         self.name = self.__class__.__name__
         self.max_autofix = None
@@ -160,19 +160,31 @@ class CodingAgent:
         self.human_llm_code_task.add_inference_check("Run Tests", self.run_tests_on_code)
         if hasattr(self, 'recommendations_usage'):
             if self.recommendations_usage:
-                self.human_llm_code_task.add_inference_check("Recommend Critics",
-                                                             self.human_llm_code_task.generate_best_improvement_suggestions)
+                self.human_llm_code_task.add_inference_check(
+                    "Recommend Critics",
+                    self.human_llm_code_task.generate_best_improvement_suggestions
+                )
         else:
-            self.human_llm_code_task.add_inference_check("Recommend Critics",
-                                                         self.human_llm_code_task.generate_best_improvement_suggestions)
+            self.human_llm_code_task.add_inference_check(
+                "Recommend Critics",
+                self.human_llm_code_task.generate_best_improvement_suggestions
+            )
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
                 self.human_llm_code_task.add_inference_check(key, value)
-        # "CodingAgent#additional_check_list": [(check_name, check_function), ...]
+        
         self.primitives_dir = primitives_dir
 
-    def parse_ai_generated_code(self, message, language="py", retry=3, required_bot_arg=None, task_definition=None,
-                                automatic_tests=False, output_id=None):
+    def parse_ai_generated_code(
+        self,
+        message,
+        language="py",
+        retry=3,
+        required_bot_arg=None,
+        task_definition=None,
+        automatic_tests=False,
+        output_id=None
+    ):
         import ast, time, re
         # Convert text to dictionary
         try:
@@ -266,8 +278,7 @@ class CodingAgent:
 
                     # Check if required_bot_arg is present in the main function's parameters
                     if required_bot_arg:
-                        assert required_bot_arg in main_function[
-                            "params"], f"Main function {main_function['name']} must take an argument named '{required_bot_arg}'"
+                        assert required_bot_arg in main_function["params"], f"Main function {main_function['name']} must take an argument named '{required_bot_arg}'"
 
                     # Assemble the final program code
                     program_code = "\n".join(imports) + "\n"
@@ -279,7 +290,7 @@ class CodingAgent:
                     if matches and not automatic_tests:
                         tests = [match[:2] if match[0] != "" else match[2:] for match in matches]
                     else:
-                        print("Running default tests with bot argument to main function")
+                        self.logger.info("Running default tests with bot argument to main function")
                         tests = [(env.id, main_function["name"] + "(bot)") for env in self.envs]
 
                     for doc_id, test in tests:
@@ -307,8 +318,13 @@ class CodingAgent:
                 time.sleep(0.1)
 
         self.parsed_code = f"Error parsing action response (before program execution): {error}"
-        smart_print(f"CODE PARSING ERROR!!!\n{error}", self.name, "code_task_and_run_test SystemMessage",
-                    optional=False, column_id=output_id)
+        smart_print(
+            f"CODE PARSING ERROR!!!\n{error}",
+            self.name,
+            "code_task_and_run_test SystemMessage",
+            optional=False,
+            column_id=output_id
+        )
         return False, self.parsed_code
 
     def generate_score(self, index:int, success:bool, score:Dict, elapsed_time:int)-> str:
@@ -323,11 +339,18 @@ class CodingAgent:
         str_score += f" / CODE: [{json.dumps(score)}]"
         return str_score
 
-    def run_tests_on_code(self, message, parsed_code=None, skip_already_processed=False, output_id=None,
-                          restore_state=True, custom_agent=None):
+    def run_tests_on_code(
+        self,
+        message,
+        parsed_code=None,
+        skip_already_processed=False,
+        output_id=None,
+        restore_state=True,
+        custom_agent=None
+    ):
         # Retrieve error_patches from HumanLLMMonitor
-        metadata = {'step_id': HumanLLM.step_id}
-        error_patches, _ = HumanLLM.get_agent_data(self.name, 'error_patches', metadata_filter=metadata)
+        metadata = {'step_id': HumanLLMConfig().step_id}
+        error_patches, _ = HumanLLMConfig().get_agent_data(self.name, 'error_patches', metadata_filter=metadata)
         error_patches = error_patches if error_patches else []
 
         primitives = get_primitives(self.primitives_dir)
@@ -357,36 +380,81 @@ class CodingAgent:
             env.backup_state()
             # If it's the first environment and the user chose not to fix, exit the loop
             if idx > 0 and decision_lower in ("no", "n", ""):
-                smart_print(f"SKIPPING TEST: code error on first env, skipping test {idx}",
-                            custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage",
-                            optional=False, column_id=output_id)
+                smart_print(
+                    f"SKIPPING TEST: code error on first env, skipping test {idx}",
+                    custom_agent if custom_agent else self.name,
+                    "code_task_and_run_test SystemMessage",
+                    optional=False,
+                    column_id=output_id
+                )
             else:
                 # Determine tests to run or set default runnable code
-                matching_tests = [test for doc_id, test in parsed_code["tests"] if doc_id == env.id] if parsed_code[
-                    "tests"] else [parsed_code['runnable_code']]
+                matching_tests = [
+                    test
+                    for doc_id, test in parsed_code["tests"]
+                    if doc_id == env.id
+                ] if parsed_code["tests"] else [parsed_code['runnable_code']]
                 if not matching_tests:
                     no_runtime_error, exec_result = False, f"Error: no test found for given id {env.id}" if parsed_code["tests"] else f"Error: no runnable code found nor tests"
                 else:
                     # Concatenate common code with program and tests or runnable code
                     code_to_run = common_code + parsed_code["program_code"] + "\n" + "\n".join(matching_tests)
-                    smart_print("TESTING GENERATED CODE.....", custom_agent if custom_agent else self.name,
-                                "code_task_and_run_test SystemMessage", append=True, optional=False, column_id=output_id, column_max=self.human_llm_code_task.num_parallel_inferences)
+                    smart_print(
+                        "TESTING GENERATED CODE.....",
+                        custom_agent if custom_agent else self.name,
+                        "code_task_and_run_test SystemMessage",
+                        append=True,
+                        optional=False,
+                        column_id=output_id,
+                        column_max=self.human_llm_code_task.num_parallel_inferences
+                    )
                     
                     t1 = time.time()
                     no_runtime_error, exec_result, std_out_err = env.step(code_to_run)
                     # Smart print the std_out_err
-                    smart_print(f"FUNCTION DISPLAY OUTPUTS:\n{std_out_err}", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", append=True, optional=False, column_id=output_id)
+                    smart_print(
+                        f"FUNCTION DISPLAY OUTPUTS:\n{std_out_err}",
+                        custom_agent if custom_agent else self.name,
+                        "code_task_and_run_test SystemMessage",
+                        append=True,
+                        optional=False,
+                        column_id=output_id
+                    )
                     # Show score
                     scores = self.generate_score(idx, no_runtime_error, env.get_score(), time.time() - t1)
-                    smart_print(scores, custom_agent if custom_agent else self.name, "Scores", append=True, optional=False, column_id=output_id, column_max=self.human_llm_code_task.num_parallel_inferences)
+                    smart_print(
+                        scores,
+                        custom_agent if custom_agent else self.name,
+                        "Scores",
+                        append=True,
+                        optional=False,
+                        column_id=output_id,
+                        column_max=self.human_llm_code_task.num_parallel_inferences
+                    )
 
                     if no_runtime_error:
-                        smart_print("TEST SUCCESSFUL", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
-                        smart_print(env.get_state(), custom_agent if custom_agent else self.name, "CODE_RESULT", optional=False, column_id=output_id)
+                        smart_print(
+                            "TEST SUCCESSFUL",
+                            custom_agent if custom_agent else self.name,
+                            "code_task_and_run_test SystemMessage",
+                            optional=False,
+                            column_id=output_id
+                        )
+                        smart_print(
+                            env.get_state(),
+                            custom_agent if custom_agent else self.name,
+                            "CODE_RESULT",
+                            optional=False,
+                            column_id=output_id
+                        )
                     while not no_runtime_error and current_skip_rounds <= 0:
-                        smart_print("\033[31mCODE ERROR\033[0m: " + exec_result,
-                                    custom_agent if custom_agent else self.name,
-                                    "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                        smart_print(
+                            "\033[31mCODE ERROR\033[0m: " + exec_result,
+                            custom_agent if custom_agent else self.name,
+                            "code_task_and_run_test SystemMessage",
+                            optional=False,
+                            column_id=output_id
+                        )
                         if self.automation and max_autofix is not None:
                             decision = "a" if max_autofix > 1 else "no"
                             if decision == "a":
@@ -396,29 +464,45 @@ class CodingAgent:
                         else:
                             if output_id == None:
                                 output_id = 0
-                            smart_print(parsed_code["program_code"], custom_agent if custom_agent else self.name,
-                                        f"Inference streaming output {output_id}", append=True, column_id=output_id,
-                                        column_max=self.human_llm_code_task.num_parallel_inferences)
+                            smart_print(
+                                parsed_code["program_code"],
+                                custom_agent if custom_agent else self.name,
+                                f"Inference streaming output {output_id}",
+                                append=True,
+                                column_id=output_id,
+                                column_max=self.human_llm_code_task.num_parallel_inferences
+                            )
                             decision = smart_input(
                                 f"ANSWER {output_id} Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ",
-                                custom_agent if custom_agent else self.name, "fix_error", column_id=output_id).strip()
+                                custom_agent if custom_agent else self.name,
+                                "fix_error",
+                                column_id=output_id
+                            ).strip()
                         decision_lower = decision.lower()
                         if decision_lower in ("no", "n", ""):
                             break
                         elif decision_lower in ["y", "yes"]:
                             # if in websocket, then get from self.human_llm_code_task.premium_llm
-                            if HumanLLM.use_websocket:
+                            if HumanLLMConfig().use_websocket:
                                 edited_code = self.human_llm_code_task.temp_inference_result_content
-
                             else:
-                                edited_code = _visual_input(parsed_code["program_code"], filetype="py",
-                                                            message_type="fix_error", agent_name=self.name,
-                                                            column_id=output_id)
+                                edited_code = _visual_input(
+                                    parsed_code["program_code"],
+                                    filetype="py",
+                                    message_type="fix_error",
+                                    agent_name=self.name,
+                                    column_id=output_id
+                                )
                         else:
                             if decision_lower == "a":
                                 # Do not use HumanLLMMonitor because no template is available for this specific case
-                                smart_print("TRYING TO AUTOFIX ERROR", custom_agent if custom_agent else self.name,
-                                            "fix_error", optional=True, column_id=output_id)
+                                smart_print(
+                                    "TRYING TO AUTOFIX ERROR",
+                                    custom_agent if custom_agent else self.name,
+                                    "fix_error",
+                                    optional=True,
+                                    column_id=output_id
+                                )
                                 instructions = ""
                             else:
                                 # User provided custom instructions
@@ -428,53 +512,90 @@ class CodingAgent:
                             {instructions}
                             Reply with the full Python code fixed and ready to be executed without the triple quotes and python tags. You add comments in the code to explain your fix.
                             """
-                            smart_print("ANALYZING ERROR.....", custom_agent if custom_agent else self.name,
-                                        "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                            smart_print(
+                                "ANALYZING ERROR.....",
+                                custom_agent if custom_agent else self.name,
+                                "code_task_and_run_test SystemMessage",
+                                optional=False,
+                                column_id=output_id
+                            )
                             help_for_fixing_system_prompt = f"""You help an LLM to fix code errors which has no access to documentation or internet by extracting key code information from the INFORMATION/DOCUMENTATION provided given CODE TO FIX and ERROR MESSAGE."""
                             error_with_info_to_help_prompt = f"ERROR MESSAGE:<<\n{exec_result}\n>>\n\nCODE TO FIX:<<\n{parsed_code['program_code']}\n>>\n\INFORMATION/DOCUMENTATION:<<\n{self.last_user_message}\n>>"
-                            help_code_returned = self.human_llm_code_task.premium_llm.invoke(
-                                [SystemMessage(content=help_for_fixing_system_prompt),
-                                 HumanMessage(content=error_with_info_to_help_prompt)])
-                            smart_print("ANALYSIS RECIEVED, GENERATING A FIX",
-                                        custom_agent if custom_agent else self.name,
-                                        "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                            help_code_returned = self.human_llm_code_task.premium_llm.invoke([
+                                SystemMessage(content=help_for_fixing_system_prompt),
+                                HumanMessage(content=error_with_info_to_help_prompt)
+                            ])
+                            smart_print(
+                                "ANALYSIS RECIEVED, GENERATING A FIX",
+                                custom_agent if custom_agent else self.name,
+                                "code_task_and_run_test SystemMessage",
+                                optional=False,
+                                column_id=output_id
+                            )
                             fix_description_prompt = f"ERROR MESSAGE:<<\n{exec_result}\n>>\n\nCODE TO FIX:<<\n{parsed_code['program_code']}\n>>\n\nHELPFUL INFORMATION:<<\n{getattr(help_code_returned, 'content', help_code_returned)}\n>>"
-                            edited_code_returned = self.human_llm_code_task.premium_llm.invoke(
-                                [SystemMessage(content=fix_system_prompt),
-                                 HumanMessage(content=fix_description_prompt)])
+                            edited_code_returned = self.human_llm_code_task.premium_llm.invoke([
+                                SystemMessage(content=fix_system_prompt),
+                                HumanMessage(content=fix_description_prompt)
+                            ])
                             edited_code = str(getattr(edited_code_returned, 'content', edited_code_returned))
 
                         # Before updating parsed_code, save the previous code
                         prev_code = parsed_code["program_code"]
                         # Run the edited code
                         code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
-                        smart_print("TESTING UPDATED CODE.....", custom_agent if custom_agent else self.name,
-                                    "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                        smart_print(
+                            "TESTING UPDATED CODE.....",
+                            custom_agent if custom_agent else self.name,
+                            "code_task_and_run_test SystemMessage",
+                            optional=False,
+                            column_id=output_id
+                        )
 
                         t1 = time.time()
                         no_runtime_error, exec_result, std_out_err = env.step(code_to_run)
                         # Smart print the std_out_err
-                        smart_print(f"FUNCTION DISPLAY OUTPUTS:\n{std_out_err}", custom_agent if custom_agent else self.name, "code_task_and_run_test SystemMessage", optional=False, column_id=output_id)
+                        smart_print(
+                            f"FUNCTION DISPLAY OUTPUTS:\n{std_out_err}",
+                            custom_agent if custom_agent else self.name,
+                            "code_task_and_run_test SystemMessage",
+                            optional=False,
+                            column_id=output_id
+                        )
                         # Show score
                         scores = self.generate_score(idx, no_runtime_error, env.get_score(), time.time() - t1)
-                        smart_print(scores, custom_agent if custom_agent else self.name, "Scores", optional=False, column_id=output_id)
+                        smart_print(
+                            scores,
+                            custom_agent if custom_agent else self.name,
+                            "Scores",
+                            optional=False,
+                            column_id=output_id
+                        )
 
                         # Update parsed_code if re-run is successful
                         parsed_code["program_code"] = edited_code
                         smart_print(
                             f"# UPDATED **{'SUCCESFUL' if no_runtime_error else 'FAILED'}** CODE:\n{edited_code}",
-                            custom_agent if custom_agent else self.name, "UPDATED_CODE", optional=False,
-                            column_id=output_id)
+                            custom_agent if custom_agent else self.name,
+                            "UPDATED_CODE",
+                            optional=False,
+                            column_id=output_id
+                        )
                         # If no runtime error, store the error and diff
                         if no_runtime_error:
-                            smart_print(env.get_state(), custom_agent if custom_agent else self.name, "CODE_RESULT", optional=False, column_id=output_id)
+                            smart_print(
+                                env.get_state(),
+                                custom_agent if custom_agent else self.name,
+                                "CODE_RESULT",
+                                optional=False,
+                                column_id=output_id
+                            )
                             diff = difflib.unified_diff(prev_code.splitlines(), edited_code.splitlines(), lineterm='')
                             diff_text = '\n'.join(diff)
                             # Avoid duplicates: check if the error and diff combination already exists
                             if (exec_result, diff_text) not in error_patches:
                                 error_patches.append((exec_result, diff_text))
                                 # Store updated error_patches
-                                HumanLLM.add_agent_data(self.name, 'error_patches', error_patches, metadata=metadata)
+                                HumanLLMConfig().add_agent_data(self.name, 'error_patches', error_patches, metadata=metadata)
 
             no_runtime_errors.append(no_runtime_error)
             exec_results.append(exec_result)
@@ -494,9 +615,7 @@ class CodingAgent:
         return result
 
     def code_task_and_run_test(self, refined_task):
-
-        print('Starting code_task_and_run_test')
-
+        self.logger.info('Starting code_task_and_run_test')
         def flatten_and_pair(nested_list):
             def flatten(nested):
                 flat_list = []
@@ -511,7 +630,6 @@ class CodingAgent:
                 return flat_list
 
             flat_list = flatten(nested_list)
-
             # Décomposer les tuples pour éviter les tuples imbriqués
             def unpack_tuples(items):
                 unpacked = []
@@ -521,7 +639,6 @@ class CodingAgent:
                     else:
                         unpacked.append(item)
                 return unpacked
-
             flat_list = unpack_tuples(flat_list)
 
             # Toujours regrouper les éléments par paires de 2 et retourner une liste de tuples
@@ -538,11 +655,11 @@ class CodingAgent:
             return paired_list
 
         # Retrieve data from HumanLLMMonitor
-        metadata = {'step_id': HumanLLM.step_id}
-        previous_errors, _ = HumanLLM.get_agent_data(self.name, 'previous_errors', metadata_filter=metadata)
-        previous_scores, _ = HumanLLM.get_agent_data(self.name, 'previous_scores', metadata_filter=metadata)
-        previous_codes, _ = HumanLLM.get_agent_data(self.name, 'previous_codes', metadata_filter=metadata)
-        error_patches, _ = HumanLLM.get_agent_data(self.name, 'error_patches', metadata_filter=metadata)
+        metadata = {'step_id': HumanLLMConfig().step_id}
+        previous_errors, _ = HumanLLMConfig().get_agent_data(self.name, 'previous_errors', metadata_filter=metadata)
+        previous_scores, _ = HumanLLMConfig().get_agent_data(self.name, 'previous_scores', metadata_filter=metadata)
+        previous_codes, _ = HumanLLMConfig().get_agent_data(self.name, 'previous_codes', metadata_filter=metadata)
+        error_patches, _ = HumanLLMConfig().get_agent_data(self.name, 'error_patches', metadata_filter=metadata)
 
         # Ensure variables are initialized
         previous_errors = previous_errors if previous_errors else []
@@ -552,11 +669,11 @@ class CodingAgent:
 
         env_states = "\n".join([env.get_state() for env in self.envs])
         primitives = "\n".join(get_primitives(self.primitives_dir))
-        successful_tasks = "\n".join(HumanLLM.get_learnt_tasks())
-        failed_tasks = "\n".join(HumanLLM.get_failed_tasks())
-        validation_response_um = "\n".join(HumanLLM.get_validation_results())
+        successful_tasks = "\n".join(HumanLLMConfig().get_learnt_tasks())
+        failed_tasks = "\n".join(HumanLLMConfig().get_failed_tasks())
+        validation_response_um = "\n".join(HumanLLMConfig().get_validation_results())
 
-        print(f"Primitives: <<<\n{primitives}\n>>>")
+        self.logger.info(f"Primitives: <<<\n{primitives}\n>>>")
 
         previous_attempts = ""
         for errors_list, scores_list, codes_list in zip(previous_errors, previous_scores, previous_codes):
@@ -581,8 +698,11 @@ class CodingAgent:
         }
 
         # Load and format the user message from a file template
-        user_message = HumanLLM.load_prompt("coding_agent_user_message_template", template_data=template_data,
-                                                   directory='prompts')
+        user_message = HumanLLMConfig().load_prompt(
+            "coding_agent_user_message_template",
+            template_data=template_data,
+            directory='prompts'
+        )
 
         if hasattr(self, 'log_user_message') and self.log_user_message:
             with open(self.log_user_message, "a") as f:
@@ -667,8 +787,9 @@ class ValidationAgent:
         model_choice=None,
         special_criteria=None
     ):
+        self.logger = logging.getLogger(__name__)
         #super().__init__(llm)
-        saved_task, temperature_max, num_parallel_inferences, recommend_critiques, auto_n_rounds = None, None, 1, None, None
+        
         self.additional_check_list = None
         self.name = self.__class__.__name__
 
@@ -762,9 +883,9 @@ class CapitalizationAgent:
         problem_prompts_subdir=None,
         special_criteria=None
     ):
+        self.logger = logging.getLogger(__name__)
         self.additional_check_list = None
         self.name = self.__class__.__name__
-        saved_task, auto_n_rounds, num_parallel_inferences, temperature_max, recommend_critics = None, None, 1, None, None
 
         self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
 
@@ -785,9 +906,8 @@ class CapitalizationAgent:
                 self.human_llm_generate_function_description.add_inference_check(key, value)
 
     def capitalize_successful_tasks(self, task_description: str, parsed_code: str) -> None:
-
-        print('Starting capitalize_successful_tasks')
-        import socket, uuid, datetime
+        self.logger.info('Starting capitalize_successful_tasks')
+        
         self.human_llm_generate_function_description.task_parameters = {'task_description' : task_description, 'parsed_code' : parsed_code}
         print(f"DEBUG CACA : {hasattr(self, 'saved_task')}, {self.automation}, {self.automation in ['before', 'after']}")
         if hasattr(self.human_llm_generate_function_description, 'saved_task') and self.automation in ['before', 'after']:
@@ -795,10 +915,15 @@ class CapitalizationAgent:
             print(f"task parameters : {content.get('task_parameters', {})}")
             task_description = content.get("task_parameters", {}).get("task_description", task_description)
             parsed_code = content.get("task_parameters", {}).get("parsed_code", parsed_code)
-            self.human_llm_generate_function_description.task_parameters = {'task_description': task_description,'parsed_code': parsed_code}
+            self.human_llm_generate_function_description.task_parameters = {
+                'task_description': task_description,
+                'parsed_code': parsed_code
+            }
 
-        function_name = parsed_code.get("main_function_name",
-                                        parsed_code.get("main_function", {}).get("name", "unknown"))
+        function_name = parsed_code.get(
+            "main_function_name",
+            parsed_code.get("main_function", {}).get("name", "unknown")
+        )
         query = {
             "query": {
                 "term": {
@@ -806,16 +931,21 @@ class CapitalizationAgent:
                 }
             }
         }
-        response = UnifiedVectorDB.elastic_client.search(index=HumanLLM.db_learnt_tasks.collection_name, body=query)
+        response = self.human_llm_generate_function_description.config.common_vectordb.elastic_client.search(
+            index=HumanLLMConfig().db_learnt_tasks.config.collection_name,
+            body=query
+        )
 
         if response['hits']['total']['value'] > 0:
             for hit in response['hits']['hits']:
                 doc_id = hit["_id"]
-                UnifiedVectorDB.elastic_client.delete(index=HumanLLM.db_learnt_tasks.collection_name, id=doc_id)
-                print(f"Document deleted : {doc_id}")
+                self.human_llm_generate_function_description.config.common_vectordb.elastic_client.delete(
+                    index=HumanLLMConfig().db_learnt_tasks.config.collection_name,
+                    id=doc_id
+                )
+                self.logger.info(f"Document deleted : {doc_id}")
 
         if self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/":
-
             pipeline_file_path = os.path.join("pipelines/pipelines", function_name + ".py")
             tool_description = str(self.generate_tool_description(function_name, parsed_code["program_code"]))
             self.learnt_tasks_repository[function_name] = [tool_description, parsed_code["program_code"]]
@@ -823,7 +953,10 @@ class CapitalizationAgent:
             smart_print(
                 f"************ Last added task ************\n{function_name}\n************************".replace("\\n",
                                                                                                                 "\n"),
-                self.name, "capitalize_successful_tasks SUCCESS", optional=True)
+                self.name,
+                "capitalize_successful_tasks SUCCESS",
+                optional=True
+            )
         else:
             function_name = parsed_code.get("main_function_name", parsed_code.get("main_function", {}).get("name", "unknown"))
             # save function program_code in a file under the functions directory and add to the function signature the generated dosctring
@@ -834,13 +967,18 @@ class CapitalizationAgent:
             smart_print(
                 f"************ Last added task ************\n{function_name}\n************************".replace("\\n",
                                                                                                                 "\n"),
-                self.name, "capitalize_successful_tasks SUCCESS", optional=True)
+                self.name,
+                "capitalize_successful_tasks SUCCESS",
+                optional=True
+            )
 
         if self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/":
             if os.path.exists(pipeline_file_path):
                 smart_print(
                     f"Pipeline file {pipeline_file_path} already exists, please provide a new name for the pipeline.",
-                    self.name, "capitalize_successful_tasks WARNING")
+                    self.name,
+                    "capitalize_successful_tasks WARNING"
+                )
                 if self.automation:
                     i = random.randint(0, 1000)
                     pipeline_file_path = os.path.join("pipelines/pipelines", self.name + f"_{i}.py")
@@ -852,15 +990,21 @@ class CapitalizationAgent:
             if os.path.exists(function_file_path):
                 smart_print(
                     f"Function file {function_file_path} already exists, please provide a new name for the function.",
-                    self.name, "capitalize_successful_tasks WARNING")
+                    self.name,
+                    "capitalize_successful_tasks WARNING"
+                )
                 if self.automation:
                     # generate an id based on the current time and a random number
                     id = datetime.datetime.now().strftime("%Y%m%d%H%M%S") + "_" + str(random.randint(0, 1000))
                     function_file_path = os.path.join("functions", self.name + f"_{id}.py")
                 else:
-                    function_file_path = os.path.join("functions", smart_input(
-                        "This function already exists, please provide a new function name: ",
-                        message_type="VALIDATION_INFO") + ".py")
+                    function_file_path = os.path.join(
+                        "functions",
+                        smart_input(
+                            "This function already exists, please provide a new function name: ",
+                            message_type="VALIDATION_INFO"
+                        ) + ".py"
+                    )
 
         if self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/":
             new_path = pipeline_file_path
@@ -908,12 +1052,10 @@ class CapitalizationAgent:
         print('Adding learnt task')
 
         # Add to vector database with tags
-        tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": int(HumanLLM.step_id), ("class_name" if (self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/") else "main_function_name"): function_name,}
-        HumanLLM.add_learnt_task(serialized_entry, tags)
+        tags = {"host": f"{socket.gethostname()}-{uuid.getnode()}", "step_id": int(HumanLLMConfig().step_id), ("class_name" if (self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/") else "main_function_name"): function_name,}
+        HumanLLMConfig().add_learnt_task(serialized_entry, tags)
 
     def capitalize_failed_tasks(self, task_description: str, parsed_code: str) -> None:
-        import socket, uuid, datetime, json
-
         is_anomaly = self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/"
         name_key = "class_name" if is_anomaly else "main_function_name"
         if parsed_code:
@@ -923,7 +1065,9 @@ class CapitalizationAgent:
             if False or not self.automation:  # TODO: temporary disabled, find the logic to fix this or if not required
                 task_name = smart_input(
                     f"CONFIG Please provide a name for the {'pipeline' if is_anomaly else 'function'}:\n {task_description}",
-                    "CapitalizationAgent", message_type="Capitalization_info").strip()
+                    "CapitalizationAgent",
+                    message_type="Capitalization_info"
+                ).strip()
             else:
                 task_name = f"{task_description[:500]}"
         if False and not self.automation or is_anomaly:  # TODO: temporary disabled, find the logic to fix this or if not required
@@ -937,7 +1081,10 @@ class CapitalizationAgent:
         smart_print(
             f"************ Last added failed task ************\n{task_name}\n************************".replace("\\n",
                                                                                                                "\n"),
-            self.name, "capitalize_failed_tasks CAPITALIZE FAIL", optional=True)
+            self.name,
+            "capitalize_failed_tasks CAPITALIZE FAIL",
+            optional=True
+        )
 
         # Serialize entry
         serialized_entry = json.dumps({
@@ -950,10 +1097,10 @@ class CapitalizationAgent:
 
         # Log entry into the common vector database with tags
         tags = {
-            "host": HumanLLM.get_host_id(),
-            "step_id": HumanLLM.step_id,
+            "host": self.human_llm_generate_function_description.get_host_id(),
+            "step_id": HumanLLMConfig().step_id,
         }
-        HumanLLM.add_failed_task(serialized_entry, tags)
+        HumanLLMConfig().add_failed_task(serialized_entry, tags)
 
     def process_results(self, results, task_type, selected_functions, repository, metadata_key, include_code_flag):
         smart_print(f"************ Retrieving {task_type} tasks from database - LIST:", self.name,
@@ -986,12 +1133,18 @@ class CapitalizationAgent:
             task_name = task_data.get(name_key)
 
             if task_name in repository:
-                smart_print(f"> {task_type} {task_name} already loaded. Skipping duplicates...", self.name,
-                            "retrieve_saved_tasks_in_db DATABASE ACCESS", optional=True)
-        tags = {"host": HumanLLM.get_host_id(),
-                "step_id": HumanLLM.step_id, }
+                smart_print(
+                    f"> {task_type} {task_name} already loaded. Skipping duplicates...",
+                    self.name,
+                    "retrieve_saved_tasks_in_db DATABASE ACCESS",
+                    optional=True
+                )
+        tags = {
+            "host": self.human_llm_generate_function_description.get_host_id(),
+            "step_id": HumanLLMConfig().step_id,
+        }
 
-        self.db_failed_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
+        # self.db_failed_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
 
     def generate_tool_description(self, program_name, program_code):
         user_message = f"MAIN FUNCTION: `{program_name}`\n\nFULL CODE:\n{program_code}"
@@ -1022,6 +1175,7 @@ class PlannerAgent:
         primitives_dir=None,
         system_prompt_path=None
     ):
+        self.logger = logging.getLogger(__name__)
         # Define necessary class variables
         self.name = self.__class__.__name__
         self.last_user_message = None
@@ -1060,24 +1214,17 @@ class PlannerAgent:
         self.last_user_message = question
 
         # Retrieve learnt tasks (functions/code)
-        print("Getting the learnt tasks...")
-        learnt_tasks = HumanLLM.get_learnt_tasks(k=30)
-        print(f"Learnt_tasks: {learnt_tasks}")
+        self.logger.info("Getting the learnt tasks...")
+        learnt_tasks = HumanLLMConfig().get_learnt_tasks(k=30)
+        self.logger.info(f"Learnt_tasks: {learnt_tasks}")
         if not learnt_tasks:
             smart_print("No learnt tasks are available to answer the question.", agent_name=self.name)
-            print("No learnt tasks are available to answer the question.")
+            self.logger.info("No learnt tasks are available to answer the question.")
             return "no code available"
 
         # Prepare the code snippets string
         code_snippets = "\n\n".join(learnt_tasks)
-
-        # if self.envs:
-        #     if isinstance(self.envs[0], SWEBenchEnvironment):
-        #         question = f"Solve the SWE bench problem {self.envs[0].swe_data.instance_id} by finding buggy files, generating patch, applying patch and running tests. Current state of the solution is:\n{self.envs[0].get_state()}.\nOn the basis of current state, provide the best code that shoud be executed next"
-
-        # print(question)
-
-        print("Got the learnt tasks")
+        self.logger.info("Got the learnt tasks")
 
         prebuilt_code = ""
         for learnt_task in learnt_tasks:
@@ -1086,7 +1233,7 @@ class PlannerAgent:
 
         # Prepare the prompt for the LLM
         prompt_path = reuse_prompt if reuse_prompt else self.system_prompt_path
-        prompt_template = HumanLLM.load_prompt(prompt_path) if prompt_path else (
+        prompt_template = HumanLLMConfig().load_prompt(prompt_path) if prompt_path else (
             "You are a helpful assistant that selects the best functions to answer the user's question.\n"
             "Available code snippets:\n{code_snippets}\n\n"
             "Please reuse these functions to create a new function that solves the user query.\n"
@@ -1109,8 +1256,8 @@ class PlannerAgent:
                 parsed_code, success, exec_results, scores, states, total_execution_time = result
                 if success:
                     # smart_print("The code was successfully executed on all environments.", agent_name=self.name)
-                    print("Program code: ", parsed_code['program_code'])
-                    print("Main function: ", parsed_code['main_function']['name'])
+                    self.logger.info(f"Program code: {parsed_code['program_code']}")
+                    self.logger.info(f"Main function: {parsed_code['main_function']['name']}")
                     for env in self.envs:
                         no_runtime_error, exec_result, std_out_err = env.step(f"{prebuilt_code + parsed_code['program_code']}\n{parsed_code['main_function']['name']}(bot)")
                         # Smart print the output

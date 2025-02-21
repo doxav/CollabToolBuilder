@@ -9,6 +9,7 @@ import shutil
 import traceback
 import types
 import uuid
+from utils.llm_utils import validate_function_code
 
 class Environment:
     def __init__(self, temp_root_dir: str = None, data_dir: str = "data"):
@@ -71,23 +72,32 @@ class Environment:
         else:
             shutil.rmtree(self.current_temp_dir)
 
-    def backup_state(self):
+    def backup_state(self, unique_id: str = None):
         # copy all the temp directory (excluding data directory) into a folder named by unique_id into backups directory
-        if os.environ.get("unique_id") is None:
+        if unique_id is None:
             self.last_unique_id_backup = os.environ["unique_id"] = str(uuid.uuid4())
-        if self.get_state(os.environ.get("unique_id")) != self.get_state():
-            shutil.copytree(self.current_temp_dir, os.path.join(self.temp_root_dir, "backups", os.environ.get("unique_id")), ignore=shutil.ignore_patterns('data'))
+        if self.get_state(unique_id) != self.get_state():
+            shutil.copytree(
+                self.current_temp_dir,
+                os.path.join(self.temp_root_dir,"backups", unique_id),
+                ignore=shutil.ignore_patterns('data'),
+                dirs_exist_ok=True
+            )
         return os.environ.get("unique_id")
 
-    def restore_state(self):
-        from_folder = os.path.join(self.temp_root_dir, "backups", os.environ.get("unique_id"))
+    def restore_state(self, unique_id):
+        from_folder = os.path.join(self.temp_root_dir, "backups", unique_id)
         if not os.path.exists(from_folder): return "Restore state folder not found"
-        if self.get_state(os.environ.get("unique_id")) != self.get_state():
+        if self.get_state(unique_id) != self.get_state():
             # copy all the content of the backup directory into the temp directory (excluding data directory)
             self.reset(backup_previous_temp_dir=False)
             # copy all the content of the backup directory into the temp directory which already contains the data directory
-            shutil.copytree(from_folder, self.current_temp_dir, ignore=shutil.ignore_patterns('data'),
-                            dirs_exist_ok=True)
+            shutil.copytree(
+                from_folder,
+                self.current_temp_dir,
+                ignore=shutil.ignore_patterns('data'),
+                dirs_exist_ok=True
+            )
             return "State restored"
         else:
             return "State identical to backup folder"

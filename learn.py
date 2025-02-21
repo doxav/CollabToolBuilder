@@ -7,7 +7,8 @@ from env.env import EnvironmentManager
 from env.IR_CPS_TechSynthesis.env import *
 from env.SWEBench.env import *
 from utils.constants import ELASTIC_DATABASE
-from utils.human_llm import HumanLLM, HumanLLMConfig
+from utils.human_llm import HumanLLM
+from utils.human_llm_config import HumanLLMConfig
 from utils.llm_utils import (
     smart_print, smart_input,
     import_functions_from_directory,
@@ -442,7 +443,7 @@ def run_planner(*args, **kwargs):  # NEW VERSION
     )
 
     # Initialize WebSocket server if used
-    if humanLLM.use_websocket and humanLLM.websocket_server is None:
+    if HumanLLMConfig().use_websocket and HumanLLMConfig().websocket_server is None:
         humanLLM.initialize_websocket_server()
 
     # Select the problem prompts subdirectory if not provided
@@ -572,8 +573,8 @@ def coding_and_validation_loop(
     end_time=None,
     human_evaluation_required=False
 ):
-    humanLLM = HumanLLM()
-    metadata = {'step_id': humanLLM.step_id}
+    humanLLM = HumanLLMConfig()
+    metadata = {'step_id': config.step_id}
     # Retrieve data
     previous_errors, _ = humanLLM.get_agent_data(
         agent_coding.name,
@@ -991,8 +992,8 @@ if __name__ == "__main__":
         agcoding_skip_rounds=0,  # Auto-test: 4
         agvalidation_skip_rounds=0,  # Auto-test: 4
         agcapitalize_skip_rounds=0,
-        agcoding_num_parallel_inferences=2,
-        agcoach_num_parallel_inferences=2,
+        agcoding_num_parallel_inferences=1,
+        agcoach_num_parallel_inferences=1,
         # functions_to_import=".*",
         functions_to_import=None,
         primitives_dir="primitives/generate_primitives",

@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry  # type: ignore
 from elasticsearch import Elasticsearch
-from langchain import LLMChain
 from langchain_community.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
 from langchain_core.runnables import RunnableSequence, ConfigurableField, Runnable
 from langchain_core.messages.human import HumanMessage
@@ -97,7 +96,7 @@ class UnifiedVectorDBConfig:
         self.db_type: str = ELASTIC_DATABASE
         self.es_config = ElasticSearchDB_Config()
         self.unique_collection_id: Optional[str] = None
-
+        
     def set_common_vectordb_embedding_function(self):
         """Set the embedding function for the vector database."""
         if self.common_vectordb_embedding_function is not None:
@@ -209,20 +208,9 @@ class ElasticSearchDB_Config:
 
 class UnifiedVectorDB:
     """Unified interface for vector databases (Elasticsearch or Chroma)."""
-    _instance = None
 
-    def __new__(cls,  *args):
-        # Check if the instance already exists
-        if cls._instance is None:
-            cls._instance = super(UnifiedVectorDB, cls).__new__(cls)
-        return cls._instance
-
-    def __init__(self, config: Optional[UnifiedVectorDBConfig]=None):
-        if hasattr(self, '_initialized'):
-            return
-
+    def __init__(self, config: Optional[UnifiedVectorDBConfig]=None, check_db:bool=False):
         """Initialize UnifiedVectorDB."""
-        self._initialized = True
         self.logger = logging.getLogger(__name__)
         self.db_connection_check_done: bool = False
         
@@ -230,8 +218,11 @@ class UnifiedVectorDB:
         self.db: Optional[Any] = None
         self._collection: Optional[Any] = None
         self.config: Optional[UnifiedVectorDBConfig] = config
-        self.check_db()
+        
+        if check_db:
+            self.check_db()
         self.get_unique_id()
+
         if self.config.unique_collection_id is not None:
             self.config.collection_name += f"_{self.config.unique_collection_id}".lower()
 

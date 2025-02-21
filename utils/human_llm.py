@@ -16,9 +16,10 @@ from utils.llm_utils import (
     UnifiedVectorDBConfig, LLMConfig, UserSession, InferenceTracking, TaskHistory,
     UnifiedVectorDB
 )
+from utils.human_llm_config import HumanLLMConfig
 from typing import List, Dict, Any, Optional
 
-from langchain import LLMChain
+from langchain.chains import LLMChain
 from langchain.llms import OpenAI
 from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
@@ -30,135 +31,6 @@ from langchain_core.messages.function import FunctionMessage
 from langchain_core.runnables import RunnableSequence, ConfigurableField
 from langchain_community.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
 
-
-class HumanLLMConfig:
-    __instance = None
-
-    def __new__(cls):
-        # Check if the instance already exists
-        if cls.__instance is None:
-            cls.__instance = super(HumanLLMConfig, cls).__new__(cls)
-        return cls.__instance
-
-    def __init__(self):
-        if hasattr(self, '_initialized'):
-            return
-        self._initialized = True
-        self.discord_webhook = "https://discord.com/api/webhooks/1329927709106638930/FaFm6Dozd0xlQvL8hBHn3JHczDazfe2V9hHBWKWj7-igTniTHtsJBCmiFLCh-oKeZ6Mz"
-
-        self.common_vectordb_config = UnifiedVectorDBConfig()
-        self.common_vectordb = None
-
-        self.websocket_server_config = WebSocketServerConfig()
-        self.websocket_server = None
-        self.use_websocket = False
-        
-        # Initialize vector databases for tasks
-        self.db_collection_success="successful_tasks"
-        self.db_collection_failed="failed_tasks"
-
-        self.db_learnt_tasks = None
-        self.db_failed_tasks = None
-        
-        self.step_id = 0
-        self.function_list = None
-        self.default_skip_rounds = 0
-
-        self.llm_config = LLMConfig()
-        self.user_session = UserSession()
-        self.inference_tracking = InferenceTracking()
-        self.task_history = TaskHistory()
-
-        self.special_criteria = None
-        self.automation = None
-
-        # self.smart_print = None
-        # self.smart_input = None
-
-        self.initialized = False
-
-    def initialize(self):
-        if self.initialized:
-            return
-        
-        self.initialized = True
-        self._check_and_init_vector_db()
-        if self.use_websocket:
-            if self.websocket_server is None:
-                self.websocket_server = WebsocketServer(self.websocket_server_config)
-        
-        self.common_vectordb = UnifiedVectorDB(self.common_vectordb_config)
-
-    def _check_and_init_vector_db(self):
-        if self.common_vectordb_config.embedding_function:
-            self.common_vectordb_config.set_common_vectordb_embedding_function()
-
-    def get_llmORchains_list(self):
-        if MODELS_CONFIG_LIST is not None:
-            return {
-                "default_llm": ChatOllama(
-                    model=MODELS_CONFIG_LIST["basic_gpt"],
-                    cache=False,
-                    temperature=0.
-                ),
-                "premium_llm": ChatOllama(
-                    model=MODELS_CONFIG_LIST["smart_gpt"],
-                        cache=False,
-                        temperature=0.
-                ),
-                "coder_llm": ChatOllama(
-                    model=MODELS_CONFIG_LIST["code_gpt"],
-                    cache=False,
-                    temperature=0.
-                ),
-                "3_majority_chain": create_Nmajority_chain(
-                    map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
-                    reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"],
-                    num_models=3
-                ),
-                "10_majority_chain": create_Nmajority_chain(
-                    map_model_name=MODELS_CONFIG_LIST["basic_gpt"],
-                    reduce_model_name=MODELS_CONFIG_LIST["basic_gpt"], num_models=10
-                )
-            }
-        else:
-            # Default, if not precised, we take GPT from OpenAI.
-            return {
-                "default_llm": ChatOpenAI(
-                    model_name="gpt-4o-mini-2024-07-18",
-                    cache=False,
-                    temperature=0.
-                ),
-                "premium_llm": ChatOpenAI(
-                    model_name="gpt-4o-mini-2024-07-18",
-                    cache=False,
-                    temperature=0.
-                ),
-                "coder_llm": ChatOpenAI(
-                    model_name="gpt-4o-mini-2024-07-18",
-                    cache=False,
-                    temperature=0.
-                ),
-                "3_majority_chain": create_Nmajority_chain(
-                    map_model_name="gpt-4o-mini-2024-07-18",
-                    reduce_model_name="gpt-4o-mini-2024-07-18",
-                    num_models=3
-                ),
-                "10_majority_chain": create_Nmajority_chain(
-                    map_model_name="gpt-4o-mini-2024-07-18",
-                    reduce_model_name="gpt-4o-mini-2024-07-18",
-                    num_models=10
-                )
-            }
-
-    def add_learnt_task(self, serialized_entry, tags):
-        self.config.db_learnt_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
-
-    def add_failed_task(self, serialized_entry, tags):
-        self.config.db_failed_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
-
-    def get_user_id(self):
-        return self.user_session.get_user_id()
 
 class HumanLLM:
     def __init__(self,
@@ -252,534 +124,16 @@ class HumanLLM:
                 self.print_color = key
 
     def initialize(self):
-        if self.use_websocket and self.websocket_server is None:
+        if self.config.use_websocket and self.websocket_server is None:
             self.initialize_websocket_server()
             self.websocket_server.add_monitor(self)
 
     def get_user_id(self):
         return self.config.get_user_id()
 
-    def add_agent_data(
-            self,
-            agent_name,
-            data_key,
-            data_value,
-            function_name=None,
-            id_task=False,
-            before_after=None,
-            user_id=None,
-            step_id=None,
-            type_tache=None,
-            score=None,
-            metadata=None
-        ):
-        """Stores agent-specific data with additional metadata.
-        Elasticsearch generates an 'id' automatically and includes it in the metadata.
-        """
-        if isinstance(data_value, list) and len(data_value) > 0:
-            if isinstance(data_value[0], AIMessage):
-                data_value = data_value[0].content
-        if isinstance(data_value, dict):
-            serialized_data = json.dumps(data_value)
-        else:
-            serialized_data = json.dumps({data_key: data_value})
-
-        # Generate UUID for id_task
-        id_task = str(uuid.uuid4()) if id_task else False
-
-        tags = metadata or {}
-        tags.update({
-            "agent_name": agent_name,
-            "data_key": data_key
-        })
-        print(f"Adding agent data: {tags}")
-        print(f"User ID: {user_id}")
-        if user_id is None:
-            user_id = self.get_user_id()
-        if function_name:
-            tags["function_name"] = function_name
-        if id_task:
-            tags["id_task"] = id_task
-        if before_after:
-            tags["before_after"] = before_after
-        if user_id:
-            tags["user_id"] = user_id
-        if step_id:
-            tags["step_id"] = step_id
-        if type_tache:
-            tags["type_tache"] = type_tache
-        if score is not None:
-            tags["score"] = score
-        tags["date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-
-        self.config.common_vectordb.add_texts(texts=[serialized_data], metadatas=[tags])
-
-    def get_agent_data(
-            self,
-            agent_name=None,
-            data_key=None,
-            id_task=None,
-            function_name=None,
-            before_after=None,
-            user_id=None,
-            step_id=None,
-            type_tache=None,
-            score=None,
-            metadata_filter=None,
-            sort_order=None,
-            k=5,
-            start_index=0,
-            end_index=None
-        ):
-        """Retrieves agent-specific data based on the agent name, data key, and additional metadata.
-        Supports pagination by specifying start and end indices.
-        """
-        metadata = {}
-        if agent_name is not None:
-            metadata["agent_name"] = agent_name
-        if data_key is not None:
-            metadata["data_key"] = data_key
-        if function_name is not None:
-            metadata["function_name"] = function_name
-        if id_task is not None:
-            metadata["id_task"] = id_task
-        if before_after is not None:
-            metadata["before_after"] = before_after
-        if user_id is not None:
-            metadata["user_id"] = user_id
-        if step_id is not None:
-            metadata["step_id"] = step_id
-        if type_tache is not None:
-            metadata["type_tache"] = type_tache
-        if score is not None:
-            metadata["score"] = score
-        if metadata_filter:
-            metadata.update(metadata_filter)
-
-        # Fetch results with a large 'k' to ensure we have enough data
-        max_k = end_index if end_index is not None else k
-        results = self.config.common_vectordb.query(
-            query_text='*',
-            metadata_filter=metadata,
-            sort_order=sort_order,
-            k=max_k
-        )
-
-        # Apply pagination
-        paginated_results = (results[start_index:end_index] 
-            if end_index is not None 
-            else results[start_index:]
-        )
-
-        ret = []
-        for item in paginated_results:
-            temp = json.loads(item.page_content)
-            if isinstance(temp, dict):
-                tmp = {}
-                for key in temp:
-                    if temp[key]:
-                        tmp[key] = temp[key]
-                ret.append(tmp)
-            else:
-                ret += temp[data_key]
-        # Ret contains only text field of the data, results contains all the metadata
-        return ret, results
-
-    def get_tasks(self, page_size:int=200, nb_pages:int=1, id_last_task:Optional[str]=None):
-        """Retrieves saved tasks using get_agent_data with pagination.
-        Parameters:
-            page_size (int): Number of results per page. Default is 200.
-            nb_pages (int): Number of pages to retrieve. Default is 1.
-            id_last_task (str): ID of the last task retrieved. If provided, retrieves tasks after this ID.
-        Returns:
-            str: List of tasks in json format.
-        """
-        data_key = "saved_task"
-
-        start_index = 0
-        end_index = page_size * nb_pages
-
-        _, tasks = self.get_agent_data(
-            data_key=data_key,
-            k=end_index,
-            start_index=start_index,
-            end_index=end_index
-        )
-        # Check if there is a newer task (if id_last_task is not the last task of the list)
-        if id_last_task and id_last_task != "None":
-            modif = False
-            for i, task in enumerate(tasks):
-                if task.metadata["id_task"] == id_last_task and i + 1 < len(tasks):
-                    tasks = tasks[i+1:]
-                    modif = True
-                    break
-            if not modif:
-                return "None"
-        ret = []
-
-
-        for task in tasks:
-            ret += [{
-                "id_task": task.metadata["id_task"],
-                "agent_name": task.metadata["agent_name"],
-                "before_after": task.metadata["before_after"],
-                "date": task.metadata["date"]
-            }]
-            if "score" in task.metadata:
-                ret[-1]['score'] = task.metadata['score']
-            if "input_contents" in task.metadata:
-                ret[-1]['input_contents'] = task.metadata['input_contents']
-            if "user_id" in task.metadata:
-                ret[-1]['user_id'] = task.metadata['user_id']
-            if "function_name" in task.metadata:
-                ret[-1]['function_name'] = task.metadata['function_name']
-            if "step_id" in task.metadata:
-                ret[-1]['step_id'] = task.metadata['step_id']
-            if "type_tache" in task.metadata:
-                ret[-1]['type_tache'] = task.metadata['type_tache']
-            if "task_details" in task.metadata:
-                ret[-1]['task_details'] = task.metadata['task_details']
-
-        # Trier la liste par la clé 'date', du plus récent au plus ancien
-        ret = sorted(ret, key=lambda x: x['date'], reverse=True)
-
-        return json.dumps(ret)
-
-    def goto_task(
-            self,
-            id_task: str,
-            automatic: str = None,
-            special_criteria: dict = None,
-            task_details: str = None
-        ):
-        """
-        Retrieve the task from the database and start processing the task.
-        Parameters:
-            id_task (str): The identifier of the task to retrieve from the database.
-            automatic (str): If True, the function will run the loop in automatic mode.
-            special_criteria (dict): The special criteria to use for the task.
-        """
-        # Retrieve the task from the database
-        _, saved_task = self.get_agent_data(data_key="saved_task", id_task=id_task)
-        task = {
-            'before_after': saved_task[0].metadata['before_after'],
-            'agent_name': saved_task[0].metadata['agent_name'],
-            'type_tache': saved_task[0].metadata['type_tache'],
-            'content': saved_task[0].page_content,
-            'date': saved_task[0].metadata['date']
-        }
-        if 'step_id' in saved_task[0].metadata:
-            task['step_id'] = saved_task[0].metadata['step_id']
-        if 'user_id' in saved_task[0].metadata:
-            task['user_id'] = saved_task[0].metadata['user_id']
-        if task_details:
-            task['task_details'] = task_details
-        # Create a pickle directory if it does not exist
-        if not os.path.exists('pickle'):
-            os.makedirs('pickle')
-
-        for key in special_criteria:
-            if 'num_parallel_inferences' in key and special_criteria[key] == 0:
-                special_criteria[key] = 1
-
-        # Serializing variables to pickle file
-        variables_to_pickle = {
-            'saved_task': task,
-            'automatic': bool(automatic),
-            'special_criteria': special_criteria
-        }
-
-        # Save variables to pickle file
-        filename = f"variables_{self.get_user_id()}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        with open(f"pickle/{filename}.pkl", 'wb') as f:
-            pickle.dump(variables_to_pickle, f)
-
-        if not os.path.exists('goto_output'):
-            os.makedirs('goto_output')
-
-        with open(f'./goto_output/output_{id_task}_{self.get_user_id()}.log', 'w') as f:
-            f.write("")
-
-        # Execute the bash command with unbuffered output and capture its output
-        process = subprocess.Popen(
-            ['bash', '-c', f'python3 -u learn.py --proxy --secret --pickle_name {filename} > ./goto_output/output_{id_task}_{self.get_user_id()}.log 2>&1'],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True
-        )
-        # Initialize the link variable
-        link = None
-        with open(f"./goto_output/output_{id_task}_{self.get_user_id()}.log", "r") as logfile:
-            # Move to end of file
-            logfile.seek(0, 2)  # 2 means "from the end of the file"
-
-            # Wait for the link to be found in the output file
-            while True:
-                line = logfile.readline()
-                if not line:
-                    # If no new line is found, wait for 0.5 seconds
-                    time.sleep(0.5)
-                    continue
-
-                if "WebSocket Remote URL via proxy: " in line:
-                    link = line.split("WebSocket Remote URL via proxy: ")[1].strip()
-                    # display it on discord
-                    message = (f"**XP ID:** {self.config.common_vectordb_config.unique_collection_id}\n**User ID:** {self.get_user_id()}\n**Task Link:** {link}\n**Task Details:** {task_details}")
-                    print(f"Discord message: {message}")
-                    self.send_to_discord(message)
-                    break
-
-        # Return the link if found
-        if link is None:
-            print("The link was not found in the output file.")
-
-        return link
-
     def _check_and_init_vector_db(self):
         self.config._check_and_init_vector_db()
-
-    def send_to_discord(self, message: str):
-        payload = { "content": message}
-        headers = { "Content-Type": "application/json"}
-        response = requests.post(self.discord_webhook, data=json.dumps(payload), headers=headers)
-        if response.status_code == 204:
-            print("Message sent to Discord successfully.")
-        else:
-            print(f"Failed to send message to Discord. Status code: {response.status_code}")
-
-    def check_init_class_db(self, force=False):
-        if self.config.common_vectordb_config.common_vectordb_embedding_function is None:
-            raise ValueError("embeddingfunction must be set to allow HumanLLM to manage tasks and other memories")
-        if self.config.db_learnt_tasks is None or force:
-            self.config.db_learnt_tasks = UnifiedVectorDB(
-                UnifiedVectorDBConfig(
-                    collection_name = self.config.db_collection_success,
-                    embedding_function = self.config.common_vectordb_config.common_vectordb_embedding_function,
-                    persist_directory = self.config.common_vectordb_config.persist_directory + self.config.db_collection_success,
-                    reset_indices = self.config.common_vectordb_config.reset_indices
-                )
-            )
-        if self.config.db_failed_tasks is None or force:
-            self.config.db_failed_tasks = UnifiedVectorDB(
-                UnifiedVectorDBConfig(
-                    collection_name = self.config.db_collection_failed,
-                    embedding_function = self.config.common_vectordb_config.common_vectordb_embedding_function,
-                    persist_directory = self.config.common_vectordb_config.persist_directory + self.config.db_collection_failed,
-                    reset_indices = self.config.common_vectordb_config.reset_indices
-                )
-            )
-
-    def get_learnt_tasks(
-            self,
-            query_text="*",
-            k=10,
-            metadata_filter=None,
-            sort_order=None,
-            similarity_search=False
-        ):
-        self.check_init_class_db()
-        if similarity_search:
-            results = self.config.db_learnt_tasks.similarity_search_with_score(query=query_text, k=k)
-        else:
-            results = self.config.db_learnt_tasks.query(
-                query_text=query_text,
-                k=k,
-                metadata_filter=metadata_filter,
-                sort_order=sort_order
-            )
-        return {result.page_content for result in results}
-
-    def get_failed_tasks(
-            self,
-            query_text="*",
-            k=10,
-            metadata_filter=None,
-            sort_order=None,
-            similarity_search=False
-        ):
-        self.check_init_class_db()
-        if similarity_search:
-            results = self.config.db_failed_tasks.similarity_search_with_score(query=query_text, k=k)
-        else:
-            results = self.config.db_failed_tasks.query(
-                query_text=query_text,
-                k=k,
-                metadata_filter=metadata_filter,
-                sort_order=sort_order
-            )
-        return {result.page_content for result in results}
-
-    def get_validation_results(
-            self,
-            query_text="*",
-            k=10,
-            sort_order=None,
-            similarity_search=False
-        ):
-        self.check_init_class_db()
-        metadata_filter = {'agent_name': 'ValidationAgent'}
-        if similarity_search:
-            results = self.config.common_vectordb.similarity_search_with_score(
-                query=query_text, k=k, metadata_filter=metadata_filter
-            )
-        else:
-            results = self.config.common_vectordb.query(
-                query_text=query_text,
-                k=k,
-                metadata_filter=metadata_filter,
-                sort_order=sort_order
-            )
-        return {result.page_content for result in results}
-
-    def get_multiple_few_shots(self, few_shots_params) -> str:
-        if not few_shots_params:
-            return ""
-
-        all_formatted_examples = []
-
-        for params in few_shots_params:
-            # Ensure default values
-            criteria_defaults = {
-                'sources': 'learnt',
-                'num': 5,
-                'query_text': '*',
-                'metadata_filter': {},
-                'sort_order': None,
-                'similarity_search': False,
-                'format': 'Json',
-                'template': None
-            }
-            for key, default in criteria_defaults.items():
-                params.setdefault(key, default)
-
-            if "separators" in params:
-                separators = params["separators"]
-            else:
-                separators = {
-                    "global_prefix" : f"\n{params['sources']} tasks : <<",
-                    "global_suffix" : ">>\n",
-                    "item_prefix" : "\n|",
-                    "item_suffix" : "|"
-                }
-
-            if params['sources'] == "learnt":
-                examples = self.get_learnt_tasks(
-                    query_text=params['query_text'],
-                    k=params['num'],
-                    metadata_filter=params['metadata_filter'],
-                    sort_order=params['sort_order'],
-                    similarity_search=params['similarity_search']
-                )
-            elif params['sources'] == "failed":
-                examples = self.get_failed_tasks(
-                    query_text=params['query_text'],
-                    k=params['num'],
-                    metadata_filter=params['metadata_filter'],
-                    sort_order=params['sort_order'],
-                    similarity_search=params['similarity_search']
-                )
-            else:
-                examples = self.config.common_vectordb.query(
-                    query_text=params['query_text'],
-                    k=params['num'],
-                    metadata_filter=params['metadata_filter'],
-                    sort_order=params['sort_order']
-                )
-                params['sources'] = "examples"
-
-            # Process examples to retrieve all metadata
-            processed_examples = []
-            for example in examples:
-                example_data = {
-                    'content': getattr(example, 'page_content', str(example)),
-                    'metadata': getattr(example, 'metadata', {})
-                }
-                processed_examples.append(example_data)
-            examples = processed_examples
-
-            format_criteria = {
-                'format': params['format'],
-                'template': params['template']
-            }
-
-            formatted_examples = self.format_examples(examples, format_criteria, separators)
-            all_formatted_examples.append(formatted_examples)
-
-        return "\n".join(all_formatted_examples)
-
-    def format_examples(self, examples, criteria, separators):
-        if not examples:
-            return ""
-
-        if isinstance(criteria, str):
-            criteria = {'format': criteria}
-
-        output_format = criteria.get('format', 'Json')
-        template_str = criteria.get('template')
-
-        formatted_examples = []
-
-        for entry in examples:
-            # For 'Jinja2' format, use the entire example (content and metadata)
-            if output_format.lower() == 'jinja2':
-                content_data = entry
-            else:
-                # Extract content appropriately
-                content_str = entry.get('content', '')
-                try:
-                    content_data = json.loads(content_str)
-                except json.JSONDecodeError as e:
-                    print(f"Error decoding JSON: {e}")
-                    continue
-
-            if output_format.lower() == 'json':
-                formatted_example = json.dumps(content_data, indent=2)
-
-            elif output_format.lower() == 'markdown':
-                formatted_example = self.dict_to_markdown(content_data)
-
-            elif output_format.lower() == 'jinja2':
-                if not template_str:
-                    # Provide a default template if none is specified
-                    template_str = self.get_default_jinja2_template(content_data)
-                try:
-                    from jinja2 import Template
-                    template = Template(template_str)
-                    formatted_example = template.render(**content_data)
-                except Exception as e:
-                    print(f"Error rendering Jinja2 template: {e}")
-                    continue
-            else:
-                print(f"Unsupported format or missing template for '{output_format}'.")
-                continue
-
-            formatted_examples.append(formatted_example)
-
-        item = ''.join([f"{separators['item_prefix']}{format_ex}{separators['item_suffix']}" for format_ex in formatted_examples])
-
-        return f"{separators['global_prefix']}{item}{separators['global_suffix']}"
-
-    def get_default_jinja2_template(self, content_data):
-        # Generates a default Jinja2 template by recursively listing all keys and their values
-        def generate_template_lines(data, parent_key=''):
-            lines = []
-            for key, value in data.items():
-                full_key = f"{parent_key}{key}"
-                if isinstance(value, dict):
-                    lines.extend(generate_template_lines(value, f"{full_key}."))
-                else:
-                    lines.append(f"{full_key}: {{{{ {full_key} }}}}")
-            return lines
-
-        template_lines = generate_template_lines(content_data)
-        return "\n".join(template_lines)
-
-    def dict_to_markdown(self, content):
-        markdown_lines = []
-        for key, value in content.items():
-            markdown_lines.append(f"**{key}**: {value}")
-        return "\n".join(markdown_lines)
-
+    
     
     def run_websocket_server(self):
         self.websocket_server.run_server()
@@ -791,47 +145,7 @@ class HumanLLM:
     def set_common_vectordb_embedding_function(self):
         self.config.common_vectordb.config.set_common_vectordb_embedding_function()
         
-    def get_few_shots_tag_args(self, prompt):
-        """
-        Removes the 'few_shots' tag from the prompt and inserts the string received from
-        get_multiple_few_shots at each location where the tag was removed.
-
-        Returns:
-            str: The modified prompt content with few shots inserted.
-        """
-        # Match 'few_shots' and capture the curly braces, manually handling nested braces
-        pattern = r"few_shots:\s*\{"
-        matches = list(re.finditer(pattern, prompt, re.DOTALL))
-
-        for match in reversed(matches):  # Reverse to not mess up indices when replacing
-            try:
-                start = match.start()
-                # Manually find the corresponding closing brace
-                brace_count = 1
-                end = start + match.end() - match.start()
-                while brace_count > 0 and end < len(prompt):
-                    if prompt[end] == '{':
-                        brace_count += 1
-                    elif prompt[end] == '}':
-                        brace_count -= 1
-                    end += 1
-
-                # Extract the JSON string
-                data_str = prompt[match.start() + len("few_shots:"):end]
-                print(f"Attempting to decode few_shots tag: {data_str}")  # Debug
-                data = json.loads(data_str)
-                # Combine criteria
-                combined_criteria = self.combine_criteria([data])
-                # Get the few shots string
-                few_shots_str = self.get_multiple_few_shots(combined_criteria)
-                # Replace the tag with the few shots string
-                prompt = prompt[:start] + few_shots_str + prompt[end:]
-            except json.JSONDecodeError as e:
-                print(f"Error decoding 'few_shots' tag: {e}")
-                print(f"Faulty JSON: {data_str}")  # Debug
-                continue
-
-        return prompt
+    
 
     def set_llmORchain(self, llm_name, is_premium=False, temperature=0.1):
         if llm_name in self.llmORchains_list:
@@ -1055,61 +369,9 @@ class HumanLLM:
         if reset_menu_time_after:
             self.start_time, self.menu_start_time = time.time(), time.time()
 
-    def load_prompt(self, prompt_name, template_data=None, directory=None):
-        """
-        Load a prompt or template from a file, with optional dynamic content.
+    
 
-        Parameters:
-        - prompt_name (str): The name of the prompt file to load (without .txt extension).
-        - template_data (dict): Optional dictionary for placeholder replacements in the template.
-        - directory (str): Directory where prompt files are stored.
-
-        Returns:
-        - str: The content of the prompt file, with placeholders replaced if template_data is provided.
-        """
-        if not directory:
-            template_content = prompt_name
-        else :
-            prompt_path = os.path.join(directory, f"{prompt_name}.txt")
-
-            try:
-                with open(prompt_path, 'r') as file:
-                    template_content = file.read()
-
-                    # Apply template data if provided
-                    if template_data:
-                        template_content = template_content.format(**template_data)
-
-            except FileNotFoundError:
-                raise FileNotFoundError(
-                    f"The prompt file '{prompt_name}.txt' was not found in the directory '{directory}'")
-            except KeyError as e:
-                raise KeyError(f"Missing key {e} in template data for prompt '{prompt_name}'")
-
-        prompt_content = self.get_few_shots_tag_args(template_content)
-        return prompt_content
-
-    def combine_criteria(self, criteria_list):
-        """
-        Formats the criteria list into the required output format.
-
-        Args:
-            criteria_list (list): List of criteria dictionaries.
-
-        Returns:
-            list: List of formatted criteria dictionaries.
-        """
-        formatted_list = []
-        for criteria in criteria_list:
-            formatted_criteria = {
-                "sources": criteria.get('sources', "default"),
-                "num": criteria.get('num', 2),
-                "format": criteria.get('format', "Markdown"),
-                "sort_order": criteria.get('sort_order', None),
-                "template": criteria.get('template', None),
-            }
-            formatted_list.append(formatted_criteria)
-        return formatted_list
+    
 
     def _process_examples(self, log_entries: List, params: FewShotsParams) -> List[str]:
         """
@@ -1217,15 +479,7 @@ class HumanLLM:
         else:
             return True
 
-    def _get_log_entries(self, agent_name, function_name, max_entries=20):
-        self._check_and_init_vector_db()
-        result = self.config.common_vectordb.query(
-            query_text="*",
-            metadata_filter={"function_name": function_name, "agent_name": agent_name},
-            k=max_entries,
-            sort_order="desc"  # Sort time from most recent to oldest
-        )
-        return result
+
 
     def synthesize_responses(self, responses, use_default_llm):
         system = """You have been provided with a set of responses from various open-source models to the latest user query. Your task is to synthesize these responses into a single, high-quality response while keeping the same output format structure. It is crucial to first critically evaluate the information provided in these responses, recognizing that some of it may be biased or incorrect. Your response should not simply replicate the given answers but should offer a refined, accurate, and comprehensive reply to the instruction with the same format output. Ensure your response is well-structured, coherent, and adheres to the highest standards of accuracy and reliability."""
@@ -1255,7 +509,7 @@ class HumanLLM:
         function_name = inspect.stack()[2].function
         use_premium_llm = use_premium_llm if use_premium_llm is not None else self.premium_llm_by_default
         forced_llm_output = False  # TODO: try to set it to None
-        self.add_agent_data(
+        self.config.add_agent_data(
             self.agent_name,
             "saved_task",
             {
@@ -1369,7 +623,7 @@ class HumanLLM:
                 result = self.getScoredResults(function_name)
                 if result is not None:
                     messages = [
-                        SystemMessage(content=self.load_prompt(prompt_name=self.system_prompt,
+                        SystemMessage(content=self.config.load_prompt(prompt_name=self.system_prompt,
                                                                directory='prompts')),
                         HumanMessage(content=result)
                     ]
@@ -1473,13 +727,16 @@ class HumanLLM:
     def reuse_past(self, forced_llm_output, function_name):
         if self.fixed_coach:
             selected_index = 1
-            log_entries, list_output = self._get_log_entries(self.agent_name, function_name), ""
+            log_entries, list_output = self.config._get_log_entries(self.agent_name, function_name), ""
         elif self.config.common_vectordb.count() > 0:
-            log_entries, list_output = self._get_log_entries(self.agent_name, function_name), ""
+            log_entries, list_output = self.config._get_log_entries(self.agent_name, function_name), ""
             for idx, entry in enumerate(log_entries, start=1):
                 content = json.loads(entry.page_content)
-                text = (content['output_contents'][0]['content'].replace('\n', '\\') if content[
-                    'output_contents'] else "") if isinstance(content['output_contents'], list) else \
+                text = (
+                    content['output_contents'][0]['content'].replace('\n', '\\')
+                    if content['output_contents']
+                    else ""
+                ) if isinstance(content['output_contents'], list) else \
                     content['output_contents']['content'].replace('\n', '\\')
                 date = entry.metadata['time'].split('.')[0]
                 list_output += (
@@ -1529,9 +786,9 @@ class HumanLLM:
                 # Process to create a new variant
                 comments = smart_input("Provide critic or feedback for the current prompt: ", self.agent_name)
                 refine_prompt = _visual_input(
-                    f"Current system prompt:<<< {self.load_prompt(prompt_name=self.system_prompt, directory='prompts')} >>>\n\nFeedback or critic: {comments}")
+                    f"Current system prompt:<<< {self.config.load_prompt(prompt_name=self.system_prompt, directory='prompts')} >>>\n\nFeedback or critic: {comments}")
                 forced_llm_output = default_llm_function.invoke(
-                    [SystemMessage(content=self.load_prompt(prompt_name="improve_prompt_from_answer_critic",
+                    [SystemMessage(content=self.config.load_prompt(prompt_name="improve_prompt_from_answer_critic",
                                                             directory='prompts')),
                      HumanMessage(content=refine_prompt)])
                 new_template = forced_llm_output.content
@@ -1542,22 +799,22 @@ class HumanLLM:
             if use_premium_llm:
                 forced_llm_output = premium_llm_function.invoke(
                     [SystemMessage(
-                        content=self.load_prompt(prompt_name="system_prompt_refiner",
+                        content=self.config.load_prompt(prompt_name="system_prompt_refiner",
                                                  directory='prompts')),
                         HumanMessage(
-                            content=f"PROMPT TO GET SUGGESTIONS FOR IMPROVEMENT:\n{self.load_prompt(prompt_name=self.system_prompt, directory='prompts')}")])
+                            content=f"PROMPT TO GET SUGGESTIONS FOR IMPROVEMENT:\n{self.config.load_prompt(prompt_name=self.system_prompt, directory='prompts')}")])
             else:
                 forced_llm_output = default_llm_function.invoke(
                     [SystemMessage(
-                        content=self.load_prompt(prompt_name="system_prompt_refiner",
+                        content=self.config.load_prompt(prompt_name="system_prompt_refiner",
                                                  directory='prompts')),
                         HumanMessage(
-                            content=f"PROMPT TO GET SUGGESTIONS FOR IMPROVEMENT:\n{self.load_prompt(prompt_name=self.system_prompt, directory='prompts')}")])
+                            content=f"PROMPT TO GET SUGGESTIONS FOR IMPROVEMENT:\n{self.config.load_prompt(prompt_name=self.system_prompt, directory='prompts')}")])
             smart_print(
                 f"***** PROMPT SUGGESTIONS *****\n\033[33m{forced_llm_output.content}\033[0m\n*************",
                 self.agent_name, "PROMPT SUGGESTIONS")
         new_template = _visual_input(
-            self.load_prompt(prompt_name=self.system_prompt,
+            self.config.load_prompt(prompt_name=self.system_prompt,
                              directory='prompts') if new_template is None else new_template)
         smart_print(f"***** NEW PROMPT TEMPLATE:\n{new_template}\n*************", self.agent_name,
                     "NEW PROMPT TEMPLATE")
@@ -1718,14 +975,28 @@ class HumanLLM:
         metadata_filter = {}
         if function_name: metadata_filter["function_name"] = function_name
         if agent_name: metadata_filter["agent_name"] = agent_name
-        result = self.config.common_vectordb.query(query_text="*", metadata_filter=metadata_filter, k=k)
+        result = self.config.common_vectordb.query(
+            query_text="*",
+            metadata_filter=metadata_filter,
+            k=k
+        )
         visual_result = "\n===============================\n".join(
-            [json.dumps(json.loads(item.page_content), indent=4, sort_keys=True).replace("\\n", "\n") for item
-             in result])
+            [
+                json.dumps(json.loads(item.page_content), indent=4, sort_keys=True).replace("\\n", "\n")
+                for item in result
+            ]
+        )
         return visual_result
 
-    def _after_inference(self, inference_result_msg, premium_llm_function, color="37", output_id=None,
-                         outputs_count=None, task_name=None):
+    def _after_inference(
+            self,
+            inference_result_msg,
+            premium_llm_function,
+            color="37",
+            output_id=None,
+            outputs_count=None,
+            task_name=None
+        ):
         if not self.outputs:
             self.outputs = {}
             for i in range(outputs_count):
@@ -1760,7 +1031,7 @@ class HumanLLM:
                 match = re.search(pattern, inference_result_msg.content, flags=re.MULTILINE)
                 task_name = match.group(1) if match else print("No function definitions found.")
 
-            self.add_agent_data(
+            self.config.add_agent_data(
                 self.agent_name,
                 "saved_task",
                 {
@@ -1934,21 +1205,37 @@ class HumanLLM:
         )
 
     def findBetterPrompt(self, comments, inference_result_msg, premium_llm_function):
-        comments = smart_input("First enter your critic here (then modify answer to get ideal answer): ",
-                               self.agent_name)
+        comments = smart_input(
+            "First enter your critic here (then modify answer to get ideal answer): ",
+            self.agent_name
+        )
         ideal_answer = _visual_input(inference_result_msg.content)
-        refine_prompt = f"Current system prompt:<<< {self.load_prompt(prompt_name=self.system_prompt, directory='prompts')} >>>\n\nPrompt's answer:<<< {inference_result_msg.content} >>>\n\nPrompt's answer critic:{comments}\n\nPrompt's ideal Answer:<<< {ideal_answer} >>>"
+        refine_prompt = f"Current system prompt:<<< {self.config.load_prompt(prompt_name=self.system_prompt, directory='prompts')} >>>\n\nPrompt's answer:<<< {inference_result_msg.content} >>>\n\nPrompt's answer critic:{comments}\n\nPrompt's ideal Answer:<<< {ideal_answer} >>>"
         smart_print(f"***** PROMPT FOR IMPROVEMENT *****\n{refine_prompt}", self.agent_name, "PROMPT FOR IMPROVEMENT")
-        llm_output = premium_llm_function.invoke([SystemMessage(
-            content=self.load_prompt(prompt_name="improve_prompt_from_answer_critic", directory='prompts')),
-            HumanMessage(content=refine_prompt)])
-        smart_print(f"***** RECOMMENDATION OPEN FOR EDITION *****\n", self.agent_name,
-                    "RECOMMENDATION OPEN FOR EDITION")
+        llm_output = premium_llm_function.invoke(
+            [
+                SystemMessage(
+                    content=self.config.load_prompt(prompt_name="improve_prompt_from_answer_critic", directory='prompts')
+                ),
+                HumanMessage(content=refine_prompt)
+            ]
+        )
+        smart_print(
+            f"***** RECOMMENDATION OPEN FOR EDITION *****\n",
+            self.agent_name,
+            "RECOMMENDATION OPEN FOR EDITION"
+        )
         new_template = _visual_input(llm_output.content)
-        smart_print(f"***** NEW PROMPT TEMPLATE:\n{new_template}\n*************", self.agent_name,
-                    "NEW PROMPT TEMPLATE")  # Confirm that the user wants to modify the template
-        confirm = smart_input("Do you want to replace current prompt file template with your input? (y/n): ",
-                              self.agent_name).upper()  # Save prompt with tag options
+        smart_print(
+            f"***** NEW PROMPT TEMPLATE:\n{new_template}\n*************",
+            self.agent_name,
+            "NEW PROMPT TEMPLATE"
+        )  # Confirm that the user wants to modify the template
+        confirm = smart_input(
+            "Do you want to replace current prompt file template with your input? (y/n): ",
+            self.agent_name
+        ).upper()  # Save prompt with tag options
+
         if confirm == "Y":
             tag_option = smart_input(
                 "Enter a tag for saving the prompt (leave blank for no tag, or 'same' to keep the current tag): ",
@@ -1957,7 +1244,6 @@ class HumanLLM:
             save_prompt_with_tag(self.system_prompt, new_template, "")
         else:
             save_prompt_with_tag(self.system_prompt, new_template, tag_option)
-
         return comments
 
     def criticAnswer(self, suggestions, text_content, text_has_annotations=True, annotation_format=None,
@@ -2057,7 +1343,7 @@ class HumanLLM:
         if critic:
             if suggestions == "":
                 suggestions = critic['suggestions']
-            self.add_agent_data(
+            self.config.add_agent_data(
                 self.agent_name,
                 "llm_suggestions",
                 {
@@ -2214,7 +1500,6 @@ class HumanLLM:
         return answer
 
     def get_host_id(self):
-        
         return socket.gethostname() + "-" + str(uuid.getnode())
 
     # staticmethod call llm_function (langchain ChatOpenAI) with optional function_call and process function call until result is provided
@@ -2461,7 +1746,7 @@ class HumanLLM:
                             to_send = buffer
                             buffer = ""
 
-                        if self.use_websocket:
+                        if self.config.use_websocket:
                             smart_print(to_send, self.agent_name, f"Inference streaming output {color_id}",
                                         append=True, column_id=color_id, column_max=self.num_parallel_inferences)
                         else:
@@ -2473,7 +1758,7 @@ class HumanLLM:
 
                 # Final flush after streaming ends
                 if buffer:
-                    if self.use_websocket:
+                    if self.config.use_websocket:
                         smart_print(buffer, self.agent_name, f"Inference streaming output {color_id}",
                                     append=True, column_id=color_id, column_max=self.num_parallel_inferences)
                     else:
@@ -2510,7 +1795,7 @@ class HumanLLM:
         elif original_input_messages is None:
             print(f"****user_message {self.agent_name} : {user_message}****")
             original_input_messages = [
-                SystemMessage(content=self.load_prompt(prompt_name=self.system_prompt, directory=prompt_directory)),
+                SystemMessage(content=self.config.load_prompt(prompt_name=self.system_prompt, directory=prompt_directory)),
                 HumanMessage(content=user_message)]
         input_contents_str0, input_contents_str1 = str(original_input_messages[0].content), str(
             original_input_messages[1].content)
@@ -2529,28 +1814,33 @@ class HumanLLM:
             if self.skip_rounds > 0:
                 smart_print(
                     f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[2].function} skipping HumanLLM for {self.skip_rounds} rounds****\033[0m",
-                    self.agent_name, "Skipping round", optional=True)
+                    self.agent_name,
+                    "Skipping round",
+                    optional=True
+                )
 
             start_time = datetime.now()
             # Pre-inference human intervention
             if self.automation in ['before', 'after', 'skip_once']:
-                print(f"****agent : {self.agent_name}, automation : {self.automation}****")
+                self.logger.info(f"****agent : {self.agent_name}, automation : {self.automation}****")
                 input_comments, skip_inference, use_premium_llm, llm_outputs = None, False, False, []
                 llm_input_messages = original_input_messages
                 self.llm_input_messages = original_input_messages
                 self.last_inference_check_results = [None]
                 if self.automation == 'after' and hasattr(self, "saved_task"):  # Plus besoin de tester sur agent_name
                     temp = self.saved_task.get('content', {})
-                    print(f"****temp (llm_output after {self.agent_name}) : {temp}****")
+                    self.logger.info(f"****temp (llm_output after {self.agent_name}) : {temp}****")
                     llm_outputs = [AIMessage(content=temp.get('llm_output', ""))]
                     if self.auto_n_rounds > 0:
                         self.automation = "full_auto"
                     else:
                         self.automation = None
-                    print(f"****llm_output : {llm_outputs}****")
+                    self.logger.info(f"****llm_output : {llm_outputs}****")
                     smart_print(
                         llm_outputs[0].content if llm_outputs else "No LLM output",
-                        self.agent_name, "NEW inference result recieved", column_id=0,
+                        self.agent_name,
+                        "NEW inference result recieved",
+                        column_id=0,
                         column_max=1)
             else:
                 llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self._before_inference(
@@ -2564,8 +1854,7 @@ class HumanLLM:
                 )
                 self.llm_input_messages = llm_input_messages
                 self.clear_selected_outputs()
-                self.last_inference_check_results = [
-                                                        None] * self.num_parallel_inferences  # Pre-allocate the list with None
+                self.last_inference_check_results = [None] * self.num_parallel_inferences  # Pre-allocate the list with None
                 if llm_input_messages and not skip_inference:
                     # Use concurrent futures to parallelize the LLM calls.
                     outputs = []
@@ -2575,17 +1864,26 @@ class HumanLLM:
                                 self.llmORchains_list.get('3_majority_chain')):
                             stream_output = True
                         futures = [
-                            executor.submit(perform_llm_call, llm_input_messages, use_premium_llm, function_calling,
-                                            ((temperature_min + i * (temperature_max - temperature_min) / (
-                                                        self.num_parallel_inferences - 1)) if (
-                                                        temperature_min is not None and self.num_parallel_inferences > 1 and temperature_min >= 0.) else 0),
-                                            stream_output, i) for i in
-                            range(self.num_parallel_inferences)]
+                            executor.submit(
+                                perform_llm_call,
+                                llm_input_messages,
+                                use_premium_llm,
+                                function_calling,
+                                (
+                                    (temperature_min + i * (temperature_max - temperature_min) / (self.num_parallel_inferences - 1)) 
+                                    if (temperature_min is not None and self.num_parallel_inferences > 1 and temperature_min >= 0.)
+                                    else 0
+                                ),
+                                stream_output,
+                                i
+                            ) for i in
+                            range(self.num_parallel_inferences)
+                        ]
                         for idx, future in enumerate(futures):
                             try:
                                 llm_response = future.result(timeout=timeout_seconds)
                                 outputs.append(llm_response)
-                                if self.use_websocket:
+                                if self.config.use_websocket:
                                     smart_print(
                                         llm_response.content,
                                         self.agent_name, "NEW inference result recieved", column_id=idx,
@@ -2638,7 +1936,7 @@ class HumanLLM:
                 if len(llm_outputs) > 1:
                     smart_print("**** Multiple LLM ANSWERS > we will process POST INFERENCE for each ****",
                                 self.agent_name, "Multiple LLM ANSWERS", append=True, optional=True)
-                if False and self.use_websocket:
+                if False and self.config.use_websocket:
                     # Utilisez un ThreadPoolExecutor pour exécuter les réponses en parallèle en mode WebSocket.
                     with concurrent.futures.ThreadPoolExecutor() as executor:
                         futures = []
@@ -2801,7 +2099,7 @@ class HumanLLM:
         improvement_prompt = re.sub(r'\\u[0-9A-Fa-f]{4}', '', improvement_prompt)
 
         # Save the suggestions using add_agent_data
-        self.add_agent_data(self.agent_name, "llm_suggestions", {
+        self.config.add_agent_data(self.agent_name, "llm_suggestions", {
             'llm_suggestions': response.content,
             'user_suggestions': "",
             'improvement_prompt': improvement_prompt
@@ -2840,7 +2138,7 @@ class HumanLLM:
         annotations = re.sub(r'\\u[0-9A-Fa-f]{4}', '', annotations)
 
         # Save the annotations using add_agent_data
-        self.add_agent_data(self.agent_name, "llm_annotations", {
+        self.config.add_agent_data(self.agent_name, "llm_annotations", {
             'annotations': annotations,
             'annotation_prompt': annotation_prompt
         })
