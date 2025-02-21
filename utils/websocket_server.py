@@ -194,7 +194,7 @@ class WebsocketServer:
                             message = None  # Response will be sent asynchronously
                         else:
                             # Execute function synchronously
-                            result = monitor.execute_function(function_name, params)
+                            result = monitor.run_tool(function_name, params)
                             message = json.dumps({
                                 "status": "success",
                                 "message": None,
@@ -234,7 +234,7 @@ class WebsocketServer:
         try:
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
-                None, monitor.execute_function, function_name, params
+                None, monitor.run_tool, function_name, params
             )
             message = json.dumps({
                 "status": "success",

@@ -8,7 +8,6 @@ from utils.llm_utils import (
     UnifiedVectorDB
 )
 from typing import List, Dict, Any, Optional
-
 from langchain_openai import ChatOpenAI
 from langchain_core.messages.ai import AIMessage
 
@@ -36,12 +35,12 @@ class HumanLLMConfig:
         self.use_websocket = False
         
         # Initialize vector databases for tasks
-        self.db_collection_success="successful_tasks"
-        self.db_collection_failed="failed_tasks"
+        self.db_collection_success = "successful_tasks"
+        self.db_collection_failed = "failed_tasks"
 
         self.db_learnt_tasks = None
         self.db_failed_tasks = None
-        
+
         self.step_id = 0
         self.function_list = None
         self.default_skip_rounds = 0
@@ -83,8 +82,8 @@ class HumanLLMConfig:
                 ),
                 "premium_llm": ChatOpenAI(
                     model=MODELS_CONFIG_LIST["smart_gpt"],
-                        cache=False,
-                        temperature=0.
+                    cache=False,
+                    temperature=0.
                 ),
                 # "coder_llm": ChatOllama(
                 #     model=MODELS_CONFIG_LIST["code_gpt"],
@@ -133,28 +132,28 @@ class HumanLLMConfig:
             }
 
     def add_learnt_task(self, serialized_entry, tags):
-        self.config.db_learnt_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
+        self.db_learnt_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
 
     def add_failed_task(self, serialized_entry, tags):
-        self.config.db_failed_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
+        self.db_failed_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
 
     def get_user_id(self):
         return self.user_session.get_user_id()
-    
+
     def log_agent_data(
-            self,
-            agent_name,
-            data_key,
-            data_value,
-            function_name=None,
-            id_task=False,
-            before_after=None,
-            user_id=None,
-            step_id=None,
-            type_tache=None,
-            score=None,
-            metadata=None
-        ):
+        self,
+        agent_name,
+        data_key,
+        data_value,
+        function_name=None,
+        id_task=False,
+        before_after=None,
+        user_id=None,
+        step_id=None,
+        type_tache=None,
+        score=None,
+        metadata=None
+    ):
         """Stores agent-specific data with additional metadata.
         Elasticsearch generates an 'id' automatically and includes it in the metadata.
         """
@@ -197,22 +196,22 @@ class HumanLLMConfig:
         self.common_vectordb.add_texts(texts=[serialized_data], metadatas=[tags])
 
     def get_agent_data(
-            self,
-            agent_name=None,
-            data_key=None,
-            id_task=None,
-            function_name=None,
-            before_after=None,
-            user_id=None,
-            step_id=None,
-            type_tache=None,
-            score=None,
-            metadata_filter=None,
-            sort_order=None,
-            k=5,
-            start_index=0,
-            end_index=None
-        ):
+        self,
+        agent_name=None,
+        data_key=None,
+        id_task=None,
+        function_name=None,
+        before_after=None,
+        user_id=None,
+        step_id=None,
+        type_tache=None,
+        score=None,
+        metadata_filter=None,
+        sort_order=None,
+        k=5,
+        start_index=0,
+        end_index=None
+    ):
         """Retrieves agent-specific data based on the agent name, data key, and additional metadata.
         Supports pagination by specifying start and end indices.
         """
@@ -248,8 +247,9 @@ class HumanLLMConfig:
         )
 
         # Apply pagination
-        paginated_results = (results[start_index:end_index] 
-            if end_index is not None 
+        paginated_results = (
+            results[start_index:end_index]
+            if end_index is not None
             else results[start_index:]
         )
 
@@ -266,8 +266,8 @@ class HumanLLMConfig:
                 ret += temp[data_key]
         # Ret contains only text field of the data, results contains all the metadata
         return ret, results
-    
-    def get_tasks(self, page_size:int=200, nb_pages:int=1, id_last_task:Optional[str]=None):
+
+    def get_tasks(self, page_size: int = 200, nb_pages: int = 1, id_last_task: Optional[str] = None):
         """Retrieves saved tasks using get_agent_data with pagination.
         Parameters:
             page_size (int): Number of results per page. Default is 200.
@@ -324,14 +324,14 @@ class HumanLLMConfig:
         ret = sorted(ret, key=lambda x: x['date'], reverse=True)
 
         return json.dumps(ret)
-    
+
     def goto_task(
-            self,
-            id_task: str,
-            automatic: str = None,
-            special_criteria: dict = None,
-            task_details: str = None
-        ):
+        self,
+        id_task: str,
+        automatic: str = None,
+        special_criteria: dict = None,
+        task_details: str = None
+    ):
         """
         Retrieve the task from the database and start processing the task.
         Parameters:
@@ -381,7 +381,7 @@ class HumanLLMConfig:
             f.write("")
 
         # Execute the bash command with unbuffered output and capture its output
-        process = subprocess.Popen(
+        subprocess.Popen(
             ['bash', '-c', f'python3 -u learn.py --proxy --secret --pickle_name {filename} > ./goto_output/output_{id_task}_{self.get_user_id()}.log 2>&1'],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -404,7 +404,7 @@ class HumanLLMConfig:
                 if "WebSocket Remote URL via proxy: " in line:
                     link = line.split("WebSocket Remote URL via proxy: ")[1].strip()
                     # display it on discord
-                    message = (f"**XP ID:** {self.config.common_vectordb_config.unique_collection_id}\n**User ID:** {self.get_user_id()}\n**Task Link:** {link}\n**Task Details:** {task_details}")
+                    message = (f"**XP ID:** {self.common_vectordb_config.unique_collection_id}\n**User ID:** {self.get_user_id()}\n**Task Link:** {link}\n**Task Details:** {task_details}")
                     self.logger.info(f"Discord message: {message}")
                     self.send_to_discord(message)
                     break
@@ -414,10 +414,10 @@ class HumanLLMConfig:
             self.logger.info("The link was not found in the output file.")
 
         return link
-    
+
     def send_to_discord(self, message: str):
-        payload = { "content": message}
-        headers = { "Content-Type": "application/json"}
+        payload = {"content": message}
+        headers = {"Content-Type": "application/json"}
         response = requests.post(self.discord_webhook, data=json.dumps(payload), headers=headers)
         if response.status_code == 204:
             self.logger.info("Message sent to Discord successfully.")
@@ -438,7 +438,7 @@ class HumanLLMConfig:
         """
         if not directory:
             template_content = prompt_name
-        else :
+        else:
             prompt_path = os.path.join(directory, f"{prompt_name}.txt")
 
             try:
@@ -457,7 +457,7 @@ class HumanLLMConfig:
 
         prompt_content = self.extract_few_shot_tags(template_content)
         return prompt_content
-    
+
     def extract_few_shot_tags(self, prompt):
         """
         Removes the 'few_shots' tag from the prompt and inserts the string received from
@@ -497,9 +497,8 @@ class HumanLLMConfig:
                 print(f"Error decoding 'few_shots' tag: {e}")
                 print(f"Faulty JSON: {data_str}")  # Debug
                 continue
-
         return prompt
-    
+
     def combine_criteria(self, criteria_list):
         """
         Formats the criteria list into the required output format.
@@ -521,7 +520,7 @@ class HumanLLMConfig:
             }
             formatted_list.append(formatted_criteria)
         return formatted_list
-    
+
     def manage_few_shot_examples(self, few_shots_params) -> str:
         if not few_shots_params:
             return ""
@@ -547,10 +546,10 @@ class HumanLLMConfig:
                 separators = params["separators"]
             else:
                 separators = {
-                    "global_prefix" : f"\n{params['sources']} tasks : <<",
-                    "global_suffix" : ">>\n",
-                    "item_prefix" : "\n|",
-                    "item_suffix" : "|"
+                    "global_prefix": f"\n{params['sources']} tasks : <<",
+                    "global_suffix": ">>\n",
+                    "item_prefix": "\n|",
+                    "item_suffix": "|"
                 }
 
             if params['sources'] == "learnt":
@@ -570,7 +569,7 @@ class HumanLLMConfig:
                     similarity_search=params['similarity_search']
                 )
             else:
-                examples = self.config.common_vectordb.query(
+                examples = self.common_vectordb.query(
                     query_text=params['query_text'],
                     k=params['num'],
                     metadata_filter=params['metadata_filter'],
@@ -604,30 +603,30 @@ class HumanLLMConfig:
         if self.db_learnt_tasks is None or force:
             self.db_learnt_tasks = UnifiedVectorDB(
                 UnifiedVectorDBConfig(
-                    collection_name = self.db_collection_success,
-                    embedding_function = self.common_vectordb_config.common_vectordb_embedding_function,
-                    persist_directory = self.common_vectordb_config.persist_directory + self.db_collection_success,
-                    reset_indices = self.common_vectordb_config.reset_indices
+                    collection_name=self.db_collection_success,
+                    embedding_function=self.common_vectordb_config.common_vectordb_embedding_function,
+                    persist_directory=self.common_vectordb_config.persist_directory + self.db_collection_success,
+                    reset_indices=self.common_vectordb_config.reset_indices
                 )
             )
         if self.db_failed_tasks is None or force:
             self.db_failed_tasks = UnifiedVectorDB(
                 UnifiedVectorDBConfig(
-                    collection_name = self.db_collection_failed,
-                    embedding_function = self.common_vectordb_config.common_vectordb_embedding_function,
-                    persist_directory = self.common_vectordb_config.persist_directory + self.db_collection_failed,
-                    reset_indices = self.common_vectordb_config.reset_indices
+                    collection_name=self.db_collection_failed,
+                    embedding_function=self.common_vectordb_config.common_vectordb_embedding_function,
+                    persist_directory=self.common_vectordb_config.persist_directory + self.db_collection_failed,
+                    reset_indices=self.common_vectordb_config.reset_indices
                 )
             )
 
     def get_learnt_tasks(
-            self,
-            query_text="*",
-            k=10,
-            metadata_filter=None,
-            sort_order=None,
-            similarity_search=False
-        ):
+        self,
+        query_text="*",
+        k=10,
+        metadata_filter=None,
+        sort_order=None,
+        similarity_search=False
+    ):
         self.initialize_class_db()
         if similarity_search:
             results = self.db_learnt_tasks.similarity_search_with_score(query=query_text, k=k)
@@ -639,15 +638,15 @@ class HumanLLMConfig:
                 sort_order=sort_order
             )
         return {result.page_content for result in results}
-    
+
     def get_failed_tasks(
-            self,
-            query_text="*",
-            k=10,
-            metadata_filter=None,
-            sort_order=None,
-            similarity_search=False
-        ):
+        self,
+        query_text="*",
+        k=10,
+        metadata_filter=None,
+        sort_order=None,
+        similarity_search=False
+    ):
         self.initialize_class_db()
         if similarity_search:
             results = self.db_failed_tasks.similarity_search_with_score(query=query_text, k=k)
@@ -659,14 +658,14 @@ class HumanLLMConfig:
                 sort_order=sort_order
             )
         return {result.page_content for result in results}
-    
+
     def get_validation_results(
-            self,
-            query_text="*",
-            k=10,
-            sort_order=None,
-            similarity_search=False
-        ):
+        self,
+        query_text="*",
+        k=10,
+        sort_order=None,
+        similarity_search=False
+    ):
         self.initialize_class_db()
         metadata_filter = {'agent_name': 'ValidationAgent'}
         if similarity_search:
@@ -681,7 +680,7 @@ class HumanLLMConfig:
                 sort_order=sort_order
             )
         return {result.page_content for result in results}
-    
+
     def format_examples(self, examples, criteria, separators):
         if not examples:
             return ""
@@ -754,7 +753,7 @@ class HumanLLMConfig:
 
         template_lines = generate_template_lines(content_data)
         return "\n".join(template_lines)
-    
+
     def retrieve_logs(self, agent_name, function_name, max_entries=20):
         self.configure_vector_store()
         result = self.common_vectordb.query(
@@ -764,7 +763,7 @@ class HumanLLMConfig:
             sort_order="desc"
         )
         return result
-    
+
     def run_ws_server(self):
         self.ws_server.run_server()
 

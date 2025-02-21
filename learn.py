@@ -444,7 +444,7 @@ def run_planner(*args, **kwargs):  # NEW VERSION
 
     # Initialize WebSocket server if used
     if HumanLLMConfig().use_websocket and HumanLLMConfig().ws_server is None:
-        humanLLM.initialize_websocket_server()
+        humanLLM.init_ws_server()
 
     # Select the problem prompts subdirectory if not provided
     problem_prompts_subdir = kwargs.get('problem_prompts_subdir')
