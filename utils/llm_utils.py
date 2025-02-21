@@ -720,7 +720,7 @@ class HumanLLMMonitor:
         return cls.user_id
     
     @classmethod
-    def get_rag_documents(cls, agent_name=None, extra_filter: Optional[Dict[str, Any]] = None, **kwargs):
+    def get_rag_documents(cls, agent_name=None, extra_filter: Optional[Dict[str, Any]] = None, query: str = '*', **kwargs):
         """
         Convenience method to retrieve only RAG-indexed documents.
         It wraps get_agent_data by enforcing metadata_filter with {"rag": True}.
@@ -728,7 +728,7 @@ class HumanLLMMonitor:
         metadata_filter = {"rag": True}
         if extra_filter:
             metadata_filter.update(extra_filter)
-        return cls.get_agent_data(agent_name=agent_name, metadata_filter=metadata_filter, **kwargs)
+        return cls.get_agent_data(agent_name=agent_name, metadata_filter=metadata_filter, query_text=query, **kwargs)
 
     @classmethod
     def add_rag_document(cls, file_path: str, metadata: Optional[Dict[str, Any]] = None,
@@ -849,7 +849,7 @@ class HumanLLMMonitor:
     @classmethod
     def get_agent_data(cls, agent_name=None, data_key=None, id_task=None, function_name=None, before_after=None, user_id=None,
                        step_id=None, type_tache=None, score=None,
-                       metadata_filter=None, sort_order=None, k=5, start_index=0, end_index=None):
+                       metadata_filter=None, sort_order=None, k=5, start_index=0, end_index=None, query_text='*'):
         """Retrieves agent-specific data based on the agent name, data key, and additional metadata.
         Supports pagination by specifying start and end indices.
         """
@@ -878,7 +878,7 @@ class HumanLLMMonitor:
         # Fetch results with a large 'k' to ensure we have enough data
         max_k = end_index if end_index is not None else k
         results = cls.common_vectordb.query(
-            query_text='*', metadata_filter=metadata, sort_order=sort_order, k=max_k)
+            query_text=query_text, metadata_filter=metadata, sort_order=sort_order, k=max_k)
 
         # Apply pagination
         paginated_results = results[start_index:end_index] if end_index is not None else results[start_index:]

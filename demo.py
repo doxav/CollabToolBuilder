@@ -33,7 +33,7 @@ import json
 import re
 from json import JSONDecoder
 
-from utils.llm_utils import HumanLLMMonitor, smart_print
+from utils.llm_utils import HumanLLMMonitor, smart_print, smart_input
 from utils.file_utils import save_to_pickle, load_from_pickle
 from config import embedding_function, reset_db_indices, MODELS_CONFIG_LIST
 
@@ -309,11 +309,11 @@ def should_continue(state: GenerateAnalystsState):
 ### -------------------------------
 
 class InterviewState(MessagesState):
-    max_num_turns: int  # Number of conversation turns
-    context: Annotated[list, operator.add]  # Source docs
-    analyst: Analyst  # Analyst persona
-    interview: str  # Interview transcript
-    sections: list  # Collected sections for the report
+    max_num_turns: int                              # Number of conversation turns
+    context: Annotated[list, operator.add]          # Source docs
+    analyst: Analyst                                # Analyst persona
+    interview: str                                  # Interview transcript
+    sections: list                                  # Collected sections for the report
 
 class SearchQuery(BaseModel):
     search_query: str = Field(None, description="Search query for retrieval.")
@@ -531,6 +531,28 @@ def search_wikipedia(state: InterviewState):
     smart_print(message=formatted_search_docs, agent_name="Search Wikipedia", message_type="NEW inference result recieved", column_id=0, column_max=1)
     return {"context": [formatted_search_docs]}
 
+@load_from_pickle
+@save_to_pickle
+def search_docs_rag_get(search_query):
+    search_docs = HumanLLMMonitor.get_rag_documents("type", query=search_query.search_query)
+    formatted_search_docs = "\n\n---\n\n".join([
+        '<Document "' + doc["rag_knowledge"] + '"'
+        for doc in search_docs[0]
+    ])
+    return formatted_search_docs
+
+def search_docs_rag(state: InterviewState):
+    print("Search_docs_rag")
+    if "search_instructions" not in state:
+        state["search_instructions"] = SystemMessage(content=(
+            "You are an analyst tasked with generating a search query for the RAG retrieval model. "
+            "Analyze the conversation between the analyst and the expert and convert the final question into a search query."
+        ))
+    search_query = search_llm_query(state["search_instructions"], state["messages"])
+    formatted_search_docs = search_docs_rag_get(search_query)
+    smart_print(message=formatted_search_docs, agent_name="Search Docs RAG", message_type="NEW inference result recieved", column_id=0, column_max=1)
+    return {"context": [formatted_search_docs]}
+
 def generate_answer(state: InterviewState):
     print("Generate_answer")
     if "answer_instructions" not in state:
@@ -608,22 +630,26 @@ def write_section(state: InterviewState):
 # RESEARCH REPORT NODES (INCLUDING PLAN, RESOURCE LIST, AND SELF-CRITIQUE)
 ### -------------------------------
 
+class SearchStrategy:
+    def register_nodes(self, graph_builder: StateGraph):
+        raise NotImplementedError("Subclasses must implement register_nodes")
+
 # Extend state to include new keys for iterative improvement.
 class ResearchGraphState(TypedDict):
-    topic: str                      # Research topic
-    max_analysts: int               # Number of analysts
-    human_analyst_feedback: str     # Human feedback
-    analysts: List[Analyst]         # List of analysts
-    sections: Annotated[list, operator.add]  # Collected sections from interviews
-    plan: str                       # Overall plan for the document
-    introduction: str               # Introduction text
-    content: str                    # Main report content (without a conclusion)
-    conclusion: str                 # Conclusion text
-    resource_list: str              # Consolidated resource list (citations)
-    final_report: str               # The final combined report
-    iteration: int                  # Current iteration count
-    max_iterations: int             # Maximum allowed iterations
-    latex_report: str               # The final report in latex
+    topic: str                                          # Research topic
+    max_analysts: int                                   # Number of analysts
+    human_analyst_feedback: str                         # Human feedback
+    analysts: List[Analyst]                             # List of analysts
+    sections: Annotated[list, operator.add]             # Collected sections from interviews
+    plan: str                                           # Overall plan for the document
+    introduction: str                                   # Introduction text
+    content: str                                        # Main report content (without a conclusion)
+    conclusion: str                                     # Conclusion text
+    resource_list: str                                  # Consolidated resource list (citations)
+    final_report: str                                   # The final combined report
+    iteration: int                                      # Current iteration count
+    max_iterations: int                                 # Maximum allowed iterations
+    latex_report: str                                   # The final report in latex
 
 def plan_document(state: ResearchGraphState):
     """Plan Agent: Create a detailed plan for the research document."""
@@ -974,20 +1000,106 @@ def generate_latex(state : ResearchGraphState):
     print(f"latex generated : {latex_report_text}")
     return {'latex_report': latex_report_text}
 
+SEARCH_STRATEGY = None
+
+def choose_search_strategy(state: ResearchGraphState):
+    """
+    A runtime decision node that selects the search strategy.
+    In a real interactive environment, this could prompt the user.
+    For this example, we simulate the choice.
+    """
+    global SEARCH_STRATEGY
+    SEARCH_STRATEGY = smart_input("What searching strategy do you want to use? (Online, Offline, Both): ", column_id=0, column_max=1, optional=False).lower()
+    
+    # Validate the choice and default to "both" if unrecognized.
+    SEARCH_STRATEGY = "both" if SEARCH_STRATEGY not in ["online", "offline", "both"] else SEARCH_STRATEGY
+    
+    # Store the choice as a string to ensure serializability.
+    print(f"Search strategy chosen: {SEARCH_STRATEGY}")
+    return state
+
+def route_to_search_nodes(state: InterviewState):
+    """
+    Based on state['search_strategy'], decide which search nodes to enable.
+    Return a list of node names to which 'ask_question' should connect.
+    """
+    global SEARCH_STRATEGY
+    targets = []
+    
+    if SEARCH_STRATEGY == "offline":
+        # Only offline search
+        targets = ["search_docs_rag"]
+    elif SEARCH_STRATEGY == "online":
+        # Only online
+        targets = ["search_web", "search_wikipedia", "search_arxiv", "search_semantic_scholar"]
+    else:
+        # "both" or unknown => all nodes
+        targets = ["search_docs_rag", "search_web", "search_wikipedia", "search_arxiv", "search_semantic_scholar"]
+    
+    return targets
+
+
+def build_full_subgraph() -> StateGraph:
+    """
+    Build the subgraph with all potential search nodes.
+    We'll disable or skip them at runtime based on search_strategy.
+    """
+    sg = StateGraph(InterviewState)
+    
+    # 1) Common nodes
+    sg.add_node("ask_question", generate_question)
+    sg.add_node("answer_question", generate_answer)
+    sg.add_node("write_section", write_section)
+    
+    # 2) All possible search nodes
+    sg.add_node("search_docs_rag", search_docs_rag)
+    sg.add_node("search_web", search_web)
+    sg.add_node("search_wikipedia", search_wikipedia)
+    sg.add_node("search_arxiv", search_arxiv)
+    sg.add_node("search_semantic_scholar", search_semantic_scholar)
+    
+    # 3) Connect edges via a small router function
+    sg.add_conditional_edges("ask_question", route_to_search_nodes, 
+        [
+          "search_docs_rag",
+          "search_web",
+          "search_wikipedia",
+          "search_arxiv",
+          "search_semantic_scholar",
+        ]
+    )
+    
+    # Next, from each search node to answer_question (some libraries require separate edges).
+    sg.add_edge("search_docs_rag", "answer_question")
+    sg.add_edge("search_web", "answer_question")
+    sg.add_edge("search_wikipedia", "answer_question")
+    sg.add_edge("search_arxiv", "answer_question")
+    sg.add_edge("search_semantic_scholar", "answer_question")
+    
+    # Then from answer_question -> write_section -> END
+    sg.add_edge("answer_question", "write_section")
+    sg.add_edge("write_section", END)
+    sg.add_edge(START, "ask_question")
+    
+    return sg
+
+def initiate_all_interviews(state: ResearchGraphState):
+    print("Initiate_all_interviews")
+    human_analyst_feedback = state.get('human_analyst_feedback')
+    if human_analyst_feedback:
+        return "create_analysts"
+    else:
+        topic = state["topic"]
+        return [
+            Send("conduct_interview", {
+                "analyst": analyst,
+                "messages": [HumanMessage(content=f"So you said you were writing an article on {topic}?")]
+            })
+            for analyst in state["analysts"]
+        ]
+
 def multi_agent_research_generation_persist_at_the_end(title, topic, max_analysts: int = 3, max_iterations: int = 2):
-    """
-    Generate a full research report using a multi-agent LangGraph workflow.
-    The workflow:
-      1. Begins with a plan agent, creates analysts, conducts interviews,
-         writes each section (introduction, main content, conclusion),
-         and generates a consolidated resource list.
-      2. Finalizes the report.
-      3. Then, critiques the current report and updates the plan.
-      4. If the number of iterations is less than max_iterations, it resets key state fields and loops back to re-run the process.
-      5. When max_iterations is reached, the final improved report is output.
-    """
     print("Multi_agent_research_generation_persist_at_the_end")
-    # Initialize state with new iterative fields.
     initial_state: ResearchGraphState = {
         "topic": topic,
         "max_analysts": max_analysts,
@@ -1001,103 +1113,49 @@ def multi_agent_research_generation_persist_at_the_end(title, topic, max_analyst
         "resource_list": "",
         "final_report": "",
         "iteration": 0,
-        "max_iterations": max_iterations
+        "max_iterations": max_iterations,
+        "search_strategy": None,
+        "latex_report": "",
+        "compiled_interview_graph": None  # New field initialized.
     }
-
-    # Build the interview sub-graph (unchanged)
-    interview_builder = StateGraph(InterviewState)
-    # TODO: Move out the Ask Question (make it generate 10 questions for each analysts before going in interview) and Write Section nodes to main graph so we can still parallelize the interviews and also use HumanLLMMonitor for
-    # these 2 nodes. 
-    interview_builder.add_node("ask_question", generate_question)
-    interview_builder.add_node("search_web", search_web)
-    interview_builder.add_node("search_wikipedia", search_wikipedia)
-    interview_builder.add_node("search_arxiv", search_arxiv)
-    interview_builder.add_node("search_semantic_scholar", search_semantic_scholar)
-    interview_builder.add_node("answer_question", generate_answer)
-    interview_builder.add_node("save_interview", save_interview)
-    interview_builder.add_node("write_section", write_section)
-    interview_builder.add_edge(START, "ask_question")
-    interview_builder.add_edge("ask_question", "search_web")
-    interview_builder.add_edge("ask_question", "search_wikipedia")
-    interview_builder.add_edge("ask_question", "search_arxiv")
-    interview_builder.add_edge("ask_question", "search_semantic_scholar")
-    interview_builder.add_edge("search_web", "answer_question")
-    interview_builder.add_edge("search_wikipedia", "answer_question")
-    interview_builder.add_edge("search_arxiv", "answer_question")
-    interview_builder.add_edge("search_semantic_scholar", "answer_question")
-    interview_builder.add_conditional_edges("answer_question", route_messages, ['ask_question', 'save_interview'])
-    interview_builder.add_edge("save_interview", "write_section")
-    interview_builder.add_edge("write_section", END)
-    memory = MemorySaver()
-    interview_graph = interview_builder.compile(checkpointer=memory).with_config(run_name="Conduct Interviews")
     params = {"configurable": {"thread_id": "1"}, "recursion_limit": 100}
 
-    # Build the main research graph with iterative self-critique.
     builder = StateGraph(ResearchGraphState)
     builder.add_node("plan_document", plan_document)
     builder.add_node("create_analysts", create_analysts)
-    # builder.add_node("human_feedback", human_feedback)
-    builder.add_node("conduct_interview", interview_graph)
-    builder.add_node("write_report", write_report)
+    builder.add_node("choose_search_strategy", choose_search_strategy)    
+    
+    # Continue with the rest of the main graph nodes.
     builder.add_node("write_introduction", write_introduction)
+    builder.add_node("write_report", write_report)
     builder.add_node("write_conclusion", write_conclusion)
     builder.add_node("write_resource_list", write_resource_list)
     builder.add_node("finalize_report", finalize_report)
     builder.add_node("self_critique", self_critique)
     builder.add_node("reset_for_iteration", reset_for_iteration)
     builder.add_node("generate_latex", generate_latex)
-    # Define conditional edge based on iteration count.
-    builder.add_conditional_edges("self_critique", should_iterate, ["reset_for_iteration", "generate_latex"])
-    # Add the final latex generation node.
-    builder.add_edge("generate_latex", END)
-    builder.add_edge("reset_for_iteration", "plan_document")
 
-    # Graph flow:
-    # START -> plan_document -> create_analysts -> human_feedback -> (initiate interviews) ->
-    # write_introduction, write_report, write_conclusion -> write_resource_list -> finalize_report -> self_critique ->
-    # [if iteration < max_iterations -> reset_for_iteration -> plan_document] else END.
-    builder.add_edge(START, "plan_document")
+    interview_graph = build_full_subgraph().compile()
+    builder.add_node("conduct_interview", interview_graph)
+    
     builder.add_edge("plan_document", "create_analysts")
-    # builder.add_edge("create_analysts", "human_feedback")
-    # Use a conditional edge from human_feedback to either re-run analyst creation or start interviews.
-    def initiate_all_interviews(state: ResearchGraphState):
-      print("Initiate_all_interviews")
-      human_analyst_feedback = state.get('human_analyst_feedback')
-      if human_analyst_feedback:
-          return "create_analysts"
-      else:
-          topic = state["topic"]
-          return [Send("conduct_interview", {"analyst": analyst,
-                                             "messages": [HumanMessage(content=f"So you said you were writing an article on {topic}?")]})
-                  for analyst in state["analysts"]]
-    # builder.add_conditional_edges("human_feedback", initiate_all_interviews, ["create_analysts", "conduct_interview"])
-    builder.add_conditional_edges("create_analysts",initiate_all_interviews, ["create_analysts", "conduct_interview"])
-    # Modify to sequential edge after interviews to avoid infinite loop when using HumnaLLMMonitor as llm.
+    builder.add_edge("create_analysts", "choose_search_strategy")
+    builder.add_conditional_edges("choose_search_strategy", initiate_all_interviews, ["create_analysts", "conduct_interview"])
     builder.add_edge("conduct_interview", "write_introduction")
+
     builder.add_edge("write_introduction", "write_report")
     builder.add_edge("write_report", "write_conclusion")
     builder.add_edge("write_conclusion", "write_resource_list")
     builder.add_edge("write_resource_list", "finalize_report")
     builder.add_edge("finalize_report", "self_critique")
-    # The conditional edge from self_critique will either loop back via reset_for_iteration or end.
+    builder.add_conditional_edges("self_critique", should_iterate, ["reset_for_iteration", "generate_latex"])
+    builder.add_edge("reset_for_iteration", "plan_document")
+    builder.add_edge("generate_latex", END)
+    builder.add_edge(START, "plan_document")
+    
     memory2 = MemorySaver()
     graph = builder.compile(checkpointer=memory2)
-    # Optionally, visualize the graph:
-    # Image(graph.get_graph(xray=1).draw_mermaid_png())
-    # with open("images/graph_png.png", "wb") as f:
-    #     f.write(graph.get_graph(xray=1).draw_mermaid_png())
-
-    print("Save files in db")
     
-    # Take every files in 'BIBLIO-TEST' folder and push it in the database
-    bib_files = [f for f in os.listdir("BIBLIO-TEST") if os.path.isfile(os.path.join("BIBLIO-TEST", f))]
-    for file in bib_files:
-        print(file)
-        if not (file == '.DS_Store'):
-            HumanLLMMonitor.add_rag_document(file, folder_path="BIBLIO-TEST")
-
-    print("Starting the graph")
-
     graph.invoke(initial_state, params)
     final_state = graph.get_state(params)
     report = final_state.values.get('final_report')
@@ -1111,14 +1169,16 @@ def multi_agent_research_generation_persist_at_the_end(title, topic, max_analyst
     if bibtex_report:
         with open(f"{report_folder}/{topic}.bib", "w") as f:
             f.write(bibtex_report)
+    with open("images/graph_png.png", "wb") as f:
+        f.write(graph.get_graph(xray=1).draw_mermaid_png())
     return report
 
 # Invoke the multi-agent iterative workflow:
 report = multi_agent_research_generation_persist_at_the_end(
     title="State of the art on Leading Edge Noise",
     topic = "Research assistant framework for State of the art on Leading Edge Noise",
-    max_analysts=5,
-    max_iterations=1  # Default number of iterations is 2.
+    max_analysts=3,
+    max_iterations=5  # Default number of iterations is 2.
 )
 
 print(report)
