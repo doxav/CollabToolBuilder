@@ -56,15 +56,15 @@ class TaskIdentificationAgent:
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
-                self.human_llm_identify_best_task.add_inference_check(key, value)
+                self.human_llm_identify_best_task.add_manage_inference_check(key, value)
         if hasattr(self, 'recommendations_usage'):
             if self.recommendations_usage:
-                self.human_llm_identify_best_task.add_inference_check(
+                self.human_llm_identify_best_task.add_manage_inference_check(
                     "Recommendations",
                     self.human_llm_identify_best_task.generate_best_improvement_suggestions
                 )
         else:
-            self.human_llm_identify_best_task.add_inference_check(
+            self.human_llm_identify_best_task.add_manage_inference_check(
                 "Recommend Critics",
                 self.human_llm_identify_best_task.generate_best_improvement_suggestions
             )
@@ -72,11 +72,11 @@ class TaskIdentificationAgent:
     def identify_best_task(self):
         # Prepare data
         envs_status = "\n".join([env.get_state() for env in self.envs])
-        few_shots = HumanLLMConfig().get_multiple_few_shots(
+        few_shots = HumanLLMConfig().manage_few_shot_examples(
             few_shots_params=self.params_user_message)
         # print(few_shots)
         self.human_llm_identify_best_task.user_message_few_shots = self.params_user_message
- 
+
         primitives = extract_functions_ast("\n".join(get_primitives(self.primitives_dir)), include_docstring=True, return_string=True)
         successful_tasks = "\n".join(HumanLLMConfig().get_learnt_tasks())
         failed_tasks = "\n".join(HumanLLMConfig().get_failed_tasks())
@@ -105,7 +105,7 @@ class TaskIdentificationAgent:
         # print(f"User message: {user_message}")
         sys.stdout=original_stdout
 
-        task = self.human_llm_identify_best_task.CallHumanLLM(
+        task = self.human_llm_identify_best_task.invoke(
             system_prompt_template=self.problem_prompts_subdir + 'identify_best_task',
             user_message=user_message,
             return_message_content_only=False,
@@ -156,22 +156,22 @@ class CodingAgent:
         self.human_llm_code_task = HumanLLM(**kw_common_args)
 
         self.human_llm_code_task.skip_rounds = skip_rounds
-        self.human_llm_code_task.add_inference_check("Code Parsing", self.parse_ai_generated_code)
-        self.human_llm_code_task.add_inference_check("Run Tests", self.run_tests_on_code)
+        self.human_llm_code_task.add_manage_inference_check("Code Parsing", self.parse_ai_generated_code)
+        self.human_llm_code_task.add_manage_inference_check("Run Tests", self.run_tests_on_code)
         if hasattr(self, 'recommendations_usage'):
             if self.recommendations_usage:
-                self.human_llm_code_task.add_inference_check(
+                self.human_llm_code_task.add_manage_inference_check(
                     "Recommend Critics",
                     self.human_llm_code_task.generate_best_improvement_suggestions
                 )
         else:
-            self.human_llm_code_task.add_inference_check(
+            self.human_llm_code_task.add_manage_inference_check(
                 "Recommend Critics",
                 self.human_llm_code_task.generate_best_improvement_suggestions
             )
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
-                self.human_llm_code_task.add_inference_check(key, value)
+                self.human_llm_code_task.add_manage_inference_check(key, value)
         
         self.primitives_dir = primitives_dir
 
@@ -595,7 +595,7 @@ class CodingAgent:
                             if (exec_result, diff_text) not in error_patches:
                                 error_patches.append((exec_result, diff_text))
                                 # Store updated error_patches
-                                HumanLLMConfig().add_agent_data(self.name, 'error_patches', error_patches, metadata=metadata)
+                                HumanLLMConfig().log_agent_data(self.name, 'error_patches', error_patches, metadata=metadata)
 
             no_runtime_errors.append(no_runtime_error)
             exec_results.append(exec_result)
@@ -698,7 +698,7 @@ class CodingAgent:
         }
 
         # Load and format the user message from a file template
-        user_message = HumanLLMConfig().load_prompt(
+        user_message = HumanLLMConfig().load_prompt_template(
             "coding_agent_user_message_template",
             template_data=template_data,
             directory='prompts'
@@ -727,7 +727,7 @@ class CodingAgent:
 
 
         # Appeler la méthode avec les arguments sous forme de **kwargs
-        codes = self.human_llm_code_task.CallHumanLLM(**kwargs)
+        codes = self.human_llm_code_task.invoke(**kwargs)
         results = []
 
         for index, code in enumerate(codes):
@@ -802,7 +802,7 @@ class ValidationAgent:
         self.model_choice = model_choice
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
-                self.human_llm_validate_code.add_inference_check(key, value)
+                self.human_llm_validate_code.add_manage_inference_check(key, value)
 
     def validate_code(
         self,
@@ -858,7 +858,7 @@ New environment status of examples on which the task has been tested on: <<{envs
             with open(self.log_user_message, "a") as f:
                 f.write("Validation -- validate_code:<<\n" + user_message + "\n>>\n\n")
 
-        code_validation = self.human_llm_validate_code.CallHumanLLM(
+        code_validation = self.human_llm_validate_code.invoke(
             system_prompt_template='validate_code',
             user_message=user_message,
             return_message_content_only=False,
@@ -903,7 +903,7 @@ class CapitalizationAgent:
         self.model_choice = model_choice
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
-                self.human_llm_generate_function_description.add_inference_check(key, value)
+                self.human_llm_generate_function_description.add_manage_inference_check(key, value)
 
     def capitalize_successful_tasks(self, task_description: str, parsed_code: str) -> None:
         self.logger.info('Starting capitalize_successful_tasks')
@@ -1153,7 +1153,7 @@ class CapitalizationAgent:
             with open(self.log_user_message, "a") as f:
                 f.write("Capitalization -- generate_tool_description:<<\n" + user_message + "\n>>\n\n")
 
-        tool_description = self.human_llm_generate_function_description.CallHumanLLM(
+        tool_description = self.human_llm_generate_function_description.invoke(
             system_prompt_template="generate_function_description", user_message=user_message,
             return_message_content_only=True, model_choice=self.model_choice)
         return tool_description
@@ -1233,7 +1233,7 @@ class PlannerAgent:
 
         # Prepare the prompt for the LLM
         prompt_path = reuse_prompt if reuse_prompt else self.system_prompt_path
-        prompt_template = HumanLLMConfig().load_prompt(prompt_path) if prompt_path else (
+        prompt_template = HumanLLMConfig().load_prompt_template(prompt_path) if prompt_path else (
             "You are a helpful assistant that selects the best functions to answer the user's question.\n"
             "Available code snippets:\n{code_snippets}\n\n"
             "Please reuse these functions to create a new function that solves the user query.\n"
@@ -1247,7 +1247,7 @@ class PlannerAgent:
 
         user_message_content = f"User's question:\n{question}"
 
-        selected_code = self.human_llm_planner.CallHumanLLM(original_input_messages=[SystemMessage(content=prompt), HumanMessage(content=user_message_content)]) #, automation=self.automation)
+        selected_code = self.human_llm_planner.invoke(original_input_messages=[SystemMessage(content=prompt), HumanMessage(content=user_message_content)]) #, automation=self.automation)
         if selected_code:
             selected_code = prebuilt_code + "\n" + selected_code
 

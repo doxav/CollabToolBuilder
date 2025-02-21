@@ -17,7 +17,6 @@ class HumanLLMConfig:
     __instance = None
 
     def __new__(cls):
-        # Check if the instance already exists
         if cls.__instance is None:
             cls.__instance = super(HumanLLMConfig, cls).__new__(cls)
         return cls.__instance
@@ -32,8 +31,8 @@ class HumanLLMConfig:
         self.common_vectordb_config = UnifiedVectorDBConfig()
         self.common_vectordb = None
 
-        self.websocket_server_config = WebSocketServerConfig()
-        self.websocket_server = None
+        self.ws_server_config = WebSocketServerConfig()
+        self.ws_server = None
         self.use_websocket = False
         
         # Initialize vector databases for tasks
@@ -60,16 +59,17 @@ class HumanLLMConfig:
     def initialize(self):
         if self.initialized:
             return
-        
         self.initialized = True
-        self._check_and_init_vector_db()
+        self.configure_vector_store()
         if self.use_websocket:
-            if self.websocket_server is None:
-                self.websocket_server = WebsocketServer(self.websocket_server_config)
-        
+            self.init_ws_server()
         self.common_vectordb = UnifiedVectorDB(self.common_vectordb_config, check_db=True)
 
-    def _check_and_init_vector_db(self):
+    def init_ws_server(self):
+        if self.ws_server is None:
+            self.ws_server = WebsocketServer(self.ws_server_config)
+
+    def configure_vector_store(self):
         if self.common_vectordb_config.embedding_function:
             self.common_vectordb_config.set_common_vectordb_embedding_function()
 
@@ -141,7 +141,7 @@ class HumanLLMConfig:
     def get_user_id(self):
         return self.user_session.get_user_id()
     
-    def add_agent_data(
+    def log_agent_data(
             self,
             agent_name,
             data_key,
@@ -424,7 +424,7 @@ class HumanLLMConfig:
         else:
             self.logger.info(f"Failed to send message to Discord. Status code: {response.status_code}")
 
-    def load_prompt(self, prompt_name, template_data=None, directory=None):
+    def load_prompt_template(self, prompt_name, template_data=None, directory=None):
         """
         Load a prompt or template from a file, with optional dynamic content.
 
@@ -455,10 +455,10 @@ class HumanLLMConfig:
             except KeyError as e:
                 raise KeyError(f"Missing key {e} in template data for prompt '{prompt_name}'")
 
-        prompt_content = self.get_few_shots_tag_args(template_content)
+        prompt_content = self.extract_few_shot_tags(template_content)
         return prompt_content
     
-    def get_few_shots_tag_args(self, prompt):
+    def extract_few_shot_tags(self, prompt):
         """
         Removes the 'few_shots' tag from the prompt and inserts the string received from
         get_multiple_few_shots at each location where the tag was removed.
@@ -490,7 +490,7 @@ class HumanLLMConfig:
                 # Combine criteria
                 combined_criteria = self.combine_criteria([data])
                 # Get the few shots string
-                few_shots_str = self.get_multiple_few_shots(combined_criteria)
+                few_shots_str = self.manage_few_shot_examples(combined_criteria)
                 # Replace the tag with the few shots string
                 prompt = prompt[:start] + few_shots_str + prompt[end:]
             except json.JSONDecodeError as e:
@@ -522,7 +522,7 @@ class HumanLLMConfig:
             formatted_list.append(formatted_criteria)
         return formatted_list
     
-    def get_multiple_few_shots(self, few_shots_params) -> str:
+    def manage_few_shot_examples(self, few_shots_params) -> str:
         if not few_shots_params:
             return ""
 
@@ -598,7 +598,7 @@ class HumanLLMConfig:
 
         return "\n".join(all_formatted_examples)
 
-    def check_init_class_db(self, force=False):
+    def initialize_class_db(self, force=False):
         if self.common_vectordb_config.common_vectordb_embedding_function is None:
             raise ValueError("embeddingfunction must be set to allow HumanLLM to manage tasks and other memories")
         if self.db_learnt_tasks is None or force:
@@ -628,7 +628,7 @@ class HumanLLMConfig:
             sort_order=None,
             similarity_search=False
         ):
-        self.check_init_class_db()
+        self.initialize_class_db()
         if similarity_search:
             results = self.db_learnt_tasks.similarity_search_with_score(query=query_text, k=k)
         else:
@@ -648,7 +648,7 @@ class HumanLLMConfig:
             sort_order=None,
             similarity_search=False
         ):
-        self.check_init_class_db()
+        self.initialize_class_db()
         if similarity_search:
             results = self.db_failed_tasks.similarity_search_with_score(query=query_text, k=k)
         else:
@@ -667,7 +667,7 @@ class HumanLLMConfig:
             sort_order=None,
             similarity_search=False
         ):
-        self.check_init_class_db()
+        self.initialize_class_db()
         metadata_filter = {'agent_name': 'ValidationAgent'}
         if similarity_search:
             results = self.common_vectordb.similarity_search_with_score(
@@ -711,7 +711,7 @@ class HumanLLMConfig:
                 formatted_example = json.dumps(content_data, indent=2)
 
             elif output_format.lower() == 'markdown':
-                formatted_example = self.dict_to_markdown(content_data)
+                formatted_example = self.convert_to_markdown(content_data)
 
             elif output_format.lower() == 'jinja2':
                 if not template_str:
@@ -734,7 +734,7 @@ class HumanLLMConfig:
 
         return f"{separators['global_prefix']}{item}{separators['global_suffix']}"
 
-    def dict_to_markdown(self, content):
+    def convert_to_markdown(self, content):
         markdown_lines = []
         for key, value in content.items():
             markdown_lines.append(f"**{key}**: {value}")
@@ -755,13 +755,19 @@ class HumanLLMConfig:
         template_lines = generate_template_lines(content_data)
         return "\n".join(template_lines)
     
-    def _get_log_entries(self, agent_name, function_name, max_entries=20):
-        self._check_and_init_vector_db()
+    def retrieve_logs(self, agent_name, function_name, max_entries=20):
+        self.configure_vector_store()
         result = self.common_vectordb.query(
             query_text="*",
             metadata_filter={"function_name": function_name, "agent_name": agent_name},
             k=max_entries,
-            sort_order="desc"  # Sort time from most recent to oldest
+            sort_order="desc"
         )
         return result
     
+    def run_ws_server(self):
+        self.ws_server.run_server()
+
+    def stop_ws_server(self):
+        if self.ws_server:
+            self.ws_server.stop_server()

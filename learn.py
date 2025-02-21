@@ -387,7 +387,7 @@ def run_4agents_learning_loop(
         return max(total_scores)
 
 def run_planner(*args, **kwargs):  # NEW VERSION
-    humanLLM = HumanLLM()
+    humanLLM = HumanLLMConfig()
     # Definition of automation depending on the task given
     if kwargs.get('functions_to_import') is not None:
         # Imports the functions with the regex pattern given from functions directory into the elastic database
@@ -443,7 +443,7 @@ def run_planner(*args, **kwargs):  # NEW VERSION
     )
 
     # Initialize WebSocket server if used
-    if HumanLLMConfig().use_websocket and HumanLLMConfig().websocket_server is None:
+    if HumanLLMConfig().use_websocket and HumanLLMConfig().ws_server is None:
         humanLLM.initialize_websocket_server()
 
     # Select the problem prompts subdirectory if not provided
@@ -624,16 +624,16 @@ def coding_and_validation_loop(
         previous_errors, previous_codes, previous_scores = temp_errors, temp_codes, temp_scores
 
         # Store updated data
-        humanLLM.add_agent_data(agent_coding.name, 'previous_errors', previous_errors, metadata=metadata)
-        humanLLM.add_agent_data(agent_coding.name, 'previous_codes', previous_codes, metadata=metadata)
-        humanLLM.add_agent_data(agent_coding.name, 'previous_scores', previous_scores, metadata=metadata)
-        humanLLM.add_agent_data(agent_coding.name, 'unique_codes', list(unique_codes), metadata=metadata)
+        humanLLM.log_agent_data(agent_coding.name, 'previous_errors', previous_errors, metadata=metadata)
+        humanLLM.log_agent_data(agent_coding.name, 'previous_codes', previous_codes, metadata=metadata)
+        humanLLM.log_agent_data(agent_coding.name, 'previous_scores', previous_scores, metadata=metadata)
+        humanLLM.log_agent_data(agent_coding.name, 'unique_codes', list(unique_codes), metadata=metadata)
 
         results = agent_coding.code_task_and_run_test(task_description)
         print("Results:", results)
 
         all_results.extend(results)
-        humanLLM.add_agent_data(agent_coding.name, 'all_results', all_results, metadata=metadata)
+        humanLLM.log_agent_data(agent_coding.name, 'all_results', all_results, metadata=metadata)
 
         current_skip_rounds = agent_validation.human_llm_validate_code.skip_rounds
         for index, result in enumerate(results):
@@ -693,13 +693,13 @@ def coding_and_validation_loop(
                 previous_codes.append(parsed_code['program_code'])
 
             # Store updated data
-            humanLLM.add_agent_data(agent_coding.name, 'previous_errors', previous_errors, metadata=metadata)
-            humanLLM.add_agent_data(agent_coding.name, 'previous_codes', previous_codes, metadata=metadata)
-            humanLLM.add_agent_data(agent_coding.name, 'previous_scores', previous_scores, metadata=metadata)
+            humanLLM.log_agent_data(agent_coding.name, 'previous_errors', previous_errors, metadata=metadata)
+            humanLLM.log_agent_data(agent_coding.name, 'previous_codes', previous_codes, metadata=metadata)
+            humanLLM.log_agent_data(agent_coding.name, 'previous_scores', previous_scores, metadata=metadata)
 
             if validated:
                 successful_codes.append((parsed_code, afb, scores))
-                humanLLM.add_agent_data(agent_coding.name, 'successful_codes', successful_codes,
+                humanLLM.log_agent_data(agent_coding.name, 'successful_codes', successful_codes,
                                                metadata=metadata)
 
         if not automation and not successful_codes:
@@ -831,9 +831,9 @@ def prepare_configs(args):
     config.use_websocket = True
     config.smart_input = smart_input
     config.smart_print = smart_print
-    config.websocket_server_config.port = args.port
-    config.websocket_server_config.secret = args.secret
-    config.websocket_server_config.proxy_enabled = args.proxy
+    config.ws_server_config.port = args.port
+    config.ws_server_config.secret = args.secret
+    config.ws_server_config.proxy_enabled = args.proxy
     
     if 'discord_webhook' in globals():
         config.discord_webhook = globals()['discord_webhook']

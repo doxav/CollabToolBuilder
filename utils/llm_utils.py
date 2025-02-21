@@ -171,6 +171,9 @@ class UserSession:
                 smart_input("Please enter your user id: ", "Learning Loop", message_type="USER_ID")
             )
         return self.user_id
+    
+    def set_user_id(self, id):
+        self.user_id = id
 
 
 class InferenceTracking:
@@ -506,7 +509,7 @@ def smart_print(
 
     if IN_WEBSOCKET:
         # Ensure websocket server is not none
-        if HumanLLMConfig().websocket_server is None:
+        if HumanLLMConfig().ws_server is None:
             logger.info("WebSocket server not initialized, initializing...")
             HumanLLMConfig().initialize_websocket_server()
             logger.info("WebSocket server initialized.")
@@ -522,9 +525,9 @@ def smart_print(
         message = json.dumps(message_dict)
         time.sleep(0.05)
         # Wait a second every 500 messages to avoid flooding the WebSocket server
-        if HumanLLMConfig().websocket_server.message_count % 500 == 0:
+        if HumanLLMConfig().ws_server.message_count % 500 == 0:
             time.sleep(0.5)
-        HumanLLMConfig().websocket_server.send_message(message)
+        HumanLLMConfig().ws_server.send_message(message)
 
     elif IN_NOTEBOOK and agent_name:
         # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
@@ -575,14 +578,14 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
         #         time.sleep(1)
 
         # Ensure websocket server is not none
-        if HumanLLMConfig().websocket_server is None:
+        if HumanLLMConfig().ws_server is None:
             logger.info("WebSocket server not initialized, initializing...")
             HumanLLMConfig().initialize_websocket_server()
             logger.info("WebSocket server initialized.")
 
         # # Retrieve port and secret from WebsocketServer
-        port = HumanLLMConfig().websocket_server.port
-        secret = HumanLLMConfig().websocket_server.secret
+        port = HumanLLMConfig().ws_server.port
+        secret = HumanLLMConfig().ws_server.secret
         ws_url = f"ws://localhost:{port}"
         if secret:
             ws_url += f"?secret={secret}"
@@ -601,7 +604,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
         message_json = json.dumps(structured_message)
 
         # Send the message via WebsocketServer
-        HumanLLMConfig().websocket_server.send_message(message_json)
+        HumanLLMConfig().ws_server.send_message(message_json)
 
         async def receive_message(timeout=86400):
             async with websockets.connect(ws_url, ping_interval=30, ping_timeout=60) as websocket:
@@ -631,16 +634,16 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
                             logger.error(f"Error decoding JSON: {e}")
                             return None
                         # Ignore messages from self
-                        if 'sender_id' in json_data and json_data['sender_id'] == HumanLLMConfig().websocket_server.server_id:
+                        if 'sender_id' in json_data and json_data['sender_id'] == HumanLLMConfig().ws_server.server_id:
                             logger.error("Received message from self, ignoring")
                             continue
 
                         # Handle function results
                         if 'result' in json_data:
                             logger.info("Received function result, ignoring")
-                            json_data['sender_id'] = HumanLLMConfig().websocket_server.server_id
+                            json_data['sender_id'] = HumanLLMConfig().ws_server.server_id
                             response = json.dumps(json_data)
-                            HumanLLMConfig().websocket_server.send_notasync_message(response)
+                            HumanLLMConfig().ws_server.send_notasync_message(response)
                             continue
                         else:
                             break
