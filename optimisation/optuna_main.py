@@ -8,10 +8,10 @@ from langchain_openai import ChatOpenAI
 from config import MODELS_CONFIG_LIST
 from learn import EnvironmentManager, run_4agents_learning_loop, run_planner
 from optimisation.optuna_analysis import analysis
-from utils.llm_utils import HumanLLMMonitor, UnifiedVectorDB
+from utils.llm_utils import HumanLLM, UnifiedVectorDB
 
 # Set the class variable
-HumanLLMMonitor.use_websocket = False
+HumanLLM.use_websocket = False
 
 def init_prompts_directory(name_xp: str, agent_name : str):
     # Create if not exists the directory to store the prompts

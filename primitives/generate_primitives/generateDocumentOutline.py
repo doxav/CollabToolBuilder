@@ -79,7 +79,7 @@ if __name__ == "__main__":
     # check if CollabFunctionsGPTCreator module exist
     try:
         if not 'OPENAI_API_KEY' in os.environ:
-            from CollabFunctionsGPTCreator.config import OPENAI_API_KEY
+            from config import OPENAI_API_KEY
             os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
     except:
         raise Exception("Please import CollabFunctionsGPTCreator module or set OPENAI_API_KEY in the environment variables")

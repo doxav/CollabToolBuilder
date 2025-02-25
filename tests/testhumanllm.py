@@ -4,7 +4,7 @@ import socket
 from langchain_openai import ChatOpenAI
 
 from config import MODELS_CONFIG_LIST, embedding_function
-from utils.llm_utils import HumanLLMMonitor, UnifiedVectorDB
+from utils.llm_utils import HumanLLM, UnifiedVectorDB
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.system import SystemMessage
 
@@ -15,7 +15,7 @@ class MarseillaisAgent:
         self.agent_name = agent_name
         if llmORchains_list is None:
             llmORchains_list = ["gpt-3.5-turbo"]  # Exemple de modèle par défaut
-        self.human_llm_monitor = HumanLLMMonitor(
+        self.human_llm_monitor = HumanLLM(
             agent_name=self.agent_name,
             llmORchains_list=llmORchains_list
         )
@@ -43,7 +43,7 @@ class ParisienAgent:
         self.agent_name = agent_name
         if llmORchains_list is None:
             llmORchains_list = ["gpt-3.5-turbo"]  # Exemple de modèle par défaut
-        self.human_llm_monitor = HumanLLMMonitor(
+        self.human_llm_monitor = HumanLLM(
             agent_name=self.agent_name,
             llmORchains_list=llmORchains_list
         )
@@ -71,14 +71,14 @@ if __name__ == "__main__":
     if unique_id is not False and UnifiedVectorDB.unique_collection_id is None:
         UnifiedVectorDB.set_unique_collection_id(unique_id)
     # Initialize HumanLLMMonitor databases
-    HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function)
-    HumanLLMMonitor.check_init_class_db(force=True)
+    HumanLLM._check_and_init_vector_db(embedding_function=embedding_function)
+    HumanLLM.check_init_class_db(force=True)
 
-    HumanLLMMonitor.use_websocket = True
+    HumanLLM.use_websocket = True
     # Initialize WebSocket server if used
-    if HumanLLMMonitor.use_websocket:
-        if HumanLLMMonitor.websocket_server is None:
-            HumanLLMMonitor.initialize_websocket_server()
+    if HumanLLM.use_websocket:
+        if HumanLLM.websocket_server is None:
+            HumanLLM.initialize_websocket_server()
 
     # Initialiser un agent personnalisé
     llm_list = {

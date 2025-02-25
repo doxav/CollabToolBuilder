@@ -3,9 +3,13 @@ from langgraph.graph import StateGraph, END
 import time
 import random  # Import random for generating step_id
 from datetime import datetime
-from utils.llm_utils import HumanLLMMonitor
-from learn import TaskIdentificationAgent, CodingAgent, ValidationAgent, CapitalizationAgent, calculate_total_score, \
-    create_Nmajority_chain, get_success_value_in_text  # TODO: move those functions to a separate file agents.py
+from utils.llm_utils import (
+    calculate_total_score,
+    get_success_value_in_text
+)
+from utils.human_llm import HumanLLM
+from learn import TaskIdentificationAgent, CodingAgent, ValidationAgent, CapitalizationAgent, \
+    create_Nmajority_chain,  # TODO: move those functions to a separate file agents.py
 
 # 2 IMPLEMENTATIONS OF THE LEARNING LOOP: 1 MODULAR AND ADVANCED IN STATE MANAGEMENT, 1 SIMPLE IN 1 FUNCTION
 
@@ -45,7 +49,7 @@ class AgentGraphNode:
             "timestamp": datetime.now().isoformat()
         })
         
-        HumanLLMMonitor.add_agent_data(
+        HumanLLM.add_agent_data(
             self.name,
             'workflow_state',
             state,
@@ -54,7 +58,7 @@ class AgentGraphNode:
 
     def restore_state(self, state_id: str) -> Optional[WorkflowState]:
         """Restore workflow state"""
-        states, _ = HumanLLMMonitor.get_agent_data(
+        states, _ = HumanLLM.get_agent_data(
             self.name,
             'workflow_state',
             id_task=state_id
@@ -486,7 +490,7 @@ if __name__ == "__main__":
     import openai
     from typing import Dict
 
-    from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, smart_print, smart_input
+    from utils.llm_utils import UnifiedVectorDB, HumanLLM, _visual_input, smart_print, smart_input
 
     import os
     import uuid
@@ -510,7 +514,7 @@ if __name__ == "__main__":
     from langgraph.graph import END, START
     from config import *
     from env.env import EnvironmentManager, validate_function_code
-    from utils.llm_utils import UnifiedVectorDB, HumanLLMMonitor, _visual_input, smart_print, smart_input
+    from utils.llm_utils import UnifiedVectorDB, HumanLLM, _visual_input, smart_print, smart_input
     from env.IR_CPS_TechSynthesis.env import *
     from env.SWEBench.env import *
     from env.env import Environment, EnvironmentManager
@@ -539,7 +543,7 @@ if __name__ == "__main__":
     if not 'reset_db_indices' in locals():
         reset_db_indices = False  # Set it in your config.py to True if you want to reset "after changing embeddings"
 
-    HumanLLMMonitor.use_websocket = True
+    HumanLLM.use_websocket = True
 
     import argparse
     import pickle
@@ -564,8 +568,8 @@ if __name__ == "__main__":
         os.remove(f'pickle/{args.pickle_name}.pkl')
 
     # Initialize HumanLLMMonitor databases
-    HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
-    HumanLLMMonitor.check_init_class_db(force=True)
+    HumanLLM._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
+    HumanLLM.check_init_class_db(force=True)
 
     # Allow some time for the WebSocket server to start
     time.sleep(1)  # Adjust if necessary

@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 import os.path
 #import warnings
 import copy
@@ -30,7 +30,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_openai import OpenAIEmbeddings
 
 from utils.file_utils import save_to_pickle, load_from_pickle
-from utils.llm_utils import UnifiedVectorDB
+from utils.llm_utils import UnifiedVectorDB, UnifiedVectorDBConfig
 #from langchain_community.cache import InMemoryCache, SQLiteCache
 #langchain.llm_cache = SQLiteCache(database_path="sqlite/langchain_cache.db")
 
@@ -149,9 +149,11 @@ class DocumentStructure:
             return s
         friendly_collection = filename_friendly_collection_string(self.synthesis_type)+"__"+filename_friendly_collection_string(self.title)
         self.resources_vectordb = UnifiedVectorDB(
-            collection_name=friendly_collection[1:63],
-            embedding_function=self.embedding_model,
-            persist_directory=f"ckpt/doc/{friendly_collection}",
+            UnifiedVectorDBConfig(
+                collection_name=friendly_collection[1:63],
+                embedding_function=self.embedding_model,
+                persist_directory=f"ckpt/doc/{friendly_collection}",
+            )
         )
         self.events = []
 
@@ -338,38 +340,38 @@ class SynthesisManager:
     @load_from_pickle
     @save_to_pickle
     def search_generic(query, search_type, output_format='json', max_results=10):
-            """
-            Searches for resources based on the given query and search type.
+        """
+        Searches for resources based on the given query and search type.
 
-            Args:
-                query (str): The search query.
-                search_type (str): The type of search to perform. Supported types are:
-                    'patents_google', 'patent_epo', 'patent_uspto', 'paper_arxiv', 'paper_pubmed', 'websearch_google', 'core', 'websearch_wikipedia', 'paper_semantic_scholar'.
-                output_format (str, optional): The format of the search results. Defaults to 'json'.
-                max_results (int, optional): The maximum number of results to return. Defaults to 10.
+        Args:
+            query (str): The search query.
+            search_type (str): The type of search to perform. Supported types are:
+                'patents_google', 'patent_epo', 'patent_uspto', 'paper_arxiv', 'paper_pubmed', 'websearch_google', 'core', 'websearch_wikipedia', 'paper_semantic_scholar'.
+            output_format (str, optional): The format of the search results. Defaults to 'json'.
+            max_results (int, optional): The maximum number of results to return. Defaults to 10.
 
-            Returns:
-                list: The search results. If an error occurs, a dictionary with an 'error' key is returned.
-            """
-            search_functions = { # ['paper_arxiv','paper_pubmed','websearch_google','websearch_wikipedia','paper_semantic_scholar']
-                'patents_google': SynthesisManager.search_google_patents, #
-                'patent_epo': SynthesisManager.search_epo, #
-                'patent_uspto': SynthesisManager.search_uspto, #
-                'paper_arxiv': SynthesisManager.search_arxiv, #
-                'paper_pubmed': SynthesisManager.search_pubmed,
-                #'websearch_bing': SynthesisManager.search_bing,
-                'websearch_google': SynthesisManager.search_google, #
-                'core': SynthesisManager.search_core, #
-                'websearch_wikipedia': SynthesisManager.search_wikipedia, #
-                'paper_semantic_scholar': SynthesisManager.search_semantic_scholar, #
-                'fiche_anomalie': SynthesisManager.search_fiche_anomalie #
-            }
-            search_function = search_functions.get(search_type)
-            if search_function:
-                results = search_function(query, output_format=output_format, max_results=max_results)
-                return results
-            else:
-                raise ValueError(f"Unsupported search type: {search_type}")
+        Returns:
+            list: The search results. If an error occurs, a dictionary with an 'error' key is returned.
+        """
+        search_functions = { # ['paper_arxiv','paper_pubmed','websearch_google','websearch_wikipedia','paper_semantic_scholar']
+            'patents_google': SynthesisManager.search_google_patents, #
+            'patent_epo': SynthesisManager.search_epo, #
+            'patent_uspto': SynthesisManager.search_uspto, #
+            'paper_arxiv': SynthesisManager.search_arxiv, #
+            'paper_pubmed': SynthesisManager.search_pubmed,
+            #'websearch_bing': SynthesisManager.search_bing,
+            'websearch_google': SynthesisManager.search_google, #
+            'core': SynthesisManager.search_core, #
+            'websearch_wikipedia': SynthesisManager.search_wikipedia, #
+            'paper_semantic_scholar': SynthesisManager.search_semantic_scholar, #
+            'fiche_anomalie': SynthesisManager.search_fiche_anomalie #
+        }
+        search_function = search_functions.get(search_type)
+        if search_function:
+            results = search_function(query, output_format=output_format, max_results=max_results)
+            return results
+        else:
+            raise ValueError(f"Unsupported search type: {search_type}")
 
     # OK, basic implementation via scraping (short description and link to paper which should be scraped also to get full description) - waiting for a key for a proper implementation
     @staticmethod
@@ -828,8 +830,6 @@ class SynthesisManager:
             print(f"Error reading {pdf_path}: {e}")
         return text
 
-
-
     @staticmethod
     @method_call_counter
     def search_fiche_anomalie(query, directory_path, output_format='json', max_results=20):
@@ -859,9 +859,6 @@ class SynthesisManager:
             return json.dumps(results, indent=2)
         else:
             return '\n'.join(['Filename: {}\nContent: {}\n'.format(result['filename'], result['content']) for result in results])
-
-
-
 
     # OK: based on search_google
     @staticmethod
@@ -1336,7 +1333,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
     def __init__(self,
                  synthesis_type: str = "",
                  goal: str = "",
-                 refined_goals: [str] = None,
+                 refined_goals: List[str] = None,
                  #server_host='http://127.0.0.1', server_port=3000, request_timeout=600,
                  log_path='./logs',
                  CPS_env_type="techsynthesis",
