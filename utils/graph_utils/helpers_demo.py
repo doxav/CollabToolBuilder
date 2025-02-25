@@ -3,7 +3,7 @@ import json
 import requests
 
 from config import MODELS_CONFIG_LIST
-from ..llm_utils import HumanLLMMonitor
+from ..human_llm import HumanLLM, HumanLLMConfig
 from ..file_utils import load_from_pickle, save_to_pickle
 
 
@@ -309,7 +309,7 @@ def search_docs_rag_get(search_query):
     """
     Search the RAG documents for the given query and return the results.
     """
-    search_docs = HumanLLMMonitor.get_rag_documents("type", query=search_query.search_query)
+    search_docs = HumanLLM(agent_name="search_rag", llmORchains_list=HumanLLMConfig().get_llmORchains_list()).get_rag_documents("type", query=search_query.search_query)
     formatted_search_docs = "\n\n---\n\n".join([
         '<Document "' + doc["rag_knowledge"] + '"'
         for doc in search_docs[0]

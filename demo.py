@@ -23,24 +23,42 @@ from langchain_core.messages import HumanMessage
 from langgraph.graph import START, END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 
+from utils.human_llm import HumanLLM, HumanLLMConfig
 from config import embedding_function, reset_db_indices
-from utils.llm_utils import HumanLLMMonitor, smart_input
+from utils.llm_utils import smart_input, smart_print
 from utils.graph_utils.analysts import Analyst, create_analysts
 from utils.graph_utils.helpers_demo import remove_think_tags, extract_latex_and_bib_from_llm_output
 from utils.graph_utils.interview import InterviewState, generate_question, generate_answer, write_section, search_docs_rag, search_web, search_wikipedia, search_arxiv, search_semantic_scholar
 
-HumanLLMMonitor.use_websocket = True
-planner = HumanLLMMonitor(agent_name="Planner")
-question = HumanLLMMonitor(agent_name="Generate Questions")
-answer = HumanLLMMonitor(agent_name="Generate Aswers")
-writerr = HumanLLMMonitor(agent_name="Write Report")
-writers = HumanLLMMonitor(agent_name="Write Section")
-writeri = HumanLLMMonitor(agent_name="Write Introduction")
-writerrl = HumanLLMMonitor(agent_name="Write Resource List")
-writerc = HumanLLMMonitor(agent_name="Write Conclusion")
-critic = HumanLLMMonitor(agent_name="Self Critic")
-latex_gen = HumanLLMMonitor(agent_name="Generate Latex")
-HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
+# HumanLLM.use_websocket = True
+config = HumanLLMConfig()
+llm_list = config.get_llmORchains_list()
+config.use_websocket = False
+config.smart_input = smart_input
+config.smart_print = smart_print
+
+if 'embedding_function' in globals():
+    embedding_function = globals()['embedding_function']
+if embedding_function is None:
+    embedding_function = "text-embedding-ada-002"
+config.common_vectordb_config.embedding_function = embedding_function
+
+if not 'reset_db_indices' in locals():
+    config.common_vectordb_config.reset_indices = False
+
+config.common_vectordb_config.db_type = "elasticsearch"
+config.initialize()
+
+planner = HumanLLM(agent_name="Planner", llmORchains_list=llm_list)
+question = HumanLLM(agent_name="Generate Questions", llmORchains_list=llm_list)
+answer = HumanLLM(agent_name="Generate Aswers", llmORchains_list=llm_list)
+writerr = HumanLLM(agent_name="Write Report", llmORchains_list=llm_list)
+writers = HumanLLM(agent_name="Write Section", llmORchains_list=llm_list)
+writeri = HumanLLM(agent_name="Write Introduction", llmORchains_list=llm_list)
+writerrl = HumanLLM(agent_name="Write Resource List", llmORchains_list=llm_list)
+writerc = HumanLLM(agent_name="Write Conclusion", llmORchains_list=llm_list)
+critic = HumanLLM(agent_name="Self Critic", llmORchains_list=llm_list)
+latex_gen = HumanLLM(agent_name="Generate Latex", llmORchains_list=llm_list)
 
 ### -------------------------------
 # RESEARCH REPORT NODES (INCLUDING PLAN, RESOURCE LIST, AND SELF-CRITIQUE)
@@ -78,7 +96,7 @@ def plan_document(state: ResearchGraphState):
             )
     # All dynamic information is passed in the user_message.
     user_message = f"TOPIC: <<< {state['topic']} >>>"
-    plan = planner.CallHumanLLM(
+    plan = planner.invoke(
         system_prompt_template=filepath,
         user_message=user_message,
         stream_output=False,
@@ -121,7 +139,7 @@ def write_report(state: ResearchGraphState):
         f"PLAN: <<< {state['plan']} >>>\n"
         f"MEMOS: <<< {formatted_str_sections} >>>"
     )
-    report = writerr.CallHumanLLM(
+    report = writerr.invoke(
         system_prompt_template=filepath,
         user_message=user_message,
         stream_output=False,
@@ -163,7 +181,7 @@ def write_introduction(state: ResearchGraphState):
         f"SECTIONS: <<< {formatted_str_sections} >>>\n"
         f"TASK: Write the report introduction."
     )
-    intro = writeri.CallHumanLLM(
+    intro = writeri.invoke(
         system_prompt_template=filepath,
         user_message=user_message,
         stream_output=False,
@@ -193,7 +211,7 @@ def write_conclusion(state: ResearchGraphState):
         f"- SECTIONS: <<< {formatted_str_sections} >>>"
     )
 
-    conclusion = writerc.CallHumanLLM(
+    conclusion = writerc.invoke(
         system_prompt_template=filepath,
         user_message=user_message,
         stream_output=False,
@@ -230,7 +248,7 @@ def write_resource_list(state: ResearchGraphState):
         formatted_str_sections = sections
 
     user_message = f"SECTIONS: <<< {formatted_str_sections} >>>"
-    resource_list = writerrl.CallHumanLLM(
+    resource_list = writerrl.invoke(
         system_prompt_template=filepath,
         user_message=user_message,
         stream_output=False,
@@ -282,7 +300,7 @@ def self_critique(state: ResearchGraphState):
             )
     current_report = state.get("final_report", "")
     user_message = f"REPORT: <<< {current_report} >>>\nTASK: Critique the report and update the plan."
-    critique_response = critic.CallHumanLLM(
+    critique_response = critic.invoke(
         system_prompt_template=filepath,
         user_message=user_message,
         stream_output=False,
@@ -407,7 +425,7 @@ def generate_latex(state : ResearchGraphState):
                 )
         
     user_message = f"REPORT: <<< {report} >>>"
-    latex_report = latex_gen.CallHumanLLM(system_prompt_template=filepath, user_message=user_message, stream_output=False, return_message_content_only=True, use_default_llm=False)[0]
+    latex_report = latex_gen.invoke(system_prompt_template=filepath, user_message=user_message, stream_output=False, return_message_content_only=True, use_default_llm=False)[0]
     latex_report_text = latex_report.content if hasattr(latex_report, "content") else latex_report
     latex_report_text = remove_think_tags(latex_report_text)
     print(f"latex generated : {latex_report_text}")

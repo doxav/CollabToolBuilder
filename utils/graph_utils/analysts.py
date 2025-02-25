@@ -2,12 +2,32 @@ import os
 from typing import List, TypedDict
 from pydantic import BaseModel, Field
 
-from ..llm_utils import HumanLLMMonitor
 from . import helpers_demo
+from config import embedding_function
+from utils.human_llm import HumanLLM, HumanLLMConfig
+from utils.llm_utils import smart_input, smart_print
 
 from langgraph.graph import END
 
-analyst = HumanLLMMonitor(agent_name="Create Analysts")
+config = HumanLLMConfig()
+llm_list = config.get_llmORchains_list()
+config.use_websocket = False
+config.smart_input = smart_input
+config.smart_print = smart_print
+
+if 'embedding_function' in globals():
+    embedding_function = globals()['embedding_function']
+if embedding_function is None:
+    embedding_function = "text-embedding-ada-002"
+config.common_vectordb_config.embedding_function = embedding_function
+
+if not 'reset_db_indices' in locals():
+    config.common_vectordb_config.reset_indices = False
+
+config.common_vectordb_config.db_type = "elasticsearch"
+config.initialize()
+
+analyst = HumanLLM(agent_name="Create Analysts", llmORchains_list=llm_list)
 
 class Analyst(BaseModel):
     affiliation: str = Field(
@@ -63,7 +83,7 @@ def create_analysts(state: GenerateAnalystsState):
         f"TASK: Generate the set of analysts in JSON format."
     )
     try:
-        analysts_response = analyst.CallHumanLLM(
+        analysts_response = analyst.invoke(
             system_prompt_template=filepath,
             user_message=user_message,
             stream_output=False,

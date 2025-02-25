@@ -102,6 +102,88 @@ class HumanLLM:
         self.auto_n_rounds = auto_n_rounds
         self.recommend_critics = recommend_critics
 
+    def get_rag_documents(self, agent_name=None, extra_filter: Optional[Dict[str, Any]] = None, query: str = '*', **kwargs):
+        """
+        Convenience method to retrieve only RAG-indexed documents.
+        It wraps get_agent_data by enforcing metadata_filter with {"rag": True}.
+        """
+        metadata_filter = {"rag": True}
+        if extra_filter:
+            metadata_filter.update(extra_filter)
+        return self.config.get_agent_data(agent_name=agent_name, metadata_filter=metadata_filter, query_text=query, **kwargs)
+
+    def add_rag_document(self, file_path: str, metadata: Optional[Dict[str, Any]] = None,
+                         chunking_options: Optional[Dict[str, Any]] = None,
+                         folder_path: str = None) -> None:
+        """
+        Loads and indexes an external document (JSON, PDF, HTML, Markdown, etc.) for RAG.
+        
+        - Uses appropriate Langchain loaders based on file extension.
+        - If chunking_options are provided (e.g. {'chunk_size': 1000, 'chunk_overlap': 200}),
+          the document is split into smaller chunks for more efficient indexing.
+        - The method reuses add_agent_data to store each chunk, adding {"rag": True} to the metadata.
+        """
+        import os
+        print(f"Loading RAG document: {file_path}")
+        if folder_path:
+            file_path = f"{folder_path}/{file_path}"
+        ext = os.path.splitext(file_path)[1].lower()
+        # Select loader based on file extension.
+        if ext == '.pdf':
+            from langchain.document_loaders import PyPDFLoader
+            loader = PyPDFLoader(file_path)
+        elif ext == '.json':
+            from langchain.document_loaders import JSONLoader
+            loader = JSONLoader(file_path)
+        elif ext in ['.html', '.htm']:
+            from langchain.document_loaders import UnstructuredHTMLLoader
+            loader = UnstructuredHTMLLoader(file_path)
+        elif ext == '.md':
+            from langchain.document_loaders import UnstructuredMarkdownLoader
+            loader = UnstructuredMarkdownLoader(file_path)
+        else:
+            from langchain.document_loaders import UnstructuredFileLoader
+            loader = UnstructuredFileLoader(file_path)
+        docs = loader.load()
+        
+        # If chunking options are provided, split the document using Langchain's text splitter.
+        if chunking_options:
+            from langchain.text_splitter import RecursiveCharacterTextSplitter
+            splitter = RecursiveCharacterTextSplitter(**chunking_options)
+            chunked_docs = []
+            for doc in docs:
+                chunks = splitter.split_text(doc.page_content)
+                for chunk in chunks:
+                    # Construct a new document-like object preserving metadata.
+                    chunked_docs.append(type(doc)(page_content=chunk, metadata=doc.metadata))
+            docs = chunked_docs
+        
+        # Index each document (or chunk) with the RAG flag in metadata.
+        for doc in docs:
+            combined_metadata = (metadata.copy() if metadata else {})
+            combined_metadata.update({"rag": True, "source": ext})
+            # We use the existing add_agent_data to store the document content.
+            self.config.log_agent_data(self.__class__.__name__, "rag_knowledge", doc.page_content,
+                                metadata=combined_metadata)
+            
+    def load_prompt_with_rag(self, prompt_name: str, template_data: Optional[Dict[str, Any]] = None,
+                             directory: Optional[str] = None) -> str:
+        """
+        Wraps the existing load_prompt to include RAG context.
+        
+        This method:
+         - Retrieves the base prompt using load_prompt (unchanged).
+         - Uses get_rag_documents to fetch RAG-indexed texts.
+         - Replaces the "{rag_context}" placeholder in the prompt with the aggregated RAG data.
+        """
+        base_prompt = self.config.load_prompt_template(prompt_name, template_data=template_data, directory=directory)
+        rag_docs, _ = self.get_rag_documents(agent_name=self.__class__.__name__)
+        if rag_docs:
+            rag_context = "\n".join([doc.get("rag_knowledge", "") for doc in rag_docs])
+        else:
+            rag_context = ""
+        return base_prompt.replace("{rag_context}", rag_context)
+
     def set_print_color(self):
         self.print_color = 37
         color_table = {
