@@ -83,12 +83,9 @@ class WebsocketServer:
         # Create logs directory if it doesn't exist
         if not os.path.exists("websocket_logs"):
             os.makedirs("websocket_logs")
-
-        # Set the log filename based on environment or timestamp
-        if os.environ.get('unique_id'):
-            self.log_filename = (
-                f"websocket_logs/websocketdata_{os.environ.get('unique_id')}_{self.port}.txt"
-            )
+        unique_id = os.environ.get('unique_id')
+        if unique_id:
+            self.log_filename = f'websocket_logs/websocketdata_{unique_id}_{self.port}.txt'
         else:
             date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             self.log_filename = (

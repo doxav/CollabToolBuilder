@@ -17,6 +17,8 @@ mvenv/
 
 .venv/
 
-.venv/*
+BIBLIO-TEST/
+report_outputs/
+pkl_cache/
 
 websocketdata*

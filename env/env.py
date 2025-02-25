@@ -76,13 +76,11 @@ class Environment:
         # copy all the temp directory (excluding data directory) into a folder named by unique_id into backups directory
         if unique_id is None:
             self.last_unique_id_backup = os.environ["unique_id"] = str(uuid.uuid4())
+        unique_id = os.environ.get("unique_id")
+        if os.path.exists(os.path.join(self.temp_root_dir, "backups", unique_id)):
+            shutil.rmtree(os.path.join(self.temp_root_dir, "backups", unique_id))
         if self.get_state(unique_id) != self.get_state():
-            shutil.copytree(
-                self.current_temp_dir,
-                os.path.join(self.temp_root_dir,"backups", unique_id),
-                ignore=shutil.ignore_patterns('data'),
-                dirs_exist_ok=True
-            )
+            shutil.copytree(self.current_temp_dir, os.path.join(self.temp_root_dir, "backups", unique_id), ignore=shutil.ignore_patterns('data'))
         return os.environ.get("unique_id")
 
     def restore_state(self, unique_id):
