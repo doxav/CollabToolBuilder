@@ -1,21 +1,19 @@
-import json
 import re
+import json
 import requests
 
-from ..file_utils import load_from_pickle, save_to_pickle
-from ..llm_utils import HumanLLMMonitor
-
 from config import MODELS_CONFIG_LIST
+from ..llm_utils import HumanLLMMonitor
+from ..file_utils import load_from_pickle, save_to_pickle
+
 
 from langchain_openai import ChatOpenAI
-from langchain_community.document_loaders import WikipediaLoader
 from langchain_core.messages import SystemMessage
+from langchain_community.document_loaders import WikipediaLoader
 
 from pydantic import BaseModel, Field
 
-
 llm_custom = ChatOpenAI(model=MODELS_CONFIG_LIST["code_gpt"] if MODELS_CONFIG_LIST else "gpt-4o-mini-2024-07-18", temperature=.0)
-
 
 class SearchQuery(BaseModel):
     """

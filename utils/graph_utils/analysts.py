@@ -1,9 +1,10 @@
 import os
 from typing import List, TypedDict
+from pydantic import BaseModel, Field
 
 from ..llm_utils import HumanLLMMonitor
 from . import helpers_demo
-from pydantic import BaseModel, Field
+
 from langgraph.graph import END
 
 analyst = HumanLLMMonitor(agent_name="Create Analysts")

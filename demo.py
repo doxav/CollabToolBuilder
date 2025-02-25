@@ -14,15 +14,14 @@ Key changes:
 - The state now includes `iteration` and `max_iterations`.
 """
 import os
+import operator
+from typing import List, Annotated
+from typing_extensions import TypedDict
 
+from langgraph.constants import Send
 from langchain_core.messages import HumanMessage
 from langgraph.graph import START, END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
-
-import operator
-from typing import List, Annotated
-from langgraph.constants import Send
-from typing_extensions import TypedDict
 
 from config import embedding_function, reset_db_indices
 from utils.llm_utils import HumanLLMMonitor, smart_input
@@ -46,10 +45,6 @@ HumanLLMMonitor._check_and_init_vector_db(embedding_function=embedding_function,
 ### -------------------------------
 # RESEARCH REPORT NODES (INCLUDING PLAN, RESOURCE LIST, AND SELF-CRITIQUE)
 ### -------------------------------
-
-class SearchStrategy:
-    def register_nodes(self, graph_builder: StateGraph):
-        raise NotImplementedError("Subclasses must implement register_nodes")
 
 # Extend state to include new keys for iterative improvement.
 class ResearchGraphState(TypedDict):
