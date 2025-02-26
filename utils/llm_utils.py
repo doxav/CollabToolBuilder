@@ -714,7 +714,7 @@ def _visual_input(initial_string="", filetype="md", agent_name=None, column_id=N
             if filetype == "md":
                 filetype = "json"
         else:
-            initial_string_serialized = initial_string
+            initial_string_serialized = initial_string if initial_string is not None else ""
 
         # Step 2: Generate the code and save it to a file
         if not os.path.exists('temp/edition'):

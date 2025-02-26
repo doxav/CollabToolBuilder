@@ -412,7 +412,7 @@ def run_planner(*args, **kwargs):  # NEW VERSION
             }
             print("Adding learnt task:", humanLLM.add_learnt_task(serialized_entry, tags))
 
-    successful_tasks = humanLLM.get_learnt_tasks()
+    successful_tasks = humanLLM.config.get_learnt_tasks()
     successful_tasks_list = [task for task in successful_tasks]
     print(f"{len(successful_tasks)} successful tasks:<<<\n{successful_tasks_list}>>>")
 
