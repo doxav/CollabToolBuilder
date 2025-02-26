@@ -3,7 +3,7 @@ from typing import List, TypedDict
 from pydantic import BaseModel, Field
 
 from . import helpers_demo
-from config import embedding_function
+from config import embedding_function, use_websocket
 from utils.human_llm import HumanLLM, HumanLLMConfig
 from utils.llm_utils import smart_input, smart_print
 
@@ -11,7 +11,7 @@ from langgraph.graph import END
 
 config = HumanLLMConfig()
 llm_list = config.get_llmORchains_list()
-config.use_websocket = False
+config.use_websocket = use_websocket
 config.smart_input = smart_input
 config.smart_print = smart_print
 

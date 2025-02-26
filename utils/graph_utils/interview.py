@@ -17,6 +17,21 @@ class InterviewState(MessagesState):
     interview: str                                  # Interview transcript
     sections: list                                  # Collected sections for the report
 
+# Add this helper at the top of interview.py (or in a shared helpers file)
+def translate_query(query: str, target_language: str = "en") -> str:
+    """
+    Translate the given query into the target language using the available LLM.
+    """
+    print(f"Translating query to {target_language}")
+    translation_instruction = SystemMessage(content=(
+        f"Translate the following query into {target_language}: \"{query}\""
+    ))
+    # Use the existing LLM call (llm_custom is already defined in helpers_demo)
+    translated_response = helpers_demo.llm_custom.invoke([translation_instruction]).content
+    translated_query = translated_response.content if hasattr(translated_response, "content") else translated_response
+    return translated_query
+
+
 def generate_question(state: InterviewState):
     print("Generate_question")
     if "question_instructions" not in state:
@@ -45,41 +60,67 @@ def search_web(state: InterviewState):
             "Your goal is to generate a well-structured query for retrieval. "
             "Analyze the conversation—especially the final question—and convert it into a search query."
         ))
-    search_query = helpers_demo.search_llm_query(state["search_instructions"], state["messages"])
-    formatted_search_docs = helpers_demo.search_web_query_get(search_query)
-    smart_print(message=formatted_search_docs, agent_name="Search Web", message_type="NEW inference result recieved", column_id=0, column_max=1)
-    return {"context": [formatted_search_docs]}
+    # Generate the base query (using the existing LLM query function)
+    base_query_obj = helpers_demo.search_llm_query(state["search_instructions"], state["messages"])
+    base_query = base_query_obj.search_query
+
+    # Define the list of languages in which to translate the query
+    languages = ["en", "fr", "es"]
+    all_results = []
+    for lang in languages:
+         translated_query = translate_query(base_query, lang)
+         # Wrap the translated string in a SearchQuery object as expected by the search function
+         search_query_lang = helpers_demo.SearchQuery(search_query=translated_query)
+         results = helpers_demo.search_web_query_get(search_query_lang)
+         all_results.append(results)
+    aggregated_results = "\n\n---\n\n".join(all_results)
+    smart_print(message=aggregated_results, agent_name="Search Web",
+                message_type="NEW inference result recieved", column_id=0, column_max=1)
+    return {"context": [aggregated_results]}
 
 def search_arxiv(state: InterviewState):
     print("Search_arxiv")
-
-    # We assume that llm_custom, SearchQuery and SystemMessage are already defined elsewhere in the code.
-    if not 'search_instructions' in state:
-        state['search_instructions'] = SystemMessage(content=(
+    if "search_instructions" not in state:
+        state["search_instructions"] = SystemMessage(content=(
             "You are given a research topic. Your task is to generate a concise and effective search query "
             "optimized for the arXiv API. Make sure to include relevant keywords to retrieve the most pertinent scientific articles."
         ))
-    search_query = helpers_demo.search_llm_query(state['search_instructions'], state["messages"])
-    # Prepare parameters for the arXiv API.
-    formatted_search_docs = helpers_demo.search_arxiv_query_get(search_query)
+    base_query_obj = helpers_demo.search_llm_query(state["search_instructions"], state["messages"])
+    base_query = base_query_obj.search_query
 
-    smart_print(message=formatted_search_docs, agent_name="Search Arxiv", message_type="NEW inference result recieved", column_id=0, column_max=1)
-    return {"context": [formatted_search_docs]}
+    languages = ["en", "fr", "es"]
+    all_results = []
+    for lang in languages:
+         translated_query = translate_query(base_query, lang)
+         search_query_lang = helpers_demo.SearchQuery(search_query=translated_query)
+         results = helpers_demo.search_arxiv_query_get(search_query_lang)
+         all_results.append(results)
+    aggregated_results = "\n\n---\n\n".join(all_results)
+    smart_print(message=aggregated_results, agent_name="Search Arxiv",
+                message_type="NEW inference result recieved", column_id=0, column_max=1)
+    return {"context": [aggregated_results]}
 
 def search_semantic_scholar(state: InterviewState):
     print("Search_semantic_scholar")
-    # Set default search instructions if not already present
     if "search_instructions" not in state:
         state["search_instructions"] = SystemMessage(content=(
             "You are given a research topic. Your task is to generate a concise and effective search query "
             "optimized for the Semantic Scholar API. Ensure that the query includes relevant keywords to retrieve the most pertinent scientific articles."
-        ))    
-    # Generate the search query using the conversation messages
-    search_query = helpers_demo.search_llm_query(state['search_instructions'], state["messages"])
-    
-    formatted_search_docs = helpers_demo.search_semantic_scholar_query_get(search_query)
-    smart_print(message=formatted_search_docs, agent_name="Search Semantic Scholar", message_type="NEW inference result recieved", column_id=0, column_max=1)
-    return {"context": [formatted_search_docs]}
+        ))
+    base_query_obj = helpers_demo.search_llm_query(state["search_instructions"], state["messages"])
+    base_query = base_query_obj.search_query
+
+    languages = ["en", "fr", "es"]
+    all_results = []
+    for lang in languages:
+         translated_query = translate_query(base_query, lang)
+         search_query_lang = helpers_demo.SearchQuery(search_query=translated_query)
+         results = helpers_demo.search_semantic_scholar_query_get(search_query_lang)
+         all_results.append(results)
+    aggregated_results = "\n\n---\n\n".join(all_results)
+    smart_print(message=aggregated_results, agent_name="Search Semantic Scholar",
+                message_type="NEW inference result recieved", column_id=0, column_max=1)
+    return {"context": [aggregated_results]}
 
 def search_wikipedia(state: InterviewState):
     print("Search_wikipedia")
@@ -89,10 +130,20 @@ def search_wikipedia(state: InterviewState):
             "Your goal is to generate a well-structured query for retrieval. "
             "Analyze the conversation and convert the final question into a search query."
         ))
-    search_query = helpers_demo.search_llm_query(state['search_instructions'], state['messages'])
-    formatted_search_docs = helpers_demo.search_wikipedia_query_get(search_query)
-    smart_print(message=formatted_search_docs, agent_name="Search Wikipedia", message_type="NEW inference result recieved", column_id=0, column_max=1)
-    return {"context": [formatted_search_docs]}
+    base_query_obj = helpers_demo.search_llm_query(state["search_instructions"], state["messages"])
+    base_query = base_query_obj.search_query
+
+    languages = ["en", "fr", "es"]
+    all_results = []
+    for lang in languages:
+         translated_query = translate_query(base_query, lang)
+         search_query_lang = helpers_demo.SearchQuery(search_query=translated_query)
+         results = helpers_demo.search_wikipedia_query_get(search_query_lang)
+         all_results.append(results)
+    aggregated_results = "\n\n---\n\n".join(all_results)
+    smart_print(message=aggregated_results, agent_name="Search Wikipedia",
+                message_type="NEW inference result recieved", column_id=0, column_max=1)
+    return {"context": [aggregated_results]}
 
 def search_docs_rag(state: InterviewState):
     print("Search_docs_rag")
@@ -101,10 +152,20 @@ def search_docs_rag(state: InterviewState):
             "You are an analyst tasked with generating a search query for the RAG retrieval model. "
             "Analyze the conversation between the analyst and the expert and convert the final question into a search query."
         ))
-    search_query = helpers_demo.search_llm_query(state["search_instructions"], state["messages"])
-    formatted_search_docs = helpers_demo.search_docs_rag_get(search_query)
-    smart_print(message=formatted_search_docs, agent_name="Search Docs RAG", message_type="NEW inference result recieved", column_id=0, column_max=1)
-    return {"context": [formatted_search_docs]}
+    base_query_obj = helpers_demo.search_llm_query(state["search_instructions"], state["messages"])
+    base_query = base_query_obj.search_query
+
+    languages = ["en", "fr", "es"]
+    all_results = []
+    for lang in languages:
+         translated_query = translate_query(base_query, lang)
+         search_query_lang = helpers_demo.SearchQuery(search_query=translated_query)
+         results = helpers_demo.search_docs_rag_get(search_query_lang)
+         all_results.append(results)
+    aggregated_results = "\n\n---\n\n".join(all_results)
+    smart_print(message=aggregated_results, agent_name="Search Docs RAG",
+                message_type="NEW inference result recieved", column_id=0, column_max=1)
+    return {"context": [aggregated_results]}
 
 def generate_answer(state: InterviewState):
     print("Generate_answer")

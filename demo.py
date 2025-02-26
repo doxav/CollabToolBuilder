@@ -23,8 +23,8 @@ from langchain_core.messages import HumanMessage
 from langgraph.graph import START, END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 
+from config import embedding_function, use_websocket
 from utils.human_llm import HumanLLM, HumanLLMConfig
-from config import embedding_function, reset_db_indices
 from utils.llm_utils import smart_input, smart_print
 from utils.graph_utils.analysts import Analyst, create_analysts
 from utils.graph_utils.helpers_demo import remove_think_tags, extract_latex_and_bib_from_llm_output
@@ -33,7 +33,7 @@ from utils.graph_utils.interview import InterviewState, generate_question, gener
 # HumanLLM.use_websocket = True
 config = HumanLLMConfig()
 llm_list = config.get_llmORchains_list()
-config.use_websocket = False
+config.use_websocket = use_websocket
 config.smart_input = smart_input
 config.smart_print = smart_print
 
