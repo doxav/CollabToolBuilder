@@ -6,6 +6,7 @@ from langgraph.graph import MessagesState
 from langchain_core.messages import get_buffer_string
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
+import re
 import operator
 from typing import Annotated
 
@@ -31,6 +32,53 @@ def translate_query(query: str, target_language: str = "en") -> str:
     translated_query = translated_response.content if hasattr(translated_response, "content") else translated_response
     return translated_query
 
+
+def add_line_prefixes(text: str) -> str: 
+    return "\n".join(f"{i+1}# {line}" for i, line in enumerate(text.splitlines())) 
+
+def prepare_prompt(document_text: str, external_info: str) -> str: 
+    numbered_document = add_line_prefixes(document_text) 
+    prompt = ("Below is a document where each line is prefixed with its line number for reference.\n" 
+              "You will also find new information to be incorporated.\n\n" 
+              "Your task is to return only the modified lines in the format: # .\n" 
+              "If new lines need to be inserted, add them in the appropriate position and prefix them with their estimated line number.\n\n"
+              "### Current Document:\n" 
+              f"{numbered_document}\n\n" 
+              "### New Information to Integrate:\n" 
+              f"{external_info}\n\n" 
+              "Return only modified or new lines in the expected format." ) 
+    return prompt 
+
+def apply_patch(original_text: str, patch_text: str) -> str: 
+    patch = {}
+    for line in patch_text.splitlines():
+        match = re.match(r'^\s*(\d+)\s*#\s*(.*)$', line)
+        if match:
+            line_num = int(match.group(1)) 
+            new_content = match.group(2)
+            patch[line_num] = new_content
+
+    original_lines = original_text.splitlines()
+
+    for i in range(len(original_lines)): 
+        if (i + 1) in patch: original_lines[i] = patch[i + 1] 
+
+    return "\n".join(original_lines)
+
+def write_report_iterative(state: dict) -> dict: 
+    # Initialize content with the plan if empty 
+    content = state.get("content", "") 
+    if not content: content = state.get("plan", "") 
+    # Iteratively refine the content with each interview section 
+    for interview in state["sections"]: 
+        prefixed_interview = add_line_prefixes(interview) 
+        prompt = prepare_prompt(content, prefixed_interview) 
+        # Get modifications from the LLM 
+        modifications = helpers_demo.llm_custom.invoke(prompt) # Replace with actual LLM inference 
+        # Apply modifications to update the content 
+        content = apply_patch(content, modifications) 
+    state["content"] = content 
+    return {"content": content}
 
 def generate_question(state: InterviewState):
     print("Generate_question")

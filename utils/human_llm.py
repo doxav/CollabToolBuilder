@@ -15,15 +15,15 @@ from utils.llm_utils import (
 from utils.human_llm_config import HumanLLMConfig
 from typing import List, Dict, Any, Optional
 
-from langchain.chains import LLMChain
 from langchain.llms import OpenAI
+from langchain.chains import LLMChain
+from PyPDF2.generic import IndirectObject
 from langchain.prompts import PromptTemplate
 from langchain_core.messages.ai import AIMessage
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.system import SystemMessage
 from langchain_core.messages.function import FunctionMessage
 from langchain_core.runnables import RunnableSequence, ConfigurableField
-
 
 class HumanLLM:
     def __init__(
@@ -111,24 +111,83 @@ class HumanLLM:
         if extra_filter:
             metadata_filter.update(extra_filter)
         return self.config.get_agent_data(agent_name=agent_name, metadata_filter=metadata_filter, query_text=query, **kwargs)
+    
+    @staticmethod
+    def decode_bytes(obj):
+        if isinstance(obj, dict):
+            return {k: HumanLLM.decode_bytes(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [HumanLLM.decode_bytes(item) for item in obj]
+        elif isinstance(obj, bytes):
+            return obj.decode('utf-8', errors='replace')
+        else:
+            return obj
+    
+    @staticmethod
+    def serialize_metadata(metadata):
+        new_metadata = {}
+        for key, value in metadata.items():
+            if isinstance(value, IndirectObject):
+                new_metadata[key] = str(value)
+            else:
+                new_metadata[key] = value
+        return new_metadata
 
-    def add_rag_document(self, file_path: str, metadata: Optional[Dict[str, Any]] = None,
-                         chunking_options: Optional[Dict[str, Any]] = None,
-                         folder_path: str = None) -> None:
+
+    def add_rag_document(
+        self, 
+        file_path: str, 
+        metadata: Optional[Dict[str, Any]] = None, 
+        chunking_options: Optional[Dict[str, Any]] = None, 
+        folder_path: str = None, 
+        overwrite: bool = False
+    ) -> None:
         """
-        Loads and indexes an external document (JSON, PDF, HTML, Markdown, etc.) for RAG.
+        Charge et indexe un document externe (JSON, PDF, HTML, Markdown, etc.) pour RAG.
         
-        - Uses appropriate Langchain loaders based on file extension.
-        - If chunking_options are provided (e.g. {'chunk_size': 1000, 'chunk_overlap': 200}),
-          the document is split into smaller chunks for more efficient indexing.
-        - The method reuses add_agent_data to store each chunk, adding {"rag": True} to the metadata.
+        - Utilise les loaders de Langchain adaptés en fonction de l'extension.
+        - Si chunking_options est fourni (ex: {'chunk_size': 1000, 'chunk_overlap': 200}), le document est découpé en morceaux plus petits pour un indexage efficace.
+        - Toujours extraire et ajouter le nom de fichier aux métadonnées.
+        - Pour les PDFs, tente d'extraire des métadonnées supplémentaires (titre, auteur, etc.).
+        - Empêche l'ajout d'un document déjà indexé sauf si `overwrite=True`.
         """
         import os
+
         print(f"Loading RAG document: {file_path}")
+        
         if folder_path:
-            file_path = f"{folder_path}/{file_path}"
+            file_path = os.path.join(folder_path, file_path)
+
+        # Extraire le nom du fichier
+        file_name = os.path.basename(file_path)
+
+        # Vérifier si le fichier existe déjà dans l'index
+        existing_docs = self.config.get_agent_data(
+            agent_name=self.__class__.__name__,
+            metadata_filter={"rag": True, "file_name": file_name},
+            query_text="*"
+        )
+
+        if any(existing_docs) and not overwrite:
+            print(f"Le document '{file_name}' existe déjà. Utilisez overwrite=True pour forcer l'indexation.")
+            return
+
         ext = os.path.splitext(file_path)[1].lower()
-        # Select loader based on file extension.
+        extra_metadata = {"file_name": file_name}
+
+        # Extraction de métadonnées spécifiques aux PDF
+        if ext == '.pdf':
+            try:
+                import PyPDF2
+                with open(file_path, "rb") as f:
+                    reader = PyPDF2.PdfReader(f)
+                    pdf_meta = reader.metadata
+                    if pdf_meta:
+                        extra_metadata.update(dict(pdf_meta))
+            except Exception as e:
+                print(f"Erreur lors de l'extraction des métadonnées PDF : {e}")
+
+        # Sélection du loader Langchain
         if ext == '.pdf':
             from langchain.document_loaders import PyPDFLoader
             loader = PyPDFLoader(file_path)
@@ -144,28 +203,42 @@ class HumanLLM:
         else:
             from langchain.document_loaders import UnstructuredFileLoader
             loader = UnstructuredFileLoader(file_path)
+
         docs = loader.load()
-        
-        # If chunking options are provided, split the document using Langchain's text splitter.
+
+        # Si chunking activé, diviser le texte
         if chunking_options:
             from langchain.text_splitter import RecursiveCharacterTextSplitter
             splitter = RecursiveCharacterTextSplitter(**chunking_options)
+            
             chunked_docs = []
             for doc in docs:
                 chunks = splitter.split_text(doc.page_content)
                 for chunk in chunks:
-                    # Construct a new document-like object preserving metadata.
                     chunked_docs.append(type(doc)(page_content=chunk, metadata=doc.metadata))
             docs = chunked_docs
-        
-        # Index each document (or chunk) with the RAG flag in metadata.
+
+        # Indexation des documents avec métadonnées enrichies
         for doc in docs:
-            combined_metadata = (metadata.copy() if metadata else {})
+            combined_metadata = metadata.copy() if metadata else {}
+            combined_metadata.update(extra_metadata)
+
+            if doc.metadata:
+                for key, value in doc.metadata.items():
+                    combined_metadata.setdefault(key, value)
+
             combined_metadata.update({"rag": True, "source": ext})
-            # We use the existing add_agent_data to store the document content.
-            self.config.log_agent_data(self.__class__.__name__, "rag_knowledge", doc.page_content,
-                                metadata=combined_metadata)
             
+            combined_metadata = HumanLLM.decode_bytes(combined_metadata)
+            combined_metadata = HumanLLM.serialize_metadata(combined_metadata)
+
+            self.config.log_agent_data(
+                self.__class__.__name__, 
+                "rag_knowledge", 
+                doc.page_content, 
+                metadata=combined_metadata
+            )
+        
     def load_prompt_with_rag(self, prompt_name: str, template_data: Optional[Dict[str, Any]] = None,
                              directory: Optional[str] = None) -> str:
         """

@@ -440,10 +440,10 @@ def choose_search_strategy(state: ResearchGraphState):
     For this example, we simulate the choice.
     """
     global SEARCH_STRATEGY
-    SEARCH_STRATEGY = smart_input("What searching strategy do you want to use? (Online, Offline, Both): ", column_id=0, column_max=1, optional=False).lower()
+    SEARCH_STRATEGY = smart_input("What searching strategy do you want to use? (Web, Wikipedia, ArXiv, Semantic Scholar, All): ", column_id=0, column_max=1, optional=False).lower()
     
     # Validate the choice and default to "both" if unrecognized.
-    SEARCH_STRATEGY = "both" if SEARCH_STRATEGY not in ["online", "offline", "both"] else SEARCH_STRATEGY
+    SEARCH_STRATEGY = "All" if SEARCH_STRATEGY not in ["Web", "Wikipedia", "ArXiv", "Semantic", "All"] else SEARCH_STRATEGY
     
     # Store the choice as a string to ensure serializability.
     print(f"Search strategy chosen: {SEARCH_STRATEGY}")
@@ -455,17 +455,18 @@ def route_to_search_nodes(state: InterviewState):
     Return a list of node names to which 'ask_question' should connect.
     """
     global SEARCH_STRATEGY
-    targets = []
-    
-    if SEARCH_STRATEGY == "offline":
-        # Only offline search
-        targets = ["search_docs_rag"]
-    elif SEARCH_STRATEGY == "online":
-        # Only online
-        targets = ["search_web", "search_wikipedia", "search_arxiv", "search_semantic_scholar"]
+    targets = ["search_docs_rag"]
+
+    if SEARCH_STRATEGY == "web":
+        targets += ["search_web"]
+    elif SEARCH_STRATEGY == "wikipedia":
+        targets += ["search_wikipedia"]
+    elif SEARCH_STRATEGY == "arxiv":
+        targets += ["search_arxiv"]
+    elif SEARCH_STRATEGY == "semantic":
+        targets += ["search_semantic_scholar"]
     else:
-        # "both" or unknown => all nodes
-        targets = ["search_docs_rag", "search_web", "search_wikipedia", "search_arxiv", "search_semantic_scholar"]
+        targets += ["search_web", "search_wikipedia", "search_arxiv", "search_semantic_scholar"]
     
     return targets
 
@@ -586,6 +587,10 @@ def multi_agent_research_generation_persist_at_the_end(title, topic, max_analyst
     
     memory2 = MemorySaver()
     graph = builder.compile(checkpointer=memory2)
+
+    for file in os.listdir("BIBLIO-TEST"):
+        if not file == '.DS_Store':
+            HumanLLM(agent_name="add_rag_doc_start", llmORchains_list=llm_list).add_rag_document(folder_path="BIBLIO-TEST", file_path=file)
     
     graph.invoke(initial_state, params)
     final_state = graph.get_state(params)
