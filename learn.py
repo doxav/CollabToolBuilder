@@ -326,7 +326,7 @@ def run_4agents_learning_loop(
             continue_identifying_tasks = False if answer in ["E", "EXIT"] else True
             if answer.upper() in ["Y", "YES"]:
                 for env in test_environments:
-                    env.rest()
+                    env.reset()
             else:
                 if parsed_code:
                     # Apply the code to the environments without restoring their state
