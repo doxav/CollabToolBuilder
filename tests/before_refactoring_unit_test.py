@@ -4,7 +4,7 @@ import os
 import openai
 import json
 from config import *
-from learn import TaskIdentificationAgent, HumanLLM, apply_special_criteria
+from learn import TaskIdentificationAgent, HumanLLM
 from langchain_core.messages.ai import AIMessage
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -268,10 +268,6 @@ class TestCollabGPTCreator(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].metadata["metadata_key"], "metadata_value")
 
-    def test_apply_special_criteria(self):
-        apply_special_criteria(self.agent, self.special_criteria, self.available_locals)
-        # Check if the agent's attributes are set correctly
-        self.assertEqual(self.agent.some_key, 'some_value')
 
 if __name__ == '__main__':
     unittest.main()
