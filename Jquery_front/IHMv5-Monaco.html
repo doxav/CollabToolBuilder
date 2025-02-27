@@ -161,7 +161,7 @@
         return '_' + Math.random().toString(36).substr(2, 9);
     }
 
-    const parallelFunctions = ["updateAnswer", "criticAnswer", "get_tasks"];
+    const parallelFunctions = ["update_answer", "critic_answer", "get_tasks"];
 
     function sendFunctionCall(agentName, functionName, params, callback = null) {
         const isParallelFunction = parallelFunctions.includes(functionName); // Add this line
@@ -1024,7 +1024,7 @@
                 debounceSaveTimer = setTimeout(function() {
                     let currentContent = editor.getValue();
                     let requestData = { answer: currentContent, column_id: columnId };
-                    sendFunctionCall(agentName, "updateAnswer", requestData, function(responseMessage) {
+                    sendFunctionCall(agentName, "update_answer", requestData, function(responseMessage) {
                         console.log("Auto-save response:", responseMessage);
                         document.querySelector(`#save-${agentName}-${columnId}`).style.display = 'none';
                     });
@@ -2398,7 +2398,7 @@ function getColumnsToKeep(agent) {
             let requestData = {answer: currentContent};
 
             // Send the save function call manually
-            sendFunctionCall(data.agent_name, "updateAnswer", requestData, function(responseMessage) {
+            sendFunctionCall(data.agent_name, "update_answer", requestData, function(responseMessage) {
                 console.log("Save response:", responseMessage);
                 alert(responseMessage);
                 document.querySelector(`#save-${agent_columnId}`).style.display = 'none';
@@ -2460,7 +2460,7 @@ function getColumnsToKeep(agent) {
         };
 
         // Send the function call
-        sendFunctionCall(data.agent_name, "criticAnswer", requestData, function(responseMessage) {
+        sendFunctionCall(data.agent_name, "critic_answer", requestData, function(responseMessage) {
                     console.log("responseMessage:", responseMessage);
 
                     // Update the Monaco Editor content with the formatted response
@@ -2516,7 +2516,7 @@ function getColumnsToKeep(agent) {
                 };
 
                 // Send the function call
-                sendFunctionCall(agentName, "criticAnswer", requestData, function(responseMessage) {
+                sendFunctionCall(agentName, "critic_answer", requestData, function(responseMessage) {
                     console.log("responseMessage:", responseMessage);
 
                     // Format the response appropriately
@@ -2573,7 +2573,7 @@ function getColumnsToKeep(agent) {
                 };
 
                 // Send the function call
-                sendFunctionCall(data.agent_name, "criticAnswer", requestData, function(responseMessage) {
+                sendFunctionCall(data.agent_name, "critic_answer", requestData, function(responseMessage) {
                     console.log("responseMessage:", responseMessage);
 
                     // Update the Monaco Editor content with the formatted response

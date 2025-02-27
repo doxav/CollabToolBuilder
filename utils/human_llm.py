@@ -950,13 +950,13 @@ class HumanLLM:
         result = []
 
         if confirm == "F":
-            tasks = self.get_learnt_tasks()
+            tasks = self.config.get_learnt_tasks()
             task_list = "\n".join(tasks)
             _visual_input(task_list)
             return
 
         if confirm == "G":
-            tasks = self.get_failed_tasks()
+            tasks = self.config.get_failed_tasks()
             task_list = "\n".join(tasks)
             _visual_input(task_list)
             return
@@ -973,7 +973,7 @@ class HumanLLM:
             self.user_message_few_shots = new_few_shots
             envs_status = '\n'.join([env.get_state() for env in self.envs])
 
-            return self.get_multiple_few_shots(self.user_message_few_shots) + (
+            return self.config.manage_few_shot_examples(self.user_message_few_shots) + (
                 f"\n- Current status of examples on "
                 f"which the task will be tested on: {envs_status}\n"
             )
@@ -1236,7 +1236,7 @@ class HumanLLM:
         comments = smart_input("Comment on the result: ", self.agent_name)
         return comments, score
 
-    def evaluate_comment_answer_for_later(self, comment, score, output_id=0, message=None):
+    def evaluate_comment_answer_for_later_2(self, comment, score, output_id=0, message=None):
         if comment:
             self.comments.append(comment)
 
@@ -1316,10 +1316,10 @@ class HumanLLM:
             tag_option = smart_input(
                 "Enter a tag for saving the prompt (leave blank for no tag, or 'same' to keep the current tag): ",
                 self.agent_name)
-        if tag_option.lower() == "same":
-            save_prompt_with_tag(self.system_prompt, new_template, "")
-        else:
-            save_prompt_with_tag(self.system_prompt, new_template, tag_option)
+            if tag_option.lower() == "same":
+                save_prompt_with_tag(self.system_prompt, new_template, "")
+            else:
+                save_prompt_with_tag(self.system_prompt, new_template, tag_option)
         return comments
 
     def critic_answer(
@@ -2313,3 +2313,9 @@ class HumanLLM:
             optional=False
         )
         return ret
+
+    def get_tasks(self, page_size: int = 200, nb_pages: int = 1, id_last_task: Optional[str] = None):
+        return self.config.get_tasks(page_size, nb_pages, id_last_task)
+    
+    def goto_task(self, id_task: str, automatic: str = None, special_criteria: dict = None, task_details: str = None):
+        return self.config.goto_task(id_task, automatic, special_criteria, task_details)
