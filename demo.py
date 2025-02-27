@@ -440,10 +440,10 @@ def choose_search_strategy(state: ResearchGraphState):
     For this example, we simulate the choice.
     """
     global SEARCH_STRATEGY
-    SEARCH_STRATEGY = smart_input("What searching strategy do you want to use? (Web, Wikipedia, ArXiv, Semantic Scholar, All): ", column_id=0, column_max=1, optional=False).lower()
+    SEARCH_STRATEGY = smart_input("What searching strategy do you want to use? (Web, Wikipedia, ArXiv, Semantic, All): ", column_id=0, column_max=1, optional=False).lower()
     
     # Validate the choice and default to "both" if unrecognized.
-    SEARCH_STRATEGY = "All" if SEARCH_STRATEGY not in ["Web", "Wikipedia", "ArXiv", "Semantic", "All"] else SEARCH_STRATEGY
+    SEARCH_STRATEGY = "default" if SEARCH_STRATEGY not in ["web", "wikipedia", "arxiv", "semantic", "all"] else SEARCH_STRATEGY
     
     # Store the choice as a string to ensure serializability.
     print(f"Search strategy chosen: {SEARCH_STRATEGY}")
@@ -465,7 +465,7 @@ def route_to_search_nodes(state: InterviewState):
         targets += ["search_arxiv"]
     elif SEARCH_STRATEGY == "semantic":
         targets += ["search_semantic_scholar"]
-    else:
+    elif SEARCH_STRATEGY == "all":
         targets += ["search_web", "search_wikipedia", "search_arxiv", "search_semantic_scholar"]
     
     return targets
