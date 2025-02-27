@@ -45,8 +45,8 @@ class WebsocketServer:
         self.logger = logging.getLogger(__name__)
         # List of functions that can be executed in parallel
         self.parallel_functions = [
-            "updateAnswer",
-            "criticAnswer",
+            "update_answer",
+            "critic_answer",
             "get_tasks",
             "generate_best_improvement_suggestions",
             "goto_task"
