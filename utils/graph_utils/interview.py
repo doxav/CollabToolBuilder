@@ -32,72 +32,30 @@ def translate_query(query: str, target_language: str = "en") -> str:
     translated_query = translated_response.content if hasattr(translated_response, "content") else translated_response
     return translated_query
 
-
-def add_line_prefixes(text: str) -> str: 
-    return "\n".join(f"{i+1}# {line}" for i, line in enumerate(text.splitlines())) 
-
-def prepare_prompt(document_text: str, external_info: str) -> str: 
-    numbered_document = add_line_prefixes(document_text) 
-    prompt = ("Below is a document where each line is prefixed with its line number for reference.\n" 
-              "You will also find new information to be incorporated.\n\n" 
-              "Your task is to return only the modified lines in the format: # .\n" 
-              "If new lines need to be inserted, add them in the appropriate position and prefix them with their estimated line number.\n\n"
-              "### Current Document:\n" 
-              f"{numbered_document}\n\n" 
-              "### New Information to Integrate:\n" 
-              f"{external_info}\n\n" 
-              "Return only modified or new lines in the expected format." ) 
-    return prompt 
-
-def apply_patch(original_text: str, patch_text: str) -> str: 
-    patch = {}
-    for line in patch_text.splitlines():
-        match = re.match(r'^\s*(\d+)\s*#\s*(.*)$', line)
-        if match:
-            line_num = int(match.group(1)) 
-            new_content = match.group(2)
-            patch[line_num] = new_content
-
-    original_lines = original_text.splitlines()
-
-    for i in range(len(original_lines)): 
-        if (i + 1) in patch: original_lines[i] = patch[i + 1] 
-
-    return "\n".join(original_lines)
-
-def write_report_iterative(state: dict) -> dict: 
-    # Initialize content with the plan if empty 
-    content = state.get("content", "") 
-    if not content: content = state.get("plan", "") 
-    # Iteratively refine the content with each interview section 
-    for interview in state["sections"]: 
-        prefixed_interview = add_line_prefixes(interview) 
-        prompt = prepare_prompt(content, prefixed_interview) 
-        # Get modifications from the LLM 
-        modifications = helpers_demo.llm_custom.invoke(prompt) # Replace with actual LLM inference 
-        # Apply modifications to update the content 
-        content = apply_patch(content, modifications) 
-    state["content"] = content 
-    return {"content": content}
-
 def generate_question(state: InterviewState):
     print("Generate_question")
     if "question_instructions" not in state:
         state["question_instructions"] = (
-            "You are an analyst interviewing an expert to learn about a specific topic.\n\n"
-            "Your goal is to ask interesting and specific questions to gain deep insights.\n\n"
-            "Here is your area of focus:\n{goals}\n\n"
-            "Introduce yourself with a persona-appropriate name, then ask your question. "
-            "Continue asking until you feel you have enough insight. "
-            "Conclude with: 'Thank you so much for your help!'\n"
+            "You are an analyst interviewing an expert. Your goal is to ask interesting and specific questions to gain deep insights. \n"
+            "Current document state: {document_state}\n"
+            "Previous Critique: {critic}\n"
+            "Your focus is: {goals}\n"
+            "Introduce yourself with your persona-appropriate name, then ask your question. "
+            "Continue asking until you feel you have enough insight. Conclude with: 'Thank you so much for your help!'\n"
             "Remain in character throughout your response."
         )
-    question_instructions = state["question_instructions"]
+    document_state = state.get("final_report", "")
+    critic_text = state.get("critic", "")
     analyst = state["analyst"]
+    system_message = state["question_instructions"].format(
+        document_state=document_state,
+        critic=critic_text,
+        goals=analyst.persona
+    )
     messages = state["messages"]
-    system_message = question_instructions.format(goals=analyst.persona)
     question_answer = helpers_demo.llm_custom.invoke([SystemMessage(content=system_message)] + messages)
-    smart_print(message=question_answer.content if isinstance(question_answer, AIMessage) else question_answer, agent_name="Generate Question", message_type="NEW inference result recieved", column_id=0, column_max=1)
+    smart_print(message=question_answer.content if isinstance(question_answer, AIMessage) else question_answer,
+                agent_name="Generate Question", message_type="NEW inference result recieved", column_id=0, column_max=1)
     return {"messages": [question_answer]}
 
 def search_web(state: InterviewState):
@@ -259,24 +217,31 @@ def write_section(state: InterviewState):
     print("Write_section")
     if "section_writer_instructions" not in state:
         state["section_writer_instructions"] = (
-            "You are an expert technical writer.\n\n"
-            "Your task is to create a concise section of a report from the provided source documents.\n\n"
-            "Follow these steps:\n"
-            "1. Analyze the provided documents (each begins with a <Document tag).\n"
-            "2. Structure your section using Markdown with appropriate headers (e.g., ## for titles).\n"
+            "You are an expert technical writer. Your task is to create a detailed and comprehensive section of a report from the provided source documents. "
+            "You have access to the current report state and the original plan. Follow these steps:\n"
+            "1. Thoroughly analyze the provided documents (each begins with a <Document tag) and the current report content.\n"
+            "2. Structure your section using Markdown with appropriate headers (e.g., ## for titles), and include detailed explanations, technical insights, and critical analysis.\n"
             "3. Your section should include:\n"
             "   a. A compelling title (## header) based on the analyst’s focus: {focus}\n"
-            "   b. A summary (### header) that provides context and highlights novel insights, including a numbered list of sources.\n"
-            "   c. A sources list (### header) with full links or document paths. For any missing details, use 'Not Available'.\n"
-            "Aim for a maximum of 400 words."
+            "   b. A detailed summary (### header) that provides context, highlights novel insights, and includes a numbered list of sources with expanded explanations.\n"
+            "   c. A detailed sources list (### header) with full links or document paths.\n"
+            "Aim to append new information and expand on existing content with substantial detail, ensuring clarity and depth without repeating what has already been provided."
         )
     section_writer_instructions = state["section_writer_instructions"]
     analyst = state["analyst"]
     context = state["context"]
+    current_report = state.get("final_report", "")
+    initial_plan = state.get("initial_plan", "")
     system_message = section_writer_instructions.format(focus=analyst.description)
+    human_msg = (
+        f"Use this source to write your section: {context}\n"
+        f"Current Report: {current_report}\n"
+        f"Original Plan: {initial_plan}\n"
+        "TASK: Append new information in this section without repeating what is already present."
+    )
     sections = helpers_demo.llm_custom.invoke([
         SystemMessage(content=system_message),
-        HumanMessage(content=f"Use this source to write your section: {context}")
+        HumanMessage(content=human_msg)
     ])
     section_final = ""
     if isinstance(sections, list):
@@ -284,6 +249,6 @@ def write_section(state: InterviewState):
             section_final += section.content if isinstance(section, AIMessage) else section
     else:
         section_final = sections.content if isinstance(sections, AIMessage) else sections
-    
     smart_print(message=section_final, agent_name="Write Section", message_type="NEW inference result recieved", column_id=0, column_max=1)
-    return {"sections": [section_final]}
+    # Append the new section to the existing list.
+    return {"sections": state.get("sections", []) + [section_final]}

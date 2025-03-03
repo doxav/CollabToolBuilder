@@ -27,7 +27,7 @@ from config import embedding_function, use_websocket
 from utils.human_llm import HumanLLM, HumanLLMConfig
 from utils.llm_utils import smart_input, smart_print
 from utils.graph_utils.analysts import Analyst, create_analysts
-from utils.graph_utils.helpers_demo import remove_think_tags, extract_latex_and_bib_from_llm_output
+from utils.graph_utils.helpers_demo import remove_think_tags, extract_latex_and_bib_from_llm_output, extract_json   
 from utils.graph_utils.interview import InterviewState, generate_question, generate_answer, write_section, search_docs_rag, search_web, search_wikipedia, search_arxiv, search_semantic_scholar
 
 # HumanLLM.use_websocket = True
@@ -80,9 +80,9 @@ class ResearchGraphState(TypedDict):
     iteration: int                                      # Current iteration count
     max_iterations: int                                 # Maximum allowed iterations
     latex_report: str                                   # The final report in latex
+    cumulative_report: str                              # The cumulative report
 
 def plan_document(state: ResearchGraphState):
-    """Plan Agent: Create a detailed plan for the research document."""
     print("Plan_document")
     filepath = "plan_document"
     prompt_file = f"./prompts/{filepath}.txt"
@@ -91,10 +91,9 @@ def plan_document(state: ResearchGraphState):
             f.write(
                 "You are a planning assistant. Your task is to create a detailed plan for a research document. "
                 "In the user message, you will receive a value labeled 'TOPIC' which represents the research topic. "
-                "Please outline the key sections (for example, Introduction, Main Content, Conclusion) and provide a brief description for each section. "
-                "Ensure that the plan is clear, detailed, and well-structured."
+                "Please outline the key sections (for example, Introduction, Main Content, Conclusion) and provide a detailed description for each section, including specific subtopics, key arguments, and supporting evidence. "
+                "Ensure that the plan is clear, well-structured, and suggests areas for further elaboration without overwriting any existing content."
             )
-    # All dynamic information is passed in the user_message.
     user_message = f"TOPIC: <<< {state['topic']} >>>"
     plan = planner.invoke(
         system_prompt_template=filepath,
@@ -103,42 +102,31 @@ def plan_document(state: ResearchGraphState):
         return_message_content_only=True,
         use_default_llm=False
     )[0]
-    plan_text = plan.content if hasattr(plan, "content") else plan
-    plan_text = remove_think_tags(plan_text)
-    print(f"plan generated : {plan_text}")
+    plan_text = remove_think_tags(plan.content if hasattr(plan, "content") else plan)
+    # Save the original plan for later context if not already stored.
+    if not state.get("initial_plan"):
+        state["initial_plan"] = plan_text
     return {"plan": plan_text}
 
 def write_report(state: ResearchGraphState):
-    """Write Agent: Consolidate the memos into a coherent report (without conclusion)."""
     print("Write_report")
     filepath = "write_report"
     prompt_file = f"./prompts/{filepath}.txt"
-    if not os.path.exists(prompt_file):
-        with open(prompt_file, "w") as f:
-            f.write(
-                "You are a technical writer tasked with creating a report based on provided inputs. "
-                "In the user message, you will receive the following values:\n"
-                "  - 'TOPIC': the research topic,\n"
-                "  - 'PLAN': the report plan,\n"
-                "  - 'MEMOS': a collection of memos from analysts.\n\n"
-                "Your job is to consolidate these memos into a cohesive narrative of insights, following the provided plan. "
-                "Do not include concluding remarks, as they will be generated separately. "
-                "Format the report in Markdown with a title header '## Insights'. "
-                "Avoid mentioning analyst names and preserve any citations present in the memos."
-            )
+    # (Prompt file creation code remains unchanged.)
     sections = state["sections"]
-    if hasattr(sections, "content"):
-        formatted_str_sections = sections.content
-    elif isinstance(sections, list):
-        formatted_str_sections = "\n\n".join(sections)
-    else:
-        formatted_str_sections = sections
-
+    formatted_str_sections = "\n\n".join(sections) if isinstance(sections, list) else sections
+    current_report = state.get("final_report", "")
     user_message = (
         f"TOPIC: <<< {state['topic']} >>>\n"
         f"PLAN: <<< {state['plan']} >>>\n"
-        f"MEMOS: <<< {formatted_str_sections} >>>"
+        f"MEMOS: <<< {formatted_str_sections} >>>\n"
+        f"FINAL_REPORT (so far): <<< {current_report} >>>\n"
+        "TASK: Consolidate the memos into a cohesive narrative by appending only new insights. "
+        "Ensure that the narrative is enriched with detailed analysis, additional context, and deeper explanations. "
+        "Avoid overwriting previous content; instead, build upon what is already present with substantial new information."
     )
+    if state.get("critic"):
+        user_message += f"\nPrevious Critique: <<< {state['critic']} >>>"
     report = writerr.invoke(
         system_prompt_template=filepath,
         user_message=user_message,
@@ -146,13 +134,13 @@ def write_report(state: ResearchGraphState):
         return_message_content_only=True,
         use_default_llm=False
     )[0]
-    report_text = report.content if hasattr(report, "content") else report
-    report_text = remove_think_tags(report_text)
+    report_text = remove_think_tags(report.content if hasattr(report, "content") else report)
     print(f"report generated : {report_text}")
-    return {"content": report_text}
+    # Instead of overwriting, update content by appending:
+    state["content"] = state.get("content", "") + "\n" + report_text
+    return {"content": state["content"]}
 
 def write_introduction(state: ResearchGraphState):
-    """Introduction Agent: Write a concise introduction for the report."""
     print("Write_introduction")
     filepath = "write_introduction"
     prompt_file = f"./prompts/{filepath}.txt"
@@ -162,25 +150,26 @@ def write_introduction(state: ResearchGraphState):
                 "You are a technical writer tasked with writing the introduction for a research report. "
                 "In the user message, you will receive the following values:\n"
                 "  - 'TOPIC': the research topic,\n"
-                "  - 'PLAN': the report plan,\n"
-                "  - 'SECTIONS': the sections of the report.\n\n"
+                "  - 'PLAN': the updated plan for the report,\n"
+                "  - 'INITIAL_PLAN': the original plan for context,\n"
+                "  - 'CURRENT_INTRO': any existing introduction,\n"
+                "  - 'FINAL_REPORT': the current full report content.\n\n"
                 "Your task is to craft a crisp and compelling introduction. Begin with a title using a '#' header, followed by a section header '## Introduction'. "
-                "The introduction should be approximately 100 words and clearly preview the report sections."
+                "The introduction should be approximately 100 words and clearly preview the report sections. Append only new information without repeating existing content."
             )
-    sections = state["sections"]
-    if hasattr(sections, "content"):
-        formatted_str_sections = sections.content
-    elif isinstance(sections, list):
-        formatted_str_sections = "\n\n".join(sections)
-    else:
-        formatted_str_sections = sections
-
+    current_intro = state.get("introduction", "")
+    full_report = state.get("final_report", "")
+    initial_plan = state.get("initial_plan", "")
     user_message = (
         f"TOPIC: <<< {state['topic']} >>>\n"
         f"PLAN: <<< {state['plan']} >>>\n"
-        f"SECTIONS: <<< {formatted_str_sections} >>>\n"
-        f"TASK: Write the report introduction."
+        f"INITIAL_PLAN: <<< {initial_plan} >>>\n"
+        f"CURRENT_INTRO: <<< {current_intro} >>>\n"
+        f"FINAL_REPORT: <<< {full_report} >>>\n"
+        "TASK: Write or expand the introduction. Only add new information and do not repeat content."
     )
+    if state.get("critic"):
+        user_message += f"\nPrevious Critique: <<< {state['critic']} >>>"
     intro = writeri.invoke(
         system_prompt_template=filepath,
         user_message=user_message,
@@ -188,29 +177,41 @@ def write_introduction(state: ResearchGraphState):
         return_message_content_only=True,
         use_default_llm=False
     )[0]
-    intro_text = intro.content if hasattr(intro, "content") else intro
-    intro_text = remove_think_tags(intro_text)
+    intro_text = remove_think_tags(intro.content if hasattr(intro, "content") else intro)
     print(f"introduction generated : {intro_text}")
     return {"introduction": intro_text}
 
 def write_conclusion(state: ResearchGraphState):
+    print("Write_conclusion")
     filepath = "write_conclusion"
     prompt_file = f"./prompts/{filepath}.txt"
     if not os.path.exists(prompt_file):
         with open(prompt_file, "w") as f:
-            f.write("You are a technical writer tasked with finalizing a technical report. You excel at distilling complex topics "
-        "into clear, concise conclusions. Your job is to write a crisp and compelling conclusion that starts with '## Conclusion', "
-        "recapping the key insights from the report in approximately 100 words. Use best practices and clarity in your writing.")
-    topic, plan = state["topic"], state["plan"]
+            f.write(
+                "You are a technical writer tasked with writing a crisp and compelling conclusion for a research report. "
+                "In the user message, you will receive the following values:\n"
+                "  - 'TOPIC': the research topic,\n"
+                "  - 'PLAN': the updated plan,\n"
+                "  - 'MEMOS': the report sections,\n"
+                "  - 'FINAL_REPORT': the current full report content,\n"
+                "  - 'CURRENT_CONCLUSION': any existing conclusion.\n\n"
+                "Your task is to write or expand the conclusion by summarizing key insights. Do not repeat content already present. "
+                "Begin with '## Conclusion' and append new information only."
+            )
+    current_conclusion = state.get("conclusion", "")
+    full_report = state.get("final_report", "")
     sections = state["sections"]
-    formatted_str_sections = sections.content if hasattr(sections, "content") else "\n\n".join(sections)
-
+    formatted_str_sections = "\n\n".join(sections) if isinstance(sections, list) else sections
     user_message = (
-        f"- TOPIC: <<< {topic} >>>\n"
-        f"- PLAN: <<< {plan} >>>\n"
-        f"- SECTIONS: <<< {formatted_str_sections} >>>"
+        f"TOPIC: <<< {state['topic']} >>>\n"
+        f"PLAN: <<< {state['plan']} >>>\n"
+        f"MEMOS: <<< {formatted_str_sections} >>>\n"
+        f"CURRENT_CONCLUSION: <<< {current_conclusion} >>>\n"
+        f"FINAL_REPORT: <<< {full_report} >>>\n"
+        "TASK: Write or expand the conclusion by appending new insights without repeating existing content."
     )
-
+    if state.get("critic"):
+        user_message += f"\nPrevious Critique: <<< {state['critic']} >>>"
     conclusion = writerc.invoke(
         system_prompt_template=filepath,
         user_message=user_message,
@@ -218,15 +219,11 @@ def write_conclusion(state: ResearchGraphState):
         return_message_content_only=True,
         use_default_llm=False
     )[0]
-    conclusion = remove_think_tags(conclusion)
-    print(f"conclusion generated : {conclusion}")
-    return {"conclusion": conclusion}
+    conclusion_text = remove_think_tags(conclusion.content if hasattr(conclusion, "content") else conclusion)
+    print(f"conclusion generated : {conclusion_text}")
+    return {"conclusion": conclusion_text}
 
 def write_resource_list(state: ResearchGraphState):
-    """
-    Resource List Agent: Extract and consolidate the citations/references from the report.
-    Format in Markdown under the header '## Sources'.
-    """
     print("Write_resource_list")
     filepath = "write_resource_list"
     prompt_file = f"./prompts/{filepath}.txt"
@@ -234,20 +231,22 @@ def write_resource_list(state: ResearchGraphState):
         with open(prompt_file, "w") as f:
             f.write(
                 "You are an expert technical writer. Your task is to extract and consolidate all resource citations from report sections. "
-                "In the user message, you will receive a value labeled 'SECTIONS' which contains the report sections. "
-                "The citations may appear as inline references (e.g., [Source 1], [Source 2]). "
-                "Generate a consolidated resource list in Markdown under the header '## Sources', with each source on a new line in the format: '[n] <source details>'. "
-                "If any details are missing, indicate them as 'Not Available'."
+                "In the user message, you will receive the following values:\n"
+                "  - 'SECTIONS': the report sections,\n"
+                "  - 'FINAL_REPORT': the current full report content,\n"
+                "  - 'CURRENT_RESOURCE_LIST': any existing resource list.\n\n"
+                "Generate a consolidated resource list in Markdown under the header '## Sources'. List only new citations that are not already present, "
+                "formatting each as: '[n] <source details>'."
             )
     sections = state["sections"]
-    if hasattr(sections, "content"):
-        formatted_str_sections = sections.content
-    elif isinstance(sections, list):
-        formatted_str_sections = "\n\n".join(sections)
-    else:
-        formatted_str_sections = sections
-
-    user_message = f"SECTIONS: <<< {formatted_str_sections} >>>"
+    formatted_str_sections = "\n\n".join(sections) if isinstance(sections, list) else sections
+    current_resource_list = state.get("resource_list", "")
+    user_message = (
+        f"SECTIONS: <<< {formatted_str_sections} >>>\n"
+        f"CURRENT_RESOURCE_LIST: <<< {current_resource_list} >>>\n"
+        f"FINAL_REPORT: <<< {state.get('final_report', '')} >>>\n"
+        "TASK: Consolidate the citations and list new ones without repeating existing citations."
+    )
     resource_list = writerrl.invoke(
         system_prompt_template=filepath,
         user_message=user_message,
@@ -255,13 +254,11 @@ def write_resource_list(state: ResearchGraphState):
         return_message_content_only=True,
         use_default_llm=False
     )[0]
-    resource_list_text = resource_list.content if hasattr(resource_list, "content") else resource_list
-    resource_list_text = remove_think_tags(resource_list_text)
+    resource_list_text = remove_think_tags(resource_list.content if hasattr(resource_list, "content") else resource_list)
     print(f"resources generated : {resource_list_text}")
     return {"resource_list": resource_list_text}
 
 def finalize_report(state: ResearchGraphState):
-    """Combine the introduction, main content, conclusion, and resource list into the final report."""
     print("Finalize_report")
     if not state:
         return {"final_report": ""}
@@ -269,23 +266,30 @@ def finalize_report(state: ResearchGraphState):
     introduction = state.get("introduction", "")
     conclusion = state.get("conclusion", "")
     resource_list = state.get("resource_list", "")
-    if content.startswith("## Insights"):
-        content = content.lstrip("## Insights").strip()
-    final_report = ""
+    # Build the current iteration's report
+    current_report = ""
     if introduction:
-        final_report += introduction + "\n\n---\n\n"
+        current_report += introduction + "\n\n---\n\n"
     if content:
-        final_report += content
+        current_report += content
     if conclusion and "Conclusion" not in content:
-        final_report += "\n\n---\n\n" + conclusion
+        current_report += "\n\n---\n\n" + conclusion
     if resource_list and resource_list.strip():
-        final_report += "\n\n" + resource_list
-    return {"final_report": final_report}
+        current_report += "\n\n" + resource_list
+    # Append current iteration's report to cumulative_report
+    cumulative = state.get("cumulative_report", "")
+    if cumulative:
+        cumulative += "\n\n" + current_report
+    else:
+        cumulative = current_report
+    state["cumulative_report"] = cumulative
+    # Also update final_report to reflect the cumulative content
+    return {"final_report": cumulative}
 
 def self_critique(state: ResearchGraphState):
     """
-    Critic Agent: Analyze the final report and generate an updated plan.
-    Also increments the iteration counter.
+    Updated Self-Critique: Reviews the final report and returns both an updated plan and an overall critique.
+    The response is expected as JSON with keys 'plan' and 'critic'.
     """
     print("Self_critique")
     filepath = "self_critique"
@@ -295,11 +299,11 @@ def self_critique(state: ResearchGraphState):
             f.write(
                 "You are an expert critic. Your task is to review a research report and provide constructive criticism with suggestions for improvement. "
                 "In the user message, you will receive a value labeled 'REPORT' which contains the current research report. "
-                "After analyzing the report, generate an updated plan that addresses the identified issues. "
-                "Return only the updated plan."
+                "After analyzing the report, generate an updated plan that addresses the identified issues and also provide an overall critique of the report. "
+                "Return your answer as a JSON object with keys 'plan' (the updated plan) and 'critic' (the overall critique)."
             )
     current_report = state.get("final_report", "")
-    user_message = f"REPORT: <<< {current_report} >>>\nTASK: Critique the report and update the plan."
+    user_message = f"REPORT: <<< {current_report} >>>\nTASK: Critique the report and update the plan. Return a JSON object with keys 'plan' and 'critic'."
     critique_response = critic.invoke(
         system_prompt_template=filepath,
         user_message=user_message,
@@ -307,11 +311,11 @@ def self_critique(state: ResearchGraphState):
         return_message_content_only=True,
         use_default_llm=False
     )[0]
-    updated_plan = critique_response.content if hasattr(critique_response, "content") else critique_response
-    updated_plan = remove_think_tags(updated_plan)
-    print(f"Critique : {updated_plan}")
+    critique_data = extract_json(remove_think_tags(critique_response))
+    state["plan"] = critique_data.get("plan", state.get("plan"))
+    state["critic"] = critique_data.get("critic", "")
     state["iteration"] = state.get("iteration", 0) + 1
-    return {"plan": updated_plan, "iteration": state["iteration"]}
+    return {"plan": state["plan"], "iteration": state["iteration"]}
 
 def reset_for_iteration(state: ResearchGraphState):
     """
@@ -324,7 +328,6 @@ def reset_for_iteration(state: ResearchGraphState):
     state["content"] = ""
     state["conclusion"] = ""
     state["resource_list"] = ""
-    state["final_report"] = ""
     return state
 
 def should_iterate(state: ResearchGraphState):
@@ -548,7 +551,8 @@ def multi_agent_research_generation_persist_at_the_end(title, topic, max_analyst
         "max_iterations": max_iterations,
         "search_strategy": None,
         "latex_report": "",
-        "compiled_interview_graph": None  # New field initialized.
+        "compiled_interview_graph": None,
+        "cumulative_report": ""
     }
     params = {"configurable": {"thread_id": "1"}, "recursion_limit": 100}
 

@@ -188,7 +188,7 @@ def search_web_query_get(search_query):
                 "title": title,
                 "authors": authors,
                 "abstract": abstract,
-                "url": url
+                "url": url if url else f"{title}, {authors}"
             })
     else:
         print(f"Error retrieving data from OpenAlex: {response.status_code}")
@@ -232,7 +232,7 @@ def search_arxiv_query_get(search_query):
                     "title": title,
                     "authors": authors,
                     "summary": summary,
-                    "link": link
+                    "link": link if link else f"{title}, {authors}"
                 })
         except Exception as e:
             print(f"Error parsing arXiv XML: {e}")
@@ -276,7 +276,7 @@ def search_semantic_scholar_query_get(search_query):
                 "title": title,
                 "authors": authors,
                 "abstract": abstract,
-                "url": url
+                "url": url if url else f"{title}, {authors}"
             })
     else:
         print(f"Error retrieving data from Semantic Scholar: {response.status_code}")
