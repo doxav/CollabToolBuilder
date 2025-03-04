@@ -167,10 +167,9 @@ class UserSession:
     def get_user_id(self):
         """Retrieve or prompt for the user ID."""
         if self.user_id is None:
-            self.user_id = os.environ.get(
-                'user_id',
-                smart_input("Please enter your user id: ", "Learning Loop", message_type="USER_ID")
-            )
+            self.user_id = os.environ.get('user_id')
+            if self.user_id is None:
+                self.user_id = smart_input("Please enter your user id: ", "Learning Loop", message_type="USER_ID")
         return self.user_id
     
     def set_user_id(self, id):
