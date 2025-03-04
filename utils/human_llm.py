@@ -1772,7 +1772,7 @@ class HumanLLM:
         temperature_max=None,
         task_name=None,
         prompt_directory="prompts",
-        generation_technique=None
+        generation_technique='self_refinement'
     ):
         """
         This method can perform different multi-inference strategies depending on 
@@ -1879,42 +1879,19 @@ class HumanLLM:
 
                         # Websocket vs console output
                         if self.config.use_websocket:
-                            smart_print(
-                                to_send,
-                                self.agent_name,
-                                f"Inference streaming output {color_id}",
-                                append=True,
-                                column_id=color_id,
-                                column_max=self.num_parallel_inferences
-                            )
+                            smart_print( to_send, self.agent_name, f"Inference streaming output {color_id}", append=True, column_id=color_id, column_max=self.num_parallel_inferences)
                         else:
-                            smart_print(
-                                start_color + to_send + end_color,
-                                self.agent_name,
-                                f"Inference streaming output {color_id}",
-                                append=True
-                            )
+                            smart_print( start_color + to_send + end_color, self.agent_name, f"Inference streaming output {color_id}", append=True)
 
                         buffer_start_time = current_time
 
                 # Final flush
                 if buffer:
                     if self.config.use_websocket:
-                        smart_print(
-                            buffer,
-                            self.agent_name,
-                            f"Inference streaming output {color_id}",
-                            append=True,
-                            column_id=color_id,
-                            column_max=self.num_parallel_inferences
-                        )
+                        smart_print( buffer, self.agent_name, f"Inference streaming output {color_id}", append=True, column_id=color_id, column_max=self.num_parallel_inferences)
                     else:
-                        smart_print(
-                            start_color + buffer + end_color,
-                            self.agent_name,
-                            f"Inference streaming output {color_id}",
-                            append=True
-                        )
+                        smart_print( start_color + buffer + end_color, self.agent_name, f"Inference streaming output {color_id}", append=True)
+
                 return AIMessage(content=final_output)
 
             else:
@@ -1929,62 +1906,28 @@ class HumanLLM:
             Returns an AIMessage object.
             """
             # Rebuild the message array for the LLM
-            # Usually: [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
-            input_messages = [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt)
-            ]
-            return perform_llm_call(
-                input_messages,
-                use_premium=use_premium_llm,
-                func_calling=function_calling,
-                temperature=temperature,
-                stream_output=stream_output,
-                color_id=color_id
-            )
+            input_messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+            return perform_llm_call( input_messages, use_premium=use_premium_llm, func_calling=function_calling, temperature=temperature, stream_output=stream_output, color_id=color_id)
 
-        def generate_candidates(
-            generation_technique,
-            system_prompt,
-            user_prompt,
-            num_responses,
-            use_premium_llm,
-            function_calling,
-            temp_min,
-            temp_max,
-            stream_output
-        ):
+        def generate_candidates( generation_technique, system_prompt, user_prompt, num_responses, use_premium_llm,
+            function_calling, temp_min, temp_max, stream_output):
             """
             Generates multiple candidates based on different strategies. 
             Returns a list of AIMessage objects.
             """
             candidates = []
 
-            # If the user wants e.g. 3 parallel inferences, we treat that as 'num_responses'
-            if num_responses < 1:
-                num_responses = 1
+            if num_responses < 1: num_responses = 1
 
             if generation_technique == "temperature_variation":
                 # We replicate the snippet logic
                 self.synthesize_mode = True  # you can set this if you want final synthesis
                 # Build a uniform range of temperatures from temp_max down to temp_min
-                temperatures = [
-                    temp_max - i * (temp_max - temp_min) / max(1, num_responses - 1)
-                    for i in range(num_responses)
-                ]
-
+                temperatures = [ temp_max - i * (temp_max - temp_min) / max(1, num_responses - 1) for i in range(num_responses) ]
                 smart_print( f"Temperatures for responses: {temperatures}", self.agent_name, "Temperature Variation", optional=True)
 
                 for i, temp in enumerate(temperatures):
-                    candidate = generate_single(
-                        system_prompt,
-                        user_prompt,
-                        use_premium_llm,
-                        function_calling,
-                        temperature=temp,
-                        stream_output=stream_output,
-                        color_id=i
-                    )
+                    candidate = generate_single( system_prompt, user_prompt, use_premium_llm, function_calling, temperature=temp, stream_output=stream_output, color_id=i)
                     candidates.append(candidate)
 
             elif generation_technique == "self_refinement":
@@ -1995,20 +1938,9 @@ class HumanLLM:
                         current_prompt = system_prompt
                     else:
                         # Reflect on the last candidate
-                        current_prompt = (
-                            f"{system_prompt}\n"
-                            f"Refine the following solution: {candidates[-1].content}"
-                        )
+                        current_prompt = f"{system_prompt}\nRefine the following solution to user's prompt. SOLUTION: <<<\n{candidates[-1].content}\n>>>"
 
-                    candidate = generate_single(
-                        current_prompt,
-                        user_prompt,
-                        use_premium_llm,
-                        function_calling,
-                        temperature=0.0,  # Usually deterministic 
-                        stream_output=stream_output,
-                        color_id=0
-                    )
+                    candidate = generate_single( current_prompt, user_prompt, use_premium_llm, function_calling, temperature=0.0,  stream_output=stream_output, color_id=0)
                     candidates.append(candidate)
 
             elif generation_technique == "iterative_alternatives":
@@ -2018,37 +1950,17 @@ class HumanLLM:
                         current_prompt = system_prompt
                     else:
                         # Generate a new alternative based on all previous
-                        previous_solutions = "\n".join(
-                            f"SOLUTION {idx + 1}: <<<{cand.content}>>>"
-                            for idx, cand in enumerate(candidates)
-                        )
-                        current_prompt = (
-                            f"{system_prompt}\n"
-                            "Given the following solutions, propose a new alternative "
-                            f"optimal solution:\n{previous_solutions}\n"
-                            f"{user_prompt}"
-                        )
+                        previous_solutions = "\n".join(f"SOLUTION {idx + 1}: <<<\n{cand.content}\n>>>" for idx, cand in enumerate(candidates))
+                        current_prompt = f"{system_prompt}\nGiven the following solutions, propose a new alternative optimal solution to user's prompt:\n{previous_solutions}\n"
 
-                    candidate = generate_single(
-                        current_prompt,
-                        "",  # the user_prompt is embedded in current_prompt
-                        use_premium_llm,
-                        function_calling,
-                        temperature=0.0,  # Usually deterministic
-                        stream_output=stream_output,
-                        color_id=i
-                    )
+                    candidate = generate_single( current_prompt, user_prompt, use_premium_llm, function_calling, temperature=0.0, stream_output=stream_output, color_id=i)
                     candidates.append(candidate)
 
             else:
-                raise ValueError(
-                    f"Invalid generation_technique: {generation_technique}. "
-                    "Supported options: 'temperature_variation', 'self_refinement', 'iterative_alternatives'."
-                )
+                raise ValueError(f"Invalid generation_technique: {generation_technique}.  Supported options: 'temperature_variation', 'self_refinement', 'iterative_alternatives'.")
 
             return candidates
 
-        # -- Begin original invoke flow -----------------------------------------------------------
         smart_print(
             f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[1].function} calling HumanLLM****\033[0m",
             self.agent_name,
@@ -2213,16 +2125,9 @@ class HumanLLM:
                                     llm_input_messages,
                                     use_premium_llm,
                                     function_calling,
-                                    (
-                                        (
-                                            temperature_min + i * (temperature_max - temperature_min)
-                                            / (self.num_parallel_inferences - 1)
-                                        )
-                                        if (temperature_min is not None 
-                                            and self.num_parallel_inferences > 1 
-                                            and temperature_min >= 0.)
-                                        else 0
-                                    ),
+                                    (   (temperature_min + i * (temperature_max - temperature_min) / (self.num_parallel_inferences - 1))
+                                        if (temperature_min is not None and self.num_parallel_inferences > 1 and temperature_min >= 0.)
+                                        else 0),
                                     stream_output,
                                     i
                                 )
@@ -2319,11 +2224,10 @@ class HumanLLM:
         # Logging 
         self._log_entry(
             function_name=caller_function_name,
-            input_contents=self.llm_input_messages,
+            input_contents=llm_input_messages,
             output_contents=output_messages,
             inference_time=(end_time - start_time).total_seconds(),
-            input_modified=((self.llm_input_messages[0].content + "\n" + self.llm_input_messages[1].content)
-                            != (input_contents_str0 + "\n" + input_contents_str1)),
+            input_modified=((llm_input_messages[0].content + "\n" + llm_input_messages[1].content) != (input_contents_str0 + "\n" + input_contents_str1)),
             skipped_inference=True if skip_inference else False,
             skip_rounds=self.skip_rounds,
             input_comments=input_comments,
