@@ -16,7 +16,6 @@ git clone git@github.com:SamuelSchmidgall/AgentLaboratory.git
 4. Rename utils.py to agent_utils.py
 ```bash
 cd tests/agent_laboratory/AgentLaboratory
-mv utils.py agent_utils.py
 
 5. Apply patch file
 ```bash
