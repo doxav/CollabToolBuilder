@@ -22,3 +22,5 @@ report_outputs/
 pkl_cache/
 
 websocketdata*
+AgentLaboratory/
+composio/

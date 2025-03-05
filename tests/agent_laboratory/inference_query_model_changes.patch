@@ -1,0 +1,93 @@
+diff --git a/utils.py b/agent_utils.py
+similarity index 100%
+rename from utils.py
+rename to agent_utils.py
+diff --git a/agents.py b/agents.py
+index c6fd4cd..f149d6b 100755
+--- a/agents.py
++++ b/agents.py
+@@ -1,4 +1,4 @@
+-from utils import *
++from agent_utils import *
+ from tools import *
+ from inference import *
+ 
+diff --git a/ai_lab_repo.py b/ai_lab_repo.py
+index dbe9541..65e2ed6 100755
+--- a/ai_lab_repo.py
++++ b/ai_lab_repo.py
+@@ -1,3 +1,9 @@
++import sys
++import os
++
++# This adds the root directory of your project to the Python path
++sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../')))
++
+ from agents import *
+ from copy import copy
+ from common_imports import *
+@@ -10,6 +16,7 @@ import pickle
+ DEFAULT_LLM_BACKBONE = "o1-mini"
+ 
+ 
++
+ class LaboratoryWorkflow:
+     def __init__(self, research_topic, openai_api_key, max_steps=100, num_papers_lit_review=5, agent_model_backbone=f"{DEFAULT_LLM_BACKBONE}", notes=list(), human_in_loop_flag=None, compile_pdf=True, mlesolver_max_steps=3, papersolver_max_steps=5):
+         """
+@@ -579,7 +586,7 @@ def parse_arguments():
+     parser.add_argument(
+         '--llm-backend',
+         type=str,
+-        default="o1-mini",
++        default="humanllm",
+         help='Backend LLM to use for agents in Agent Laboratory.'
+     )
+ 
+diff --git a/inference.py b/inference.py
+index 74b6d0f..44628da 100755
+--- a/inference.py
++++ b/inference.py
+@@ -1,8 +1,9 @@
+ import time, tiktoken
+ from openai import OpenAI
+ import openai
+-import os, anthropic, json
+-
++import os, anthropic, json, sys
++from utils.human_llm import HumanLLM
++from utils.human_llm_config import HumanLLMConfig
+ TOKENS_IN = dict()
+ TOKENS_OUT = dict()
+ 
+@@ -159,7 +160,21 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, anthropic
+                     completion = client.chat.completions.create(
+                         model="o1-preview", messages=messages)
+                 answer = completion.choices[0].message.content
++            elif model_str == "humanllm":
++                config = HumanLLMConfig()
++                config.common_vectordb_config.embedding_function = "text-embedding-ada-002"
++                config.initialize()
++                client = HumanLLM(
++                    agent_name="agent",
++                    automation=True,
++                    llmORchains_list=config.get_llmORchains_list()
++                )
+ 
++                answers = client.invoke(
++                    system_prompt_template=system_prompt,
++                    user_message=prompt,
++                    prompt_directory=None)
++                answer = answers[0]
+             try:
+                 if model_str in ["o1-preview", "o1-mini", "claude-3.5-sonnet", "o1"]:
+                     encoding = tiktoken.encoding_for_model("gpt-4o")
+diff --git a/tools.py b/tools.py
+index 5d0d4a9..96e8a17 100755
+--- a/tools.py
++++ b/tools.py
+@@ -1,4 +1,4 @@
+-from utils import *
++from agent_utils import *
+ 
+ import time
+ import arxiv

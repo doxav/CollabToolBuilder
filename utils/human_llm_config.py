@@ -131,11 +131,11 @@ class HumanLLMConfig:
             }
 
     def add_learnt_task(self, serialized_entry, tags):
-        self.task_history.add_completed_task(serialized_entry)
+        # self.task_history.add_completed_task(serialized_entry)
         self.db_learnt_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
 
     def add_failed_task(self, serialized_entry, tags):
-        self.task_history.add_failed_task(serialized_entry)
+        # self.task_history.add_failed_task(serialized_entry)
         self.db_failed_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
 
     def get_user_id(self):
