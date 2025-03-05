@@ -21,7 +21,7 @@ index dbe9541..65e2ed6 100755
 +import os
 +
 +# This adds the root directory of your project to the Python path
-+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../')))
++sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), '../../../')))
 +
  from agents import *
  from copy import copy
@@ -59,7 +59,23 @@ index 74b6d0f..44628da 100755
  TOKENS_IN = dict()
  TOKENS_OUT = dict()
  
-@@ -159,7 +160,21 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, anthropic
+@@ -17,6 +18,7 @@ def curr_cost_est():
+         "claude-3-5-sonnet": 3.00 / 1000000,
+         "deepseek-chat": 1.00 / 1000000,
+         "o1": 15.00 / 1000000,
++        "humanllm": 15.00 / 1000000,
+     }
+     costmap_out = {
+         "gpt-4o": 10.00/ 1000000,
+@@ -26,6 +28,7 @@ def curr_cost_est():
+         "claude-3-5-sonnet": 12.00 / 1000000,
+         "deepseek-chat": 5.00 / 1000000,
+         "o1": 60.00 / 1000000,
++        "humanllm": 60.00 / 1000000,
+     }
+     return sum([costmap_in[_]*TOKENS_IN[_] for _ in TOKENS_IN]) + sum([costmap_out[_]*TOKENS_OUT[_] for _ in TOKENS_OUT])
+ 
+@@ -159,12 +162,28 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, anthropic
                      completion = client.chat.completions.create(
                          model="o1-preview", messages=messages)
                  answer = completion.choices[0].message.content
@@ -81,6 +97,13 @@ index 74b6d0f..44628da 100755
              try:
                  if model_str in ["o1-preview", "o1-mini", "claude-3.5-sonnet", "o1"]:
                      encoding = tiktoken.encoding_for_model("gpt-4o")
+                 elif model_str in ["deepseek-chat"]:
+                     encoding = tiktoken.encoding_for_model("cl100k_base")
++                elif model_str in ['humanllm']:
++                    encoding = tiktoken.encoding_for_model("gpt-4o-mini")
+                 else:
+                     encoding = tiktoken.encoding_for_model(model_str)
+                 if model_str not in TOKENS_IN:
 diff --git a/tools.py b/tools.py
 index 5d0d4a9..96e8a17 100755
 --- a/tools.py

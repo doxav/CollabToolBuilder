@@ -7,7 +7,7 @@ index cd35a985..5f643762 100644
 +import sys
  import os
 +# This adds the root directory of your project to the Python path
-+sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), '../../')))
++sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), '../../../')))
 +
 +import argparse
  import random
