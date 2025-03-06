@@ -78,9 +78,9 @@ def run_4agents_learning_loop(
     if functions_to_import:
         # Imports the functions with the regex pattern given from functions directory into the elastic database
         functions = import_functions_from_directory(functions_to_import)
-        print("Imported functions:", type(functions))
+        logging.info(f"Imported functions: {type(functions)}")
         for function in functions.items():
-            print(f"Function:<<<\n{function}\n>>>")
+            logging.info(f"Function:<<<\n{function}\n>>>")
             # TODO: improve by re-using code from SWE which also import docstrings for descriptions
             serialized_entry = json.dumps(
                 {
@@ -96,7 +96,7 @@ def run_4agents_learning_loop(
                 "host": f"{socket.gethostname()}-{uuid.getnode()}",
                 "step_id": config.step_id
             }
-            print("Adding learnt task:", config.add_learnt_task(serialized_entry, tags))
+            logging.info(f"Adding learnt task: {config.add_learnt_task(serialized_entry, tags)}")
 
     logging.info("Starting learning loop...")
 
@@ -114,22 +114,22 @@ def run_4agents_learning_loop(
             default_llm_key = special_criteria['TaskIdentificationAgent#default_llm_choice']
             # Remove the key from the special criteria to avoid passing it to the agents
             del special_criteria['TaskIdentificationAgent#default_llm_choice']
-            print(f"Special criteria: default_llm_choice set to {default_llm_key}")
+            logging.info(f"Special criteria: default_llm_choice set to {default_llm_key}")
         if 'CodingAgent#default_llm_choice' in special_criteria:
             default_llm_key = special_criteria['CodingAgent#default_llm_choice']
             # Remove the key from the special criteria to avoid passing it to the agents
             del special_criteria['CodingAgent#default_llm_choice']
-            print(f"Special criteria: default_llm_choice set to {default_llm_key}")
+            logging.info(f"Special criteria: default_llm_choice set to {default_llm_key}")
         if 'ValidationAgent#default_llm_choice' in special_criteria:
             default_llm_key = special_criteria['ValidationAgent#default_llm_choice']
             # Remove the key from the special criteria to avoid passing it to the agents
             del special_criteria['ValidationAgent#default_llm_choice']
-            print(f"Special criteria: default_llm_choice set to {default_llm_key}")
+            logging.info(f"Special criteria: default_llm_choice set to {default_llm_key}")
         if 'CapitalizationAgent#default_llm_choice' in special_criteria:
             default_llm_key = special_criteria['CapitalizationAgent#default_llm_choice']
             # Remove the key from the special criteria to avoid passing it to the agents
             del special_criteria['CapitalizationAgent#default_llm_choice']
-            print(f"Special criteria: default_llm_choice set to {default_llm_key}")
+            logging.info(f"Special criteria: default_llm_choice set to {default_llm_key}")
     logging.info(f"Special criteria: {special_criteria}")
     logging.info(f"Automation: {automation}")
     config.special_criteria = special_criteria
@@ -364,7 +364,7 @@ def run_4agents_learning_loop(
                     (20 * (1 + validated_score_avg) if scores['validated_scores'] else 0)
             )
             if total_score_weighted_with_stats > 0:
-                print(
+                logging.info(
                     f"total_score_weighted_with_stats: {total_score_weighted_with_stats}; "
                     f"scores['percentage_no_runtime_error']: {scores['percentage_no_runtime_error']}; "
                     f"scores['best_score_without_validation']: {scores['best_score_without_validation']}; "
@@ -375,7 +375,7 @@ def run_4agents_learning_loop(
             total_scores.append(0)
 
     # print status of: continue_identifying_tasks and time.time() < time_end
-    print(
+    logging.info(
         f"continue_identifying_tasks: {continue_identifying_tasks}, "
         f"time.time() < time_end: {time.time() < time_end}, "
         f"time.time(): {time.time()}, time_end: {time_end}"
@@ -386,15 +386,16 @@ def run_4agents_learning_loop(
     else:
         return max(total_scores)
 
-def run_planner(*args, **kwargs):  # NEW VERSION
+# NEW VERSION
+def run_planner(*args, **kwargs):
     humanLLM = HumanLLMConfig()
     # Definition of automation depending on the task given
     if kwargs.get('functions_to_import') is not None:
         # Imports the functions with the regex pattern given from functions directory into the elastic database
         functions = import_functions_from_directory(kwargs.get('functions_to_import'))
-        print("Imported functions:", type(functions))
+        logging.info(f"Imported functions: {type(functions)}")
         for function in functions.items():
-            print(f"Function:<<<\n{function}\n>>>")
+            logging.info(f"Function:<<<\n{function}\n>>>")
             # TODO: improve by re-using code from SWE which also import docstrings for descriptions
             serialized_entry = json.dumps(
                 {
@@ -410,11 +411,11 @@ def run_planner(*args, **kwargs):  # NEW VERSION
                 "host": f"{socket.gethostname()}-{uuid.getnode()}",
                 "step_id": humanLLM.step_id
             }
-            print("Adding learnt task:", humanLLM.add_learnt_task(serialized_entry, tags))
+            logging.info(f"Adding learnt task: {humanLLM.add_learnt_task(serialized_entry, tags)}")
 
     successful_tasks = humanLLM.config.get_learnt_tasks()
     successful_tasks_list = [task for task in successful_tasks]
-    print(f"{len(successful_tasks)} successful tasks:<<<\n{successful_tasks_list}>>>")
+    logging.info(f"{len(successful_tasks)} successful tasks:<<<\n{successful_tasks_list}>>>")
 
     path_folder = "primitives/generate_primitives"
     folder_path = os.path.join(os.path.dirname(__file__), path_folder)
@@ -629,8 +630,8 @@ def coding_and_validation_loop(
         humanLLM.log_agent_data(agent_coding.name, 'previous_scores', previous_scores, metadata=metadata)
         humanLLM.log_agent_data(agent_coding.name, 'unique_codes', list(unique_codes), metadata=metadata)
 
-        results = agent_coding.code_task_and_run_test(task_description)
-        print("Results:", results)
+        results = agent_coding.human_llm_code_task.code_task_and_run_test(task_description)
+        logging.info(f"Results: {results}")
 
         all_results.extend(results)
         humanLLM.log_agent_data(agent_coding.name, 'all_results', all_results, metadata=metadata)
@@ -920,7 +921,7 @@ def prepare_configs(args):
                 }
             case _:
                 automation = None
-        print(f"automation: {automation}")
+        logging.info(f"automation: {automation}")
     else:
         special_criteria = None
 

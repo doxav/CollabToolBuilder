@@ -83,7 +83,8 @@ class UnifiedVectorDBConfig:
         embedding_function: Optional[Any] = None,
         collection_name: Optional[str] = "human_llm_logs",
         persist_directory: Optional[str] = "human_llm_vectordb",
-        reset_indices: bool = False
+        reset_indices: bool = False,
+        unique_collection_id: Optional[str] = None
     ):
         """Initialize VectorDBConfig."""
         self.embedding_function = embedding_function
@@ -95,7 +96,7 @@ class UnifiedVectorDBConfig:
 
         self.db_type: str = ELASTIC_DATABASE
         self.es_config = ElasticSearchDB_Config()
-        self.unique_collection_id: Optional[str] = None
+        self.unique_collection_id: Optional[str] = unique_collection_id
         
     def set_common_vectordb_embedding_function(self):
         """Set the embedding function for the vector database."""
@@ -166,10 +167,9 @@ class UserSession:
     def get_user_id(self):
         """Retrieve or prompt for the user ID."""
         if self.user_id is None:
-            self.user_id = os.environ.get(
-                'user_id',
-                smart_input("Please enter your user id: ", "Learning Loop", message_type="USER_ID")
-            )
+            self.user_id = os.environ.get('user_id')
+            if self.user_id is None:
+                self.user_id = smart_input("Please enter your user id: ", "Learning Loop", message_type="USER_ID")
         return self.user_id
     
     def set_user_id(self, id):
@@ -190,6 +190,8 @@ class InferenceTracking:
         self.unidentified_option_times = []
         self.unidentified_option_counts = []
         self.last_inference_check_results: Dict[str, Any] = {}
+        self.inference_checks: Dict[str, Any] = {}
+        self.excluded_inference_checks:List[str] = ["Recommend Critics"]
 
 
 class TaskHistory:
@@ -200,6 +202,30 @@ class TaskHistory:
         self.completed_tasks: List[Dict[str, Any]] = []
         self.failed_tasks: List[Dict[str, Any]] = []
         self.task_log: List[Dict[str, Any]] = []
+
+    def clear_completed_tasks(self):
+        self.completed_tasks.clear()
+
+    def clear_failed_tasks(self):
+        self.failed_tasks.clear()
+
+    def add_completed_task(self, task_entry: Optional[Dict[str, str]] = None):
+        """Logs a successfully completed task."""
+        self.completed_tasks.append(task_entry)
+        self.task_log.append(task_entry)
+
+    def add_failed_task(self, task_entry: Optional[Dict[str, str]] = None):
+        """Logs a task that failed during execution."""
+        self.failed_tasks.append(task_entry)
+        self.task_log.append(task_entry)
+
+    def get_completed_tasks(self) -> List[Dict[str, str]]:
+        """Returns all completed tasks."""
+        return self.completed_tasks
+
+    def get_failed_tasks(self) -> List[Dict[str, str]]:
+        """Returns all failed tasks."""
+        return self.failed_tasks
 
 
 class ElasticSearchDB_Config:
@@ -269,11 +295,13 @@ class UnifiedVectorDB:
 
     def get_unique_id(self):
         """Generate or retrieve a unique ID for the collection."""
-        if self.config.unique_collection_id is None:
-            self.config.unique_collection_id = os.environ.get(
+        from utils.human_llm import HumanLLMConfig
+        if HumanLLMConfig().common_vectordb_config.unique_collection_id is None:
+            HumanLLMConfig().common_vectordb_config.unique_collection_id = os.environ.get(
                 'unique_id',
                 f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
             )
+        self.config.unique_collection_id =  HumanLLMConfig().common_vectordb_config.unique_collection_id
         return self.config.unique_collection_id
 
     def check_db(self):
@@ -850,40 +878,6 @@ def save_prompt_with_tag(prompt_name, text, new_tag, package_path="."):
     # Save the file
     return dump_text(text, prompt_file_path_name)
 
-def apply_special_criteria(agent, special_criteria, available_locals=None):
-    """
-    Apply special criteria to the attributes and parameters of an agent.
-
-    :param agent: The agent instance to modify.
-    :param special_criteria: Dictionary containing the special criteria.
-    :param available_locals: Dictionary containing the local variables of the caller function.
-    :return: Dictionary of only the modified parameters.
-    """
-    # Dictionary to store only the modified parameters
-    new_params = {}
-
-    if special_criteria:
-        if available_locals is None:
-            # Use inspect to dynamically capture arguments
-            frame = inspect.currentframe().f_back  # Go up one level
-            _, _, _, values = inspect.getargvalues(frame)
-            available_locals = values
-
-        class_name = agent.__class__.__name__
-        # Iterate through the criteria related to this class
-        for key, value in special_criteria.items():
-            if key in ['self', 'special_criteria']: continue
-            if '#' in key:
-                agent_name, key = key.split('#', 1)
-                if agent_name != class_name and agent_name not in ['all', '']: continue
-            if hasattr(agent, key):
-                setattr(agent, key, value)
-
-            elif key in available_locals:
-                new_params[key] = value
-                print(f"Special criteria applicable to {agent}'s local variables: {key} = {value}")
-    print(new_params)
-    return new_params  # Return only new params
 
 def apply_criteria_and_prepare_monitor_args(agent, special_criteria, available_locals=None):
     """
@@ -1088,3 +1082,42 @@ def get_highest_score_index(score_array, mode='total'):
             highest_index = i
 
     return highest_index
+
+def flatten(nested):
+    flat_list = []
+    for item in nested:
+        if isinstance(item, (list, tuple)):
+            flat_list.extend(flatten(item))
+        elif isinstance(item, dict):
+            for value in item.values():
+                flat_list.extend(flatten(value))
+        else:
+            flat_list.append(item)
+    return flat_list
+
+# Décomposer les tuples pour éviter les tuples imbriqués
+def unpack_tuples(items):
+    unpacked = []
+    for item in items:
+        if isinstance(item, tuple):
+            unpacked.extend(unpack_tuples(item))
+        else:
+            unpacked.append(item)
+    return unpacked
+
+def flatten_and_pair(nested_list):
+    flat_list = flatten(nested_list)
+    flat_list = unpack_tuples(flat_list)
+
+    # Toujours regrouper les éléments par paires de 2 et retourner une liste de tuples
+    paired_list = []
+    i = 0
+    while i < len(flat_list):
+        if i + 1 < len(flat_list):
+            paired_list.append((flat_list[i], flat_list[i + 1]))
+            i += 2
+        else:
+            # Si le nombre d'éléments est impair, le dernier élément est ajouté seul dans un tuple
+            paired_list.append((flat_list[i],))
+            i += 1
+    return paired_list
