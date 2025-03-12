@@ -542,10 +542,17 @@ def smart_print(
             HumanLLMConfig().init_ws_server()
             logger.info("WebSocket server initialized.")
 
+        
+        # If non-ASCII characters exist, check if message is valid UTF-8
+            try:
+                message.encode('utf-8')  # If it can be encoded, it's fine
+            except UnicodeEncodeError:
+                message = message.encode('utf-8', errors='ignore').decode('utf-8') 
+
         # Check if in the message there are no unexpected non-whitespace characters
-        if re.search(r'[^\x20-\x7E\t\n\r]', message):
-            # Remove unexpected characters
-            message = re.sub(r'[^\x20-\x7E\t\n\r]', "", message)
+        # if re.search(r'[^\x20-\x7E\t\n\r]', message):
+        #     # Remove unexpected characters
+        #     # message = re.sub(r'[^\x20-\x7E\t\n\r]', "", message)
         message_dict = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'append': append,
                         'column_id': column_id, 'column_max': column_max, 'optional': optional,
                         'step_id': HumanLLMConfig().step_id}
