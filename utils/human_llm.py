@@ -26,7 +26,7 @@ from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.system import SystemMessage
 from langchain_core.messages.function import FunctionMessage
 from langchain_core.runnables import RunnableSequence, ConfigurableField
-
+import regex as regex 
 
 class HumanLLM:
     def __init__(
@@ -2258,16 +2258,11 @@ class HumanLLM:
         # Clean up the response content
         # response.content = re.sub(r'[^\x20-\x7E\t\n\r]', '', response.content)
         # improvement_prompt = re.sub(r'[^\x20-\x7E\t\n\r]', '', improvement_prompt)
-        try:
-            response.content.encode('utf-8')  # If it can be encoded, it's fine
-        except UnicodeEncodeError:
-            response.content = response.content.encode('utf-8', errors='ignore').decode('utf-8') 
-        
-        try:
-            improvement_prompt.encode('utf-8')  # If it can be encoded, it's fine
-        except UnicodeEncodeError:
-            improvement_prompt = improvement_prompt.encode('utf-8', errors='ignore').decode('utf-8') 
-                    
+
+        # Allow printable Unicode characters, remove only control characters
+        response.content = regex.sub(r'[^\P{C}\t\n\r]', '', response.content)
+        improvement_prompt = regex.sub(r'[^\P{C}\t\n\r]', '', improvement_prompt)
+     
         response.content = re.sub(r'\\u[0-9A-Fa-f]{4}', '', response.content)
         improvement_prompt = re.sub(r'\\u[0-9A-Fa-f]{4}', '', improvement_prompt)
 
@@ -2308,11 +2303,7 @@ class HumanLLM:
         # Clean up the annotation response
         annotations = annotation_response.content.strip()
         # annotations = re.sub(r'[^\x20-\x7E\t\n\r]', '', annotations)
-        try:
-            annotations.encode('utf-8')
-        except UnicodeEncodeError:
-            annotations = annotations.encode('utf-8', errors='ignore').decode('utf-8') 
-
+        annotations = regex.sub(r'[^\P{C}\t\n\r]', '', annotations)
         annotations = re.sub(r'\\u[0-9A-Fa-f]{4}', '', annotations)
 
         # Save the annotations using add_agent_data
