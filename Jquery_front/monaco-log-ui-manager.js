@@ -723,9 +723,9 @@ function getColumnsToKeep(agent) {
             let output_id = data.column_id;
            sendFunctionCall(data.agent_name, "generate_best_improvement_suggestions", {inference_result_content:editor_content, output_id:output_id}, function(responseMessage) {
                 console.log("responseMessage:", responseMessage);
-                let suggestions = JSON.parse(responseMessage);
+                let suggestions = responseMessage;
                 annotationswithID = suggestions.suggestions;
-                let comment_editor = window[`editorInstance_${currentAgent}_${suggestions.output_id}`];
+                let comment_editor = window[`editorInstance_${currentAgent}-${suggestions.output_id}`];
                 comment_editor.setValue(annotationswithID);
             });
 
