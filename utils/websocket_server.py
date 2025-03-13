@@ -129,7 +129,7 @@ class WebsocketServer:
         """
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_entry = f"{'IN' if received else 'OUT'} {timestamp} - {message}\n"
-        with open(self.log_filename, "a") as log_file:
+        with open(self.log_filename, "a",encoding="utf-8") as log_file:
             log_file.write(log_entry)
 
     async def handler(self, websocket, path):
