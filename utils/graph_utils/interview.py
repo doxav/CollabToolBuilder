@@ -1,5 +1,6 @@
 from . import helpers_demo
 from .analysts import Analyst
+from .helpers_demo import extract_json
 from ..llm_utils import smart_print
 
 from langgraph.graph import MessagesState
@@ -10,13 +11,16 @@ import re
 import operator
 from typing import Annotated
 
-
 class InterviewState(MessagesState):
     max_num_turns: int                              # Number of conversation turns
     context: Annotated[list, operator.add]          # Source docs
     analyst: Analyst                                # Analyst persona
     interview: str                                  # Interview transcript
     sections: list                                  # Collected sections for the report
+    expert_response: str                            # Expert response
+    expert_resources: list                          # Expert resources
+    sections: Annotated[list, operator.add]         # Collected sections for the report
+    source_list: Annotated[list, operator.add]      # Collected sources for the report
 
 # Add this helper at the top of interview.py (or in a shared helpers file)
 def translate_query(query: str, target_language: str = "en") -> str:
@@ -161,7 +165,7 @@ def search_docs_rag(state: InterviewState):
     base_query_obj = helpers_demo.search_llm_query(state["search_instructions"], state["messages"])
     base_query = base_query_obj.search_query
 
-    languages = ["en", "fr", "es"]
+    languages = ["en"]
     all_results = []
     for lang in languages:
          translated_query = translate_query(base_query, lang)
@@ -178,22 +182,53 @@ def generate_answer(state: InterviewState):
     if "answer_instructions" not in state:
         state["answer_instructions"] = (
             "You are an expert being interviewed.\n\n"
-            "Your focus is:\n{goals}\n\n"
-            "Answer the following question using only the provided context:\n{context}\n\n"
+            "Your focus is:{goals}\n\n"
+            "Answer the following question using only the provided context:{context}\n\n"
             "Guidelines:\n"
             "1. Use only the information in the context.\n"
             "2. Do not introduce external information.\n"
-            "3. Cite sources from the context using bracketed numbers (e.g., [1]).\n"
-            "4. List all sources at the end as [1] Source1, [2] Source2, etc."
+            "3. You have to cite sources from the context using latex style citations ~\\cite{{source_key}}.\n"
+            "4. The source should have at least the title, authors, and link to the document, if link is available.\n"
+            "{format_instructions}"
         )
+    
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_core.output_parsers import JsonOutputParser
+    from langchain_core.pydantic_v1 import BaseModel, Field
+    
+    # Define the output schema
+    class ExpertResponse(BaseModel):
+        response: str = Field(description="The expert's answer to the question")
+        sources: list = Field(description="The sources used to answer the question")
+    
+    # Create the output parser
+    parser = JsonOutputParser(pydantic_object=ExpertResponse)
+    
     answer_instructions = state["answer_instructions"]
     analyst = state["analyst"]
     messages = state["messages"]
     context = state["context"]
-    system_message = answer_instructions.format(goals=analyst.persona, context=context)
-    answer_resp = helpers_demo.llm_custom.invoke([SystemMessage(content=system_message)] + messages)
-    smart_print(message=answer_resp.content if isinstance(answer_resp, AIMessage) else answer_resp, agent_name="Generate Answer", message_type="NEW inference result recieved", column_id=0, column_max=1)
-    return {"messages": [answer_resp]}
+    
+    # Create a prompt template with format instructions
+    prompt_template = ChatPromptTemplate.from_template(answer_instructions)
+    formatted_prompt = prompt_template.format(
+        goals=analyst.persona, 
+        context=context,
+        format_instructions=parser.get_format_instructions()
+    )
+    
+    answer_resp = helpers_demo.llm_custom.invoke([SystemMessage(content=formatted_prompt)] + messages)
+    
+    try:
+        # Parse the response directly with the JsonOutputParser
+        answer_json = parser.parse(answer_resp.content)
+        smart_print(message=answer_json, agent_name="Generate Answer", message_type="NEW inference result recieved", column_id=0, column_max=1)
+        return {"expert_response": [answer_json.response], "expert_resources": answer_json.sources}
+    except Exception as e:
+        # Fallback to the original extract_json method if parsing fails
+        answer_json = extract_json(answer_resp.content)
+        smart_print(message=answer_json, agent_name="Generate Answer", message_type="NEW inference result recieved", column_id=0, column_max=1)
+        return {"expert_response": [answer_json.get("response", "")], "expert_resources": answer_json.get("sources", [])}
 
 def save_interview(state: InterviewState):
     print("Save_interview")
@@ -235,6 +270,7 @@ def write_section(state: InterviewState):
     system_message = section_writer_instructions.format(focus=analyst.description)
     human_msg = (
         f"Use this source to write your section: {context}\n"
+        f"Use this expert response to write your section: {state['expert_response'] if 'expert_response' in state else ''}\n"
         f"Current Report: {current_report}\n"
         f"Original Plan: {initial_plan}\n"
         "TASK: Append new information in this section without repeating what is already present."
@@ -251,4 +287,4 @@ def write_section(state: InterviewState):
         section_final = sections.content if isinstance(sections, AIMessage) else sections
     smart_print(message=section_final, agent_name="Write Section", message_type="NEW inference result recieved", column_id=0, column_max=1)
     # Append the new section to the existing list.
-    return {"sections": state.get("sections", []) + [section_final]}
+    return {"sections": state.get("sections", []) + [section_final], "source_list": state.get("source_list", []) + state.get("expert_resources", [])}

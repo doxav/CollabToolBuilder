@@ -515,10 +515,11 @@ def smart_print(
             logger.info("WebSocket server initialized.")
 
         # Check if in the message there are no unexpected non-whitespace characters
-        if re.search(r'[^\x20-\x7E\t\n\r]', message):
+        message_str = str(message) if not type(message) == str else message
+        if re.search(r'[^\x20-\x7E\t\n\r]', message_str):
             # Remove unexpected characters
-            message = re.sub(r'[^\x20-\x7E\t\n\r]', "", message)
-        message_dict = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'append': append,
+            message_str = re.sub(r'[^\x20-\x7E\t\n\r]', "", message_str)
+        message_dict = {'message': message_str, 'agent_name': agent_name, 'message_type': message_type, 'append': append,
                         'column_id': column_id, 'column_max': column_max, 'optional': optional,
                         'step_id': HumanLLMConfig().step_id}
         # convert message_dict to json
@@ -1088,3 +1089,103 @@ def get_highest_score_index(score_array, mode='total'):
             highest_index = i
 
     return highest_index
+
+def semantic_double_pass_chunking(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list:
+    """
+    Splits the text into chunks using a two-pass semantic approach.
+    First, it splits the text by paragraph breaks, then merges smaller chunks to achieve the desired chunk size,
+    adding an overlap between chunks to preserve context.
+    """
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    chunks = []
+    current_chunk = ""
+    for p in paragraphs:
+        if len(current_chunk) + len(p) <= chunk_size:
+            current_chunk += p + "\n\n"
+        else:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+            current_chunk = p + "\n\n"
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+   
+    # Add overlapping between chunks
+    if chunk_overlap > 0 and len(chunks) > 1:
+        overlapped_chunks = []
+        for i, chunk in enumerate(chunks):
+            if i > 0:
+                prev_overlap = chunks[i-1][-chunk_overlap:]
+                overlapped_chunks.append(prev_overlap + " " + chunk)
+            else:
+                overlapped_chunks.append(chunk)
+        return overlapped_chunks
+    else:
+        return chunks
+
+def extract_json(data: any) -> dict:
+    """
+    Extract and return a JSON object from the given input 'data'.
+
+    If 'data' is already a dict or list, it is returned as-is.
+    If 'data' is a string:
+      - First, it attempts to parse it entirely as JSON.
+      - If that fails, it uses two alternative methods:
+        
+        Method 1: Regex-based extraction.
+          - Uses a regex pattern to extract a substring that looks like JSON.
+          - Advantage: Very simple and concise.
+          - Drawback: It may fail or capture too little/much if the string contains extra text
+            or if the JSON has nested structures with inner braces/brackets.
+
+        Method 2: Decoder-based extraction.
+          - Iterates over the string and uses JSONDecoder.raw_decode() to try to decode a JSON
+            object from positions where a '{' or '[' appears.
+          - Advantage: This method leverages the JSON parser’s own grammar, making it more
+            robust for nested objects or arrays.
+          - Drawback: It may be slightly less intuitive than a one-line regex.
+
+    Returns:
+        A parsed JSON object (usually a dict or list).
+
+    Raises:
+        ValueError: If no valid JSON can be extracted from the input.
+    """
+    # If the data is already a dict or list, assume it's valid JSON.
+    if isinstance(data, (dict, list)):
+        return data
+
+    # Ensure we have a string (if not, convert it).
+    if not isinstance(data, str):
+        data = str(data)
+
+    data = data.strip()
+
+    # First attempt: Try to parse the whole string as JSON.
+    try:
+        return json.loads(data)
+    except json.JSONDecodeError:
+        print("Not a pure JSON string, so we try to extract the JSON part.")
+
+    # --- Method 1: Regex-based extraction ---
+    regex_pattern = r'(\{.*\}|\[.*\])'
+    match = re.search(regex_pattern, data, re.DOTALL)
+    if match:
+        candidate = match.group(0)
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            print("If the candidate isn't valid JSON, we try the next method.")
+
+    # --- Method 2: Using JSONDecoder's raw_decode method ---
+    decoder = json.JSONDecoder()
+    # Iterate over the string; try to decode JSON starting at every '{' or '['.
+    for i in range(len(data)):
+        if data[i] in ['{', '[']:
+            try:
+                obj, idx = decoder.raw_decode(data[i:])
+                return obj
+            except json.JSONDecodeError:
+                continue
+
+    # If both methods fail, raise an error.
+    print("No valid JSON found in the input data.")

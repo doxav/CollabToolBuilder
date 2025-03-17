@@ -1,3 +1,6 @@
+import os
+import tempfile
+from asyncio import subprocess
 import re, uuid, json, difflib
 import time, inspect
 import socket
@@ -10,7 +13,9 @@ from utils.llm_utils import (
     FewShotsParams,
     InferenceCheck,
     _visual_input, save_prompt_with_tag,
-    list_prompt_variants
+    list_prompt_variants,
+    semantic_double_pass_chunking,
+    extract_json
 )
 from utils.human_llm_config import HumanLLMConfig
 from typing import List, Dict, Any, Optional
@@ -134,60 +139,141 @@ class HumanLLM:
         return new_metadata
 
 
+    def semantic_double_pass_chunking(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list:
+        """
+        A placeholder implementation for semantic double-pass merging chunking.
+        This example first splits on paragraph breaks and then merges small chunks.
+        For production, replace with a more sophisticated method.
+        """
+        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+        chunks = []
+        current_chunk = ""
+        for p in paragraphs:
+            # If adding this paragraph stays within the chunk size, add it.
+            if len(current_chunk) + len(p) <= chunk_size:
+                current_chunk += p + "\n\n"
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                current_chunk = p + "\n\n"
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+    
+        # Optionally add overlapping between chunks (simple approach)
+        if chunk_overlap > 0 and len(chunks) > 1:
+            overlapped_chunks = []
+            for i, chunk in enumerate(chunks):
+                # add overlap from previous chunk if exists
+                if i > 0:
+                    prev = chunks[i-1][-chunk_overlap:]
+                    overlapped_chunks.append(prev + " " + chunk)
+                else:
+                    overlapped_chunks.append(chunk)
+            return overlapped_chunks
+        else:
+            return chunks
+
+    def clean_metadata(meta):
+        cleaned = {}
+        for key, value in meta.items():
+            # Convert bytes to string
+            if isinstance(value, bytes):
+                cleaned[key] = value.decode('utf-8', errors='ignore')
+            # Convert PyPDF2 IndirectObject to string
+            elif hasattr(value, "getObject"):  # A simple check for IndirectObject
+                try:
+                    # You can try to extract the actual object if needed:
+                    obj = value.getObject()
+                    cleaned[key] = str(obj)
+                except Exception:
+                    cleaned[key] = str(value)
+            else:
+                cleaned[key] = value
+        return cleaned
+
+
     def add_rag_document(
-        self, 
-        file_path: str, 
-        metadata: Optional[Dict[str, Any]] = None, 
-        chunking_options: Optional[Dict[str, Any]] = None, 
-        folder_path: str = None, 
-        overwrite: bool = False
+        self,
+        file_path: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        chunking_options: Optional[Dict[str, Any]] = None,
+        folder_path: str = None,
+        overwrite: bool = False,
+        use_marker: bool = False,  # If True, convert PDF to Markdown via Marker Docker.
+        use_semantic_chunking: bool = True  # If True, use semantic double-pass merging chunking.
     ) -> None:
         """
-        Charge et indexe un document externe (JSON, PDF, HTML, Markdown, etc.) pour RAG.
-        
-        - Utilise les loaders de Langchain adaptés en fonction de l'extension.
-        - Si chunking_options est fourni (ex: {'chunk_size': 1000, 'chunk_overlap': 200}), le document est découpé en morceaux plus petits pour un indexage efficace.
-        - Toujours extraire et ajouter le nom de fichier aux métadonnées.
-        - Pour les PDFs, tente d'extraire des métadonnées supplémentaires (titre, auteur, etc.).
-        - Empêche l'ajout d'un document déjà indexé sauf si `overwrite=True`.
+        Loads and indexes an external document (JSON, PDF, HTML, Markdown, etc.) for RAG.
+    
+        - Uses appropriate LangChain loaders based on file extension.
+        - If chunking_options is provided, the document is split into smaller pieces for efficient indexing.
+        By default, uses a semantic double-pass merging chunking method.
+        - Uses self.premium_llm to extract a more precise title and authors based on the first 1000 characters,
+        the file name, and provided metadata.
+        - Optionally, for PDFs, converts to Markdown first using Marker via Docker (if use_marker=True).
+        - Prevents re-adding an already indexed document unless `overwrite=True`.
         """
-        import os
-
         print(f"Loading RAG document: {file_path}")
-        
+    
         if folder_path:
             file_path = os.path.join(folder_path, file_path)
 
-        # Extraire le nom du fichier
+        # Extract the file name
         file_name = os.path.basename(file_path)
-
-        # Vérifier si le fichier existe déjà dans l'index
+    
+        # Check if the file is already indexed
         existing_docs = self.config.get_agent_data(
             agent_name=self.__class__.__name__,
             metadata_filter={"rag": True, "file_name": file_name},
             query_text="*"
         )
-
         if any(existing_docs) and not overwrite:
-            print(f"Le document '{file_name}' existe déjà. Utilisez overwrite=True pour forcer l'indexation.")
+            print(f"The document '{file_name}' already exists. Use overwrite=True to force re-indexing.")
             return
 
         ext = os.path.splitext(file_path)[1].lower()
         extra_metadata = {"file_name": file_name}
 
-        # Extraction de métadonnées spécifiques aux PDF
-        if ext == '.pdf':
+        # Convert PDF to Markdown using Marker via Docker if enabled
+        if ext == '.pdf' and use_marker:
+            try:
+                print("Converting PDF -> Markdown using Marker Docker ...")
+                # Use a temporary directory to mount the file
+                tmp_dir = tempfile.mkdtemp()
+                temp_pdf_path = os.path.join(tmp_dir, file_name)
+                # Copy the PDF file to the temporary directory
+                with open(file_path, "rb") as src, open(temp_pdf_path, "wb") as dst:
+                    dst.write(src.read())
+                # Build the Docker command to convert to Markdown
+                cmd = [ "docker", "run", "--rm", "-v", f"{tmp_dir}:/data", "dibz15/marker_docker", file_name] # The container reads the file from /data
+                subprocess.run(cmd, check=True)
+                # Assume Marker creates a Markdown file with the same name but with a .md extension
+                md_file_name = os.path.splitext(file_name)[0] + ".md"
+                new_file_path = os.path.join(tmp_dir, md_file_name)
+                if os.path.exists(new_file_path):
+                    file_path = new_file_path
+                    ext = ".md"
+                    extra_metadata["converted_with_marker"] = True
+                    print(f"Conversion successful, new file: {file_path}")
+                else:
+                    print("Error: Converted Markdown file not found.")
+            except Exception as e:
+                print(f"Error during PDF -> Markdown conversion: {e}")
+    
+        # Extract metadata from PDFs if not converted via Marker
+        if ext == '.pdf' and not use_marker:
             try:
                 import PyPDF2
                 with open(file_path, "rb") as f:
                     reader = PyPDF2.PdfReader(f)
                     pdf_meta = reader.metadata
                     if pdf_meta:
-                        extra_metadata.update(dict(pdf_meta))
+                        cleaned_meta = self.clean_metadata(dict(pdf_meta))
+                        extra_metadata.update(cleaned_meta)
             except Exception as e:
-                print(f"Erreur lors de l'extraction des métadonnées PDF : {e}")
+                print(f"Error extracting PDF metadata: {e}")
 
-        # Sélection du loader Langchain
+        # Select the appropriate LangChain loader
         if ext == '.pdf':
             from langchain.document_loaders import PyPDFLoader
             loader = PyPDFLoader(file_path)
@@ -206,19 +292,52 @@ class HumanLLM:
 
         docs = loader.load()
 
-        # Si chunking activé, diviser le texte
+        # Use self.premium_llm to extract a better title and authors from
+        # the first 1000 characters, file name, and metadata "name" if available.
+        if self.premium_llm:
+            try:
+                text_sample = docs[0].page_content[:1000] if docs and docs[0].page_content else ""
+                if len(text_sample)<1000 and len(docs)>1: text_sample += docs[1].page_content[:(1000-len(text_sample))] if docs and docs[1].page_content else ""
+                metadata_name = metadata.get("name", "") if metadata else ""
+                prompt = (
+                    f"Extract the document title and authors from the following details.\n"
+                    f"Document first 1000 characters: {text_sample}\n"
+                    f"File name: {file_name}\n"
+                    f"Metadata name: {metadata_name}\n\n"
+                    f"Return a valid JSON with keys 'title' and 'authors'."
+                )
+                llm_output = self.premium_llm.invoke([HumanMessage(content=prompt)])
+                try:
+                    parsed = extract_json(llm_output.content)
+                    extracted_title = parsed.get("title", "").strip()
+                    extracted_authors = str(parsed.get("authors", "")).strip()
+                    extra_metadata.update({ "extracted_title": extracted_title, "extracted_authors": extracted_authors})
+                    print("LLM extraction successful:", extracted_title, extracted_authors)
+                except Exception as parse_ex:
+                    print(f"Error parsing LLM response for title/authors: {parse_ex}")
+            except Exception as e:
+                print(f"Error extracting title/authors using LLM: {e}")
+
+        # Apply chunking if options are provided
         if chunking_options:
-            from langchain.text_splitter import RecursiveCharacterTextSplitter
-            splitter = RecursiveCharacterTextSplitter(**chunking_options)
-            
             chunked_docs = []
-            for doc in docs:
-                chunks = splitter.split_text(doc.page_content)
-                for chunk in chunks:
-                    chunked_docs.append(type(doc)(page_content=chunk, metadata=doc.metadata))
+            if use_semantic_chunking:
+                print("Using semantic double-pass merging chunking...")
+                for doc in docs:
+                    chunks = semantic_double_pass_chunking(doc.page_content, **chunking_options)
+                    for chunk in chunks:
+                        chunked_docs.append(type(doc)(page_content=chunk, metadata=doc.metadata))
+            else:
+                print("Using default chunking (RecursiveCharacterTextSplitter)...")
+                from langchain.text_splitter import RecursiveCharacterTextSplitter
+                splitter = RecursiveCharacterTextSplitter(**chunking_options)
+                for doc in docs:
+                    chunks = splitter.split_text(doc.page_content)
+                    for chunk in chunks:
+                        chunked_docs.append(type(doc)(page_content=chunk, metadata=doc.metadata))
             docs = chunked_docs
 
-        # Indexation des documents avec métadonnées enrichies
+        # Index documents with enriched metadata
         for doc in docs:
             combined_metadata = metadata.copy() if metadata else {}
             combined_metadata.update(extra_metadata)
@@ -228,14 +347,11 @@ class HumanLLM:
                     combined_metadata.setdefault(key, value)
 
             combined_metadata.update({"rag": True, "source": ext})
-            
-            combined_metadata = HumanLLM.decode_bytes(combined_metadata)
-            combined_metadata = HumanLLM.serialize_metadata(combined_metadata)
-
+        
             self.config.log_agent_data(
-                self.__class__.__name__, 
-                "rag_knowledge", 
-                doc.page_content, 
+                self.__class__.__name__,
+                "rag_knowledge",
+                doc.page_content,
                 metadata=combined_metadata
             )
         

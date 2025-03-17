@@ -1,6 +1,7 @@
 import re
 import json
 import requests
+from typing import Optional, List
 
 from config import MODELS_CONFIG_LIST
 from ..human_llm import HumanLLM, HumanLLMConfig
@@ -69,7 +70,7 @@ def extract_json(data: any) -> dict:
     regex_pattern = r'(\{.*\}|\[.*\])'
     match = re.search(regex_pattern, data, re.DOTALL)
     if match:
-        candidate = match.group(0)
+        candidate = match.group(0).replace("\\n", "\n")
         try:
             return json.loads(candidate)
         except json.JSONDecodeError:
@@ -303,15 +304,134 @@ def search_wikipedia_query_get(search_query):
     )
     return formatted_search_docs
 
-@load_from_pickle
-@save_to_pickle
+# @load_from_pickle
+# @save_to_pickle
 def search_docs_rag_get(search_query):
     """
-    Search the RAG documents for the given query and return the results.
+    Searches the RAG documents for the given query and returns detailed excerpts using stored metadata.
+    Expects each document's metadata to include at least 'title' and 'author' (or 'authors').
     """
-    search_docs = HumanLLM(agent_name="search_rag", llmORchains_list=HumanLLMConfig().get_llmORchains_list()).get_rag_documents("type", query=search_query.search_query)
+    search_docs = HumanLLM(
+        agent_name="search_rag", 
+        llmORchains_list=HumanLLMConfig().get_llmORchains_list()
+    ).get_rag_documents("HumanLLM", query=search_query.search_query)
+    
     formatted_search_docs = "\n\n---\n\n".join([
-        '<Document "' + doc["rag_knowledge"] + '"'
-        for doc in search_docs[0]
+        f'<Document title="{doc.metadata.get("extracted_title", "Unknown Title")}" href="{doc.metadata.get("url", "#")}">\n'
+        f'Authors: {doc.metadata.get("extracted_authors", "Unknown Authors")}\n\n'
+        f'Excerpt: {doc.page_content or "No excerpt available"}\n'
+        f'</Document>'
+        for doc in search_docs[1]
     ])
     return formatted_search_docs
+
+def merge_content(existing_section: dict, new_section: dict) -> dict:
+    """Merge two section contents while preserving hierarchy"""
+    merged = {
+        'description': new_section.get('description', existing_section.get('description', '')),
+        'sources': list(set(existing_section.get('sources', []) + new_section.get('sources', [])))
+    }
+    
+    # Recursively merge subsections
+    if 'subsections' in existing_section or 'subsections' in new_section:
+        merged_subsections = existing_section.get('subsections', {}).copy()
+        for sub_name, sub_content in new_section.get('subsections', {}).items():
+            if sub_name in merged_subsections:
+                merged_subsections[sub_name] = merge_content(merged_subsections[sub_name], sub_content)
+            else:
+                merged_subsections[sub_name] = sub_content
+        merged['subsections'] = merged_subsections
+    
+    return merged
+
+def get_section_data(plan_structure: dict, section_path: str) -> dict:
+    """Navigate through plan structure to retrieve section metadata"""
+    path_parts = section_path.split('/')
+    current_node = plan_structure
+    section_data = {}
+    
+    for part in path_parts:
+        if part in current_node:
+            section_data = current_node[part]
+            current_node = section_data.get('subsections', {})
+        else:
+            return {}
+            
+    return {
+        'description': section_data.get('description', ''),
+        'sources': section_data.get('sources', []),
+        'subsections': section_data.get('subsections', {})
+    }
+
+MAX_RECURSION_DEPTH = 10
+
+def flatten_plan(plan: dict, parent_path: str = "", depth=0) -> List[str]:
+    """Prevent stack overflows in deep hierarchies"""
+    if depth > MAX_RECURSION_DEPTH:
+        raise RecursionError("Plan hierarchy too deep")
+    
+    paths = []
+    for section, content in plan.items():
+        current_path = f"{parent_path}/{section}" if parent_path else section
+        paths.append(current_path)
+        if 'subsections' in content:
+            paths.extend(flatten_plan(content['subsections'], current_path, depth+1))
+    return paths
+
+def path_similarity(path1: str, path2: str) -> float:
+    """Calculate similarity between section paths using longest common substring"""
+    from difflib import SequenceMatcher
+    return SequenceMatcher(None, path1, path2).ratio()
+
+def find_similar_section(target_path: str, plan: dict, threshold=0.7) -> Optional[str]:
+    """Find most similar existing section path in plan"""
+    from difflib import get_close_matches
+    existing_paths = flatten_plan(plan)
+    matches = get_close_matches(target_path, existing_paths, n=1, cutoff=threshold)
+    return matches[0] if matches else None
+
+def merge_plans(old_plan: dict, new_plan: dict, unused_content: dict) -> tuple:
+    """Merge previous plan content into new structure with conflict resolution"""
+    merged = new_plan.copy()
+    unused = unused_content.copy()
+    
+    # Phase 1: Direct matches
+    for old_path in list(old_plan.keys()):
+        if old_path in merged:
+            # Merge section content
+            merged[old_path] = merge_content(old_plan[old_path], merged[old_path])
+            # Merge subsections
+            merged[old_path]['subsections'] = {
+                **old_plan[old_path].get('subsections', {}),
+                **merged[old_path].get('subsections', {})
+            }
+        else:
+            unused[old_path] = old_plan[old_path]
+    
+    # Phase 2: Fuzzy matches
+    for old_path in list(unused.keys()):
+        similar_path = find_similar_section(old_path, merged)
+        if similar_path:
+            merged[similar_path] = merge_content(merged[similar_path], unused.pop(old_path))
+    
+    # Phase 3: Preserve orphaned content
+    for old_path, content in unused.items():
+        merged.setdefault('_orphaned', {})[old_path] = content
+    
+    return merged, unused
+
+def initialize_content_sections(new_plan: dict, state: dict) -> dict:
+    """Initialize content sections with previous content where possible"""
+    content = {}
+    # Flatten plan structure
+    for section_path in flatten_plan(new_plan):
+        # Try to find matching content from previous iterations
+        matched = False
+        for prev_path in state.get("content_sections", {}):
+            if path_similarity(prev_path, section_path) > 0.8:  # Threshold for auto-matching
+                content[section_path] = state["content_sections"][prev_path]
+                matched = True
+                break
+        if not matched:
+            content[section_path] = ""
+    return content
