@@ -635,7 +635,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
         HumanLLMConfig().ws_server.send_message(message_json)
 
         async def receive_message(timeout=86400):
-            async with websockets.connect(ws_url, ping_interval=30, ping_timeout=60) as websocket:
+            async with websockets.connect(f"{ws_url}?self=true", ping_interval=30, ping_timeout=60) as websocket:
                 try:
                     logger.info("SMART INPUT Waiting for response from WebSocket")
                     while True:
@@ -877,7 +877,6 @@ def save_prompt_with_tag(prompt_name, text, new_tag, package_path="."):
 
     # Save the file
     return dump_text(text, prompt_file_path_name)
-
 
 def apply_criteria_and_prepare_monitor_args(agent, special_criteria, available_locals=None):
     """

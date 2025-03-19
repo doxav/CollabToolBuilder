@@ -57,7 +57,7 @@ class WebsocketServer:
         # Track current active monitor instances
         self.current_instances = {}
         # Track connected WebSocket clients
-        self.connected_clients = set()
+        self.connected_clients = {}  # Stores client_id -> websocket
         # Count of messages sent
         self.message_count = 0
 
@@ -78,7 +78,8 @@ class WebsocketServer:
         self.proxy_url = None
         # To store the localtunnel process
         self.process_lt = None
-        self.max_connections = 10
+        self.max_connections = 10        
+        self.client_id = None
 
         # Create logs directory if it doesn't exist
         if not os.path.exists("websocket_logs"):
@@ -154,12 +155,26 @@ class WebsocketServer:
         # Reject connection if maximum connections are reached
         if len(self.connected_clients) >= self.max_connections:
             try:
-                await websocket.close()
+                await websocket.close()  # Close the connection if limit is reached
             except Exception:
                 pass
             return
+        
+        client_id = query_params.get("client_id", [None])[0]
+        is_self = query_params.get("self", [None])[0]
+        # If no client_id is provided, generate one and send it to the client
+        if not client_id:
+            client_id = str(uuid.uuid4())
+            if not is_self:
+                await websocket.send(json.dumps({"client_id": client_id}))
+            else:
+                self.client_id = client_id
 
-        self.connected_clients.add(websocket)
+        # Store the client connection
+        self.connected_clients[client_id] = websocket
+        self.logger.info(f"Client {client_id} connected.")
+
+        # self.connected_clients.add(websocket)
         try:
             async for message in websocket:
                 message_data = json.loads(message)
@@ -174,7 +189,7 @@ class WebsocketServer:
                     function_name = message_data.get("function")
                     params = message_data.get("params", {})
                     request_id = message_data.get("request_id")
-
+                    client_id = message_data.get("client_id")
                     if agent_name in self.monitors:
                         monitor = self.monitors[agent_name]
                         self.logger.info(
@@ -197,25 +212,30 @@ class WebsocketServer:
                                 "message": None,
                                 "result": result,
                                 "function": function_name,
-                                "request_id": request_id
+                                "request_id": request_id,
+                                "client_id": client_id
                             })
                     else:
                         message = json.dumps({
                             "status": "error",
                             "message": f"Monitor '{agent_name}' not found",
-                            "request_id": request_id
+                            "request_id": request_id,
+                            "client_id": client_id
                         })
-
-                # Broadcast the message to all connected clients except the sender
-                for client in self.connected_clients:
-                    if client != websocket and message is not None:
+                        
+                # SEND the message server's cself client
+                if self.client_id:
+                    client = self.connected_clients.get(self.client_id)
+                    if client and client != websocket and message:
                         await client.send(message)
+
         except Exception as e:
             import traceback
             print(traceback.format_exc())
             self.logger.error(f"Error in WebSocket handler: {e}")
         finally:
-            self.connected_clients.remove(websocket)
+            # Removing a client when it disconnects
+            self.connected_clients.pop(client_id, None)
 
     async def execute_function_async(self, websocket, monitor, function_name, params, request_id):
         """
@@ -334,7 +354,7 @@ class WebsocketServer:
         self.logger.info(f"Access to HMI via : {absolute_hmi_file_path}")
 
         # Start the WebSocket server
-        server = await websockets.serve(self.handler, "127.0.0.1", self.port, ping_timeout=120)
+        server = await websockets.serve(self.handler, "0.0.0.0", self.port, ping_timeout=120)
         self.logger.info(f"WebSocket server started on port {self.port}")
 
         # Start localtunnel if proxy is enabled
@@ -367,25 +387,50 @@ class WebsocketServer:
         self.message_count += 1
         if isinstance(message, dict) and "sender_id" not in message:
             message['sender_id'] = self.server_id
-        clients = set(self.connected_clients)
+        connectedClients=self.connected_clients
 
-        async def send_to_clients():
-            for client in clients:
+        async def send_to_client():
+            for client_id in connectedClients:
                 try:
-                    await client.send(message)
+                    webSocketClient = self.connected_clients[client_id]
+                    await webSocketClient.send(message)
                     self.log_message(message, received=False)
                 except Exception as e:
                     self.logger.debug(f"Error sending message to client: {e}")
 
+        # async def send_to_client():
+        #     try:
+        #         message_dict = json.loads(message)  # Convert JSON string to dictionary
+        #     except json.JSONDecodeError  as e:
+        #         self.logger.debug(f"Invalid JSON format: {e}")
+        #         return
+            
+        #     client_id = message_dict.get("client_id")  # Extract client_id from message
+        #     if not client_id:
+        #         self.log_message("Message does not contain a valid client_id")
+        #         return
+            
+        #     webSocketClient = connectedClients.get(client_id)  # Get the client safely
+        #     if not webSocketClient:
+        #         self.log_message(f"Client {client_id} not found or disconnected")
+        #         return
+            
+        #     try:
+        #         await webSocketClient.send(message)
+        #         self.log_message(message, received=False)
+        #     except Exception as e:
+        #         self.log_message(f"Error sending message to client {client_id}: {e}")
+
+
         try:
             loop = asyncio.get_running_loop()
             # If an event loop is running, schedule the coroutine
-            asyncio.run_coroutine_threadsafe(send_to_clients(), loop)
+            asyncio.run_coroutine_threadsafe(send_to_client(), loop)
         except RuntimeError:
             # No running event loop in this thread, so we can run the coroutine directly
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            loop.run_until_complete(send_to_clients())
+            loop.run_until_complete(send_to_client())
         self.logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {message}")
 
     def send_notasync_message(self, message):
@@ -398,5 +443,5 @@ class WebsocketServer:
         self.message_count += 1
         if isinstance(message, dict) and "sender_id" not in message:
             message['sender_id'] = self.server_id
-        for client in self.connected_clients:
-            asyncio.create_task(client.send(message))
+        for client_id in self.connected_clients:
+            asyncio.create_task(self.connected_clients[client_id].send(message))

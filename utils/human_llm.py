@@ -1075,6 +1075,7 @@ class HumanLLM:
         outputs_count=None,
         task_name=None
     ):
+        action=""
         if not self.outputs:
             self.outputs = {}
             for i in range(outputs_count):
@@ -1162,6 +1163,9 @@ class HumanLLM:
                     f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
                     self.agent_name, optional=False, column_id=output_id-1, column_max=outputs_count).upper()
 
+            if action.endswith("NOT FOUND"):
+                action="NOT FOUND"
+                break
             # if modified async, it is important in case of edition ("A") to keep the modified content
             if self.temp_inference_result_content:
                 inference_result_msg.content = self.temp_inference_result_content
@@ -1208,22 +1212,22 @@ class HumanLLM:
             # proceed = smart_input("Continue 'y' (or 'n' to go back to menu) ? ", self.agent_name, column_id=output_id, column_max=outputs_count).lower()
             # if proceed in ["y", ""]:
             #     break
+        if action!="NOT FOUND":
+            if self.skip_rounds > 0:
+                check_results = self.run_manage_inference_checks(output_id - 1, inference_result_msg.content)
+                check_display = ""
+                # Display inference check results
+                for check_name, result in check_results.items():
+                    check_display += f"{nl}CHECK {check_name} result: " + str(result).replace("\\n", "\n")
 
-        if self.skip_rounds > 0:
-            check_results = self.run_manage_inference_checks(output_id - 1, inference_result_msg.content)
-            check_display = ""
-            # Display inference check results
-            for check_name, result in check_results.items():
-                check_display += f"{nl}CHECK {check_name} result: " + str(result).replace("\\n", "\n")
-
-            smart_print(
-                f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[2].function} LLM ANSWER content****\n{inference_result_msg.content}\n{check_display}\n*****************\033[0m",
-                self.agent_name, "LLM ANSWER content", column_id=output_id)
-            self.skip_rounds -= 1
-        else:
-            smart_print(
-                f"Time spent in each option and occurrences: {self.after_inference_option_times} - {self.after_inference_option_counts}",
-                self.agent_name, optional=True, column_max=outputs_count)
+                smart_print(
+                    f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[2].function} LLM ANSWER content****\n{inference_result_msg.content}\n{check_display}\n*****************\033[0m",
+                    self.agent_name, "LLM ANSWER content", column_id=output_id)
+                self.skip_rounds -= 1
+            else:
+                smart_print(
+                    f"Time spent in each option and occurrences: {self.after_inference_option_times} - {self.after_inference_option_counts}",
+                    self.agent_name, optional=True, column_max=outputs_count)
 
         self.mode = None
         return inference_result_msg, comments, score

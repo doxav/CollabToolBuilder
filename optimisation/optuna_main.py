@@ -6,7 +6,7 @@ import time
 import os
 from langchain_openai import ChatOpenAI
 from config import MODELS_CONFIG_LIST
-from learn import EnvironmentManager, run_4agents_learning_loop, run_planner
+from learn import EnvironmentManager, run_planner
 from optimisation.optuna_analysis import analysis
 from utils.llm_utils import HumanLLM, UnifiedVectorDB
 
