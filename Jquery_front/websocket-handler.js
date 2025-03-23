@@ -187,10 +187,9 @@ function sendWebSocketMessage(message) {
 
   try {
     wsHandler.socket.send(
-      JSON.stringify({
-        client_id: clientId,
-        ...message,
-      })
+      JSON.stringify(
+        message
+      )
     );
     console.log("Sent WebSocket message:", message);
   } catch (error) {

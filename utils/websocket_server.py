@@ -170,6 +170,7 @@ class WebsocketServer:
             else:
                 self.client_id = client_id
 
+        websocket.client_id = client_id
         # Store the client connection
         self.connected_clients[client_id] = websocket
         self.logger.info(f"Client {client_id} connected.")
@@ -189,7 +190,6 @@ class WebsocketServer:
                     function_name = message_data.get("function")
                     params = message_data.get("params", {})
                     request_id = message_data.get("request_id")
-                    client_id = message_data.get("client_id")
                     if agent_name in self.monitors:
                         monitor = self.monitors[agent_name]
                         self.logger.info(
@@ -213,21 +213,24 @@ class WebsocketServer:
                                 "result": result,
                                 "function": function_name,
                                 "request_id": request_id,
-                                "client_id": client_id
+                                "client_id": websocket.client_id
                             })
                     else:
                         message = json.dumps({
                             "status": "error",
                             "message": f"Monitor '{agent_name}' not found",
                             "request_id": request_id,
-                            "client_id": client_id
+                            "client_id": websocket.client_id
                         })
                         
                 # SEND the message server's cself client
                 if self.client_id:
                     client = self.connected_clients.get(self.client_id)
                     if client and client != websocket and message:
-                        await client.send(message)
+                        message = json.loads(message) 
+                        message["client_id"] = websocket.client_id
+                        message_str = json.dumps(message)
+                        await client.send(message_str)
 
         except Exception as e:
             import traceback
@@ -235,7 +238,7 @@ class WebsocketServer:
             self.logger.error(f"Error in WebSocket handler: {e}")
         finally:
             # Removing a client when it disconnects
-            self.connected_clients.pop(client_id, None)
+            self.connected_clients.pop(websocket.client_id, None)
 
     async def execute_function_async(self, websocket, monitor, function_name, params, request_id):
         """
