@@ -1,48 +1,8 @@
 function displayMessage(data) {
-  
-  function SendUserIdOnWebsocket() {
-    // Send user_id on websocket connection
-    console.log("Sending user_id to the server");
-    // Wait a second before sending the user_id
-    setTimeout(function () {
-      sendWebSocketMessage({ message: uniqueId });
-      unique_id_sent = true;
-    }, 1000);
-    inputAwaited = false; // Reset input flag
-    isInputRequired = false;
-    hideInputField(); // Hide input area after sending message
-  }
-
-  function setCurrentLLMInUse(data) {
-    if (
-      data.agent_name !== currentAgent &&
-      data.message_type !== "orchestrate_agents" &&
-      data.message_type !== "null"
-    ) {
-      current_llm_in_use = "default_llm";
-    }
-  }
-
-  function setCurrentAgent(data) {
-    if (data.agent_name !== undefined) {
-      if (currentAgent !== data.agent_name) {
-        // Clear the agent content for this agent
-        let $agentAccordion = $(
-          `#message-accordion > div[data-agent="${data.agent_name}"]`
-        );
-        if ($agentAccordion.length) {
-          $agentAccordion.children("div").empty();
-        }
-      }
-      currentAgent = data.agent_name;
-    }
-  }
-
   if (data.message_type === "USER_ID") {
     SendUserIdOnWebsocket();
     return;
   }
-
   if (data.agent_name == null) {
     return;
   }
@@ -76,36 +36,7 @@ function displayMessage(data) {
   // else console.log('Displaying message:', data);
 
   // Check if message_type includes "Inference streaming output"
-  if (
-    "message" in data &&
-    data.message_type &&
-    data.message_type.includes("Inference streaming output")
-  ) {
-    // Do not wrap the message in collapsible container
-    content = `${formatMessage(data.message)}`;
-  } else {
-    // First, check if message is code or prompt
-    let isCode = isPythonCode(data.message);
-    let isPrompt = isPromptMessage(data.message);
-
-    if (isCode || isPrompt) {
-      // Wrap the message in a collapsible div with an arrow
-      content = `
-              <div class="collapsible-message open">
-                  <div class="collapsible-header">
-                      <span class="arrow"><i class="fa-solid fa-chevron-down"></i></span> <span>${
-                        isCode ? "Code" : "Prompt"
-                      }</span>
-                  </div>
-                  <div class="collapsible-content">
-                      ${formatMessage(data.message)}
-                  </div>
-              </div>
-          `;
-    } else {
-      content = `${formatMessage(data.message)}`;
-    }
-  }
+  SetInferenceStreamingOutput(data);
 
   // If the message_type is null, set it to " "
   if (data.message_type === null) {
@@ -114,32 +45,7 @@ function displayMessage(data) {
 
   if (data.message_type === "time_end") {
     // Convert remaining time to minutes and seconds
-    let remainingTime = parseInt(data.message);
-    let minutes = Math.floor(remainingTime / 60);
-    let seconds = remainingTime % 60;
-    document.getElementById(
-      "remaining-time"
-    ).textContent = `${minutes}m ${seconds}s`;
-    // Countdown the remaining time
-    let countdown = setInterval(function () {
-      remainingTime--;
-      minutes = Math.floor(remainingTime / 60);
-      seconds = remainingTime % 60;
-      document.getElementById(
-        "remaining-time"
-      ).textContent = `${minutes}m ${seconds}s`;
-      if (remainingTime <= 0) {
-        clearInterval(countdown);
-      }
-    }, 1000);
-    // Show the task-list and update the task list
-    $("#task-selection").show();
-    $("#search-task-toggle").show();
-    if (!init_task_list) {
-      console.log("Initializing task list...");
-      updateTaskList("None");
-      init_task_list = true;
-    }
+    handelTimeEnd(data);
     return;
   }
 
