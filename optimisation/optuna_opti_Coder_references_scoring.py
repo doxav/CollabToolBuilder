@@ -49,6 +49,7 @@ def objective(trial, name_xp : str):
         name_exp=name_xp,
         #params_user_message=user_message_params,
         fixed_coach=fixed_coach,
+        run_graph=False
     )
 
     # Log performance for analysis

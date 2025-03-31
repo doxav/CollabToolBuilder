@@ -7,6 +7,7 @@ import os
 from langchain_openai import ChatOpenAI
 from config import MODELS_CONFIG_LIST, embedding_function
 from learn import EnvironmentManager, run_4agents_learning_loop, run_planner
+from learn_graph import run_4agents_learning_loop_graph
 from optimisation.optuna_analysis import analysis
 #from utils.llm_utils import HumanLLM, UnifiedVectorDB
 from utils.human_llm import HumanLLM
@@ -148,7 +149,7 @@ def definition_global_parameters(temperature : float = None, presence_penalty : 
 
 def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "premium_llm", problem_prompts_subdir : str = None, max_coding_attempts : int = 2, max_execution_time : int = 900,
                model_choice=None, automation : str = "coach", params_user_message : str = None, special_criteria : dict = None, name_exp : str = "", temperature_max : float = None, number_inferences : int = 1,
-               fixed_coach : bool = False, arrayn_ret : bool = False, continue_each_loop : bool = False, unique_id : str = None):
+               fixed_coach : bool = False, arrayn_ret : bool = False, continue_each_loop : bool = False, unique_id : str = None, run_graph : bool = False):
     """
     Launch the run with the specified parameters.
 
@@ -184,7 +185,8 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
     HumanLLMConfig().common_vectordb_config.set_unique_collection_id
     HumanLLMConfig().user_session.user_id = name_exp
     
-    performance = run_4agents_learning_loop(default_llm_key=default_llm_key,
+    run_function = run_4agents_learning_loop_graph if run_graph else run_4agents_learning_loop
+    performance = run_function(default_llm_key=default_llm_key,
                               premium_llm_key=premium_llm_key,
                               llmORchains_list=llmORchains_list,
                               test_environments=envs,

@@ -1,4 +1,5 @@
 from typing import TypedDict, Sequence, Union, Optional, Dict, Any, List
+from langchain_core.messages.base import BaseMessage
 from langgraph.graph import StateGraph, END
 import time
 import random  # Import random for generating step_id
@@ -8,8 +9,8 @@ from utils.llm_utils import (
     get_success_value_in_text
 )
 from utils.human_llm import HumanLLM
-from learn import TaskIdentificationAgent, CodingAgent, ValidationAgent, CapitalizationAgent, \
-    create_Nmajority_chain,  # TODO: move those functions to a separate file agents.py
+from learn import TaskIdentificationAgent, CodingAgent, ValidationAgent, CapitalizationAgent
+from utils.llm_utils import create_Nmajority_chain
 
 # 2 IMPLEMENTATIONS OF THE LEARNING LOOP: 1 MODULAR AND ADVANCED IN STATE MANAGEMENT, 1 SIMPLE IN 1 FUNCTION
 
@@ -198,6 +199,7 @@ def run_4agents_learning_loop_graph(
     special_criteria: Optional[dict] = None,
     max_execution_time: int = 900,
     continue_each_loop: bool = False,
+    date_start = None,
     **kwargs
 ) -> Union[float, List[float]]:
     
@@ -310,7 +312,8 @@ def run_4agents_learning_loop_graph(
     continue_each_loop=False,
     primitives_dir=None,
     functions_to_import=None,
-    embedding_function=None
+    embedding_function=None,
+    date_start=None,
 ):
     from learn import coding_and_validation_loop
 
@@ -508,7 +511,6 @@ if __name__ == "__main__":
     from langchain_core.messages.human import HumanMessage
     from langchain_core.messages.ai import AIMessage
     from langchain_core.messages.system import SystemMessage
-    from langchain_core.messages.base import BaseMessage
     from langchain_openai import ChatOpenAI
     from langgraph.graph import StateGraph
     from langgraph.graph import END, START
