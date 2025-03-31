@@ -52,7 +52,8 @@ class HumanLLM:
         automation=None,
         auto_n_rounds=None,
         recommend_critics=None,
-        task_parameters=None
+        task_parameters=None,
+        problem_prompts_subdir=None
     ):
         self.config = HumanLLMConfig()
         self.logger = logging.getLogger(__name__)
@@ -110,7 +111,7 @@ class HumanLLM:
         self.primitives_dir = None
         self.processed_codes = set()
         self.max_autofix = None
-        self.problem_prompts_subdir = None
+        self.problem_prompts_subdir = problem_prompts_subdir 
 
     def set_print_color(self):
         self.print_color = 37
