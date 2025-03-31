@@ -1,7 +1,7 @@
 import os
 
 from langchain_core.messages import SystemMessage, HumanMessage
-from utils.llm_utils import  HumanLLM
+from utils.human_llm import  HumanLLM
 
 from config import MODELS_CONFIG_LIST
 from langchain_openai import ChatOpenAI

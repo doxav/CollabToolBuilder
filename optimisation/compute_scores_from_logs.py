@@ -20,11 +20,13 @@ def process_in_chunks_with_generator(file_match='websocketdata_*', chunk_size=10
     # Première passe pour compter le nombre total de correspondances
     total_matches = 0
     for filename in matching_files:
+        print(f"Processing file: {filename}")
         with open(filename, 'r') as file:
             total_matches += len(pattern.findall(file.read()))
     print(f"Total matches found across all files: {total_matches}")
 
     def score_generator(filename):
+        print(f"Processing file: {filename}")
         with open(filename, 'r') as file:
             for match in pattern.finditer(file.read()):
                 try:
@@ -98,7 +100,7 @@ def process_in_chunks_with_generator(file_match='websocketdata_*', chunk_size=10
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compute and summarize performance scores.")
-    parser.add_argument("--file_pattern", type=str, default="websocketdata_*", help="File pattern to match logs")
+    parser.add_argument("--file_pattern", type=str, default="websocketdata_*txt", help="File pattern to match logs")
     args = parser.parse_args()
     
     process_in_chunks_with_generator(args.file_pattern)

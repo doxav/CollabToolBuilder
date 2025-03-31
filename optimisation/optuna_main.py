@@ -5,10 +5,14 @@ import optuna as opt
 import time
 import os
 from langchain_openai import ChatOpenAI
-from config import MODELS_CONFIG_LIST
+from config import MODELS_CONFIG_LIST, embedding_function
 from learn import EnvironmentManager, run_4agents_learning_loop, run_planner
 from optimisation.optuna_analysis import analysis
-from utils.llm_utils import HumanLLM, UnifiedVectorDB
+#from utils.llm_utils import HumanLLM, UnifiedVectorDB
+from utils.human_llm import HumanLLM
+from utils.llm_utils import UnifiedVectorDB
+from utils.human_llm_config import HumanLLMConfig
+from datetime import datetime
 
 # Set the class variable
 HumanLLM.use_websocket = False
@@ -173,9 +177,14 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
         # Delete the presence_penalty from the special_criteria - Why ?
         special_criteria.pop("presence_penalty", None)
     # Set unique collection ID based on name_exp
-    UnifiedVectorDB.set_unique_collection_id(f"{name_exp}")
-
-    performance = run_planner(default_llm_key=default_llm_key,
+    #UnifiedVectorDB.set_unique_collection_id(f"{name_exp}")
+    HumanLLMConfig().common_vectordb_config.set_unique_collection_id(f"{name_exp}")
+    HumanLLMConfig().common_vectordb_config.embedding_function = embedding_function
+    HumanLLMConfig().common_vectordb_config.set_common_vectordb_embedding_function()
+    HumanLLMConfig().common_vectordb_config.set_unique_collection_id
+    HumanLLMConfig().user_session.user_id = name_exp
+    
+    performance = run_4agents_learning_loop(default_llm_key=default_llm_key,
                               premium_llm_key=premium_llm_key,
                               llmORchains_list=llmORchains_list,
                               test_environments=envs,
@@ -200,7 +209,7 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
                               fixed_coach=fixed_coach,
                               return_array=arrayn_ret,
                               continue_each_loop=continue_each_loop,
-                              unique_id=unique_id)
+                              date_start=datetime.now())
     print("Analysis...")
     analysis(name_exp)
     print("Analysis done.")
