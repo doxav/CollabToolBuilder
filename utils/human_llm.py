@@ -2607,7 +2607,7 @@ class HumanLLM:
             if idx > 0 and decision_lower in ("no", "n", ""):
                 smart_print(
                     f"SKIPPING TEST: code error on first env, skipping test {idx}",
-                    custom_agent if custom_agent else self.name,
+                    custom_agent or getattr(self, 'agent_name', 'unknown agent name'),
                     "code_task_and_run_test SystemMessage",
                     optional=False,
                     column_id=output_id
