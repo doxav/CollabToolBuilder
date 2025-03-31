@@ -46,7 +46,8 @@ class HumanLLM:
         temperature_min=0.7,
         temperature_max=None,
         envs=None,
-        fixed_coach=False,
+        fixed_output=False,
+        fixed_coach=None, # Retro compatibility
         prompt_critic=None,
         saved_task=None,
         automation=None,
@@ -101,7 +102,7 @@ class HumanLLM:
 
         self.user_message = ""
         self.envs = envs
-        self.fixed_coach = fixed_coach
+        self.fixed_output = fixed_output if not fixed_coach else fixed_coach # Retro compatibility
         self.automation = automation
         self.outputs = None
         self.saved_task = saved_task
@@ -494,14 +495,15 @@ class HumanLLM:
             callable_system_message=None,
             use_premium_llm=None,
             model_choice=None,
-            task_name=None
+            task_name=None,
+            forced_llm_output=False,  # TODO: try to set it to None
     ):
         self.mode = 'before'
         comments = None
         self.user_message = initial_user_message = messages[1].content
         function_name = inspect.stack()[2].function
         use_premium_llm = use_premium_llm if use_premium_llm is not None else self.premium_llm_by_default
-        forced_llm_output = False  # TODO: try to set it to None
+        forced_llm_output = forced_llm_output
         self.config.log_agent_data(
             self.agent_name,
             "saved_task",
@@ -557,9 +559,6 @@ class HumanLLM:
                 if self.agent_name == "TaskIdentificationAgent":
                     if self.num_parallel_inferences > 1:
                         self.synthesize_mode = True
-                    if self.fixed_coach:
-                        # We force the output of the llm.
-                        forced_llm_output = self.fixed_coach
 
                 self.set_default_llmORchain(new_llm_name)
                 self.set_premium_llmORchain(new_llm_name)
@@ -578,6 +577,10 @@ class HumanLLM:
 
             # ACTIONS processing
             self.start_time = time.time()  # Init action selected and timer to measure time spent and occurrences in action processing
+
+            if self.fixed_output:
+                # We force the output of the llm.
+                forced_llm_output = self.fixed_output
 
             if action == "A":  # Modify system prompt
                 comments, forced_llm_output = self.update_prompt_template(
@@ -748,7 +751,7 @@ class HumanLLM:
         return comments
 
     def optimize_response(self, forced_llm_output, function_name):
-        if self.fixed_coach:
+        if self.fixed_output:
             selected_index = 1
             log_entries, list_output = self.config.retrieve_logs(self.agent_name, function_name), ""
         elif self.config.common_vectordb.count() > 0:
@@ -1420,8 +1423,8 @@ class HumanLLM:
             return instructions
 
         critic = None
-        if self.last_inference_check_results:
-            for result in self.last_inference_check_results:
+        if self.inference_tracking.last_inference_check_results:
+            for result in self.inference_tracking.last_inference_check_results:
                 if result is not None and isinstance(result, dict):
                     for key, value in result.items():
                         if key == 'Recommend Critics':
@@ -1783,7 +1786,8 @@ class HumanLLM:
         temperature_max=None,
         task_name=None,
         prompt_directory="prompts",
-        generation_technique='self_refinement'
+        generation_technique='self_refinement',
+        forced_llm_output=None,
     ):
         """
         This method can perform different multi-inference strategies depending on 
@@ -1949,7 +1953,7 @@ class HumanLLM:
                         current_prompt = system_prompt
                     else:
                         # Reflect on the last candidate
-                        current_prompt = f"{system_prompt}\nRefine the following solution to user's prompt. SOLUTION: <<<\n{candidates[-1].content}\n>>>"
+                        current_prompt = f"{system_prompt}\nRefine the following solution to improve answer to user's prompt. SOLUTION: <<<\n{candidates[-1].content}\n>>>"
 
                     candidate = generate_single( current_prompt, user_prompt, use_premium_llm, function_calling, temperature=0.0,  stream_output=stream_output, color_id=0)
                     candidates.append(candidate)
@@ -2043,7 +2047,7 @@ class HumanLLM:
                 input_comments, skip_inference, use_premium_llm, llm_outputs = None, False, False, []
                 llm_input_messages = original_input_messages
                 self.llm_input_messages = original_input_messages
-                self.last_inference_check_results = [None]
+                self.inference_tracking.last_inference_check_results = [None]
 
                 if self.automation == 'after' and hasattr(self, "saved_task"):
                     # e.g. saved LLM output
@@ -2072,13 +2076,14 @@ class HumanLLM:
                         function_calling,
                         callable_system_message,
                         model_choice=model_choice,
-                        task_name=task_name
+                        task_name=task_name,
+                        forced_llm_output=forced_llm_output
                     )
 
                 self.llm_input_messages = llm_input_messages
                 self.clear_selected_outputs()
                 # Preallocate check results
-                self.last_inference_check_results = [None] * self.num_parallel_inferences
+                self.inference_tracking.last_inference_check_results = [None] * self.num_parallel_inferences
 
                 if llm_input_messages and not skip_inference:
                     # If a generation_technique is specified AND we have multiple inferences,
@@ -2276,7 +2281,7 @@ class HumanLLM:
         # Run checks on the inference content if available
         improvement_feedback = []
         check_results = []
-        for inference_check in self.last_inference_check_results:
+        for inference_check in self.inference_tracking.last_inference_check_results:
             if inference_check:
                 check_results += [inference_check]
                 break
@@ -2413,7 +2418,9 @@ class HumanLLM:
         automatic_tests=False,
         output_id=None
     ):
-        
+        # test if self.parsed_code is already set
+        if not hasattr(self, "parsed_code"):
+            self.parsed_code = {}
         # Convert text to dictionary
         try:
             result_dict = ast.literal_eval(message)
@@ -2532,20 +2539,20 @@ class HumanLLM:
                 else:
                     raise ValueError(f"Unsupported language in this version: {language}")
 
-                parsed_code = {
+                self.parsed_code[output_id] = {
                     "program_code": program_code,
                     "main_function": main_function,
                     "runnable_code": runnable_code,
                     "tests": tests,
                 }
-                return True, parsed_code
+                return True, self.parsed_code[output_id]
 
             except Exception as e:
                 retry -= 1
                 error = e
                 time.sleep(0.1)
 
-        parsed_code = f"Error parsing action response (before program execution): {error}"
+        self.parsed_code[output_id] = f"Error parsing action response (before program execution): {error}"
         smart_print(
             f"CODE PARSING ERROR!!!\n{error}",
             self.agent_name,
@@ -2553,7 +2560,7 @@ class HumanLLM:
             optional=False,
             column_id=output_id
         )
-        return False, parsed_code
+        return False, self.parsed_code[output_id]
     
     def run_tests_on_code(
         self,
@@ -2570,7 +2577,8 @@ class HumanLLM:
         error_patches = error_patches if error_patches else []
 
         primitives = get_primitives(self.primitives_dir)
-        parsed_code = getattr(self, 'parsed_code', None) if parsed_code is None else parsed_code
+        #parsed_code = getattr(self, 'parsed_code', None) if parsed_code is None else parsed_code
+        parsed_code = self.parsed_code.get(output_id, None) if (parsed_code is None and isinstance(self.parsed_code, dict)) else parsed_code
         current_skip_rounds = self.skip_rounds  # save the initial value to align it for code validation
 
         if isinstance(parsed_code, dict) and parsed_code["program_code"] not in self.processed_codes:
@@ -2917,7 +2925,7 @@ class HumanLLM:
 
         for index, code in enumerate(codes):
             # Get the proper check_results corresponding to the output_id (which is the index)
-            check_results = self.last_inference_check_results[index]
+            check_results = self.inference_tracking.last_inference_check_results[index]
             if check_results:
                 code_parsing_success, parsed_code = check_results.get("Code Parsing", (False, None))
                 if code_parsing_success and isinstance(parsed_code, dict):
