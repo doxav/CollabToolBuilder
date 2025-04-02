@@ -850,14 +850,6 @@ def prepare_configs(args):
     if not 'reset_db_indices' in locals():
         config.common_vectordb_config.reset_indices = False
 
-    config.common_vectordb_config.db_type = ELASTIC_DATABASE
-    if elastic_url_port:
-        config.common_vectordb_config.es_config.es_url = elastic_url_port
-    if elastic_user:
-        config.common_vectordb_config.es_config.es_user = elastic_user
-    if elastic_password:
-        config.common_vectordb_config.es_config.es_password = elastic_password
-    
     openai.api_key = os.environ['OPENAI_API_KEY']
     if 'OPENAI_BASE_URL' in os.environ:
         openai.base_url = os.environ['OPENAI_BASE_URL']
