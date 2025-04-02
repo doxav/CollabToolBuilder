@@ -131,28 +131,12 @@ class DocumentStructure:
         self.global_feedback_to_process = []
         self.global_feedback_processed = []
         self.resources = []
-        def filename_friendly_collection_string(s):
-            # Constraint 1: Truncate or pad the string to ensure it's between 3-63 characters
-            s = s[:63].ljust(3, 'a')
-            # Constraint 2: Ensure it starts and ends with an alphanumeric character
-            if not s[0].isalnum():
-                s = 'a' + s[1:]
-            if not s[-1].isalnum():
-                s = s[:-1] + 'a'
-            # Constraint 3: Replace invalid characters with underscores
-            s = re.sub(r'[^a-zA-Z0-9_-]', '_', s)
-            # Constraint 4: Replace two consecutive periods with underscores
-            s = s.replace('..', '__')
-            # Constraint 5: Ensure it's not a valid IPv4 address
-            if re.match(r'^(\d{1,3}\.){3}\d{1,3}$', s):
-                s = 'a' + s[1:]
-            return s
-        friendly_collection = filename_friendly_collection_string(self.synthesis_type)+"__"+filename_friendly_collection_string(self.title)
+        name = f"{self.synthesis_type}_{self.title}"
         self.resources_vectordb = UnifiedVectorDB(
             UnifiedVectorDBConfig(
-                collection_name=friendly_collection[1:63],
+                collection_name=name,
                 embedding_function=self.embedding_model,
-                persist_directory=f"ckpt/doc/{friendly_collection}",
+                persist_directory=f"ckpt/doc/{name}",
             )
         )
         self.events = []

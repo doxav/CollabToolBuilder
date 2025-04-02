@@ -51,7 +51,7 @@ def objective(trial, name_xp : str):
         #params_user_message=user_message_params,
         fixed_coach=fixed_coach,
         unique_id="OptunaReferencesScoring" + datetime.now().strftime("%Y%m%d-%Hh%M"),
-        run_graph=True
+        run_graph=False
     )
 
     # Log performance for analysis

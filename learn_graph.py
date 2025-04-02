@@ -493,8 +493,6 @@ if __name__ == "__main__":
     import openai
     from typing import Dict
 
-    from utils.llm_utils import UnifiedVectorDB, HumanLLM, _visual_input, smart_print, smart_input
-
     import os
     import uuid
     import re
@@ -516,7 +514,8 @@ if __name__ == "__main__":
     from langgraph.graph import END, START
     from config import *
     from env.env import EnvironmentManager, validate_function_code
-    from utils.llm_utils import UnifiedVectorDB, HumanLLM, _visual_input, smart_print, smart_input
+    from utils.llm_utils import UnifiedVectorDB, _visual_input, smart_print, smart_input
+    from utils.human_llm import HumanLLM
     from env.IR_CPS_TechSynthesis.env import *
     from env.SWEBench.env import *
     from env.env import Environment, EnvironmentManager
@@ -533,14 +532,7 @@ if __name__ == "__main__":
     openai.api_key = os.environ['OPENAI_API_KEY']
     if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
 
-    UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
-    UnifiedVectorDB.es_url = elastic_url_port
-    # UnifiedVectorDB.es_user = elastic_user
-    # UnifiedVectorDB.es_password = elastic_password
-    UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
-
-
-    embedding_function = "text-embedding-ada-002" if embedding_function is None else embedding_function  #"Alibaba-NLP/gte-base-en-v1.5" UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
+    embedding_function = embedding_function or "text-embedding-ada-002"  #"Alibaba-NLP/gte-base-en-v1.5" UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
     # test if reset_db_indices exists
     if not 'reset_db_indices' in locals():
         reset_db_indices = False  # Set it in your config.py to True if you want to reset "after changing embeddings"
@@ -568,10 +560,6 @@ if __name__ == "__main__":
 
         # Suppression du fichier pickle après utilisation pour éviter les conflits lors des prochains lancements
         os.remove(f'pickle/{args.pickle_name}.pkl')
-
-    # Initialize HumanLLMMonitor databases
-    HumanLLM._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
-    HumanLLM.check_init_class_db(force=True)
 
     # Allow some time for the WebSocket server to start
     time.sleep(1)  # Adjust if necessary

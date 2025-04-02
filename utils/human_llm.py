@@ -2871,6 +2871,8 @@ class HumanLLM:
         previous_attempts = ""
         for errors_list, scores_list, codes_list in zip(previous_errors, previous_scores, previous_codes):
             if errors_list and scores_list and codes_list:
+                if isinstance(errors_list, str): # Current limitation of feedback limited to 1
+                    errors_list = [errors_list] * len(scores_list)
                 for err, score, code in zip(errors_list, scores_list, codes_list):
                     previous_attempts += f"\n<<ATTEMPT FEEDBACK: {err}\nSCORE: {score}\nCODE: {code}>>\n"
 
