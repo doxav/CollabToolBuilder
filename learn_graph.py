@@ -188,7 +188,7 @@ def create_workflow_graph(
     
     return compiled_workflow
 
-def run_4agents_learning_loop_graph(
+def run_4agents_learning_loop_graph_alternative(
     default_llm_key: str,
     premium_llm_key: str,
     test_environments=None,

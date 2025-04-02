@@ -21,6 +21,7 @@ BIBLIO-TEST/
 report_outputs/
 pkl_cache/
 
+JupyterDocUI/
 websocketdata*
 AgentLaboratory/
 composio/

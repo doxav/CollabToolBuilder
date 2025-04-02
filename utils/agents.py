@@ -110,7 +110,7 @@ class TaskIdentificationAgent:
             system_prompt_template=self.problem_prompts_subdir + 'identify_best_task',
             user_message=user_message,
             return_message_content_only=False,
-            model_choice=self.model_choice,
+            model_choice=self.model_choice.get('coach', 'default_llm') if isinstance(self.model_choice, dict) else self.model_choice,
             stream_output=True
         )
 
@@ -266,7 +266,7 @@ New environment status of examples on which the task has been tested on: <<{envs
             system_prompt_template='validate_code',
             user_message=user_message,
             return_message_content_only=False,
-            model_choice=self.model_choice
+            model_choice=self.model_choice.get('critic', 'default_llm') if isinstance(self.model_choice, dict) else self.model_choice
         )
         return code_validation
 
@@ -559,7 +559,7 @@ class CapitalizationAgent:
 
         tool_description = self.human_llm_generate_function_description.invoke(
             system_prompt_template="generate_function_description", user_message=user_message,
-            return_message_content_only=True, model_choice=self.model_choice)
+            return_message_content_only=True, model_choice=self.model_choice.get('capitalizer', 'default_llm') if isinstance(self.model_choice, dict) else self.model_choice)
         return tool_description
 
 # Agent 5: Planner

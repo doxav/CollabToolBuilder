@@ -444,7 +444,7 @@ def run_planner(*args, **kwargs):
     )
 
     # Initialize WebSocket server if used
-    if HumanLLMConfig().use_websocket and HumanLLMConfig().ws_server is None:
+    if humanLLM.use_websocket and humanLLM.ws_server is None:
         humanLLM.init_ws_server()
 
     # Select the problem prompts subdirectory if not provided
@@ -597,7 +597,9 @@ def coding_and_validation_loop(
         'unique_codes',
         metadata_filter=metadata
     )
-    unique_codes = set(unique_codes) if unique_codes != [{}] else set()
+    if isinstance(unique_codes, dict): unique_codes = list(unique_codes.values())
+    if not isinstance(unique_codes, list): unique_codes = []
+    #unique_codes = set([code for code in unique_codes if isinstance(code, (str, int, tuple))]) # filter unashable data
     successful_codes, _ = humanLLM.get_agent_data(
         agent_coding.name,
         'successful_codes',
@@ -618,7 +620,7 @@ def coding_and_validation_loop(
         temp_errors, temp_codes, temp_scores = [], [], []
         for err, code, score in zip(previous_errors, previous_codes, previous_scores):
             if code and code not in unique_codes:
-                unique_codes.add(code)
+                unique_codes.append(code)
                 temp_errors.append(err)
                 temp_codes.append(code)
                 temp_scores.append(score)

@@ -179,7 +179,7 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
         special_criteria.pop("presence_penalty", None)
     # Set unique collection ID based on name_exp
     #UnifiedVectorDB.set_unique_collection_id(f"{name_exp}")
-    HumanLLMConfig().common_vectordb_config.set_unique_collection_id(f"{name_exp}")
+    HumanLLMConfig().common_vectordb_config.set_unique_collection_id(f"{name_exp}" if unique_id is None else unique_id)
     HumanLLMConfig().common_vectordb_config.embedding_function = embedding_function
     HumanLLMConfig().common_vectordb_config.set_common_vectordb_embedding_function()
     HumanLLMConfig().common_vectordb_config.set_unique_collection_id
