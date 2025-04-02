@@ -1,5 +1,6 @@
 from optimisation.optuna_main import launch_run, definition_few_shots, global_main, init_prompts_directory
 from optimisation.optuna_main import fixed_coach_prompt, documentation
+from datetime import datetime
 
 Coach1 = """Implement generate_toc_with_bib_resources such that it creates a coherent TOC from the research paper’s title and abstract. The TOC must include multiple sections (minimum 3 sections and 6 subsections) and must update the bibliography by invoking add_or_update_result_in_resources. Focus on clear extraction of topics, robust error handling, and a fallback mechanism for cases with poor topic extraction. Don't generate the code to test generate_toc_with_bib_resources, generate only the function definition generate_toc_with_bib_resources(bot)"""
 Coach2 = """Develop the function generate_toc_with_bib_resources. Use the provided title and abstract to extract key topics and generate a structured table of contents with at least 3 sections and 6 subsections. In addition, ensure that the function calls add_or_update_result_in_resources to update the bibliography with relevant resources. The solution must handle parameter validation and include a fallback default TOC in case topic extraction fails.. Don't generate the code to test generate_toc_with_bib_resources, generate only the function definition generate_toc_with_bib_resources(bot)"""
@@ -49,7 +50,8 @@ def objective(trial, name_xp : str):
         name_exp=name_xp,
         #params_user_message=user_message_params,
         fixed_coach=fixed_coach,
-        run_graph=False
+        unique_id="OptunaReferencesScoring" + datetime.now().strftime("%Y%m%d-%Hh%M"),
+        run_graph=True
     )
 
     # Log performance for analysis

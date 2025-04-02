@@ -2871,8 +2871,8 @@ class HumanLLM:
         previous_attempts = ""
         for errors_list, scores_list, codes_list in zip(previous_errors, previous_scores, previous_codes):
             if errors_list and scores_list and codes_list:
-                for err, score, code in zip(errors_list.items(), scores_list.items(), codes_list.items()):
-                    previous_attempts += f"\n<<ATTEMPT FEEDBACK: {err[1]}\nSCORE: {score[1]}\nCODE: {code[1]}>>\n"
+                for err, score, code in zip(errors_list, scores_list, codes_list):
+                    previous_attempts += f"\n<<ATTEMPT FEEDBACK: {err}\nSCORE: {score}\nCODE: {code}>>\n"
 
         error_patches_str = ""
         for (error_msg, diff_text) in error_patches:
@@ -2911,7 +2911,7 @@ class HumanLLM:
             "user_message": user_message,
             "return_message_content_only": False,
             "stream_output": False,
-            "model_choice": self.model_choice
+            "model_choice": self.model_choice.get('coder', 'default_llm') if isinstance(self.model_choice, dict) else self.model_choice
         }
 
         # Ajouter temperature seulement si l'attribut temperature existe dans l'instance

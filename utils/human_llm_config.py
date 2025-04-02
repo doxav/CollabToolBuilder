@@ -257,14 +257,11 @@ class HumanLLMConfig:
         ret = []
         for item in paginated_results:
             temp = json.loads(item.page_content)
+            val = None
             if isinstance(temp, dict):
-                tmp = {}
-                for key in temp:
-                    if temp[key]:
-                        tmp[key] = temp[key]
-                ret.append(tmp)
-            else:
-                ret += temp[data_key]
+                if data_key in temp:
+                    val = temp[data_key]
+            ret.append(val)
         # Ret contains only text field of the data, results contains all the metadata
         return ret, results
 
