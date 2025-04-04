@@ -826,8 +826,10 @@ def coding_and_validation_loop(
             all_scores['validated_scores'] = scores
             return selected_code, "success", all_scores
 
+    try: parsed_code = results[0][0]
+    except: parsed_code = None
     # If no successful code was selected, return failure
-    return None, "failed", all_scores
+    return parsed_code, "failed", all_scores
 
 def prepare_configs(args):
     config = HumanLLMConfig()

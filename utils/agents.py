@@ -52,7 +52,7 @@ class TaskIdentificationAgent:
         kw_common_args = apply_criteria_and_prepare_monitor_args(self, special_criteria, locals())
 
         self.human_llm_identify_best_task = HumanLLM(**kw_common_args)
-        self.human_llm_identify_best_task.primitives_dir = primitives_dir
+        self.human_llm_identify_best_task.primitives_dir = primitives_dir or "primitives/generate_primitives"
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
         self.human_llm_identify_best_task.problem_prompts_subdir =  self.problem_prompts_subdir
         if self.additional_check_list:
@@ -151,7 +151,7 @@ class CodingAgent:
 
         self.human_llm_code_task = HumanLLM(**kw_common_args)
         self.human_llm_code_task.skip_rounds = skip_rounds
-        self.human_llm_code_task.primitives_dir = primitives_dir
+        self.human_llm_code_task.primitives_dir = primitives_dir or "primitives/generate_primitives"
         self.human_llm_code_task.model_choice = model_choice
         self.human_llm_code_task.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
         self.human_llm_code_task.add_manage_inference_check(
@@ -460,22 +460,29 @@ class CapitalizationAgent:
         HumanLLMConfig().add_learnt_task(serialized_entry, tags)
 
     def capitalize_failed_tasks(self, task_description: str, parsed_code: str) -> None:
-        is_anomaly = self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/"
-        name_key = "class_name" if is_anomaly else "main_function_name"
+        name_key = "main_function_name"
+        task_name = None
         if parsed_code:
-            task_name = parsed_code.get(name_key,
-                                        "replace this text with a descriptive name of the class" if is_anomaly else "replace this text with a descriptive name of the function")
-        else:
-            if False or not self.automation:  # TODO: temporary disabled, find the logic to fix this or if not required
+            if isinstance(parsed_code, dict):
+                task_name = parsed_code.get(name_key, parsed_code.get("main_function", parsed_code.get("class_name", None)))
+                if task_name and isinstance(task_name, dict):
+                    task_name = task_name.get('name', str(task_name))
+            else:
+                # Assume parsed_code is a string; extract the function name using a regex.
+                match = re.search(r"def\s+(\w+)\s*\(", parsed_code)
+                task_name = match.group(1) if match else None
+        if task_name is None:
+            if task_description is not None:
+                # try to find the function name in the task description, should start with a \n and end with a (bot)
+                match = re.search(r"\n(\w+)\s*\(bot\)", task_description)
+                task_name = match.group(1) if match else None
+            if task_name is None:
                 task_name = smart_input(
-                    f"CONFIG Please provide a name for the {'pipeline' if is_anomaly else 'function'}:\n {task_description}",
+                    f"CONFIG Please provide a name for the function:\n {task_description}",
                     "CapitalizationAgent",
                     message_type="Capitalization_info"
-                ).strip()
-            else:
-                task_name = f"{task_description[:500]}"
-        if False and not self.automation or is_anomaly:  # TODO: temporary disabled, find the logic to fix this or if not required
-            task_name = _visual_input(task_name)
+                ).strip() if not self.automation else "UNKNOWN_function_name"
+        if False and not self.automation:  # TODO: temporary disabled, find the logic to fix this or if not required
             task_description_refined = _visual_input(task_description)
         else:
             task_description_refined = task_description
@@ -513,8 +520,7 @@ class CapitalizationAgent:
         for result in results:
             id += 1
             task_data = json.loads(result.page_content)
-            name_key = "class_name" if (
-                    self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/") else "main_function_name"
+            name_key = "main_function_name"
             if name_key not in task_data:
                 task_data[name_key] = ""
 

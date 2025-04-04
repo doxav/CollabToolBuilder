@@ -1786,7 +1786,7 @@ class HumanLLM:
         temperature_max=None,
         task_name=None,
         prompt_directory="prompts",
-        generation_technique='self_refinement',
+        generation_technique='temperature_variation',
         forced_llm_output=None,
     ):
         """
@@ -1938,7 +1938,7 @@ class HumanLLM:
                 # We replicate the snippet logic
                 self.synthesize_mode = True  # you can set this if you want final synthesis
                 # Build a uniform range of temperatures from temp_max down to temp_min
-                temperatures = [ temp_max - i * (temp_max - temp_min) / max(1, num_responses - 1) for i in range(num_responses) ]
+                temperatures = [ abs(round(temp_max - i * (temp_max - temp_min) / max(1, num_responses - 1),2)) for i in range(num_responses) ]
                 smart_print( f"Temperatures for responses: {temperatures}", self.agent_name, "Temperature Variation", optional=True)
 
                 for i, temp in enumerate(temperatures):
