@@ -1,7 +1,7 @@
 gitpython
 
 # OpenAI and tokenization
-openai~=1.43.0
+openai>=1.68.0
 tiktoken~=0.7.0
 
 # Core utilities
