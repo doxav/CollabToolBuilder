@@ -55,9 +55,8 @@ function SetInferenceStreamingOutput(data) {
       content = `
                 <div class="collapsible-message open">
                     <div class="collapsible-header">
-                        <span class="arrow"><i class="fa-solid fa-chevron-down"></i></span> <span>${
-                          isCode ? "Code" : "Prompt"
-                        }</span>
+                        <span class="arrow"><i class="fa-solid fa-chevron-down"></i></span> <span>${isCode ? "Code" : "Prompt"
+        }</span>
                     </div>
                     <div class="collapsible-content">
                         ${formatMessage(data.message)}
@@ -360,4 +359,113 @@ function updateSuccessfullTaskList(data) {
       });
     funcNamesContent.appendChild(foldableDiv);
   });
+}
+function resetEnvForNewTask() {
+  // Hide the input area
+  $(".input-area").hide();
+  // Delete all agent accordions
+  $("#message-accordion").empty();
+
+  // Show the question to reset the environment
+  let $question = $(
+    `<p>Do you want to reset the environment for searching a new task (Y/YES) or search a new task by keeping what has been created by this task (N/NO/Enter) ? or just exit (E/EXIT) ?</p>`
+  );
+  let $yesButton = $(`<button id="yes-button">Yes</button>`);
+  let $noButton = $(`<button id="no-button">No</button>`);
+  let $exitButton = $(`<button id="exit-button">Exit</button>`);
+  let $container = $(`<div style="font-size: large;"></div>`);
+  $container.append($question);
+  $container.append($yesButton);
+  $container.append($noButton);
+  $container.append($exitButton);
+  // Ajouter le conteneur sous l'accordéon
+  $("#message-accordion").append($container);
+  // Gérer l'événement du bouton
+  $yesButton.click(function () {
+    sendWebSocketMessage({ message: "yes" });
+    $container.remove();
+    // Reset the number of created functions
+    number_created_functions = 0;
+    document.getElementById("number-functions").textContent =
+      number_created_functions;
+  });
+  $noButton.click(function () {
+    sendWebSocketMessage({ message: "no" });
+    $container.remove();
+  });
+  $exitButton.click(function () {
+    sendWebSocketMessage({ message: "exit" });
+    $container.remove();
+  });
+}
+function skipNumberOfRounds() {
+  // Existing code for handling this case
+  // COPIED CODE
+  let $question = $(`<p>Skip for how many rounds ?</p>`);
+  // Afficher une liste déroulante de 1 à 10 avec la possibilité de saisir un autre nombre
+  let $select = $(`<select id="rounds-select"></select>`);
+  for (let i = 1; i <= 10; i++) {
+    $select.append(`<option value="${i}">${i}</option>`);
+  }
+  $select.append(`<option value="other">Other</option>`);
+  // Si "Other" est sélectionné, afficher un champ de saisie pour entrer le nombre de tours
+  $select.change(function () {
+    if ($(this).val() === "other") {
+      $(this).replaceWith(
+        `<input type="number" id="rounds-input" min="1" max="100" step="1" value="1">`
+      );
+    }
+  });
+  let $button = $(`<button id="send-rounds">Send</button>`);
+  let $container = $(`<div></div>`);
+  $container.append($question);
+  $container.append($select);
+  $container.append($button);
+  // Ajouter le conteneur sous l'accordéon
+  $("#message-accordion").append($container);
+  // Gérer l'événement du bouton pour envoyer le nombre de tours au serveur
+  $button.click(function () {
+    let rounds;
+    if ($("#rounds-select").length) {
+      rounds = $("#rounds-select").val();
+    } else {
+      rounds = $("#rounds-input").val();
+    }
+
+    if (rounds === "other") {
+      rounds = $("#rounds-input").val();
+    }
+
+    rounds = parseInt(rounds);
+    if (isNaN(rounds) || rounds < 1) {
+      rounds = 1;
+    } else if (rounds > 100) {
+      rounds = 100;
+    }
+    sendWebSocketMessage({ message: rounds });
+
+    $container.remove();
+    let actionDescription = `User set skip rounds to ${rounds}`;
+    addHistoryEntry(actionDescription);
+  });
+}
+
+function showMessageForPlannerAgent(title, content) {
+  // Show message in a new accordion named "PlannerAgent" if it doesn't exist else append the message to the existing accordion
+  let $plannerAccordion = $(
+    `#message-accordion > div[data-agent="PlannerAgent"]`
+  );
+  if ($plannerAccordion.length === 0) {
+    $plannerAccordion = $(
+      `<div data-agent="PlannerAgent"><h3>PlannerAgent</h3><div></div></div>`
+    );
+    $("#message-accordion").append($plannerAccordion);
+  }
+  let $messageContainer = $(
+    `<h4>${title}</h4><div class="column-container">${content}</div>`
+  );
+  $plannerAccordion.children("div").append($messageContainer);
+  if (data.input) {
+    displayInputField();
+  }
 }
