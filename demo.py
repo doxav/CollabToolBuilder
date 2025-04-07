@@ -52,7 +52,6 @@ config.common_vectordb_config.embedding_function = embedding_function
 if not 'reset_db_indices' in locals():
     config.common_vectordb_config.reset_indices = False
 
-config.common_vectordb_config.db_type = "elasticsearch"
 config.initialize()
 
 planner = HumanLLM(agent_name="Planner", llmORchains_list=llm_list)
@@ -644,13 +643,13 @@ def multi_agent_research_generation_persist_at_the_end(
     graph = builder.compile(checkpointer=memory2)
 
     # Optionally add your RAG documents
-    for file in os.listdir("BIBLIO-TEST"):
-        if file != '.DS_Store':
-            HumanLLM(agent_name="add_rag_doc_start", llmORchains_list=llm_list).add_rag_document(
-                folder_path="BIBLIO-TEST", file_path=file,
-                chunking_options={"chunk_size":1000,"chunk_overlap":200},
-                use_semantic_chunking=True
-            )
+    # for file in os.listdir("BIBLIO-TEST"):
+    #     if file != '.DS_Store':
+    #         HumanLLM(agent_name="add_rag_doc_start", llmORchains_list=llm_list).add_rag_document(
+    #             folder_path="BIBLIO-TEST", file_path=file,
+    #             chunking_options={"chunk_size":1000,"chunk_overlap":200},
+    #             use_semantic_chunking=True
+    #         )
 
     # Invoke
     #graph.invoke(initial_state, params={ "configurable": { "thread_id": "1" }, "recursion_limit": 100 })

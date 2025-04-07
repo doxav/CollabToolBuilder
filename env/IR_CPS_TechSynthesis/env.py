@@ -806,6 +806,7 @@ class SynthesisManager:
         text = ""
         try:
             with open(pdf_path, "rb") as file:
+                import PyPDF2
                 reader = PyPDF2.PdfReader(file)
                 for page_num in range(len(reader.pages)):
                     page = reader.pages[page_num]
@@ -830,7 +831,7 @@ class SynthesisManager:
         for filename in os.listdir(directory_path):
             if filename.endswith(".pdf"):
                 pdf_path = os.path.join(directory_path, filename)
-                text = extract_text_from_pdf(pdf_path)
+                text = SynthesisManager.extract_text_from_pdf(pdf_path)
                 if query.lower() in text.lower():
                     results.append({
                         'filename': filename,
@@ -1397,7 +1398,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         if not self.has_reset_once:
             print("Environment has not been reset yet - resetting now !")
             self.reset()
-        return super().step(action_code=code, context={'problem': self.synthesis_manager, 'bot': self.synthesis_manager, 'results': None, 'SynthesisManager': SynthesisManager, 'DocumentStructure': DocumentStructure, 'Section': Section, 'Document': Document, 'llm':VoyagerEnvIR_CPS_TechSynthesis.llm})
+        return super().step(action_code=code, context={'problem': self.synthesis_manager, 'bot': self.synthesis_manager, 'results': None, 'SynthesisManager': SynthesisManager, 'DocumentStructure': DocumentStructure, 'Section': Section, 'Document': Document, 'llm':VoyagerEnvIR_CPS_TechSynthesis.llm_model})
 
     def get_state(self, extended: bool = False):
         #TODO: move to self.document.get_state() ?

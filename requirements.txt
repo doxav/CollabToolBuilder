@@ -78,7 +78,6 @@ datasets
 python-git
 
 gitpython
-triton
 
 
 langchain==0.3.3

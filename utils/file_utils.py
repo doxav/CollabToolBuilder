@@ -593,21 +593,6 @@ def timestamp_file_name(fname):
     return insert_before_ext(fname, timestr)
 
 
-def get_file_lock(*fpath, timeout: int = 15, logging_level="critical"):
-    """
-    NFS-safe filesystem-backed lock. `pip install flufl.lock`
-    https://flufllock.readthedocs.io/en/stable/apiref.html
-
-    Args:
-        fpath: should be a path on NFS so that every process can see it
-        timeout: seconds
-    """
-    from flufl.lock import Lock
-
-    logging.getLogger("flufl.lock").setLevel(logging_level.upper())
-    return Lock(f_join(*fpath), lifetime=timeout)
-
-
 def load_pickle(*fpaths):
     with open(f_join(*fpaths), "rb") as fp:
         return pickle.load(fp)

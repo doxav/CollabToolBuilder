@@ -405,7 +405,7 @@ class UnifiedVectorDB:
             if metadata_filter and custom_filter_chrome is None:
                 conditions = []
                 for key, value in metadata_filter.items():
-                    sign = '$eq' if isinstance(value, str) else '$in'
+                    sign = '$eq' if (isinstance(value, str) or isinstance(value, bool)) else '$in'
                     conditions.append({key: {sign: value}})
                 # If only one condition, use it directly; otherwise wrap in $and or $or.
                 if len(conditions) == 1:
@@ -607,19 +607,6 @@ def smart_print(
         if HumanLLMConfig().ws_server.message_count % 500 == 0:
             time.sleep(0.5)
         HumanLLMConfig().ws_server.send_message(message)
-
-    elif IN_NOTEBOOK and agent_name:
-        # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
-        if 'AgentDisplayManager' not in globals():
-            try:
-                from utils.jupyter_agents_display import AgentDisplayManager
-            except:
-                logger.info("AgentDisplayManager cannot be imported/initialized")
-                return
-        # create string with time of format HH:MM:SS
-        time_str = datetime.now().strftime("%H:%M:%S")
-        AgentDisplayManager.write_to_agent(agent_name, message, element_name=message_type + " " + time_str,
-                                           append=append)
     else:
         if append:
             print(message, end="", flush=True)
@@ -629,16 +616,6 @@ def smart_print(
 def smart_input(message: str, agent_name=None, message_type=None, column_id=None, column_max=None, optional=False):
     logger = logging.getLogger(__name__)
     from utils.human_llm import HumanLLMConfig
-    # Determine if running in a notebook environment
-    if 'IN_NOTEBOOK' not in globals():
-        try:  # test if IN_NOTEBOOK
-            from IPython import get_ipython
-            globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = get_ipython().__class__.__name__ == 'ZMQInteractiveShell'
-
-        except:
-            globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = False
-    else:
-        IN_NOTEBOOK = globals()['IN_NOTEBOOK']
 
     # Determine if using WebSocket
     if 'IN_WEBSOCKET' not in globals():
@@ -747,17 +724,6 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
         except RuntimeError:
             # No running loop, create a new event loop and run the coroutine
             return asyncio.run(receive_message())
-
-    elif IN_NOTEBOOK and agent_name:  # Currently DE-ACTIVATED
-        # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
-        if 'AgentDisplayManager' not in globals():
-            try:
-                from utils.jupyter_agents_display import AgentDisplayManager
-            except:
-                logger.info("AgentDisplayManager cannot be imported/initialized")
-                logger.info(message)
-                return
-        return AgentDisplayManager.get_input(agent_name, message)
     else:
         return input(message)
 
@@ -928,7 +894,6 @@ def save_prompt_with_tag(prompt_name, text, new_tag, package_path="."):
 
     # Save the file
     return dump_text(text, prompt_file_path_name)
-
 
 def apply_criteria_and_prepare_monitor_args(agent, special_criteria, available_locals=None):
     """

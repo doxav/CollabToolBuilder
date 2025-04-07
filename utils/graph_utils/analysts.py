@@ -24,7 +24,6 @@ config.common_vectordb_config.embedding_function = embedding_function
 if not 'reset_db_indices' in locals():
     config.common_vectordb_config.reset_indices = False
 
-config.common_vectordb_config.db_type = "elasticsearch"
 config.initialize()
 
 analyst = HumanLLM(agent_name="Create Analysts", llmORchains_list=llm_list)

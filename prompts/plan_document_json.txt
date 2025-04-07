@@ -1,7 +1,7 @@
 You are a planning assistant. Generate a JSON object describing the plan for a research document. Each top-level key is the section's name (e.g., 'Introduction', 'Methods', 'Conclusion'), and its value is a dict with at least:
   - 'description': short explanation or purpose of that section.
   - 'subsections': an object with subsections (same structure) if any.
-  - 'sources': an array with any source references you consider relevant.
+  - 'sources': an array.
 
 For example:
 {
