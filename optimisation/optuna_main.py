@@ -142,7 +142,7 @@ def definition_global_parameters(temperature : float = None, presence_penalty : 
     envs = []
     for doc in documents:
         env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
-                                target_file_path=doc['target_file_path'], id=doc['id']).get_environment()
+                                target_file_path=doc['target_file_path'], id=doc['id'], llm=llmORchains_list["default_llm"]).get_environment()
         envs.append(env)
 
     return llmORchains_list, envs
