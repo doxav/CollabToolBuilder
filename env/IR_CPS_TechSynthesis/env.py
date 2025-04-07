@@ -72,7 +72,7 @@ class Document:
     context: str = "" # e.g. should be the abstract content of the document if the goal is to write a SOTA survey paper, the introduction of a Wikipedia article if the goal is to write a Wikipedia article, the introduction of a patent if the goal is to write a patent, ...
     context_embedding: List[float] = field(default_factory=list)  # TODO: check if we need to store the embedding of the context because, differently to sections content, it is not used in comparison to target because it is an input
     #resource: str = ""
-    resource_embedding: List[float] = field(default_factory=list)
+    resources_embedding: List[float] = field(default_factory=list)
     sections_list: List[Any] = field(default_factory=list)  
     sections_list_embedding: List[float] = field(default_factory=list)
     embedding_model_name: str = "intfloat/e5-base-v2" # e.g. "nomic-embed-text:latest" for OpenAI ada-002, "intfloat/e5-base-v2" for HuggingFace e5-base-v2, ...
@@ -149,7 +149,7 @@ class DocumentStructure:
         # else:
         return self.embedding_model.embed_query(self.embedding_model_query_prefix + text)
 
-    def update_sections_embeddings(self, section_ids: List[int] = None, force_update: bool = False, batch_update: bool = False):
+    def update_sections_embeddings(self, section_ids: List[int] = None, force_update: bool = False, batch_update: bool = False, skip_plan_embeddings_update: bool = False):
     # compute and set embeddings of any empty content_embedding or title_embedding when not set, and if content or title is not empty (nor None, nor '')
     # if section_id is provided, only update the section with this id
         if batch_update:
@@ -183,7 +183,8 @@ class DocumentStructure:
             for section, emb, label in zip(sections_to_update, embeddings, sections_label_to_update):
                 setattr(section, label, emb)
 
-        self.update_plan_embedding()
+        if not skip_plan_embeddings_update:
+            self.update_plan_embedding()
 
     def update_plan_embedding(self):
         """ update plan embedding by computing mean of all section embeddings and the title embedding (if any) of the synthesis plan """
@@ -215,7 +216,7 @@ class DocumentStructure:
         
         self.document_content.sections_list_title_embedding = title_mean  # Store the mean title embedding
         self.document_content.sections_list_content_embedding = content_mean  # Store the mean content embedding
-        self.document_content.sections_list_resource_embedding = resource_mean
+        self.document_content.resources_embedding = resource_mean
         self.document_content.sections_list_embedding = total_mean  # Store the combined mean embedding
 
     def set_plan_field_with_embedding(self, field: str, value: str, event: str = None, section_id: int = None):
@@ -291,6 +292,7 @@ class DocumentStructure:
 
 class SynthesisManager:
     def __init__(self, document: DocumentStructure, target_file_path: str = None):
+        self.plan_embedding_update_required = False
         self.document = document
         self.title = self.document.title
         self.abstract = self.document.context
@@ -896,7 +898,8 @@ class SynthesisManager:
     def add_section(self, section: Section):
         if self.validate_section_format(asdict(section)):  # Convert dataclass to dict for validation
             self.document.document_content.sections_list.append(section)
-            self.document.update_sections_embeddings([section.section_id])
+            self.document.update_sections_embeddings([section.section_id], skip_plan_embeddings_update=True)
+            self.plan_embedding_update_required = True
             self.document.add_event({'action': 'add_section', 'section_id': section.section_id})
         else:
             print('Invalid section format.')
@@ -924,7 +927,7 @@ class SynthesisManager:
         section = next((s for s in self.document.document_content.sections_list if s.section_id == section_id), None)
         if section:
             self.document.document_content.sections_list = [s for s in self.document.document_content.sections_list if s.section_id != section_id]
-            self.document.update_plan_embedding()
+            self.requires_update_plan_embedding()
             self.document.add_event({'action': 'remove_section','section_id': section_id})
             return True
         else:
@@ -954,7 +957,8 @@ class SynthesisManager:
                 action_event['new_parent_id'] = new_parent_id
             self.document.add_event('observation', action_event)
             if update_embeddings:
-                self.document.update_sections_embeddings([section_id])
+                self.document.update_sections_embeddings([section_id], skip_plan_embeddings_update=True)
+                self.plan_embedding_update_required = True
             return True
         else:
             return False
@@ -994,6 +998,7 @@ class SynthesisManager:
                 content=content, 
                 store_linked_document_content=store_linked_document_content
             )
+        self.plan_embedding_update_required = True
         return self
     
     @method_call_counter
@@ -1016,7 +1021,7 @@ class SynthesisManager:
         # Generate id using max
         id = max([r['id'] for r in self.document.resources]) + 1 if len(self.document.resources) > 0 else 1
         document = {'name': name, 'link': link, 'content': str(content), 'description': str(content.get('description', '') if isinstance(content, dict) else content)}
-        embedding = self.document.embedding_model.embed_query(str(content) + "\n" + name + "\n" + link)
+        embedding = self.document.embedding_model.embed_query(str(content) + (("\n" + str(name)) if name else '') + (("\n" + link) if link else ''))
 
         # Check for existing document
         existing_doc = next((doc for doc in self.document.resources if (doc['document']['name'] == name or (link and doc['document']['link'] == link))), None)
@@ -1053,6 +1058,7 @@ class SynthesisManager:
             self.document.add_event('observation', {'action': 'add_resource', 'document_name': name})
             #print(f"Resource added - VectorDB collection count: {self.document.resources_vectordb.count()}")
 
+        self.plan_embedding_update_required = True
         return self if chaining else (existing_doc if existing_doc else self.document.resources[-1])
 
     @method_call_counter
@@ -1093,6 +1099,7 @@ class SynthesisManager:
         elif isinstance(resource_id, int):
             self.document.resources = [r for r in self.document.resources if r['id'] != resource_id]
         self.document.add_event('observation', {'action': 'remove_resources','resource_id': str(resource_id)})
+        self.plan_embedding_update_required = True
         return self
     
     @method_call_counter
@@ -1162,7 +1169,7 @@ class SynthesisManager:
                                            target_plan_embedding_label=target_plan_embedding_label,
                                            target_resource_embedding_label=target_resource_embedding_label)
             self.document.update_plan_embedding()
-        elif not hasattr(self.document.document_content, 'sections_list_title_embedding'):
+        elif self.plan_embedding_update_required or not hasattr(self.document.document_content, 'sections_list_title_embedding'):
             self.document.update_plan_embedding()
 
         # Compute current document metrics
@@ -1175,7 +1182,7 @@ class SynthesisManager:
         plan_embedding = self.document.document_content.sections_list_embedding
         plan_titles_embedding = self.document.document_content.sections_list_title_embedding
         plan_contents_embedding = self.document.document_content.sections_list_content_embedding
-        plan_resources_embedding = self.document.document_content.sections_list_resource_embedding
+        plan_resources_embedding = self.document.document_content.resources_embedding
 
         # Compute embedding similarity
         plan_embedding_similarity = self.normalized_cosine_similarity(plan_embedding, self.target_plan_embedding, self.min_plan_cosine_similarity)
@@ -1185,20 +1192,20 @@ class SynthesisManager:
 
         # Refined ratio calculations
         content_length_ratio_to_target = round(
-            min(current_content_length / (self.target_total_content_length + 1e-5), 1.5), 4)
+            min(current_content_length / (self.target_total_content_length + 1e-5), 1.5), 3)
         sections_count_ratio_to_target = round(
-            min(current_sections_count / (self.target_total_sections_count + 1e-5), 1.5), 4)
+            min(current_sections_count / (self.target_total_sections_count + 1e-5), 1.5), 3)
         sections_content_non_empty_count_ratio_to_target = round(
-            min(current_plan_non_empty_sections_content_count / (self.target_total_sections_count + 1e-5), 1.5), 4)
+            min(current_plan_non_empty_sections_content_count / (self.target_total_sections_count + 1e-5), 1.5), 3)
         sections_title_non_empty_count_ratio_to_target = round(
-            min(current_plan_non_empty_sections_title_count / (self.target_total_sections_count + 1e-5), 1.5), 4)
+            min(current_plan_non_empty_sections_title_count / (self.target_total_sections_count + 1e-5), 1.5), 3)
 
         # Build the result dictionary
         distance_to_targetJSON = {
-            "plan_embedding_similarity": round(plan_embedding_similarity, 6),
-            "plan_titles_embedding_similarity": round(plan_titles_embedding_similarity, 6),
-            "plan_contents_embedding_similarity": round(plan_contents_embedding_similarity, 6),
-            "plan_resources_embedding_similarity": round(plan_resources_embedding_similarity, 6),
+            "plan_embedding_similarity": round(plan_embedding_similarity, 3),
+            "plan_titles_embedding_similarity": round(plan_titles_embedding_similarity, 3),
+            "plan_contents_embedding_similarity": round(plan_contents_embedding_similarity, 3),
+            "plan_resources_embedding_similarity": round(plan_resources_embedding_similarity, 3),
 
             "current_sections_count": current_sections_count,
             "sections_count_ratio_to_target": sections_count_ratio_to_target,
