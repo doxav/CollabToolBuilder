@@ -58,8 +58,8 @@ class Section:
     title_embedding: List[float] = field(default_factory=list)
     content: str = ""
     content_embedding: List[float] = field(default_factory=list)
-    resource: str = ""
-    resource_embedding: List[float] = field(default_factory=list)
+    resource: str = "" # temporary support
+    resources: List[str] = None
     title_validation_status: int = 0
     content_progress_validation_status: int = 0
     local_feedback_to_process: List[str] = field(default_factory=list) # could be citation to integrate, critics to process...
@@ -71,7 +71,7 @@ class Document:
     title_embedding: List[float] = field(default_factory=list) # TODO: check if we need to store the embedding of the title because, differently to sections, it is not used in comparison to target because it is an input
     context: str = "" # e.g. should be the abstract content of the document if the goal is to write a SOTA survey paper, the introduction of a Wikipedia article if the goal is to write a Wikipedia article, the introduction of a patent if the goal is to write a patent, ...
     context_embedding: List[float] = field(default_factory=list)  # TODO: check if we need to store the embedding of the context because, differently to sections content, it is not used in comparison to target because it is an input
-    resource: str = ""
+    #resource: str = ""
     resource_embedding: List[float] = field(default_factory=list)
     sections_list: List[Any] = field(default_factory=list)  
     sections_list_embedding: List[float] = field(default_factory=list)
@@ -175,13 +175,6 @@ class DocumentStructure:
                     sections_label_to_update.append('title_embedding')
                 else:
                     section.title_embedding = self.get_embedding(section.title)
-            if (not section.resource_embedding and section.resource) or force_update:
-                if batch_update:
-                    texts_to_embed.append(section.resource)
-                    sections_to_update.append(section)
-                    sections_label_to_update.append("resource_embedding")
-                else:
-                    section.resource_embedding = self.get_embedding(section.resource)
         
         if batch_update:
             # Get embeddings in one batch call
@@ -204,7 +197,8 @@ class DocumentStructure:
             # x.title_embedding should be added only if x.title_embedding is not empty (nor None, nor '')
             title_embeddings = [x.title_embedding for x in self.document_content.sections_list if x.title_embedding]
             content_embeddings = [x.content_embedding for x in self.document_content.sections_list if x.content_embedding]
-            resource_embeddings = [x.resource_embedding for x in self.document_content.sections_list if x.resource_embedding]
+            #resource_embeddings = [x.resource_embedding for x in self.document_content.sections_list if x.resource_embedding]
+            resource_embeddings = [resource.get('embedding', '') for resource in self.resources]
 
             # convert self.dumb_embedding to a list to be able to use it in np.mean
             # Compute mean embedding for titles
@@ -278,7 +272,7 @@ class DocumentStructure:
         for section in self.document_content.sections_list:
             section.content_embedding = []
             section.title_embedding = []
-            section.resource_embedding = []
+            section.resources = []
         self.document_content.sections_list_embedding = []
         self.document_content = Document() # self.document_content = copy.deepcopy(DOCUMENT_SCHEMA)
 
@@ -908,12 +902,12 @@ class SynthesisManager:
         return self
     
     @method_call_counter
-    def create_and_add_section_then_return_id(self, title: str, content: str, section_id: int = None, parent_id: int = None) -> int:
+    def create_and_add_section_then_return_id(self, title: str, content: str, section_id: int = None, parent_id: int = None, resources: list | str | int = None) -> int:
         if not section_id:
             # Generate section_id by using max section_id + 1
             section_id = (max([s.section_id for s in self.document.document_content.sections_list]) + 1) if len(self.document.document_content.sections_list) > 0 else 1
 
-        self.add_section(Section(section_id=section_id, parent_id=parent_id, title=title, content=content))
+        self.add_section(Section(section_id=section_id, parent_id=parent_id, title=title, content=content, resources=resources))
         return section_id
 
     @method_call_counter
@@ -936,8 +930,7 @@ class SynthesisManager:
             return False
 
     @method_call_counter
-    def edit_section(self, section_id: int, new_content: str = None, new_title: str = None, new_resource: str = None, new_parent_id: int = None) -> bool:
-        #section = next((s for s in self.document.document_content if s['id'] == section_id), None)
+    def edit_section(self, section_id: int, new_content: str = None, new_title: str = None, new_resources: list | str | int = None, new_parent_id: int = None) -> bool:
         section = next((s for s in self.document.document_content.sections_list if s.section_id == section_id), None)
         if section:
             action_event = {'action': 'edit_section','section_id': section_id}
@@ -950,10 +943,11 @@ class SynthesisManager:
                 section.title = new_title
                 update_embeddings = True
                 action_event['new_title'] = new_title
-            if new_resource:
-                section.resource = new_resource
-                update_embeddings = True
-                action_event['new_resource'] = new_resource
+            if new_resources:
+                if not isinstance(new_resources, list):
+                    new_resources = [str(new_resources)]
+                section.resources = [str(resource) for resource in new_resources]
+                action_event['new_resources'] = new_resources
             if new_parent_id:
                 section.parent_id = new_parent_id
                 action_event['new_parent_id'] = new_parent_id
@@ -1011,7 +1005,7 @@ class SynthesisManager:
             link = metadatas.get('link')
             metadatas.pop('link')
         if metadatas.get('description') and not content:
-            content = {'description': metadatas.get('description')}
+            content = metadatas.get('description', '')
             metadatas.pop('description')
 
         # assert name or link are provided to identify the resource
@@ -1020,8 +1014,9 @@ class SynthesisManager:
 
         # Generate id using max
         id = max([r['id'] for r in self.document.resources]) + 1 if len(self.document.resources) > 0 else 1
-        document = {'name': name, 'link': link, 'content': {'description': content} if isinstance(content, str) else content} # Convert content to dict if it's a string
-        
+        document = {'name': name, 'link': link, 'content': str(content), 'description': str(content.get('description', '') if isinstance(content, dict) else content)}
+        embedding = self.document.embedding_model.embed_query(str(content) + "\n" + name + "\n" + link)
+
         # Check for existing document
         existing_doc = next((doc for doc in self.document.resources if (doc['document']['name'] == name or (link and doc['document']['link'] == link))), None)
         
@@ -1048,6 +1043,7 @@ class SynthesisManager:
                 'id': id,
                 'metadatas': metadatas,
                 'document': document,
+                'embedding': embedding,
             })
             if store_linked_document_content:
                 childs_ids_list = self.get_and_store_link_content(link=link, parent_id=id, chaining=False)
@@ -1397,7 +1393,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         if not self.has_reset_once:
             print("Environment has not been reset yet - resetting now !")
             self.reset()
-        return super().step(action_code=code, context={'problem': self.synthesis_manager, 'bot': self.synthesis_manager, 'results': None, 'SynthesisManager': SynthesisManager, 'DocumentStructure': DocumentStructure, 'Section': Section, 'Document': Document, 'llm':VoyagerEnvIR_CPS_TechSynthesis.llm})
+        return super().step(action_code=code, context={'problem': self.synthesis_manager, 'bot': self.synthesis_manager, 'results': None, 'SynthesisManager': SynthesisManager, 'DocumentStructure': DocumentStructure, 'Section': Section, 'Document': Document, 'llm':VoyagerEnvIR_CPS_TechSynthesis.llm_model})
 
     def get_state(self, extended: bool = False):
         #TODO: move to self.document.get_state() ?
