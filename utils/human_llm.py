@@ -1,3 +1,6 @@
+import os
+import tempfile
+from asyncio import subprocess
 import re, uuid, json, difflib
 import time, inspect, ast
 import socket
@@ -12,21 +15,23 @@ from utils.llm_utils import (
     TaskHistory,
     smart_input, smart_print, get_primitives,
     _visual_input, save_prompt_with_tag,
-    list_prompt_variants, flatten_and_pair
+    list_prompt_variants, flatten_and_pair,
+    semantic_double_pass_chunking,
+    extract_json
 )
 from env.SWEBench.env import SWEBenchEnvironment
 from utils.human_llm_config import HumanLLMConfig
 from typing import List, Dict, Any, Optional
 
-from langchain.chains import LLMChain
 from langchain.llms import OpenAI
+from langchain.chains import LLMChain
+from PyPDF2.generic import IndirectObject
 from langchain.prompts import PromptTemplate
 from langchain_core.messages.ai import AIMessage
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.system import SystemMessage
 from langchain_core.messages.function import FunctionMessage
 from langchain_core.runnables import RunnableSequence, ConfigurableField
-
 
 class HumanLLM:
     def __init__(
@@ -114,6 +119,236 @@ class HumanLLM:
         self.processed_codes = set()
         self.max_autofix = max_autofix
         self.problem_prompts_subdir = problem_prompts_subdir 
+
+    def get_rag_documents(self, agent_name=None, extra_filter: Optional[Dict[str, Any]] = None, query: str = '*', **kwargs):
+        """
+        Convenience method to retrieve only RAG-indexed documents.
+        It wraps get_agent_data by enforcing metadata_filter with {"rag": True}.
+        """
+        metadata_filter = {"rag": True}
+        if extra_filter:
+            metadata_filter.update(extra_filter)
+        return self.config.get_agent_data(agent_name=agent_name, metadata_filter=metadata_filter, query_text=query, **kwargs)
+    
+    @staticmethod
+    def decode_bytes(obj):
+        if isinstance(obj, dict):
+            return {k: HumanLLM.decode_bytes(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [HumanLLM.decode_bytes(item) for item in obj]
+        elif isinstance(obj, bytes):
+            return obj.decode('utf-8', errors='replace')
+        else:
+            return obj
+    
+    @staticmethod
+    def serialize_metadata(metadata):
+        new_metadata = {}
+        for key, value in metadata.items():
+            if isinstance(value, IndirectObject):
+                new_metadata[key] = str(value)
+            else:
+                new_metadata[key] = value
+        return new_metadata
+
+    def clean_metadata(self, meta):
+        cleaned = {}
+        for key, value in meta.items():
+            # Convert bytes to string
+            if isinstance(value, bytes):
+                cleaned[key] = value.decode('utf-8', errors='ignore')
+            # Convert PyPDF2 IndirectObject to string
+            elif hasattr(value, "getObject"):  # A simple check for IndirectObject
+                try:
+                    # You can try to extract the actual object if needed:
+                    obj = value.getObject()
+                    cleaned[key] = str(obj)
+                except Exception:
+                    cleaned[key] = str(value)
+            else:
+                cleaned[key] = value
+        return cleaned
+               
+    def add_rag_document(
+        self,
+        file_path: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        chunking_options: Optional[Dict[str, Any]] = None,
+        folder_path: str = None,
+        overwrite: bool = False,
+        use_marker: bool = False,  # If True, convert PDF to Markdown via Marker Docker.
+        use_semantic_chunking: bool = True  # If True, use semantic double-pass merging chunking.
+    ) -> None:
+        """
+        Loads and indexes an external document (JSON, PDF, HTML, Markdown, etc.) for RAG.
+    
+        - Uses appropriate LangChain loaders based on file extension.
+        - If chunking_options is provided, the document is split into smaller pieces for efficient indexing.
+        By default, uses a semantic double-pass merging chunking method.
+        - Uses self.premium_llm to extract a more precise title and authors based on the first 1000 characters,
+        the file name, and provided metadata.
+        - Optionally, for PDFs, converts to Markdown first using Marker via Docker (if use_marker=True).
+        - Prevents re-adding an already indexed document unless `overwrite=True`.
+        """
+        print(f"Loading RAG document: {file_path}")
+    
+        if folder_path:
+            file_path = os.path.join(folder_path, file_path)
+
+        # Extract the file name
+        file_name = os.path.basename(file_path)
+    
+        # Check if the file is already indexed
+        existing_docs = self.config.get_agent_data(
+            agent_name=self.__class__.__name__,
+            metadata_filter={"rag": True, "file_name": file_name},
+            query_text="*"
+        )
+        if any(existing_docs) and not overwrite:
+            print(f"The document '{file_name}' already exists. Use overwrite=True to force re-indexing.")
+            return
+
+        ext = os.path.splitext(file_path)[1].lower()
+        extra_metadata = {"file_name": file_name}
+
+        # Convert PDF to Markdown using Marker via Docker if enabled
+        if ext == '.pdf' and use_marker:
+            try:
+                print("Converting PDF -> Markdown using Marker Docker ...")
+                # Use a temporary directory to mount the file
+                tmp_dir = tempfile.mkdtemp()
+                temp_pdf_path = os.path.join(tmp_dir, file_name)
+                # Copy the PDF file to the temporary directory
+                with open(file_path, "rb") as src, open(temp_pdf_path, "wb") as dst:
+                    dst.write(src.read())
+                # Build the Docker command to convert to Markdown
+                cmd = [ "docker", "run", "--rm", "-v", f"{tmp_dir}:/data", "dibz15/marker_docker", file_name] # The container reads the file from /data
+                subprocess.run(cmd, check=True)
+                # Assume Marker creates a Markdown file with the same name but with a .md extension
+                md_file_name = os.path.splitext(file_name)[0] + ".md"
+                new_file_path = os.path.join(tmp_dir, md_file_name)
+                if os.path.exists(new_file_path):
+                    file_path = new_file_path
+                    ext = ".md"
+                    extra_metadata["converted_with_marker"] = True
+                    print(f"Conversion successful, new file: {file_path}")
+                else:
+                    print("Error: Converted Markdown file not found.")
+            except Exception as e:
+                print(f"Error during PDF -> Markdown conversion: {e}")
+    
+        # Extract metadata from PDFs if not converted via Marker
+        if ext == '.pdf' and not use_marker:
+            try:
+                import PyPDF2
+                with open(file_path, "rb") as f:
+                    reader = PyPDF2.PdfReader(f)
+                    pdf_meta = reader.metadata
+                    if pdf_meta:
+                        cleaned_meta = self.clean_metadata(dict(pdf_meta))
+                        extra_metadata.update(cleaned_meta)
+            except Exception as e:
+                print(f"Error extracting PDF metadata: {e}")
+
+        # Select the appropriate LangChain loader
+        if ext == '.pdf':
+            from langchain.document_loaders import PyPDFLoader
+            loader = PyPDFLoader(file_path)
+        elif ext == '.json':
+            from langchain.document_loaders import JSONLoader
+            loader = JSONLoader(file_path)
+        elif ext in ['.html', '.htm']:
+            from langchain.document_loaders import UnstructuredHTMLLoader
+            loader = UnstructuredHTMLLoader(file_path)
+        elif ext == '.md':
+            from langchain.document_loaders import UnstructuredMarkdownLoader
+            loader = UnstructuredMarkdownLoader(file_path)
+        else:
+            from langchain.document_loaders import UnstructuredFileLoader
+            loader = UnstructuredFileLoader(file_path)
+
+        docs = loader.load()
+
+        # Use self.premium_llm to extract a better title and authors from
+        # the first 1000 characters, file name, and metadata "name" if available.
+        if self.premium_llm:
+            try:
+                text_sample = docs[0].page_content[:1000] if docs and docs[0].page_content else ""
+                if len(text_sample)<1000 and len(docs)>1: text_sample += docs[1].page_content[:(1000-len(text_sample))] if docs and docs[1].page_content else ""
+                metadata_name = metadata.get("name", "") if metadata else ""
+                prompt = (
+                    f"Extract the document title and authors from the following details.\n"
+                    f"Document first 1000 characters: {text_sample}\n"
+                    f"File name: {file_name}\n"
+                    f"Metadata name: {metadata_name}\n\n"
+                    f"Return a valid JSON with keys 'title' and 'authors'."
+                )
+                llm_output = self.premium_llm.invoke([HumanMessage(content=prompt)])
+                try:
+                    parsed = extract_json(llm_output.content)
+                    extracted_title = parsed.get("title", "").strip()
+                    extracted_authors = str(parsed.get("authors", "")).strip()
+                    extra_metadata.update({ "extracted_title": extracted_title, "extracted_authors": extracted_authors})
+                    print("LLM extraction successful:", extracted_title, extracted_authors)
+                except Exception as parse_ex:
+                    print(f"Error parsing LLM response for title/authors: {parse_ex}")
+            except Exception as e:
+                print(f"Error extracting title/authors using LLM: {e}")
+
+        # Apply chunking if options are provided
+        if chunking_options:
+            chunked_docs = []
+            if use_semantic_chunking:
+                print("Using semantic double-pass merging chunking...")
+                for doc in docs:
+                    chunks = semantic_double_pass_chunking(doc.page_content, **chunking_options)
+                    for chunk in chunks:
+                        chunked_docs.append(type(doc)(page_content=chunk, metadata=doc.metadata))
+            else:
+                print("Using default chunking (RecursiveCharacterTextSplitter)...")
+                from langchain.text_splitter import RecursiveCharacterTextSplitter
+                splitter = RecursiveCharacterTextSplitter(**chunking_options)
+                for doc in docs:
+                    chunks = splitter.split_text(doc.page_content)
+                    for chunk in chunks:
+                        chunked_docs.append(type(doc)(page_content=chunk, metadata=doc.metadata))
+            docs = chunked_docs
+
+        # Index documents with enriched metadata
+        for doc in docs:
+            combined_metadata = metadata.copy() if metadata else {}
+            combined_metadata.update(extra_metadata)
+
+            if doc.metadata:
+                for key, value in doc.metadata.items():
+                    combined_metadata.setdefault(key, value)
+
+            combined_metadata.update({"rag": True, "source": ext})
+        
+            self.config.log_agent_data(
+                self.__class__.__name__,
+                "rag_knowledge",
+                doc.page_content,
+                metadata=combined_metadata
+            )
+        
+    def load_prompt_with_rag(self, prompt_name: str, template_data: Optional[Dict[str, Any]] = None,
+                             directory: Optional[str] = None) -> str:
+        """
+        Wraps the existing load_prompt to include RAG context.
+        
+        This method:
+         - Retrieves the base prompt using load_prompt (unchanged).
+         - Uses get_rag_documents to fetch RAG-indexed texts.
+         - Replaces the "{rag_context}" placeholder in the prompt with the aggregated RAG data.
+        """
+        base_prompt = self.config.load_prompt_template(prompt_name, template_data=template_data, directory=directory)
+        rag_docs, _ = self.get_rag_documents(agent_name=self.__class__.__name__)
+        if rag_docs:
+            rag_context = "\n".join([doc.get("rag_knowledge", "") for doc in rag_docs])
+        else:
+            rag_context = ""
+        return base_prompt.replace("{rag_context}", rag_context)
 
     def set_print_color(self):
         self.print_color = 37
@@ -1768,7 +2003,6 @@ class HumanLLM:
         )
         return output_messages_instance, output_comments_instance, score_instance
 
-
     def invoke(
         self,
         original_input_messages=None,
@@ -2751,7 +2985,7 @@ class HumanLLM:
                                 column_id=output_id
                             )
                             help_for_fixing_system_prompt = f"""You help an LLM to fix code errors which has no access to documentation or internet by extracting key code information from the INFORMATION/DOCUMENTATION provided given CODE TO FIX and ERROR MESSAGE."""
-                            error_with_info_to_help_prompt = f"ERROR MESSAGE:<<\n{exec_result}\n>>\n\nCODE TO FIX:<<\n{parsed_code['program_code']}\n>>\n\INFORMATION/DOCUMENTATION:<<\n{self.last_user_message}\n>>"
+                            error_with_info_to_help_prompt = f"ERROR MESSAGE:<<\n{exec_result}\n>>\n\nCODE TO FIX:<<\n{parsed_code['program_code']}\n>>\nINFORMATION/DOCUMENTATION:<<\n{self.last_user_message}\n>>"
                             help_code_returned = self.premium_llm.invoke([
                                 SystemMessage(content=help_for_fixing_system_prompt),
                                 HumanMessage(content=error_with_info_to_help_prompt)

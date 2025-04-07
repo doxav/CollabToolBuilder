@@ -212,7 +212,8 @@ class HumanLLMConfig:
         sort_order=None,
         k=5,
         start_index=0,
-        end_index=None
+        end_index=None,
+        query_text='*'
     ):
         """Retrieves agent-specific data based on the agent name, data key, and additional metadata.
         Supports pagination by specifying start and end indices.
@@ -242,7 +243,7 @@ class HumanLLMConfig:
         # Fetch results with a large 'k' to ensure we have enough data
         max_k = end_index if end_index is not None else k
         results = self.common_vectordb.query(
-            query_text='*',
+            query_text=query_text,
             metadata_filter=metadata,
             sort_order=sort_order,
             k=max_k

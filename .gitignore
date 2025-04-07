@@ -16,6 +16,7 @@ websocket*.txt
 mvenv/
 
 .venv/
+.DS_Store
 
 BIBLIO-TEST/
 report_outputs/
