@@ -1,4 +1,5 @@
-gitpython
+accelerate
+torchao
 
 # OpenAI and tokenization
 openai>=1.68.0
@@ -77,6 +78,8 @@ datasets
 python-git
 
 gitpython
+triton
+
 
 langchain==0.3.3
 langchain-community==0.3.2
@@ -85,7 +88,7 @@ langchain-experimental==0.3.2
 langchain-groq==0.2.0
 langchain-openai==0.2.2
 langchain-text-splitters==0.3.0
-langgraph==0.2.35
-langgraph-checkpoint==2.0.1
+langgraph==0.3.25
+langgraph-checkpoint==2.0.24
 langchain-chroma
 langsmith==0.1.133

@@ -3288,7 +3288,7 @@ class HumanLLM:
                                 column_id=output_id
                             )
                             help_for_fixing_system_prompt = f"""You help an LLM to fix code errors which has no access to documentation or internet by extracting key code information from the INFORMATION/DOCUMENTATION provided given CODE TO FIX and ERROR MESSAGE."""
-                            error_with_info_to_help_prompt = f"ERROR MESSAGE:<<\n{exec_result}\n>>\n\nCODE TO FIX:<<\n{parsed_code['program_code']}\n>>\n\INFORMATION/DOCUMENTATION:<<\n{self.last_user_message}\n>>"
+                            error_with_info_to_help_prompt = f"ERROR MESSAGE:<<\n{exec_result}\n>>\n\nCODE TO FIX:<<\n{parsed_code['program_code']}\n>>\nINFORMATION/DOCUMENTATION:<<\n{self.last_user_message}\n>>"
                             help_code_returned = self.premium_llm.invoke([
                                 SystemMessage(content=help_for_fixing_system_prompt),
                                 HumanMessage(content=error_with_info_to_help_prompt)
