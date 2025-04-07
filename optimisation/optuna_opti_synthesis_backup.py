@@ -16,6 +16,9 @@ import sys
 # Generate a timestamped filename
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 name_exp = f"{os.path.splitext(os.path.basename(__file__))[0]}_{timestamp}"
+# Check if the 'logs' directory exists, otherwise create it
+if not os.path.exists('logs'):
+    os.makedirs('logs')
 log_filename = f"logs/{name_exp}.log"
 
 # Redirect stdout to both console and log file

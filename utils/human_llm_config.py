@@ -1,6 +1,6 @@
 import logging, json, uuid, os, subprocess, time, pickle, requests, re
 from datetime import datetime
-from config import MODELS_CONFIG_LIST
+from config import MODELS_CONFIG_LIST, vector_store_type
 from utils.websocket_server import WebsocketServer, WebSocketServerConfig
 from utils.llm_utils import (
     create_Nmajority_chain,
@@ -47,7 +47,6 @@ class HumanLLMConfig:
 
         self.llm_config = LLMConfig()
         self.user_session = UserSession()
-        self.inference_tracking = InferenceTracking()
         self.task_history = TaskHistory()
 
         self.special_criteria = None
@@ -62,8 +61,9 @@ class HumanLLMConfig:
         self.configure_vector_store()
         if self.use_websocket:
             self.init_ws_server()
+        self.common_vectordb_config.db_type = vector_store_type
         self.common_vectordb = UnifiedVectorDB(self.common_vectordb_config, check_db=True)
-
+        
     def init_ws_server(self):
         if self.ws_server is None:
             self.ws_server = WebsocketServer(self.ws_server_config)
@@ -132,9 +132,11 @@ class HumanLLMConfig:
             }
 
     def add_learnt_task(self, serialized_entry, tags):
+        # self.task_history.add_completed_task(serialized_entry)
         self.db_learnt_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
 
     def add_failed_task(self, serialized_entry, tags):
+        # self.task_history.add_failed_task(serialized_entry)
         self.db_failed_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
 
     def get_user_id(self):
@@ -257,14 +259,11 @@ class HumanLLMConfig:
         ret = []
         for item in paginated_results:
             temp = json.loads(item.page_content)
+            val = None
             if isinstance(temp, dict):
-                tmp = {}
-                for key in temp:
-                    if temp[key]:
-                        tmp[key] = temp[key]
-                ret.append(tmp)
-            else:
-                ret += temp[data_key]
+                if data_key in temp:
+                    val = temp[data_key]
+            ret.append(val)
         # Ret contains only text field of the data, results contains all the metadata
         return ret, results
 
@@ -607,7 +606,8 @@ class HumanLLMConfig:
                     collection_name=self.db_collection_success,
                     embedding_function=self.common_vectordb_config.common_vectordb_embedding_function,
                     persist_directory=self.common_vectordb_config.persist_directory + self.db_collection_success,
-                    reset_indices=self.common_vectordb_config.reset_indices
+                    reset_indices=self.common_vectordb_config.reset_indices,
+                    unique_collection_id=self.common_vectordb_config.unique_collection_id
                 )
             )
         if self.db_failed_tasks is None or force:
@@ -616,7 +616,8 @@ class HumanLLMConfig:
                     collection_name=self.db_collection_failed,
                     embedding_function=self.common_vectordb_config.common_vectordb_embedding_function,
                     persist_directory=self.common_vectordb_config.persist_directory + self.db_collection_failed,
-                    reset_indices=self.common_vectordb_config.reset_indices
+                    reset_indices=self.common_vectordb_config.reset_indices,
+                    unique_collection_id=self.common_vectordb_config.unique_collection_id
                 )
             )
 
@@ -638,6 +639,9 @@ class HumanLLMConfig:
                 metadata_filter=metadata_filter,
                 sort_order=sort_order
             )
+        self.task_history.clear_completed_tasks()
+        for result in results:
+            self.task_history.add_completed_task(result.page_content)
         return {result.page_content for result in results}
 
     def get_failed_tasks(
@@ -658,6 +662,9 @@ class HumanLLMConfig:
                 metadata_filter=metadata_filter,
                 sort_order=sort_order
             )
+        self.task_history.clear_failed_tasks()
+        for result in results:
+            self.task_history.add_failed_task(result.page_content)
         return {result.page_content for result in results}
 
     def get_validation_results(

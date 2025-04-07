@@ -2,21 +2,24 @@ import os
 import tempfile
 from asyncio import subprocess
 import re, uuid, json, difflib
-import time, inspect
+import time, inspect, ast
 import socket
 import logging
 import concurrent.futures
 from jinja2 import Template
 from datetime import datetime
 from utils.llm_utils import (
-    smart_input, smart_print,
     FewShotsParams,
     InferenceCheck,
+    InferenceTracking,
+    TaskHistory,
+    smart_input, smart_print, get_primitives,
     _visual_input, save_prompt_with_tag,
-    list_prompt_variants,
+    list_prompt_variants, flatten_and_pair,
     semantic_double_pass_chunking,
     extract_json
 )
+from env.SWEBench.env import SWEBenchEnvironment
 from utils.human_llm_config import HumanLLMConfig
 from typing import List, Dict, Any, Optional
 
@@ -36,7 +39,7 @@ class HumanLLM:
         system_prompt=None,
         CPS_env_type=None,
         agent_name=None,
-        model_max_context_size=16000,
+        model_max_context_size=32000,
         default_llmORchain=None,
         premium_llmORchain=None,
         premium_llm_by_default=False,
@@ -48,13 +51,16 @@ class HumanLLM:
         temperature_min=0.7,
         temperature_max=None,
         envs=None,
-        fixed_coach=False,
+        fixed_output=False,
+        fixed_coach=None, # Retro compatibility
         prompt_critic=None,
         saved_task=None,
         automation=None,
         auto_n_rounds=None,
         recommend_critics=None,
-        task_parameters=None
+        task_parameters=None,
+        problem_prompts_subdir=None,
+        max_autofix=None
     ):
         self.config = HumanLLMConfig()
         self.logger = logging.getLogger(__name__)
@@ -95,17 +101,290 @@ class HumanLLM:
         self.llm_max_context_size = model_max_context_size
         self.premium_llm_by_default = premium_llm_by_default
         self.synthesize_mode = synthesize_mode
-        self.inference_checks = inference_checks if inference_checks else {}
-        self.excluded_inference_checks = ["Recommend Critics"]
-        self.last_inference_check_results = None
+
+        self.inference_tracking = InferenceTracking()
+        if inference_checks:
+            self.inference_tracking.inference_checks
+
         self.user_message = ""
         self.envs = envs
-        self.fixed_coach = fixed_coach
+        self.fixed_output = fixed_output if not fixed_coach else fixed_coach # Retro compatibility
         self.automation = automation
         self.outputs = None
         self.saved_task = saved_task
         self.auto_n_rounds = auto_n_rounds
         self.recommend_critics = recommend_critics
+        self.last_user_message = None
+        self.primitives_dir = None
+        self.processed_codes = set()
+        self.max_autofix = max_autofix
+        self.problem_prompts_subdir = problem_prompts_subdir 
+
+    def get_rag_documents(self, agent_name=None, extra_filter: Optional[Dict[str, Any]] = None, query: str = '*', **kwargs):
+        """
+        Convenience method to retrieve only RAG-indexed documents.
+        It wraps get_agent_data by enforcing metadata_filter with {"rag": True}.
+        """
+        metadata_filter = {"rag": True}
+        if extra_filter:
+            metadata_filter.update(extra_filter)
+        return self.config.get_agent_data(agent_name=agent_name, metadata_filter=metadata_filter, query_text=query, **kwargs)
+    
+    @staticmethod
+    def decode_bytes(obj):
+        if isinstance(obj, dict):
+            return {k: HumanLLM.decode_bytes(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [HumanLLM.decode_bytes(item) for item in obj]
+        elif isinstance(obj, bytes):
+            return obj.decode('utf-8', errors='replace')
+        else:
+            return obj
+    
+    @staticmethod
+    def serialize_metadata(metadata):
+        new_metadata = {}
+        for key, value in metadata.items():
+            if isinstance(value, IndirectObject):
+                new_metadata[key] = str(value)
+            else:
+                new_metadata[key] = value
+        return new_metadata
+
+
+    def semantic_double_pass_chunking(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list:
+        """
+        A placeholder implementation for semantic double-pass merging chunking.
+        This example first splits on paragraph breaks and then merges small chunks.
+        For production, replace with a more sophisticated method.
+        """
+        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+        chunks = []
+        current_chunk = ""
+        for p in paragraphs:
+            # If adding this paragraph stays within the chunk size, add it.
+            if len(current_chunk) + len(p) <= chunk_size:
+                current_chunk += p + "\n\n"
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                current_chunk = p + "\n\n"
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+    
+        # Optionally add overlapping between chunks (simple approach)
+        if chunk_overlap > 0 and len(chunks) > 1:
+            overlapped_chunks = []
+            for i, chunk in enumerate(chunks):
+                # add overlap from previous chunk if exists
+                if i > 0:
+                    prev = chunks[i-1][-chunk_overlap:]
+                    overlapped_chunks.append(prev + " " + chunk)
+                else:
+                    overlapped_chunks.append(chunk)
+            return overlapped_chunks
+        else:
+            return chunks
+
+    def clean_metadata(meta):
+        cleaned = {}
+        for key, value in meta.items():
+            # Convert bytes to string
+            if isinstance(value, bytes):
+                cleaned[key] = value.decode('utf-8', errors='ignore')
+            # Convert PyPDF2 IndirectObject to string
+            elif hasattr(value, "getObject"):  # A simple check for IndirectObject
+                try:
+                    # You can try to extract the actual object if needed:
+                    obj = value.getObject()
+                    cleaned[key] = str(obj)
+                except Exception:
+                    cleaned[key] = str(value)
+            else:
+                cleaned[key] = value
+        return cleaned
+
+
+    def add_rag_document(
+        self,
+        file_path: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        chunking_options: Optional[Dict[str, Any]] = None,
+        folder_path: str = None,
+        overwrite: bool = False,
+        use_marker: bool = False,  # If True, convert PDF to Markdown via Marker Docker.
+        use_semantic_chunking: bool = True  # If True, use semantic double-pass merging chunking.
+    ) -> None:
+        """
+        Loads and indexes an external document (JSON, PDF, HTML, Markdown, etc.) for RAG.
+    
+        - Uses appropriate LangChain loaders based on file extension.
+        - If chunking_options is provided, the document is split into smaller pieces for efficient indexing.
+        By default, uses a semantic double-pass merging chunking method.
+        - Uses self.premium_llm to extract a more precise title and authors based on the first 1000 characters,
+        the file name, and provided metadata.
+        - Optionally, for PDFs, converts to Markdown first using Marker via Docker (if use_marker=True).
+        - Prevents re-adding an already indexed document unless `overwrite=True`.
+        """
+        print(f"Loading RAG document: {file_path}")
+    
+        if folder_path:
+            file_path = os.path.join(folder_path, file_path)
+
+        # Extract the file name
+        file_name = os.path.basename(file_path)
+    
+        # Check if the file is already indexed
+        existing_docs = self.config.get_agent_data(
+            agent_name=self.__class__.__name__,
+            metadata_filter={"rag": True, "file_name": file_name},
+            query_text="*"
+        )
+        if any(existing_docs) and not overwrite:
+            print(f"The document '{file_name}' already exists. Use overwrite=True to force re-indexing.")
+            return
+
+        ext = os.path.splitext(file_path)[1].lower()
+        extra_metadata = {"file_name": file_name}
+
+        # Convert PDF to Markdown using Marker via Docker if enabled
+        if ext == '.pdf' and use_marker:
+            try:
+                print("Converting PDF -> Markdown using Marker Docker ...")
+                # Use a temporary directory to mount the file
+                tmp_dir = tempfile.mkdtemp()
+                temp_pdf_path = os.path.join(tmp_dir, file_name)
+                # Copy the PDF file to the temporary directory
+                with open(file_path, "rb") as src, open(temp_pdf_path, "wb") as dst:
+                    dst.write(src.read())
+                # Build the Docker command to convert to Markdown
+                cmd = [ "docker", "run", "--rm", "-v", f"{tmp_dir}:/data", "dibz15/marker_docker", file_name] # The container reads the file from /data
+                subprocess.run(cmd, check=True)
+                # Assume Marker creates a Markdown file with the same name but with a .md extension
+                md_file_name = os.path.splitext(file_name)[0] + ".md"
+                new_file_path = os.path.join(tmp_dir, md_file_name)
+                if os.path.exists(new_file_path):
+                    file_path = new_file_path
+                    ext = ".md"
+                    extra_metadata["converted_with_marker"] = True
+                    print(f"Conversion successful, new file: {file_path}")
+                else:
+                    print("Error: Converted Markdown file not found.")
+            except Exception as e:
+                print(f"Error during PDF -> Markdown conversion: {e}")
+    
+        # Extract metadata from PDFs if not converted via Marker
+        if ext == '.pdf' and not use_marker:
+            try:
+                import PyPDF2
+                with open(file_path, "rb") as f:
+                    reader = PyPDF2.PdfReader(f)
+                    pdf_meta = reader.metadata
+                    if pdf_meta:
+                        cleaned_meta = self.clean_metadata(dict(pdf_meta))
+                        extra_metadata.update(cleaned_meta)
+            except Exception as e:
+                print(f"Error extracting PDF metadata: {e}")
+
+        # Select the appropriate LangChain loader
+        if ext == '.pdf':
+            from langchain.document_loaders import PyPDFLoader
+            loader = PyPDFLoader(file_path)
+        elif ext == '.json':
+            from langchain.document_loaders import JSONLoader
+            loader = JSONLoader(file_path)
+        elif ext in ['.html', '.htm']:
+            from langchain.document_loaders import UnstructuredHTMLLoader
+            loader = UnstructuredHTMLLoader(file_path)
+        elif ext == '.md':
+            from langchain.document_loaders import UnstructuredMarkdownLoader
+            loader = UnstructuredMarkdownLoader(file_path)
+        else:
+            from langchain.document_loaders import UnstructuredFileLoader
+            loader = UnstructuredFileLoader(file_path)
+
+        docs = loader.load()
+
+        # Use self.premium_llm to extract a better title and authors from
+        # the first 1000 characters, file name, and metadata "name" if available.
+        if self.premium_llm:
+            try:
+                text_sample = docs[0].page_content[:1000] if docs and docs[0].page_content else ""
+                if len(text_sample)<1000 and len(docs)>1: text_sample += docs[1].page_content[:(1000-len(text_sample))] if docs and docs[1].page_content else ""
+                metadata_name = metadata.get("name", "") if metadata else ""
+                prompt = (
+                    f"Extract the document title and authors from the following details.\n"
+                    f"Document first 1000 characters: {text_sample}\n"
+                    f"File name: {file_name}\n"
+                    f"Metadata name: {metadata_name}\n\n"
+                    f"Return a valid JSON with keys 'title' and 'authors'."
+                )
+                llm_output = self.premium_llm.invoke([HumanMessage(content=prompt)])
+                try:
+                    parsed = extract_json(llm_output.content)
+                    extracted_title = parsed.get("title", "").strip()
+                    extracted_authors = str(parsed.get("authors", "")).strip()
+                    extra_metadata.update({ "extracted_title": extracted_title, "extracted_authors": extracted_authors})
+                    print("LLM extraction successful:", extracted_title, extracted_authors)
+                except Exception as parse_ex:
+                    print(f"Error parsing LLM response for title/authors: {parse_ex}")
+            except Exception as e:
+                print(f"Error extracting title/authors using LLM: {e}")
+
+        # Apply chunking if options are provided
+        if chunking_options:
+            chunked_docs = []
+            if use_semantic_chunking:
+                print("Using semantic double-pass merging chunking...")
+                for doc in docs:
+                    chunks = semantic_double_pass_chunking(doc.page_content, **chunking_options)
+                    for chunk in chunks:
+                        chunked_docs.append(type(doc)(page_content=chunk, metadata=doc.metadata))
+            else:
+                print("Using default chunking (RecursiveCharacterTextSplitter)...")
+                from langchain.text_splitter import RecursiveCharacterTextSplitter
+                splitter = RecursiveCharacterTextSplitter(**chunking_options)
+                for doc in docs:
+                    chunks = splitter.split_text(doc.page_content)
+                    for chunk in chunks:
+                        chunked_docs.append(type(doc)(page_content=chunk, metadata=doc.metadata))
+            docs = chunked_docs
+
+        # Index documents with enriched metadata
+        for doc in docs:
+            combined_metadata = metadata.copy() if metadata else {}
+            combined_metadata.update(extra_metadata)
+
+            if doc.metadata:
+                for key, value in doc.metadata.items():
+                    combined_metadata.setdefault(key, value)
+
+            combined_metadata.update({"rag": True, "source": ext})
+        
+            self.config.log_agent_data(
+                self.__class__.__name__,
+                "rag_knowledge",
+                doc.page_content,
+                metadata=combined_metadata
+            )
+        
+    def load_prompt_with_rag(self, prompt_name: str, template_data: Optional[Dict[str, Any]] = None,
+                             directory: Optional[str] = None) -> str:
+        """
+        Wraps the existing load_prompt to include RAG context.
+        
+        This method:
+         - Retrieves the base prompt using load_prompt (unchanged).
+         - Uses get_rag_documents to fetch RAG-indexed texts.
+         - Replaces the "{rag_context}" placeholder in the prompt with the aggregated RAG data.
+        """
+        base_prompt = self.config.load_prompt_template(prompt_name, template_data=template_data, directory=directory)
+        rag_docs, _ = self.get_rag_documents(agent_name=self.__class__.__name__)
+        if rag_docs:
+            rag_context = "\n".join([doc.get("rag_knowledge", "") for doc in rag_docs])
+        else:
+            rag_context = ""
+        return base_prompt.replace("{rag_context}", rag_context)
 
     def get_rag_documents(self, agent_name=None, extra_filter: Optional[Dict[str, Any]] = None, query: str = '*', **kwargs):
         """
@@ -688,31 +967,31 @@ class HumanLLM:
         return f"Summary: {summary.strip()}"
 
     def add_manage_inference_check(self, check_name, check_function):
-        self.inference_checks[check_name] = InferenceCheck(check_name, check_function)
+        self.inference_tracking.inference_checks[check_name] = InferenceCheck(check_name, check_function)
 
     def exclude_manage_inference_check(self, check_name: list):
         for name in check_name:
             while name[0] == " ":
                 name = name[1:]
-            if name in self.inference_checks:
-                self.excluded_inference_checks.append(name)
+            if name in self.inference_tracking.inference_checks:
+                self.inference_tracking.excluded_inference_checks.append(name)
 
     def include_manage_inference_check(self, check_name: list):
         for name in check_name:
             while name[0] == " ":
                 name = name[1:]
-            if name in self.excluded_inference_checks:
-                del self.excluded_inference_checks[self.excluded_inference_checks.index(name)]
+            if name in self.inference_tracking.excluded_inference_checks:
+                del self.inference_tracking.excluded_inference_checks[self.inference_tracking.excluded_inference_checks.index(name)]
 
     def run_manage_inference_checks(self, output_id, *args, **kwargs):
         results = {}
-        for check_name, check in self.inference_checks.items():
-            if check_name not in self.excluded_inference_checks:
+        for check_name, check in self.inference_tracking.inference_checks.items():
+            if check_name not in self.inference_tracking.excluded_inference_checks:
                 result = check.run_check(output_id, *args, **kwargs)
                 results[check_name] = result
         # Ensure output_id is within bounds before updating the list
-        if 0 <= output_id < len(self.last_inference_check_results):
-            self.last_inference_check_results[output_id] = results  # Update the specific index
+        if 0 <= output_id < len(self.inference_tracking.last_inference_check_results):
+            self.inference_tracking.last_inference_check_results[output_id] = results  # Update the specific index
         return results
 
     def get_class_name(self):
@@ -754,14 +1033,15 @@ class HumanLLM:
             callable_system_message=None,
             use_premium_llm=None,
             model_choice=None,
-            task_name=None
+            task_name=None,
+            forced_llm_output=False,  # TODO: try to set it to None
     ):
         self.mode = 'before'
         comments = None
         self.user_message = initial_user_message = messages[1].content
         function_name = inspect.stack()[2].function
         use_premium_llm = use_premium_llm if use_premium_llm is not None else self.premium_llm_by_default
-        forced_llm_output = False  # TODO: try to set it to None
+        forced_llm_output = forced_llm_output
         self.config.log_agent_data(
             self.agent_name,
             "saved_task",
@@ -817,9 +1097,6 @@ class HumanLLM:
                 if self.agent_name == "TaskIdentificationAgent":
                     if self.num_parallel_inferences > 1:
                         self.synthesize_mode = True
-                    if self.fixed_coach:
-                        # We force the output of the llm.
-                        forced_llm_output = self.fixed_coach
 
                 self.set_default_llmORchain(new_llm_name)
                 self.set_premium_llmORchain(new_llm_name)
@@ -838,6 +1115,10 @@ class HumanLLM:
 
             # ACTIONS processing
             self.start_time = time.time()  # Init action selected and timer to measure time spent and occurrences in action processing
+
+            if self.fixed_output:
+                # We force the output of the llm.
+                forced_llm_output = self.fixed_output
 
             if action == "A":  # Modify system prompt
                 comments, forced_llm_output = self.update_prompt_template(
@@ -1008,7 +1289,7 @@ class HumanLLM:
         return comments
 
     def optimize_response(self, forced_llm_output, function_name):
-        if self.fixed_coach:
+        if self.fixed_output:
             selected_index = 1
             log_entries, list_output = self.config.retrieve_logs(self.agent_name, function_name), ""
         elif self.config.common_vectordb.count() > 0:
@@ -1680,8 +1961,8 @@ class HumanLLM:
             return instructions
 
         critic = None
-        if self.last_inference_check_results:
-            for result in self.last_inference_check_results:
+        if self.inference_tracking.last_inference_check_results:
+            for result in self.inference_tracking.last_inference_check_results:
                 if result is not None and isinstance(result, dict):
                     for key, value in result.items():
                         if key == 'Recommend Critics':
@@ -2024,6 +2305,7 @@ class HumanLLM:
         )
         return output_messages_instance, output_comments_instance, score_instance
 
+
     def invoke(
         self,
         original_input_messages=None,
@@ -2041,18 +2323,33 @@ class HumanLLM:
         model_choice=None,
         temperature_max=None,
         task_name=None,
-        prompt_directory="prompts"
+        prompt_directory="prompts",
+        generation_technique='temperature_variation',
+        forced_llm_output=None,
     ):
-        # if not self.selected_llm_or_chain: raise ValueError("No LLM or chain selected for use.")
+        """
+        This method can perform different multi-inference strategies depending on 
+        'generation_technique'. When self.num_parallel_inferences > 1, it can:
+          - 'temperature_variation'
+          - 'self_refinement'
+          - 'iterative_alternatives'
+          or fallback to the original concurrency-based parallel calls (default).
+        """
         if temperature_min is None: temperature_min = self.temperature_min
         if temperature_max is None: temperature_max = self.temperature_max
-        # Define a helper function to perform the LLM calls for parallel inference.
 
-        def perform_llm_call(input_msg, use_premium, func_calling, temperature=None, stream_output=True, color_id=None):
+        # Helper function to actually make a single LLM call, streaming or not.
+        def perform_llm_call( input_msg, use_premium, func_calling, temperature=None, stream_output=True, color_id=None):
+            """
+            Wraps invocation logic for a single call. Adjusts temperature if supplied.
+            Handles partial streaming via smart_print.
+            """
             if use_premium:
                 func = premium_llm_function if not func_calling else self.invoke_with_function_call
             else:
                 func = default_llm_function if not func_calling else self.invoke_with_function_call
+
+            # Override temperature if provided
             if temperature or temperature == 0:
                 func = func.with_config(configurable={"llm_temperature": temperature})
                 print(f"Temperature set to {temperature}")
@@ -2060,13 +2357,15 @@ class HumanLLM:
                 print("No temperature value, not set")
 
             if stream_output:
+                # Choose color for streaming text if multiple inferences
                 if color_id is None or color_id <= 0:
                     start_color, end_color = "", ""
                 else:
-                    start_color, end_color = \
-                        ["\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m", "\033[97m"][
-                            color_id % 7], "\033[0m"
-                final_output = ""  # Initialize an empty string to hold the full response
+                    # Using the 7 ANSI colors in round-robin
+                    color_pal = ["\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m", "\033[97m"]
+                    start_color, end_color = color_pal[color_id % 7], "\033[0m"
+
+                final_output = ""
                 smart_print("", self.agent_name, "Inference streaming output")
                 previous_chunk_str = ""
                 json_trail_re = re.compile(r'[\'\}\]]$')
@@ -2080,7 +2379,9 @@ class HumanLLM:
                         chunk_content = chunk.content
                         final_output += chunk_content
                     else:
+                        # Fallback if chunk is not a usual "AIMessage" chunk
                         current_chunk_str = str(chunk)
+                        # Attempt to trim any trailing bracket/brace that might break JSON
                         while json_trail_re.search(current_chunk_str):
                             current_chunk_str = current_chunk_str[:-1]
                         new_part_index = len(previous_chunk_str)
@@ -2089,7 +2390,6 @@ class HumanLLM:
                         final_output += chunk_content
 
                     buffer += chunk_content
-
                     current_time = time.time()
                     time_elapsed = current_time - buffer_start_time
 
@@ -2098,91 +2398,140 @@ class HumanLLM:
                     delimiter_pos = -1
                     delimiter_length = 0
 
+                    # If we haven't flushed for a while, flush everything
                     if time_elapsed >= flush_interval:
                         should_flush = True
-                        delimiter_pos = len(buffer)  # Flush the entire buffer
-                    elif ('\n\n' in buffer or '<br>' in buffer) and len(buffer) >= 100:
-                        # Find the last occurrence of "\n\n" or "<br>"
-                        pos_newline = buffer.rfind('\n\n')
-                        pos_br = buffer.rfind('<br>')
-                        if pos_newline > pos_br:
-                            delimiter_pos = pos_newline
-                            delimiter_length = 2  # Length of "\n\n"
-                        else:
-                            delimiter_pos = pos_br
-                            delimiter_length = 4  # Length of "<br>"
-
-                        if delimiter_pos != -1:
-                            should_flush = True
+                        delimiter_pos = len(buffer)
+                    else:
+                        # If there's enough text plus a new line, flush up to that delimiter
+                        if ('\n\n' in buffer or '<br>' in buffer) and len(buffer) >= 100:
+                            pos_newline = buffer.rfind('\n\n')
+                            pos_br = buffer.rfind('<br>')
+                            if pos_newline > pos_br:
+                                delimiter_pos = pos_newline
+                                delimiter_length = 2
+                            else:
+                                delimiter_pos = pos_br
+                                delimiter_length = 4
+                            if delimiter_pos != -1:
+                                should_flush = True
 
                     if should_flush:
                         if delimiter_pos == len(buffer):
-                            # Time-based flush: send the entire buffer
+                            # Time-based flush: entire buffer
                             to_send = buffer
                             buffer = ""
                         elif delimiter_pos != -1:
-                            # Delimiter-based flush: send up to the last delimiter
+                            # Delimiter-based flush: up to the last delimiter
                             to_send = buffer[:delimiter_pos + delimiter_length]
                             buffer = buffer[delimiter_pos + delimiter_length:]
                         else:
-                            # No delimiter found, flush entire buffer
+                            # No delimiter => flush entire buffer
                             to_send = buffer
                             buffer = ""
 
+                        # Websocket vs console output
                         if self.config.use_websocket:
-                            smart_print(
-                                to_send,
-                                self.agent_name,
-                                f"Inference streaming output {color_id}",
-                                append=True,
-                                column_id=color_id,
-                                column_max=self.num_parallel_inferences
-                            )
+                            smart_print( to_send, self.agent_name, f"Inference streaming output {color_id}", append=True, column_id=color_id, column_max=self.num_parallel_inferences)
                         else:
-                            smart_print(
-                                start_color + to_send + end_color,
-                                self.agent_name,
-                                f"Inference streaming output {color_id}", append=True
-                            )
+                            smart_print( start_color + to_send + end_color, self.agent_name, f"Inference streaming output {color_id}", append=True)
 
-                        # Reset the timer after flushing
                         buffer_start_time = current_time
 
-                # Final flush after streaming ends
+                # Final flush
                 if buffer:
                     if self.config.use_websocket:
-                        smart_print(
-                            buffer,
-                            self.agent_name,
-                            f"Inference streaming output {color_id}",
-                            append=True,
-                            column_id=color_id,
-                            column_max=self.num_parallel_inferences
-                        )
+                        smart_print( buffer, self.agent_name, f"Inference streaming output {color_id}", append=True, column_id=color_id, column_max=self.num_parallel_inferences)
                     else:
-                        smart_print(
-                            start_color + buffer + end_color,
-                            self.agent_name,
-                            f"Inference streaming output {color_id}",
-                            append=True
-                        )
+                        smart_print( start_color + buffer + end_color, self.agent_name, f"Inference streaming output {color_id}", append=True)
 
                 return AIMessage(content=final_output)
 
             else:
+                # No streaming. Normal call
                 value = func.invoke(input_msg)
                 return AIMessage(content=value.content if hasattr(value, 'content') else str(value))
 
+        def generate_single(system_prompt, user_prompt, use_premium_llm, function_calling,
+                            temperature=0.0, stream_output=False, color_id=0):
+            """
+            Single pass call wrapper using perform_llm_call.
+            Returns an AIMessage object.
+            """
+            # Rebuild the message array for the LLM
+            input_messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+            return perform_llm_call( input_messages, use_premium=use_premium_llm, func_calling=function_calling, temperature=temperature, stream_output=stream_output, color_id=color_id)
+
+        def generate_candidates( generation_technique, system_prompt, user_prompt, num_responses, use_premium_llm,
+            function_calling, temp_min, temp_max, stream_output):
+            """
+            Generates multiple candidates based on different strategies. 
+            Returns a list of AIMessage objects.
+            """
+            candidates = []
+
+            if num_responses < 1: num_responses = 1
+
+            if generation_technique == "temperature_variation":
+                # We replicate the snippet logic
+                self.synthesize_mode = True  # you can set this if you want final synthesis
+                # Build a uniform range of temperatures from temp_max down to temp_min
+                temperatures = [ abs(round(temp_max - i * (temp_max - temp_min) / max(1, num_responses - 1),2)) for i in range(num_responses) ]
+                smart_print( f"Temperatures for responses: {temperatures}", self.agent_name, "Temperature Variation", optional=True)
+
+                for i, temp in enumerate(temperatures):
+                    candidate = generate_single( system_prompt, user_prompt, use_premium_llm, function_calling, temperature=temp, stream_output=stream_output, color_id=i)
+                    candidates.append(candidate)
+
+            elif generation_technique == "self_refinement":
+                # For each new candidate, we refine the previous
+                # Typically used in smaller loops
+                for _ in range(num_responses):
+                    if not candidates:  # First candidate
+                        current_prompt = system_prompt
+                    else:
+                        # Reflect on the last candidate
+                        current_prompt = f"{system_prompt}\nRefine the following solution to improve answer to user's prompt. SOLUTION: <<<\n{candidates[-1].content}\n>>>"
+
+                    candidate = generate_single( current_prompt, user_prompt, use_premium_llm, function_calling, temperature=0.0,  stream_output=stream_output, color_id=0)
+                    candidates.append(candidate)
+
+            elif generation_technique == "iterative_alternatives":
+                self.synthesize_mode = True
+                for i in range(num_responses):
+                    if not candidates:
+                        current_prompt = system_prompt
+                    else:
+                        # Generate a new alternative based on all previous
+                        previous_solutions = "\n".join(f"SOLUTION {idx + 1}: <<<\n{cand.content}\n>>>" for idx, cand in enumerate(candidates))
+                        current_prompt = f"{system_prompt}\nGiven the following solutions, propose a new alternative optimal solution to user's prompt:\n{previous_solutions}\n"
+
+                    candidate = generate_single( current_prompt, user_prompt, use_premium_llm, function_calling, temperature=0.0, stream_output=stream_output, color_id=i)
+                    candidates.append(candidate)
+
+            else:
+                raise ValueError(f"Invalid generation_technique: {generation_technique}.  Supported options: 'temperature_variation', 'self_refinement', 'iterative_alternatives'.")
+
+            return candidates
+
         smart_print(
             f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[1].function} calling HumanLLM****\033[0m",
-            self.agent_name, "HumanLLM", optional=True)
+            self.agent_name,
+            "HumanLLM",
+            optional=True
+        )
+
         if system_prompt_template:
             self.system_prompt = system_prompt_template
+
         if default_llm_function is None:
             default_llm_function = self.default_llm if use_default_llm else self.premium_llm
         if premium_llm_function is None:
             premium_llm_function = self.premium_llm if self.premium_llm else None
+
         self.logger.info(f"****agent : {self.agent_name}, automation : {self.automation}****")
+
+        # Possibly override system_prompt from saved_task if automation=before, etc.
         if self.automation == 'before' and (hasattr(self, "saved_task")):
             temp = self.saved_task.get('content', {})
             self.logger.info(f"****temp (prompt before {self.agent_name}) : {temp}****")
@@ -2196,9 +2545,14 @@ class HumanLLM:
                 HumanMessage(content=user_message)
             ]
         elif original_input_messages is None:
+            # Standard usage if no special automation
             self.logger.info(f"****user_message {self.agent_name} : {user_message}****")
             original_input_messages = [
-                SystemMessage(content=self.config.load_prompt_template(prompt_name=self.system_prompt, directory=prompt_directory)),
+                SystemMessage(
+                    content=self.config.load_prompt_template(
+                        prompt_name=self.system_prompt, directory=prompt_directory
+                    )
+                ),
                 HumanMessage(content=user_message)
             ]
 
@@ -2224,14 +2578,17 @@ class HumanLLM:
                 )
 
             start_time = datetime.now()
-            # Pre-inference human intervention
+
+            # Automation short-circuits
             if self.automation in ['before', 'after', 'skip_once']:
-                self.logger.info(f"****agent : {self.agent_name}, automation : {self.automation}****")
+                # Possibly skip or read from saved_task ...
                 input_comments, skip_inference, use_premium_llm, llm_outputs = None, False, False, []
                 llm_input_messages = original_input_messages
                 self.llm_input_messages = original_input_messages
-                self.last_inference_check_results = [None]
-                if self.automation == 'after' and hasattr(self, "saved_task"):  # Plus besoin de tester sur agent_name
+                self.inference_tracking.last_inference_check_results = [None]
+
+                if self.automation == 'after' and hasattr(self, "saved_task"):
+                    # e.g. saved LLM output
                     temp = self.saved_task.get('content', {})
                     self.logger.info(f"****temp (llm_output after {self.agent_name}) : {temp}****")
                     llm_outputs = [AIMessage(content=temp.get('llm_output', ""))]
@@ -2245,159 +2602,159 @@ class HumanLLM:
                         self.agent_name,
                         "NEW inference result recieved",
                         column_id=0,
-                        column_max=1)
+                        column_max=1
+                    )
             else:
-                llm_input_messages, input_comments, skip_inference, use_premium_llm, default_llm_function, premium_llm_function, function_calling = self.pre_inference(
-                    original_input_messages,
-                    default_llm_function,
-                    premium_llm_function,
-                    function_calling,
-                    callable_system_message,
-                    model_choice=model_choice,
-                    task_name=task_name
-                )
+                # Normal pre_inference flow
+                llm_input_messages, input_comments, skip_inference, use_premium_llm, \
+                    default_llm_function, premium_llm_function, function_calling = self.pre_inference(
+                        original_input_messages,
+                        default_llm_function,
+                        premium_llm_function,
+                        function_calling,
+                        callable_system_message,
+                        model_choice=model_choice,
+                        task_name=task_name,
+                        forced_llm_output=forced_llm_output
+                    )
+
                 self.llm_input_messages = llm_input_messages
                 self.clear_selected_outputs()
-                self.last_inference_check_results = [None] * self.num_parallel_inferences  # Pre-allocate the list with None
+                # Preallocate check results
+                self.inference_tracking.last_inference_check_results = [None] * self.num_parallel_inferences
+
                 if llm_input_messages and not skip_inference:
-                    # Use concurrent futures to parallelize the LLM calls.
-                    outputs = []
+                    # If a generation_technique is specified AND we have multiple inferences,
+                    # we use our new approach. Otherwise, fallback to the original concurrency-based approach.
+                    if generation_technique and self.num_parallel_inferences > 1:
+                        # figure out system vs user for generate_candidates
+                        system_prompt_used = llm_input_messages[0].content
+                        user_prompt_used = llm_input_messages[1].content
 
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_parallel_inferences) as executor:
-                        if type(self.premium_llm if use_premium_llm else self.default_llm) == type(self.llmORchains_list.get('3_majority_chain')):
-                            stream_output = True
-                        futures = [
-                            executor.submit(
-                                perform_llm_call,
-                                llm_input_messages,
-                                use_premium_llm,
-                                function_calling,
-                                (
-                                    (temperature_min + i * (temperature_max - temperature_min) / (self.num_parallel_inferences - 1))
-                                    if (temperature_min is not None and self.num_parallel_inferences > 1 and temperature_min >= 0.)
-                                    else 0
-                                ),
-                                stream_output,
-                                i
-                            ) for i in
-                            range(self.num_parallel_inferences)
-                        ]
-                        for idx, future in enumerate(futures):
-                            try:
-                                llm_response = future.result(timeout=timeout_seconds)
-                                outputs.append(llm_response)
-                                if self.config.use_websocket:
-                                    smart_print(
-                                        llm_response.content,
-                                        self.agent_name, "NEW inference result recieved", column_id=idx,
-                                        column_max=self.num_parallel_inferences)
-                                else:
-                                    smart_print(
-                                        f'\033[0m**** New inference result recieved and added to outputs as #{len(outputs)}\033[0m:\n{llm_response.content}\n\033[9mEND OF #{len(outputs)}****\033[0m',
-                                        self.agent_name, "NEW inference result recieved", column_id=idx,
-                                        column_max=self.num_parallel_inferences)
-                            except concurrent.futures.TimeoutError:
-                                smart_print('A task ran longer than the allotted timeout and was cancelled.',
-                                            self.agent_name, "Inference result TIMEOUT")
-                            except Exception as exc:
-                                smart_print(f'Generated an exception: {exc}', self.agent_name,
-                                            "Inference result EXCEPTION")
-                        # Wait for all the futures to complete before continuing.
-                        concurrent.futures.wait(futures)
-                    if len(outputs) == 0:
-                        smart_print(
-                            '**** No inference result recieved, set output to None',
-                            self.agent_name,
-                            "NO inference recieved"
+                        llm_outputs = generate_candidates(
+                            generation_technique=generation_technique,
+                            system_prompt=system_prompt_used,
+                            user_prompt=user_prompt_used,
+                            num_responses=self.num_parallel_inferences,
+                            use_premium_llm=use_premium_llm,
+                            function_calling=function_calling,
+                            temp_min=temperature_min,
+                            temp_max=temperature_max,
+                            stream_output=stream_output
                         )
-                        llm_outputs = None
-                    elif len(outputs) == 1:
-                        # smart_print(f'**** One inference result recieved, set output to it', self.agent_name, "ONE inference recieved")
-                        llm_outputs = outputs
+                        # Show them in console or UI
+                        for idx, candidate in enumerate(llm_outputs):
+                            if self.config.use_websocket:
+                                smart_print(
+                                    candidate.content,
+                                    self.agent_name, 
+                                    "NEW inference result received", 
+                                    column_id=idx,
+                                    column_max=self.num_parallel_inferences
+                                )
+                            else:
+                                smart_print(
+                                    f'\033[0m**** New inference result #{idx+1} ****\n{candidate.content}\n**** END ****\033[0m',
+                                    self.agent_name,
+                                    "NEW inference result",
+                                    column_id=idx,
+                                    column_max=self.num_parallel_inferences
+                                )
                     else:
-                        if self.synthesize_mode and len(outputs) > 1:
-                            synthesized_response = self.synthesize_responses(
-                                [output.content for output in outputs],
-                                use_default_llm
-                            )
-                            llm_outputs = [AIMessage(content=synthesized_response.content)]
-                            smart_print(
-                                f'**** {len(outputs)} inference results received, THEN SYNTHETISED to 1',
-                                self.agent_name,
-                                "MULTIPLE to 1 SYNTHESIS (similar to Mixture of Agents)"
-                            )
-                        else:
-                            smart_print(
-                                f'**** {len(outputs)} inference results received - You will be requested to select which ones to keep',
-                                self.agent_name, "MULTIPLE inferences received")
-                            llm_outputs = outputs
-                else:  # Skip the LLM inference.
-                    # Ensure skip_inference is a string
-                    if not isinstance(skip_inference, str):
-                        skip_inference = str(skip_inference)
+                        # Original concurrency approach:
+                        outputs = []
+                        with concurrent.futures.ThreadPoolExecutor(
+                            max_workers=self.num_parallel_inferences
+                        ) as executor:
+                            # streaming could be on if chain is used
+                            if isinstance(
+                                (self.premium_llm if use_premium_llm else self.default_llm),
+                                type(self.llmORchains_list.get('3_majority_chain'))
+                            ):
+                                stream_output = True
 
-                    llm_outputs = [AIMessage(content=skip_inference)]
+                            futures = [
+                                executor.submit(
+                                    perform_llm_call,
+                                    llm_input_messages,
+                                    use_premium_llm,
+                                    function_calling,
+                                    (   (temperature_min + i * (temperature_max - temperature_min) / (self.num_parallel_inferences - 1))
+                                        if (temperature_min is not None and self.num_parallel_inferences > 1 and temperature_min >= 0.)
+                                        else 0),
+                                    stream_output,
+                                    i
+                                )
+                                for i in range(self.num_parallel_inferences)
+                            ]
+                            for idx, future in enumerate(futures):
+                                try:
+                                    llm_response = future.result(timeout=timeout_seconds)
+                                    outputs.append(llm_response)
+                                    if self.config.use_websocket:
+                                        smart_print( llm_response.content, self.agent_name,  "NEW inference result recieved", column_id=idx, column_max=self.num_parallel_inferences)
+                                    else:
+                                        smart_print( f'\033[0m**** New inference result recieved and added to outputs as #{len(outputs)}\033[0m:\n{llm_response.content}\n\033[9mEND OF #{len(outputs)}****\033[0m', self.agent_name, "NEW inference result recieved", column_id=idx, column_max=self.num_parallel_inferences )
+                                except concurrent.futures.TimeoutError:
+                                    smart_print( 'A task ran longer than the allotted timeout and was cancelled.', self.agent_name, "Inference result TIMEOUT" )
+                                except Exception as exc:
+                                    smart_print( f'Generated an exception: {exc}', self.agent_name, "Inference result EXCEPTION" )
+                            concurrent.futures.wait(futures)
+
+                        # Check how many we got
+                        if len(outputs) == 0:
+                            smart_print( '**** No inference result recieved, set output to None', self.agent_name, "NO inference recieved")
+                            llm_outputs = None
+                        elif len(outputs) == 1:
+                            llm_outputs = outputs
+                        else:
+                            # Possibly synthesize
+                            if self.synthesize_mode and len(outputs) > 1:
+                                synthesized_response = self.synthesize_responses( [output.content for output in outputs], use_default_llm)
+                                llm_outputs = [AIMessage(content=synthesized_response.content)]
+                                smart_print( f'**** {len(outputs)} inference results received, THEN SYNTHETISED to 1', self.agent_name, "MULTIPLE to 1 SYNTHESIS" )
+                            else:
+                                smart_print( f'**** {len(outputs)} inference results received - selecting keepers below.', self.agent_name, "MULTIPLE inferences received")
+                                llm_outputs = outputs
+                else:
+                    # Skip LLM inference
+                    skip_inference_str = str(skip_inference) if not isinstance(skip_inference, str) else skip_inference
+                    llm_outputs = [AIMessage(content=skip_inference_str)]
             end_time = datetime.now()
-            raw_llm_outputs = [(output.content if output else None) for output in llm_outputs] if isinstance(
-                llm_outputs, list) else None
+
+            raw_llm_outputs = (
+                [output.content for output in llm_outputs] 
+                if isinstance(llm_outputs, list) else None
+            )
+
             output_messages, output_comments, score = [], [], []
             if llm_outputs:
-                # save the current skip_rounds value because multiple outputs decrease skip rounds for each parallel output
                 init_skip_rounds = self.skip_rounds
                 if len(llm_outputs) > 1:
-                    smart_print(
-                        "**** Multiple LLM ANSWERS > we will process POST INFERENCE for each ****",
-                        self.agent_name,
-                        "Multiple LLM ANSWERS",
-                        append=True,
-                        optional=True
+                    smart_print( "**** Multiple LLM ANSWERS > process POST-INFERENCE for each ****", self.agent_name, "Multiple LLM ANSWERS", append=True, optional=True)
+
+                # Sequentially handle each inference’s post-processing
+                for counter, llm_output in enumerate(llm_outputs, start=1):
+                    msg, comm, sc = self.process_output(
+                        llm_output,
+                        counter,
+                        llm_outputs,
+                        init_skip_rounds,
+                        task_name
                     )
-                if False and self.config.use_websocket:
-                    # Utilisez un ThreadPoolExecutor pour exécuter les réponses en parallèle en mode WebSocket.
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        futures = []
-                        print(f"****agent : {self.agent_name}, websocket****")
-                        for counter, llm_output in enumerate(llm_outputs, start=1):
-                            print(f"****agent : {self.agent_name}, websocket, counter : {counter}****")
-                            futures.append(executor.submit(
-                                self.process_output,
-                                llm_output,
-                                counter,
-                                llm_outputs,
-                                init_skip_rounds,
-                                task_name
-                            ))
+                    output_messages.append(msg)
+                    if msg == -1:
+                        break
+                    output_comments.append(comm)
+                    score.append(sc)
 
-                        # Attendre que toutes les tâches soient terminées.
-                        results = [future.result() for future in futures]
-
-                        # Traiter les résultats de chaque future (en parallèle ou séquentiellement)
-                        for counter, (output_messages_instance, output_comments_instance, score_instance) in enumerate(
-                                results, start=1):
-                            output_messages.append(output_messages_instance)
-                            if output_messages_instance == -1:
-                                break
-                            output_comments.append(output_comments_instance)
-                            score.append(score_instance)
+                # If any message returned -1 => user did "redo" => revert input
+                if any(msg == -1 for msg in output_messages):
+                    original_input_messages[0].content = input_contents_str0
+                    original_input_messages[1].content = input_contents_str1
                 else:
-                    # Traitement séquentiel classique
-                    for counter, llm_output in enumerate(llm_outputs, start=1):
-                        output_messages_instance, output_comments_instance, score_instance = self.process_output(
-                            llm_output, counter, llm_outputs, init_skip_rounds, task_name)
-                        output_messages.append(output_messages_instance)
-                        if output_messages_instance == -1:
-                            break
-                        output_comments.append(output_comments_instance)
-                        score.append(score_instance)
-
-                # Test si l'une des instances de output_messages == -1
-                if any([output_messages_instance == -1 for output_messages_instance in output_messages]):
-                    original_input_messages[0].content, original_input_messages[
-                        1].content = input_contents_str0, input_contents_str1
-                else:
-                    # Sortir de la boucle
+                    # Normal exit
                     break
-            # Modifier afin de tester sur 'skip_once', et dans ce cas pas besoin de tester l'agent_name
             elif self.automation == 'skip_once' and hasattr(self, "saved_task"):
                 if self.auto_n_rounds > 0:
                     self.automation = "full_auto"
@@ -2414,27 +2771,25 @@ class HumanLLM:
                 self.auto_n_rounds -= 1
             if not self.auto_n_rounds:
                 self.automation = None
-        # Get the calling function's name using inspect
-        caller_function_name = inspect.stack()[1].function
 
+        caller_function_name = inspect.stack()[1].function
         call_duration = time.time() - call_start_time
 
-        # Logging
+        # Logging 
         self._log_entry(
             function_name=caller_function_name,
             input_contents=llm_input_messages,
             output_contents=output_messages,
             inference_time=(end_time - start_time).total_seconds(),
-            input_modified=((llm_input_messages[0].content + "\n" + llm_input_messages[1].content) != (
-                    input_contents_str0 + "\n" + input_contents_str1)),
+            input_modified=((llm_input_messages[0].content + "\n" + llm_input_messages[1].content) != (input_contents_str0 + "\n" + input_contents_str1)),
             skipped_inference=True if skip_inference else False,
             skip_rounds=self.skip_rounds,
             input_comments=input_comments,
             output_comments=output_comments,
             output_llm_raw=raw_llm_outputs,
-            # test if any  output_modified=(output_messages.content != raw_llm_output),
             output_modified=any(
-                output_message.content != raw for output_message, raw in zip(output_messages, raw_llm_outputs)),
+                o.content != r for o, r in zip(output_messages, raw_llm_outputs or [])
+            ),
             score=score,
             message_tokens=None,
             use_premium_llm=use_premium_llm,
@@ -2442,7 +2797,7 @@ class HumanLLM:
             synthesize_mode=self.synthesize_mode
         )
 
-        return [message.content for message in output_messages] if return_message_content_only else output_messages
+        return ([msg.content for msg in output_messages] if return_message_content_only else output_messages)
 
     def generate_best_improvement_suggestions(self, inference_result_content=None, output_id=None):
         """
@@ -2464,7 +2819,7 @@ class HumanLLM:
         # Run checks on the inference content if available
         improvement_feedback = []
         check_results = []
-        for inference_check in self.last_inference_check_results:
+        for inference_check in self.inference_tracking.last_inference_check_results:
             if inference_check:
                 check_results += [inference_check]
                 break
@@ -2590,3 +2945,611 @@ class HumanLLM:
     
     def goto_task(self, id_task: str, automatic: str = None, special_criteria: dict = None, task_details: str = None):
         return self.config.goto_task(id_task, automatic, special_criteria, task_details)
+    
+    def parse_ai_generated_code(
+        self,
+        message,
+        language="py",
+        retry=3,
+        required_bot_arg=None,
+        task_definition=None,
+        automatic_tests=False,
+        output_id=None
+    ):
+        # test if self.parsed_code is already set
+        if not hasattr(self, "parsed_code"):
+            self.parsed_code = {}
+        # Convert text to dictionary
+        try:
+            result_dict = ast.literal_eval(message)
+        except Exception as e:
+            result_dict = None
+        # if result_dict is a dictionary and code exists, change message to result_dict["code"]
+        if isinstance(result_dict, dict) and "MainFunction" in result_dict:
+            code = ""
+            if "HelperFunctions" in result_dict:
+                for helper_function in result_dict["HelperFunctions"]:
+                    code += helper_function["code"] + "\n"
+            code += result_dict["MainFunction"]["code"]
+        else:
+            code = None
+        error = None
+        while retry > 0:
+            try:
+                if language == "py":  # Python caset
+                    if code is None:
+                        # Match Python code blocks
+                        code_pattern = re.compile(r"```python(.*?)(```|$)", re.DOTALL)
+                        codes_match = [match[0].strip() for match in code_pattern.findall(message)]
+                        code = "\n".join(codes_match) if codes_match else message
+
+                    parsed = ast.parse(code)
+                    functions = []
+                    imports = []
+                    classes = []
+                    runnable_code = ""
+
+                    function_calls = set()  # To track all functions that are being called
+                    function_defs = {}  # To track all function definitions
+                    last_function = None  # To store the last defined function
+
+                    if len(code) == 0 or len(list(parsed.body)) == 0:
+                        return False, f"Error parsing action response (No Code found): {parsed.body}"
+
+                    # Use ast.walk to go through all nodes in the AST
+                    for node in ast.walk(parsed):
+                        if isinstance(node, ast.FunctionDef):
+                            node_type = "FunctionDef"
+                            function_info = {
+                                "name": node.name,
+                                "type": node_type,
+                                "body": ast.get_source_segment(code, node),
+                                "params": [arg.arg for arg in node.args.args],
+                            }
+                            functions.append(function_info)
+                            function_defs[node.name] = function_info  # Store function definition
+                            last_function = function_info  # Track the last defined function
+
+                        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                            # Record function calls by name
+                            function_calls.add(node.func.id)
+
+                        elif isinstance(node, ast.ClassDef):
+                            node_type = "ClassDef"
+                            class_info = {
+                                "name": node.name + ".run_pipeline",
+                                "type": node_type,
+                                "body": ast.get_source_segment(code, node),
+                            }
+                            classes.append(class_info)
+                            functions.append(class_info)  # Append class definition as a function as per original logic
+
+                        elif isinstance(node, (ast.Expr, ast.Expression, ast.Assign)):
+                            node_type = "Expression"
+                            runnable_code += "\n" + ast.get_source_segment(code, node)
+
+                        elif isinstance(node, (ast.ImportFrom, ast.Import)):
+                            node_type = "ImportFrom"
+                            imports.append(ast.get_source_segment(code, node))
+
+                    # Now we need to find the main function as per the new logic:
+                    # 1. Identify the root function (not called by any other function).
+                    # 2. If no root exists, fallback to the last defined function.
+
+                    # Identify root function (not called by any other function)
+                    root_function = None
+                    for function_name, function_info in function_defs.items():
+                        if function_name not in function_calls:
+                            root_function = function_info
+                            break
+
+                    # If no root function is found, use the last defined function
+                    main_function = root_function if root_function else last_function
+
+                    # Ensure we have a main function
+                    assert main_function is not None, "No main function found."
+
+                    # Check if required_bot_arg is present in the main function's parameters
+                    if required_bot_arg:
+                        assert required_bot_arg in main_function["params"], f"Main function {main_function['name']} must take an argument named '{required_bot_arg}'"
+
+                    # Assemble the final program code
+                    program_code = "\n".join(imports) + "\n"
+                    program_code += "\n\n".join(function["body"] for function in functions)
+
+                    tests_pattern = re.compile(r'\n#\s+document #([a-z0-9-]+)\s+.*test[^\n]*?\n([^\n]+)|{.*?\"documentid\":\s*\"#(.*?)\",\s*\"FunctionCall\":\s*\"([^\"]+)\".*?}', re.IGNORECASE)
+                    matches = tests_pattern.findall(task_definition if task_definition is not None else self.last_user_message)
+
+                    if matches and not automatic_tests:
+                        tests = [match[:2] if match[0] != "" else match[2:] for match in matches]
+                    else:
+                        self.logger.info("Running default tests with bot argument to main function")
+                        tests = [(env.id, main_function["name"] + "(bot)") for env in self.envs]
+
+                    for doc_id, test in tests:
+                        try:
+                            parsed_test = ast.parse(test)
+                        except Exception as e:
+                            return False, f"Error parsing code of Tests:\nERROR: {e}\nCODE: {test}"
+                        # check if the test is a function call
+                        if not isinstance(parsed_test.body[0], ast.Expr):
+                            return False, f"Error parsing code of Tests (not a function call): {test}"
+                else:
+                    raise ValueError(f"Unsupported language in this version: {language}")
+
+                self.parsed_code[output_id] = {
+                    "program_code": program_code,
+                    "main_function": main_function,
+                    "runnable_code": runnable_code,
+                    "tests": tests,
+                }
+                return True, self.parsed_code[output_id]
+
+            except Exception as e:
+                retry -= 1
+                error = e
+                time.sleep(0.1)
+
+        self.parsed_code[output_id] = f"Error parsing action response (before program execution): {error}"
+        smart_print(
+            f"CODE PARSING ERROR!!!\n{error}",
+            self.agent_name,
+            "code_task_and_run_test SystemMessage",
+            optional=False,
+            column_id=output_id
+        )
+        return False, self.parsed_code[output_id]
+    
+    def run_tests_on_code(
+        self,
+        message,
+        parsed_code=None,
+        skip_already_processed=False,
+        output_id=None,
+        restore_state=True,
+        custom_agent=None
+    ):
+        # Retrieve error_patches from HumanLLMMonitor
+        metadata = {'step_id': HumanLLMConfig().step_id}
+        error_patches, _ = HumanLLMConfig().get_agent_data(self.agent_name, 'error_patches', metadata_filter=metadata)
+        error_patches = error_patches if error_patches else []
+
+        primitives = get_primitives(self.primitives_dir)
+        #parsed_code = getattr(self, 'parsed_code', None) if parsed_code is None else parsed_code
+        parsed_code = self.parsed_code.get(output_id, None) if (parsed_code is None and isinstance(self.parsed_code, dict)) else parsed_code
+        current_skip_rounds = self.skip_rounds  # save the initial value to align it for code validation
+
+        if isinstance(parsed_code, dict) and parsed_code["program_code"] not in self.processed_codes:
+            self.processed_codes.add(parsed_code["program_code"])
+        # This logic speedup because the same code should have the same score BUT only on the same problem & state
+        elif skip_already_processed or not isinstance(parsed_code, dict):
+            return None
+
+        # Set initial state before running tests or runnable code
+        no_runtime_errors, exec_results = [], []
+        # insert content of config.py into the code to ensure that the OPENAI_API_KEY is set
+        with open("config.py", "r") as f:
+            common_code = f.read() + "\n"
+        # Common code part to be executed in all cases
+        common_code += "\n".join(primitives) + "\n"
+
+        # Run the code & tests in each environment
+        max_autofix, decision_lower = None, None
+        if hasattr(self, 'max_autofix'):
+            max_autofix = self.max_autofix
+        # Start the timer before the environments loop
+        start_time = time.time()  # Added line
+        for idx, env in enumerate(self.envs):
+            env.backup_state()
+            # If it's the first environment and the user chose not to fix, exit the loop
+            if idx > 0 and decision_lower in ("no", "n", ""):
+                smart_print(
+                    f"SKIPPING TEST: code error on first env, skipping test {idx}",
+                    custom_agent or getattr(self, 'agent_name', 'unknown agent name'),
+                    "code_task_and_run_test SystemMessage",
+                    optional=False,
+                    column_id=output_id
+                )
+            else:
+                # Determine tests to run or set default runnable code
+                matching_tests = [
+                    test
+                    for doc_id, test in parsed_code["tests"]
+                    if doc_id == env.id
+                ] if parsed_code["tests"] else [parsed_code['runnable_code']]
+                if not matching_tests:
+                    no_runtime_error = False
+                    exec_result = (
+                        f"Error: no test found for given id {env.id}"
+                        if parsed_code["tests"]
+                        else f"Error: no runnable code found nor tests"
+                    )
+                else:
+                    # Concatenate common code with program and tests or runnable code
+                    code_to_run = common_code + parsed_code["program_code"] + "\n" + "\n".join(matching_tests)
+                    smart_print(
+                        "TESTING GENERATED CODE.....",
+                        custom_agent if custom_agent else self.agent_name,
+                        "code_task_and_run_test SystemMessage",
+                        append=True,
+                        optional=False,
+                        column_id=output_id,
+                        column_max=self.num_parallel_inferences
+                    )
+                    
+                    t1 = time.time()
+                    no_runtime_error, exec_result, std_out_err = env.step(code_to_run)
+                    # Smart print the std_out_err
+                    smart_print(
+                        f"FUNCTION DISPLAY OUTPUTS:\n{std_out_err}",
+                        custom_agent if custom_agent else self.agent_name,
+                        "code_task_and_run_test SystemMessage",
+                        append=True,
+                        optional=False,
+                        column_id=output_id
+                    )
+                    # Show score
+                    scores = self.generate_score(idx, no_runtime_error, env.get_score(), time.time() - t1)
+                    smart_print(
+                        scores,
+                        custom_agent if custom_agent else self.agent_name,
+                        "Scores",
+                        append=True,
+                        optional=False,
+                        column_id=output_id,
+                        column_max=self.num_parallel_inferences
+                    )
+
+                    if no_runtime_error:
+                        smart_print(
+                            "TEST SUCCESSFUL",
+                            custom_agent if custom_agent else self.agent_name,
+                            "code_task_and_run_test SystemMessage",
+                            optional=False,
+                            column_id=output_id
+                        )
+                        smart_print(
+                            env.get_state(),
+                            custom_agent if custom_agent else self.agent_name,
+                            "CODE_RESULT",
+                            optional=False,
+                            column_id=output_id
+                        )
+                    while not no_runtime_error and current_skip_rounds <= 0:
+                        smart_print(
+                            "\033[31mCODE ERROR\033[0m: " + exec_result,
+                            custom_agent if custom_agent else self.agent_name,
+                            "code_task_and_run_test SystemMessage",
+                            optional=False,
+                            column_id=output_id
+                        )
+                        if self.automation and max_autofix is not None:
+                            decision = "a" if max_autofix > 1 else "no"
+                            if decision == "a":
+                                max_autofix -= 1
+                        elif self.automation:
+                            decision = "n"
+                        else:
+                            if output_id == None:
+                                output_id = 0
+                            smart_print(
+                                parsed_code["program_code"],
+                                custom_agent if custom_agent else self.agent_name,
+                                f"Inference streaming output {output_id}",
+                                append=True,
+                                column_id=output_id,
+                                column_max=self.num_parallel_inferences
+                            )
+                            decision = smart_input(
+                                f"ANSWER {output_id} Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ",
+                                custom_agent if custom_agent else self.agent_name,
+                                "fix_error",
+                                column_id=output_id
+                            ).strip()
+                        decision_lower = decision.lower()
+                        if decision_lower in ("no", "n", ""):
+                            break
+                        elif decision_lower in ["y", "yes"]:
+                            # if in websocket, then get from self.human_llm_code_task.premium_llm
+                            if HumanLLMConfig().use_websocket:
+                                edited_code = self.temp_inference_result_content
+                            else:
+                                edited_code = _visual_input(
+                                    parsed_code["program_code"],
+                                    filetype="py",
+                                    message_type="fix_error",
+                                    agent_name=self.name,
+                                    column_id=output_id
+                                )
+                        else:
+                            if decision_lower == "a":
+                                # Do not use HumanLLMMonitor because no template is available for this specific case
+                                smart_print(
+                                    "TRYING TO AUTOFIX ERROR",
+                                    custom_agent if custom_agent else self.agent_name,
+                                    "fix_error",
+                                    optional=True,
+                                    column_id=output_id
+                                )
+                                instructions = ""
+                            else:
+                                # User provided custom instructions
+                                instructions = decision
+                            fix_system_prompt = f"""You are a Python expert in code debugging.
+                            You are provided with ERROR MESSAGE and the CODE TO FIX.
+                            {instructions}
+                            Reply with the full Python code fixed and ready to be executed without the triple quotes and python tags. You add comments in the code to explain your fix.
+                            """
+                            smart_print(
+                                "ANALYZING ERROR.....",
+                                custom_agent if custom_agent else self.agent_name,
+                                "code_task_and_run_test SystemMessage",
+                                optional=False,
+                                column_id=output_id
+                            )
+                            help_for_fixing_system_prompt = f"""You help an LLM to fix code errors which has no access to documentation or internet by extracting key code information from the INFORMATION/DOCUMENTATION provided given CODE TO FIX and ERROR MESSAGE."""
+                            error_with_info_to_help_prompt = f"ERROR MESSAGE:<<\n{exec_result}\n>>\n\nCODE TO FIX:<<\n{parsed_code['program_code']}\n>>\n\INFORMATION/DOCUMENTATION:<<\n{self.last_user_message}\n>>"
+                            help_code_returned = self.premium_llm.invoke([
+                                SystemMessage(content=help_for_fixing_system_prompt),
+                                HumanMessage(content=error_with_info_to_help_prompt)
+                            ])
+                            smart_print(
+                                "ANALYSIS RECIEVED, GENERATING A FIX",
+                                custom_agent if custom_agent else self.agent_name,
+                                "code_task_and_run_test SystemMessage",
+                                optional=False,
+                                column_id=output_id
+                            )
+                            fix_description_prompt = f"ERROR MESSAGE:<<\n{exec_result}\n>>\n\nCODE TO FIX:<<\n{parsed_code['program_code']}\n>>\n\nHELPFUL INFORMATION:<<\n{getattr(help_code_returned, 'content', help_code_returned)}\n>>"
+                            edited_code_returned = self.premium_llm.invoke([
+                                SystemMessage(content=fix_system_prompt),
+                                HumanMessage(content=fix_description_prompt)
+                            ])
+                            edited_code = str(getattr(edited_code_returned, 'content', edited_code_returned))
+
+                        # Before updating parsed_code, save the previous code
+                        prev_code = parsed_code["program_code"]
+                        # Run the edited code
+                        code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
+                        smart_print(
+                            "TESTING UPDATED CODE.....",
+                            custom_agent if custom_agent else self.agent_name,
+                            "code_task_and_run_test SystemMessage",
+                            optional=False,
+                            column_id=output_id
+                        )
+
+                        t1 = time.time()
+                        no_runtime_error, exec_result, std_out_err = env.step(code_to_run)
+                        # Smart print the std_out_err
+                        smart_print(
+                            f"FUNCTION DISPLAY OUTPUTS:\n{std_out_err}",
+                            custom_agent if custom_agent else self.agent_name,
+                            "code_task_and_run_test SystemMessage",
+                            optional=False,
+                            column_id=output_id
+                        )
+                        # Show score
+                        scores = self.generate_score(idx, no_runtime_error, env.get_score(), time.time() - t1)
+                        smart_print(
+                            scores,
+                            custom_agent if custom_agent else self.agent_name,
+                            "Scores",
+                            optional=False,
+                            column_id=output_id
+                        )
+
+                        # Update parsed_code if re-run is successful
+                        parsed_code["program_code"] = edited_code
+                        smart_print(
+                            f"# UPDATED **{'SUCCESFUL' if no_runtime_error else 'FAILED'}** CODE:\n{edited_code}",
+                            custom_agent if custom_agent else self.agent_name,
+                            "UPDATED_CODE",
+                            optional=False,
+                            column_id=output_id
+                        )
+                        # If no runtime error, store the error and diff
+                        if no_runtime_error:
+                            smart_print(
+                                env.get_state(),
+                                custom_agent if custom_agent else self.agent_name,
+                                "CODE_RESULT",
+                                optional=False,
+                                column_id=output_id
+                            )
+                            diff = difflib.unified_diff(prev_code.splitlines(), edited_code.splitlines(), lineterm='')
+                            diff_text = '\n'.join(diff)
+                            # Avoid duplicates: check if the error and diff combination already exists
+                            if (exec_result, diff_text) not in error_patches:
+                                error_patches.append((exec_result, diff_text))
+                                # Store updated error_patches
+                                HumanLLMConfig().log_agent_data(self.agent_name, 'error_patches', error_patches, metadata=metadata)
+
+            no_runtime_errors.append(no_runtime_error)
+            exec_results.append(exec_result)
+
+        # Calculate total time taken  # Added line
+        total_execution_time = time.time() - start_time
+        # Return combined results
+        if isinstance(self.envs[0], SWEBenchEnvironment):
+            scores = [env.get_score(parsed_code["program_code"]) for env in self.envs]
+        else:
+            scores = [env.get_score() for env in self.envs]
+        result = (parsed_code, all(no_runtime_errors), exec_results, scores, [env.get_state() for env in self.envs], total_execution_time)
+
+        if restore_state:
+            for env in self.envs:
+                env.restore_last_state()
+        return result
+    
+    def code_task_and_run_test(self, refined_task):
+        self.logger.info('Starting code_task_and_run_test')
+
+        # Retrieve data from HumanLLMMonitor
+        metadata = {'step_id': HumanLLMConfig().step_id}
+        previous_errors, _ = HumanLLMConfig().get_agent_data(self.agent_name, 'previous_errors', metadata_filter=metadata)
+        previous_scores, _ = HumanLLMConfig().get_agent_data(self.agent_name, 'previous_scores', metadata_filter=metadata)
+        previous_codes, _ = HumanLLMConfig().get_agent_data(self.agent_name, 'previous_codes', metadata_filter=metadata)
+        error_patches, _ = HumanLLMConfig().get_agent_data(self.agent_name, 'error_patches', metadata_filter=metadata)
+
+        # Ensure variables are initialized
+        previous_errors = previous_errors if previous_errors else []
+        previous_scores = previous_scores if previous_scores else []
+        previous_codes = previous_codes if previous_codes else []
+        error_patches = flatten_and_pair(error_patches) if error_patches else []
+
+        env_states = "\n".join([env.get_state() for env in self.envs])
+        primitives = "\n".join(get_primitives(self.primitives_dir))
+        successful_tasks = "\n".join(HumanLLMConfig().get_learnt_tasks())
+        failed_tasks = "\n".join(HumanLLMConfig().get_failed_tasks())
+        validation_response_um = "\n".join(HumanLLMConfig().get_validation_results())
+
+        self.logger.info(f"Primitives: <<<\n{primitives}\n>>>")
+
+        previous_attempts = ""
+        for errors_list, scores_list, codes_list in zip(previous_errors, previous_scores, previous_codes):
+            if errors_list and scores_list and codes_list:
+                if isinstance(errors_list, str): # Current limitation of feedback limited to 1
+                    errors_list = [errors_list] * len(scores_list)
+                for err, score, code in zip(errors_list, scores_list, codes_list):
+                    previous_attempts += f"\n<<ATTEMPT FEEDBACK: {err}\nSCORE: {score}\nCODE: {code}>>\n"
+
+        error_patches_str = ""
+        for (error_msg, diff_text) in error_patches:
+            error_patches_str += f"\n<<ERROR MESSAGE: {error_msg}\nFIX APPLIED (diff):\n{diff_text}>>\n"
+
+        # Define data for template placeholders
+        template_data = {
+            "refined_task": refined_task,
+            "env_states": env_states,
+            "primitives": primitives,
+            "successful_tasks": successful_tasks,
+            "failed_tasks": failed_tasks,
+            "validation_response_um": validation_response_um,
+            "previous_attempts": previous_attempts,
+            "error_patches_str": error_patches_str
+        }
+
+        # Load and format the user message from a file template
+        user_message = HumanLLMConfig().load_prompt_template(
+            "coding_agent_user_message_template",
+            template_data=template_data,
+            directory='prompts'
+        )
+
+        if hasattr(self, 'log_user_message') and self.log_user_message:
+            with open(self.log_user_message, "a") as f:
+                f.write("Coder -- code_task_and_run_test:<<\n" + user_message + "\n>>\n\n")
+
+        # Set the formatted user message
+        self.last_user_message = user_message
+
+        current_skip_rounds = self.skip_rounds  # save the initial value to align it for code validation
+        # Initialisation des kwargs avec les paramètres requis
+        kwargs = {
+            "system_prompt_template": self.problem_prompts_subdir + "code_task",
+            "user_message": user_message,
+            "return_message_content_only": False,
+            "stream_output": False,
+            "model_choice": self.model_choice.get('coder', 'default_llm') if isinstance(self.model_choice, dict) else self.model_choice
+        }
+
+        # Ajouter temperature seulement si l'attribut temperature existe dans l'instance
+        if hasattr(self, 'temperature'):
+            kwargs["temperature_max"] = self.temperature
+
+
+        # Appeler la méthode avec les arguments sous forme de **kwargs
+        codes = self.invoke(**kwargs)
+        results = []
+
+        for index, code in enumerate(codes):
+            # Get the proper check_results corresponding to the output_id (which is the index)
+            check_results = self.inference_tracking.last_inference_check_results[index]
+            if check_results:
+                code_parsing_success, parsed_code = check_results.get("Code Parsing", (False, None))
+                if code_parsing_success and isinstance(parsed_code, dict):
+                    test_results = check_results.get("Run Tests", None)
+                    if test_results:
+                        results.append(test_results)
+
+        if len(results) > 1:
+            # display the list of results with success, exception and code
+            results_list = ""
+            top_results, top_indice = 0, 1
+            for id, result in enumerate(results):
+                if result[1]:
+                    results_list += f"{id}. \033[32mSUCCESS\033[0m / SCORE: {result[3]} / TIME: {result[5]}s / CODE: {result[0]['program_code'][:100]}\n"
+                    temp = sum(result[3][i][j] for i in range(len(result[3])) for j in result[3][i]) / len(result[3])
+                    if temp > top_results:
+                        top_results = temp
+                        top_indice = id
+                else:
+                    results_list += f"{id}. \033[31mFAILED\033[0m / SCORE: {result[3]} / TIME: {result[5]}s / EXCEPTION: {result[2][0][:100]} / CODE: {result[0]['program_code'][:100]}\n"
+
+            # ask the user to select the code to keep
+            if current_skip_rounds <= 0:
+                if self.automation:
+                    selected_code = f"{top_indice}"
+                else:
+                    selected_code = smart_input(
+                        f"{{{''.join(results_list)}}} CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL): ",
+                        self.name, "Scores").strip().replace(" ", "").lower().split(",")
+            else:
+                selected_code = [""]  # keep all if skip_rounds is not 0
+            id = 0
+            if selected_code in ["none", "n"]:
+                results = []
+            else:
+                # keep only the selected code
+                results = [result for id, result in enumerate(results) if
+                           selected_code and (str(id) in selected_code or selected_code == [""])]
+
+        return results
+    
+    def generate_score(self, index:int, success:bool, score:Dict, elapsed_time:int)-> str:
+        str_score = f"{index}. "
+        if success:
+            str_score += "\033[32mSUCCESS"
+        else:
+            str_score += "\033[31mFAILED"
+        str_score += "\033[0m / SCORE: "
+        str_score += f"[{','.join(f'{a:.2f}' for a in list(score.values()))}]"
+        str_score += f" / TIME: {elapsed_time}s"
+        str_score += f" / CODE: [{json.dumps(score)}]"
+        return str_score
+    
+    def apply_special_criteria(agent, special_criteria, available_locals=None):
+        """
+        Apply special criteria to the attributes and parameters of an agent.
+
+        :param agent: The agent instance to modify.
+        :param special_criteria: Dictionary containing the special criteria.
+        :param available_locals: Dictionary containing the local variables of the caller function.
+        :return: Dictionary of only the modified parameters.
+        """
+        # Dictionary to store only the modified parameters
+        new_params = {}
+
+        if special_criteria:
+            if available_locals is None:
+                # Use inspect to dynamically capture arguments
+                frame = inspect.currentframe().f_back  # Go up one level
+                _, _, _, values = inspect.getargvalues(frame)
+                available_locals = values
+
+            class_name = agent.__class__.__name__
+            # Iterate through the criteria related to this class
+            for key, value in special_criteria.items():
+                if key in ['self', 'special_criteria']: continue
+                if '#' in key:
+                    agent_name, key = key.split('#', 1)
+                    if agent_name != class_name and agent_name not in ['all', '']: continue
+                if hasattr(agent, key):
+                    setattr(agent, key, value)
+
+                elif key in available_locals:
+                    new_params[key] = value
+                    print(f"Special criteria applicable to {agent}'s local variables: {key} = {value}")
+        print(new_params)
+        return new_params  # Return only new params

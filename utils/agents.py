@@ -1,4 +1,4 @@
-import sys, json, time, os, difflib, random, pickle, logging, re
+import sys, json, time, os, difflib, random, pickle, logging, re, ast
 import socket, uuid, datetime
 from typing import List, Dict
 from utils.llm_utils import (
@@ -39,7 +39,6 @@ class TaskIdentificationAgent:
         self.logger = logging.getLogger(__name__)
         self.additional_check_list = None
         self.name = self.__class__.__name__
-        self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
         self.criteria = criteria
         self.params_user_message = params_user_message
         self.temperature_min = temperature_min
@@ -48,12 +47,14 @@ class TaskIdentificationAgent:
         self.automation = automation
         self.model_choice = model_choice
         self.primitives_dir = primitives_dir
+        self.problem_prompts_subdir =  "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
         
         kw_common_args = apply_criteria_and_prepare_monitor_args(self, special_criteria, locals())
 
         self.human_llm_identify_best_task = HumanLLM(**kw_common_args)
-        
+        self.human_llm_identify_best_task.primitives_dir = primitives_dir or "primitives/generate_primitives"
         self.human_llm_identify_best_task.skip_rounds = skip_rounds
+        self.human_llm_identify_best_task.problem_prompts_subdir =  self.problem_prompts_subdir
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
                 self.human_llm_identify_best_task.add_manage_inference_check(key, value)
@@ -109,7 +110,7 @@ class TaskIdentificationAgent:
             system_prompt_template=self.problem_prompts_subdir + 'identify_best_task',
             user_message=user_message,
             return_message_content_only=False,
-            model_choice=self.model_choice,
+            model_choice=self.model_choice.get('coach', 'default_llm') if isinstance(self.model_choice, dict) else self.model_choice,
             stream_output=True
         )
 
@@ -133,35 +134,39 @@ class CodingAgent:
         temperature_min=0.,
         temperature_max=1.,
         num_parallel_inferences=1,
-        primitives_dir=None
+        primitives_dir=None,
+        max_autofix=None
     ):
         #super().__init__(llm)
         self.logger = logging.getLogger(__name__)
         self.additional_check_list = None
         self.name = self.__class__.__name__
-        self.max_autofix = None
-        self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
         self.envs = envs
         self.automation = automation
         self.model_choice = model_choice
-        self.processed_codes = set()
 
-        self.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
-        self.last_user_message = None
         if hasattr(self, 'num_parallel_inferences') and self.num_parallel_inferences == 0:
             self.num_parallel_inferences = 2
 
         kw_common_args = apply_criteria_and_prepare_monitor_args(self, special_criteria, locals())
 
         self.human_llm_code_task = HumanLLM(**kw_common_args)
-
         self.human_llm_code_task.skip_rounds = skip_rounds
-        self.human_llm_code_task.add_manage_inference_check("Code Parsing", self.parse_ai_generated_code)
-        self.human_llm_code_task.add_manage_inference_check("Run Tests", self.run_tests_on_code)
+        self.human_llm_code_task.primitives_dir = primitives_dir or "primitives/generate_primitives"
+        self.human_llm_code_task.model_choice = model_choice
+        self.human_llm_code_task.problem_prompts_subdir = "" if problem_prompts_subdir is None else problem_prompts_subdir + "/"
+        self.human_llm_code_task.add_manage_inference_check(
+            "Code Parsing",
+            self.human_llm_code_task.parse_ai_generated_code
+        )
+        self.human_llm_code_task.add_manage_inference_check(
+            "Run Tests",
+            self.human_llm_code_task.run_tests_on_code
+        )
         if hasattr(self, 'recommendations_usage'):
             if self.recommendations_usage:
                 self.human_llm_code_task.add_manage_inference_check(
-                    "Recommend Critics",
+                    "Recommendations",
                     self.human_llm_code_task.generate_best_improvement_suggestions
                 )
         else:
@@ -172,607 +177,7 @@ class CodingAgent:
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():
                 self.human_llm_code_task.add_manage_inference_check(key, value)
-        
-        self.primitives_dir = primitives_dir
 
-    def parse_ai_generated_code(
-        self,
-        message,
-        language="py",
-        retry=3,
-        required_bot_arg=None,
-        task_definition=None,
-        automatic_tests=False,
-        output_id=None
-    ):
-        import ast, time, re
-        # Convert text to dictionary
-        try:
-            result_dict = ast.literal_eval(message)
-        except Exception as e:
-            result_dict = None
-        # if result_dict is a dictionary and code exists, change message to result_dict["code"]
-        if isinstance(result_dict, dict) and "MainFunction" in result_dict:
-            code = ""
-            if "HelperFunctions" in result_dict:
-                for helper_function in result_dict["HelperFunctions"]:
-                    code += helper_function["code"] + "\n"
-            code += result_dict["MainFunction"]["code"]
-        else:
-            code = None
-        error = None
-        while retry > 0:
-            try:
-                if language == "py":  # Python caset
-                    if code is None:
-                        # Match Python code blocks
-                        code_pattern = re.compile(r"```python(.*?)(```|$)", re.DOTALL)
-                        codes_match = [match[0].strip() for match in code_pattern.findall(message)]
-                        code = "\n".join(codes_match) if codes_match else message
-
-                    parsed = ast.parse(code)
-                    functions = []
-                    imports = []
-                    classes = []
-                    runnable_code = ""
-
-                    function_calls = set()  # To track all functions that are being called
-                    function_defs = {}  # To track all function definitions
-                    last_function = None  # To store the last defined function
-
-                    if len(code) == 0 or len(list(parsed.body)) == 0:
-                        return False, f"Error parsing action response (No Code found): {parsed.body}"
-
-                    # Use ast.walk to go through all nodes in the AST
-                    for node in ast.walk(parsed):
-                        if isinstance(node, ast.FunctionDef):
-                            node_type = "FunctionDef"
-                            function_info = {
-                                "name": node.name,
-                                "type": node_type,
-                                "body": ast.get_source_segment(code, node),
-                                "params": [arg.arg for arg in node.args.args],
-                            }
-                            functions.append(function_info)
-                            function_defs[node.name] = function_info  # Store function definition
-                            last_function = function_info  # Track the last defined function
-
-                        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-                            # Record function calls by name
-                            function_calls.add(node.func.id)
-
-                        elif isinstance(node, ast.ClassDef):
-                            node_type = "ClassDef"
-                            class_info = {
-                                "name": node.name + ".run_pipeline",
-                                "type": node_type,
-                                "body": ast.get_source_segment(code, node),
-                            }
-                            classes.append(class_info)
-                            functions.append(class_info)  # Append class definition as a function as per original logic
-
-                        elif isinstance(node, (ast.Expr, ast.Expression, ast.Assign)):
-                            node_type = "Expression"
-                            runnable_code += "\n" + ast.get_source_segment(code, node)
-
-                        elif isinstance(node, (ast.ImportFrom, ast.Import)):
-                            node_type = "ImportFrom"
-                            imports.append(ast.get_source_segment(code, node))
-
-                    # Now we need to find the main function as per the new logic:
-                    # 1. Identify the root function (not called by any other function).
-                    # 2. If no root exists, fallback to the last defined function.
-
-                    # Identify root function (not called by any other function)
-                    root_function = None
-                    for function_name, function_info in function_defs.items():
-                        if function_name not in function_calls:
-                            root_function = function_info
-                            break
-
-                    # If no root function is found, use the last defined function
-                    main_function = root_function if root_function else last_function
-
-                    # Ensure we have a main function
-                    assert main_function is not None, "No main function found."
-
-                    # Check if required_bot_arg is present in the main function's parameters
-                    if required_bot_arg:
-                        assert required_bot_arg in main_function["params"], f"Main function {main_function['name']} must take an argument named '{required_bot_arg}'"
-
-                    # Assemble the final program code
-                    program_code = "\n".join(imports) + "\n"
-                    program_code += "\n\n".join(function["body"] for function in functions)
-
-                    tests_pattern = re.compile(r'\n#\s+document #([a-z0-9-]+)\s+.*test[^\n]*?\n([^\n]+)|{.*?\"documentid\":\s*\"#(.*?)\",\s*\"FunctionCall\":\s*\"([^\"]+)\".*?}', re.IGNORECASE)
-                    matches = tests_pattern.findall(task_definition if task_definition is not None else self.last_user_message)
-
-                    if matches and not automatic_tests:
-                        tests = [match[:2] if match[0] != "" else match[2:] for match in matches]
-                    else:
-                        self.logger.info("Running default tests with bot argument to main function")
-                        tests = [(env.id, main_function["name"] + "(bot)") for env in self.envs]
-
-                    for doc_id, test in tests:
-                        try:
-                            parsed_test = ast.parse(test)
-                        except Exception as e:
-                            return False, f"Error parsing code of Tests:\nERROR: {e}\nCODE: {test}"
-                        # check if the test is a function call
-                        if not isinstance(parsed_test.body[0], ast.Expr):
-                            return False, f"Error parsing code of Tests (not a function call): {test}"
-                else:
-                    raise ValueError(f"Unsupported language in this version: {language}")
-
-                self.parsed_code = {
-                    "program_code": program_code,
-                    "main_function": main_function,
-                    "runnable_code": runnable_code,
-                    "tests": tests,
-                }
-                return True, self.parsed_code
-
-            except Exception as e:
-                retry -= 1
-                error = e
-                time.sleep(0.1)
-
-        self.parsed_code = f"Error parsing action response (before program execution): {error}"
-        smart_print(
-            f"CODE PARSING ERROR!!!\n{error}",
-            self.name,
-            "code_task_and_run_test SystemMessage",
-            optional=False,
-            column_id=output_id
-        )
-        return False, self.parsed_code
-
-    def generate_score(self, index:int, success:bool, score:Dict, elapsed_time:int)-> str:
-        str_score = f"{index}. "
-        if success:
-            str_score += "\033[32mSUCCESS"
-        else:
-            str_score += "\033[31mFAILED"
-        str_score += "\033[0m / SCORE: "
-        str_score += f"[{','.join(f'{a:.2f}' for a in list(score.values()))}]"
-        str_score += f" / TIME: {elapsed_time}s"
-        str_score += f" / CODE: [{json.dumps(score)}]"
-        return str_score
-
-    def run_tests_on_code(
-        self,
-        message,
-        parsed_code=None,
-        skip_already_processed=False,
-        output_id=None,
-        restore_state=True,
-        custom_agent=None
-    ):
-        # Retrieve error_patches from HumanLLMMonitor
-        metadata = {'step_id': HumanLLMConfig().step_id}
-        error_patches, _ = HumanLLMConfig().get_agent_data(self.name, 'error_patches', metadata_filter=metadata)
-        error_patches = error_patches if error_patches else []
-
-        primitives = get_primitives(self.primitives_dir)
-        parsed_code = getattr(self, 'parsed_code', None) if parsed_code is None else parsed_code
-        current_skip_rounds = self.human_llm_code_task.skip_rounds  # save the initial value to align it for code validation
-
-        if isinstance(parsed_code, dict) and parsed_code["program_code"] not in self.processed_codes:
-            self.processed_codes.add(parsed_code["program_code"])
-        elif skip_already_processed or not isinstance(parsed_code, dict):  # This logic speedup because the same code should have the same score BUT only on the same problem & state
-            return None
-
-        # Set initial state before running tests or runnable code
-        no_runtime_errors, exec_results = [], []
-        # insert content of config.py into the code to ensure that the OPENAI_API_KEY is set
-        with open("config.py", "r") as f:
-            common_code = f.read() + "\n"
-        # Common code part to be executed in all cases
-        common_code += "\n".join(primitives) + "\n"
-
-        # Run the code & tests in each environment
-        max_autofix, decision_lower = None, None
-        if hasattr(self, 'max_autofix'):
-            max_autofix = self.max_autofix
-        # Start the timer before the environments loop
-        start_time = time.time()  # Added line
-        for idx, env in enumerate(self.envs):
-            env.backup_state()
-            # If it's the first environment and the user chose not to fix, exit the loop
-            if idx > 0 and decision_lower in ("no", "n", ""):
-                smart_print(
-                    f"SKIPPING TEST: code error on first env, skipping test {idx}",
-                    custom_agent if custom_agent else self.name,
-                    "code_task_and_run_test SystemMessage",
-                    optional=False,
-                    column_id=output_id
-                )
-            else:
-                # Determine tests to run or set default runnable code
-                matching_tests = [
-                    test
-                    for doc_id, test in parsed_code["tests"]
-                    if doc_id == env.id
-                ] if parsed_code["tests"] else [parsed_code['runnable_code']]
-                if not matching_tests:
-                    no_runtime_error, exec_result = False, f"Error: no test found for given id {env.id}" if parsed_code["tests"] else f"Error: no runnable code found nor tests"
-                else:
-                    # Concatenate common code with program and tests or runnable code
-                    code_to_run = common_code + parsed_code["program_code"] + "\n" + "\n".join(matching_tests)
-                    smart_print(
-                        "TESTING GENERATED CODE.....",
-                        custom_agent if custom_agent else self.name,
-                        "code_task_and_run_test SystemMessage",
-                        append=True,
-                        optional=False,
-                        column_id=output_id,
-                        column_max=self.human_llm_code_task.num_parallel_inferences
-                    )
-                    
-                    t1 = time.time()
-                    no_runtime_error, exec_result, std_out_err = env.step(code_to_run)
-                    # Smart print the std_out_err
-                    smart_print(
-                        f"FUNCTION DISPLAY OUTPUTS:\n{std_out_err}",
-                        custom_agent if custom_agent else self.name,
-                        "code_task_and_run_test SystemMessage",
-                        append=True,
-                        optional=False,
-                        column_id=output_id
-                    )
-                    # Show score
-                    scores = self.generate_score(idx, no_runtime_error, env.get_score(), time.time() - t1)
-                    smart_print(
-                        scores,
-                        custom_agent if custom_agent else self.name,
-                        "Scores",
-                        append=True,
-                        optional=False,
-                        column_id=output_id,
-                        column_max=self.human_llm_code_task.num_parallel_inferences
-                    )
-
-                    if no_runtime_error:
-                        smart_print(
-                            "TEST SUCCESSFUL",
-                            custom_agent if custom_agent else self.name,
-                            "code_task_and_run_test SystemMessage",
-                            optional=False,
-                            column_id=output_id
-                        )
-                        smart_print(
-                            env.get_state(),
-                            custom_agent if custom_agent else self.name,
-                            "CODE_RESULT",
-                            optional=False,
-                            column_id=output_id
-                        )
-                    while not no_runtime_error and current_skip_rounds <= 0:
-                        smart_print(
-                            "\033[31mCODE ERROR\033[0m: " + exec_result,
-                            custom_agent if custom_agent else self.name,
-                            "code_task_and_run_test SystemMessage",
-                            optional=False,
-                            column_id=output_id
-                        )
-                        if self.automation and max_autofix is not None:
-                            decision = "a" if max_autofix > 1 else "no"
-                            if decision == "a":
-                                max_autofix -= 1
-                        elif self.automation:
-                            decision = "n"
-                        else:
-                            if output_id == None:
-                                output_id = 0
-                            smart_print(
-                                parsed_code["program_code"],
-                                custom_agent if custom_agent else self.name,
-                                f"Inference streaming output {output_id}",
-                                append=True,
-                                column_id=output_id,
-                                column_max=self.human_llm_code_task.num_parallel_inferences
-                            )
-                            decision = smart_input(
-                                f"ANSWER {output_id} Do you want to edit the code to fix the error (you will also be requested first) ? (yes/no) or try autofix by LLM (a): ",
-                                custom_agent if custom_agent else self.name,
-                                "fix_error",
-                                column_id=output_id
-                            ).strip()
-                        decision_lower = decision.lower()
-                        if decision_lower in ("no", "n", ""):
-                            break
-                        elif decision_lower in ["y", "yes"]:
-                            # if in websocket, then get from self.human_llm_code_task.premium_llm
-                            if HumanLLMConfig().use_websocket:
-                                edited_code = self.human_llm_code_task.temp_inference_result_content
-                            else:
-                                edited_code = _visual_input(
-                                    parsed_code["program_code"],
-                                    filetype="py",
-                                    message_type="fix_error",
-                                    agent_name=self.name,
-                                    column_id=output_id
-                                )
-                        else:
-                            if decision_lower == "a":
-                                # Do not use HumanLLMMonitor because no template is available for this specific case
-                                smart_print(
-                                    "TRYING TO AUTOFIX ERROR",
-                                    custom_agent if custom_agent else self.name,
-                                    "fix_error",
-                                    optional=True,
-                                    column_id=output_id
-                                )
-                                instructions = ""
-                            else:
-                                # User provided custom instructions
-                                instructions = decision
-                            fix_system_prompt = f"""You are a Python expert in code debugging.
-                            You are provided with ERROR MESSAGE and the CODE TO FIX.
-                            {instructions}
-                            Reply with the full Python code fixed and ready to be executed without the triple quotes and python tags. You add comments in the code to explain your fix.
-                            """
-                            smart_print(
-                                "ANALYZING ERROR.....",
-                                custom_agent if custom_agent else self.name,
-                                "code_task_and_run_test SystemMessage",
-                                optional=False,
-                                column_id=output_id
-                            )
-                            help_for_fixing_system_prompt = f"""You help an LLM to fix code errors which has no access to documentation or internet by extracting key code information from the INFORMATION/DOCUMENTATION provided given CODE TO FIX and ERROR MESSAGE."""
-                            error_with_info_to_help_prompt = f"ERROR MESSAGE:<<\n{exec_result}\n>>\n\nCODE TO FIX:<<\n{parsed_code['program_code']}\n>>\n\INFORMATION/DOCUMENTATION:<<\n{self.last_user_message}\n>>"
-                            help_code_returned = self.human_llm_code_task.premium_llm.invoke([
-                                SystemMessage(content=help_for_fixing_system_prompt),
-                                HumanMessage(content=error_with_info_to_help_prompt)
-                            ])
-                            smart_print(
-                                "ANALYSIS RECIEVED, GENERATING A FIX",
-                                custom_agent if custom_agent else self.name,
-                                "code_task_and_run_test SystemMessage",
-                                optional=False,
-                                column_id=output_id
-                            )
-                            fix_description_prompt = f"ERROR MESSAGE:<<\n{exec_result}\n>>\n\nCODE TO FIX:<<\n{parsed_code['program_code']}\n>>\n\nHELPFUL INFORMATION:<<\n{getattr(help_code_returned, 'content', help_code_returned)}\n>>"
-                            edited_code_returned = self.human_llm_code_task.premium_llm.invoke([
-                                SystemMessage(content=fix_system_prompt),
-                                HumanMessage(content=fix_description_prompt)
-                            ])
-                            edited_code = str(getattr(edited_code_returned, 'content', edited_code_returned))
-
-                        # Before updating parsed_code, save the previous code
-                        prev_code = parsed_code["program_code"]
-                        # Run the edited code
-                        code_to_run = common_code + edited_code + "\n" + "\n".join(matching_tests)
-                        smart_print(
-                            "TESTING UPDATED CODE.....",
-                            custom_agent if custom_agent else self.name,
-                            "code_task_and_run_test SystemMessage",
-                            optional=False,
-                            column_id=output_id
-                        )
-
-                        t1 = time.time()
-                        no_runtime_error, exec_result, std_out_err = env.step(code_to_run)
-                        # Smart print the std_out_err
-                        smart_print(
-                            f"FUNCTION DISPLAY OUTPUTS:\n{std_out_err}",
-                            custom_agent if custom_agent else self.name,
-                            "code_task_and_run_test SystemMessage",
-                            optional=False,
-                            column_id=output_id
-                        )
-                        # Show score
-                        scores = self.generate_score(idx, no_runtime_error, env.get_score(), time.time() - t1)
-                        smart_print(
-                            scores,
-                            custom_agent if custom_agent else self.name,
-                            "Scores",
-                            optional=False,
-                            column_id=output_id
-                        )
-
-                        # Update parsed_code if re-run is successful
-                        parsed_code["program_code"] = edited_code
-                        smart_print(
-                            f"# UPDATED **{'SUCCESFUL' if no_runtime_error else 'FAILED'}** CODE:\n{edited_code}",
-                            custom_agent if custom_agent else self.name,
-                            "UPDATED_CODE",
-                            optional=False,
-                            column_id=output_id
-                        )
-                        # If no runtime error, store the error and diff
-                        if no_runtime_error:
-                            smart_print(
-                                env.get_state(),
-                                custom_agent if custom_agent else self.name,
-                                "CODE_RESULT",
-                                optional=False,
-                                column_id=output_id
-                            )
-                            diff = difflib.unified_diff(prev_code.splitlines(), edited_code.splitlines(), lineterm='')
-                            diff_text = '\n'.join(diff)
-                            # Avoid duplicates: check if the error and diff combination already exists
-                            if (exec_result, diff_text) not in error_patches:
-                                error_patches.append((exec_result, diff_text))
-                                # Store updated error_patches
-                                HumanLLMConfig().log_agent_data(self.name, 'error_patches', error_patches, metadata=metadata)
-
-            no_runtime_errors.append(no_runtime_error)
-            exec_results.append(exec_result)
-
-        # Calculate total time taken  # Added line
-        total_execution_time = time.time() - start_time
-        # Return combined results
-        if isinstance(self.envs[0], SWEBenchEnvironment):
-            scores = [env.get_score(parsed_code["program_code"]) for env in self.envs]
-        else:
-            scores = [env.get_score() for env in self.envs]
-        result = (parsed_code, all(no_runtime_errors), exec_results, scores, [env.get_state() for env in self.envs], total_execution_time)
-
-        if restore_state:
-            for env in self.envs:
-                env.restore_last_state()
-        return result
-
-    def code_task_and_run_test(self, refined_task):
-        self.logger.info('Starting code_task_and_run_test')
-        def flatten_and_pair(nested_list):
-            def flatten(nested):
-                flat_list = []
-                for item in nested:
-                    if isinstance(item, (list, tuple)):
-                        flat_list.extend(flatten(item))
-                    elif isinstance(item, dict):
-                        for value in item.values():
-                            flat_list.extend(flatten(value))
-                    else:
-                        flat_list.append(item)
-                return flat_list
-
-            flat_list = flatten(nested_list)
-            # Décomposer les tuples pour éviter les tuples imbriqués
-            def unpack_tuples(items):
-                unpacked = []
-                for item in items:
-                    if isinstance(item, tuple):
-                        unpacked.extend(unpack_tuples(item))
-                    else:
-                        unpacked.append(item)
-                return unpacked
-            flat_list = unpack_tuples(flat_list)
-
-            # Toujours regrouper les éléments par paires de 2 et retourner une liste de tuples
-            paired_list = []
-            i = 0
-            while i < len(flat_list):
-                if i + 1 < len(flat_list):
-                    paired_list.append((flat_list[i], flat_list[i + 1]))
-                    i += 2
-                else:
-                    # Si le nombre d'éléments est impair, le dernier élément est ajouté seul dans un tuple
-                    paired_list.append((flat_list[i],))
-                    i += 1
-            return paired_list
-
-        # Retrieve data from HumanLLMMonitor
-        metadata = {'step_id': HumanLLMConfig().step_id}
-        previous_errors, _ = HumanLLMConfig().get_agent_data(self.name, 'previous_errors', metadata_filter=metadata)
-        previous_scores, _ = HumanLLMConfig().get_agent_data(self.name, 'previous_scores', metadata_filter=metadata)
-        previous_codes, _ = HumanLLMConfig().get_agent_data(self.name, 'previous_codes', metadata_filter=metadata)
-        error_patches, _ = HumanLLMConfig().get_agent_data(self.name, 'error_patches', metadata_filter=metadata)
-
-        # Ensure variables are initialized
-        previous_errors = previous_errors if previous_errors else []
-        previous_scores = previous_scores if previous_scores else []
-        previous_codes = previous_codes if previous_codes else []
-        error_patches = flatten_and_pair(error_patches) if error_patches else []
-
-        env_states = "\n".join([env.get_state() for env in self.envs])
-        primitives = "\n".join(get_primitives(self.primitives_dir))
-        successful_tasks = "\n".join(HumanLLMConfig().get_learnt_tasks())
-        failed_tasks = "\n".join(HumanLLMConfig().get_failed_tasks())
-        validation_response_um = "\n".join(HumanLLMConfig().get_validation_results())
-
-        self.logger.info(f"Primitives: <<<\n{primitives}\n>>>")
-
-        previous_attempts = ""
-        for errors_list, scores_list, codes_list in zip(previous_errors, previous_scores, previous_codes):
-            if errors_list and scores_list and codes_list:
-                for err, score, code in zip(errors_list.items(), scores_list.items(), codes_list.items()):
-                    previous_attempts += f"\n<<ATTEMPT FEEDBACK: {err[1]}\nSCORE: {score[1]}\nCODE: {code[1]}>>\n"
-
-        error_patches_str = ""
-        for (error_msg, diff_text) in error_patches:
-            error_patches_str += f"\n<<ERROR MESSAGE: {error_msg}\nFIX APPLIED (diff):\n{diff_text}>>\n"
-
-        # Define data for template placeholders
-        template_data = {
-            "refined_task": refined_task,
-            "env_states": env_states,
-            "primitives": primitives,
-            "successful_tasks": successful_tasks,
-            "failed_tasks": failed_tasks,
-            "validation_response_um": validation_response_um,
-            "previous_attempts": previous_attempts,
-            "error_patches_str": error_patches_str
-        }
-
-        # Load and format the user message from a file template
-        user_message = HumanLLMConfig().load_prompt_template(
-            "coding_agent_user_message_template",
-            template_data=template_data,
-            directory='prompts'
-        )
-
-        if hasattr(self, 'log_user_message') and self.log_user_message:
-            with open(self.log_user_message, "a") as f:
-                f.write("Coder -- code_task_and_run_test:<<\n" + user_message + "\n>>\n\n")
-
-        # Set the formatted user message
-        self.last_user_message = user_message
-
-        current_skip_rounds = self.human_llm_code_task.skip_rounds  # save the initial value to align it for code validation
-        # Initialisation des kwargs avec les paramètres requis
-        kwargs = {
-            "system_prompt_template": self.problem_prompts_subdir + "code_task",
-            "user_message": user_message,
-            "return_message_content_only": False,
-            "stream_output": False,
-            "model_choice": self.model_choice
-        }
-
-        # Ajouter temperature seulement si l'attribut temperature existe dans l'instance
-        if hasattr(self, 'temperature'):
-            kwargs["temperature_max"] = self.temperature
-
-
-        # Appeler la méthode avec les arguments sous forme de **kwargs
-        codes = self.human_llm_code_task.invoke(**kwargs)
-        results = []
-
-        for index, code in enumerate(codes):
-            # Get the proper check_results corresponding to the output_id (which is the index)
-            check_results = self.human_llm_code_task.last_inference_check_results[index]
-            if check_results:
-                code_parsing_success, parsed_code = check_results.get("Code Parsing", (False, None))
-                if code_parsing_success and isinstance(parsed_code, dict):
-                    test_results = check_results.get("Run Tests", None)
-                    if test_results:
-                        results.append(test_results)
-
-        if len(results) > 1:
-            # display the list of results with success, exception and code
-            results_list = ""
-            top_results, top_indice = 0, 1
-            for id, result in enumerate(results):
-                if result[1]:
-                    results_list += f"{id}. \033[32mSUCCESS\033[0m / SCORE: {result[3]} / TIME: {result[5]}s / CODE: {result[0]['program_code'][:100]}\n"
-                    temp = sum(result[3][i][j] for i in range(len(result[3])) for j in result[3][i]) / len(result[3])
-                    if temp > top_results:
-                        top_results = temp
-                        top_indice = id
-                else:
-                    results_list += f"{id}. \033[31mFAILED\033[0m / SCORE: {result[3]} / TIME: {result[5]}s / EXCEPTION: {result[2][0][:100]} / CODE: {result[0]['program_code'][:100]}\n"
-
-            # ask the user to select the code to keep
-            if current_skip_rounds <= 0:
-                if self.automation:
-                    selected_code = f"{top_indice}"
-                else:
-                    selected_code = smart_input(
-                        f"{{{''.join(results_list)}}} CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL): ",
-                        self.name, "Scores").strip().replace(" ", "").lower().split(",")
-            else:
-                selected_code = [""]  # keep all if skip_rounds is not 0
-            id = 0
-            if selected_code in ["none", "n"]:
-                results = []
-            else:
-                # keep only the selected code
-                results = [result for id, result in enumerate(results) if
-                           selected_code and (str(id) in selected_code or selected_code == [""])]
-
-        return results
 
 # Agent 3: Code Validation
 class ValidationAgent:
@@ -862,7 +267,7 @@ New environment status of examples on which the task has been tested on: <<{envs
             system_prompt_template='validate_code',
             user_message=user_message,
             return_message_content_only=False,
-            model_choice=self.model_choice
+            model_choice=self.model_choice.get('critic', 'default_llm') if isinstance(self.model_choice, dict) else self.model_choice
         )
         return code_validation
 
@@ -1056,22 +461,29 @@ class CapitalizationAgent:
         HumanLLMConfig().add_learnt_task(serialized_entry, tags)
 
     def capitalize_failed_tasks(self, task_description: str, parsed_code: str) -> None:
-        is_anomaly = self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/"
-        name_key = "class_name" if is_anomaly else "main_function_name"
+        name_key = "main_function_name"
+        task_name = None
         if parsed_code:
-            task_name = parsed_code.get(name_key,
-                                        "replace this text with a descriptive name of the class" if is_anomaly else "replace this text with a descriptive name of the function")
-        else:
-            if False or not self.automation:  # TODO: temporary disabled, find the logic to fix this or if not required
+            if isinstance(parsed_code, dict):
+                task_name = parsed_code.get(name_key, parsed_code.get("main_function", parsed_code.get("class_name", None)))
+                if task_name and isinstance(task_name, dict):
+                    task_name = task_name.get('name', str(task_name))
+            else:
+                # Assume parsed_code is a string; extract the function name using a regex.
+                match = re.search(r"def\s+(\w+)\s*\(", parsed_code)
+                task_name = match.group(1) if match else None
+        if task_name is None:
+            if task_description is not None:
+                # try to find the function name in the task description, should start with a \n and end with a (bot)
+                match = re.search(r"\n(\w+)\s*\(bot\)", task_description)
+                task_name = match.group(1) if match else None
+            if task_name is None:
                 task_name = smart_input(
-                    f"CONFIG Please provide a name for the {'pipeline' if is_anomaly else 'function'}:\n {task_description}",
+                    f"CONFIG Please provide a name for the function:\n {task_description}",
                     "CapitalizationAgent",
                     message_type="Capitalization_info"
-                ).strip()
-            else:
-                task_name = f"{task_description[:500]}"
-        if False and not self.automation or is_anomaly:  # TODO: temporary disabled, find the logic to fix this or if not required
-            task_name = _visual_input(task_name)
+                ).strip() if not self.automation else "UNKNOWN_function_name"
+        if False and not self.automation:  # TODO: temporary disabled, find the logic to fix this or if not required
             task_description_refined = _visual_input(task_description)
         else:
             task_description_refined = task_description
@@ -1109,8 +521,7 @@ class CapitalizationAgent:
         for result in results:
             id += 1
             task_data = json.loads(result.page_content)
-            name_key = "class_name" if (
-                    self.problem_prompts_subdir == "Anomalies/" or self.problem_prompts_subdir == "pipeline_synthesis/") else "main_function_name"
+            name_key = "main_function_name"
             if name_key not in task_data:
                 task_data[name_key] = ""
 
@@ -1155,7 +566,7 @@ class CapitalizationAgent:
 
         tool_description = self.human_llm_generate_function_description.invoke(
             system_prompt_template="generate_function_description", user_message=user_message,
-            return_message_content_only=True, model_choice=self.model_choice)
+            return_message_content_only=True, model_choice=self.model_choice.get('capitalizer', 'default_llm') if isinstance(self.model_choice, dict) else self.model_choice)
         return tool_description
 
 # Agent 5: Planner

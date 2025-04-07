@@ -6,7 +6,6 @@ from typing import List, Optional, Union, Dict, Any
 from dataclasses import dataclass, field
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry  # type: ignore
-from elasticsearch import Elasticsearch
 from langchain_community.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
 from langchain_core.runnables import RunnableSequence, ConfigurableField, Runnable
 from langchain_core.messages.human import HumanMessage
@@ -16,11 +15,21 @@ from langchain_core.messages.function import FunctionMessage
 from langchain_openai import ChatOpenAI
 from langchain_community.chat_models import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_community.vectorstores import Chroma, ElasticsearchStore
+try:
+    from elasticsearch import Elasticsearch
+    from langchain_community.vectorstores import ElasticsearchStore
+except ImportError:
+    print("Elasticsearch not installed")
+    Elasticsearch, ElasticsearchStore = None, None
+try:
+    from langchain_chroma import Chroma
+except ImportError:
+    print("langchain_chroma not installed")
+    Chroma = None
 import tkinter as tk
 from tkinter import scrolledtext
 from utils.file_utils import dump_text, f_exists, f_move
-from config import MODELS_CONFIG_LIST
+from config import MODELS_CONFIG_LIST, vector_store_type
 from requests.auth import HTTPBasicAuth
 
 from utils.constants import ELASTIC_DATABASE, CHROMA_DATABASE
@@ -77,49 +86,51 @@ class PrintPromptRunnable(Runnable):
 
 class UnifiedVectorDBConfig:
     """Configuration for the vector database."""
+    common_vectordb_embedding_function = None
 
     def __init__(
         self,
         embedding_function: Optional[Any] = None,
         collection_name: Optional[str] = "human_llm_logs",
         persist_directory: Optional[str] = "human_llm_vectordb",
-        reset_indices: bool = False
+        reset_indices: bool = False,
+        unique_collection_id: Optional[str] = None
     ):
         """Initialize VectorDBConfig."""
         self.embedding_function = embedding_function
         self.collection_name = collection_name.lower()
         self.persist_directory = persist_directory
         self.reset_indices = reset_indices
-        self.common_vectordb_embedding_function = embedding_function
+        self.set_common_vectordb_embedding_function()
         self.openai_embedding_function_name = "text-embedding-ada-002"
 
-        self.db_type: str = ELASTIC_DATABASE
-        self.es_config = ElasticSearchDB_Config()
-        self.unique_collection_id: Optional[str] = None
+        self.db_type: str = vector_store_type.lower()  if vector_store_type else ELASTIC_DATABASE
+        self.es_config = ElasticSearchDB_Config() if self.db_type == ELASTIC_DATABASE else None
+        self.unique_collection_id: Optional[str] = unique_collection_id
         
     def set_common_vectordb_embedding_function(self):
         """Set the embedding function for the vector database."""
-        if self.common_vectordb_embedding_function is not None:
+        if self.__class__.common_vectordb_embedding_function is not None:
             return
         if isinstance(self.embedding_function, str):
             if self.embedding_function in ["OpenAIEmbeddings", "text-embedding-ada-002"]:
-                self.common_vectordb_embedding_function = OpenAIEmbeddings(
+                self.__class__.common_vectordb_embedding_function = OpenAIEmbeddings(
                     model=self.embedding_function,
                     deployment=self.openai_embedding_function_name
                 )
-            elif self.embedding_function == "HuggingFaceEmbeddings":
+            elif self.__class__.common_vectordb_embedding_function == "HuggingFaceEmbeddings":
                 self.common_vectordb_embedding_function = HuggingFaceEmbeddings(
                     model_name="intfloat/e5-base-v2",
                     encode_kwargs={"normalize_embeddings": True}
                 )
             else:
-                self.common_vectordb_embedding_function = HuggingFaceEmbeddings(
+                self.__class__.common_vectordb_embedding_function = HuggingFaceEmbeddings(
                     model_name=self.embedding_function,
                     encode_kwargs={"normalize_embeddings": True},
                     model_kwargs={"trust_remote_code": True}
                 )
         else:
-            self.common_vectordb_embedding_function = self.embedding_function
+            self.__class__.common_vectordb_embedding_function = self.embedding_function
 
     def set_unique_collection_id(self, unique_id):
         self.unique_collection_id = unique_id
@@ -166,10 +177,9 @@ class UserSession:
     def get_user_id(self):
         """Retrieve or prompt for the user ID."""
         if self.user_id is None:
-            self.user_id = os.environ.get(
-                'user_id',
-                smart_input("Please enter your user id: ", "Learning Loop", message_type="USER_ID")
-            )
+            self.user_id = os.environ.get('user_id')
+            if self.user_id is None:
+                self.user_id = smart_input("Please enter your user id: ", "Learning Loop", message_type="USER_ID")
         return self.user_id
     
     def set_user_id(self, id):
@@ -190,6 +200,8 @@ class InferenceTracking:
         self.unidentified_option_times = []
         self.unidentified_option_counts = []
         self.last_inference_check_results: Dict[str, Any] = {}
+        self.inference_checks: Dict[str, Any] = {}
+        self.excluded_inference_checks:List[str] = ["Recommend Critics"]
 
 
 class TaskHistory:
@@ -201,21 +213,62 @@ class TaskHistory:
         self.failed_tasks: List[Dict[str, Any]] = []
         self.task_log: List[Dict[str, Any]] = []
 
+    def clear_completed_tasks(self):
+        self.completed_tasks.clear()
+
+    def clear_failed_tasks(self):
+        self.failed_tasks.clear()
+
+    def add_completed_task(self, task_entry: Optional[Dict[str, str]] = None):
+        """Logs a successfully completed task."""
+        self.completed_tasks.append(task_entry)
+        self.task_log.append(task_entry)
+
+    def add_failed_task(self, task_entry: Optional[Dict[str, str]] = None):
+        """Logs a task that failed during execution."""
+        self.failed_tasks.append(task_entry)
+        self.task_log.append(task_entry)
+
+    def get_completed_tasks(self) -> List[Dict[str, str]]:
+        """Returns all completed tasks."""
+        return self.completed_tasks
+
+    def get_failed_tasks(self) -> List[Dict[str, str]]:
+        """Returns all failed tasks."""
+        return self.failed_tasks
+
 
 class ElasticSearchDB_Config:
     def __init__(self):
-        self.es_url: str = 'http://127.0.0.1:9200'
-        self.es_user: Optional[str] = None
-        self.es_password: Optional[str] = None
-
+        try: import config as cfg
+        except: cfg = None
+        self.es_url: str = 'http://127.0.0.1:9200' if not hasattr(cfg, 'elastic_url_port') else cfg.elastic_url_port
+        self.es_user: Optional[str] = None if not hasattr(cfg, 'elastic_user') else cfg.elastic_user
+        self.es_password: Optional[str] = None if not hasattr(cfg, 'elastic_password') else cfg.elastic_password
 
 class UnifiedVectorDB:
     """Unified interface for vector databases (Elasticsearch or Chroma)."""
+    db_connection_check_done = False
 
     def __init__(self, config: Optional[UnifiedVectorDBConfig]=None, check_db:bool=False):
         """Initialize UnifiedVectorDB."""
+        def friendly_collectionname_string(s):
+            # Constraint 1: Truncate or pad the string to ensure it's between 3-63 characters
+            s = s[:63].ljust(3, 'a')
+            # Constraint 2: Ensure it starts and ends with an alphanumeric character
+            if not s[0].isalnum():
+                s = 'a' + s[1:]
+            if not s[-1].isalnum():
+                s = s[:-1] + 'a'
+            # Constraint 3: Replace invalid characters with underscores
+            s = re.sub(r'[^a-zA-Z0-9_-]', '_', s)
+            # Constraint 4: Replace two consecutive periods with underscores
+            s = s.replace('..', '__')
+            # Constraint 5: Ensure it's not a valid IPv4 address
+            if re.match(r'^(\d{1,3}\.){3}\d{1,3}$', s):
+                s = 'a' + s[1:]
+            return s[:63]
         self.logger = logging.getLogger(__name__)
-        self.db_connection_check_done: bool = False
         
         self.elastic_client: Optional[Any] = None
         self.db: Optional[Any] = None
@@ -227,12 +280,23 @@ class UnifiedVectorDB:
         self.get_unique_id()
 
         if self.config.unique_collection_id is not None:
-            self.config.collection_name += f"_{self.config.unique_collection_id}".lower()
+            self.config.collection_name = f"{self.config.unique_collection_id}_{self.config.collection_name}".lower()
+        self.config.collection_name = friendly_collectionname_string(self.config.collection_name)
 
         if self.config.db_type == CHROMA_DATABASE:
+            if Chroma is None:
+                raise ImportError("Chroma vector store selected but 'chromadb' or langchain community support is not installed.")
+        elif self.config.db_type == ELASTIC_DATABASE:
+            if Elasticsearch is None or ElasticsearchStore is None:
+                raise ImportError("Elasticsearch vector store selected but 'elasticsearch' library or LangChain ES support is not installed.")
+        else:
+            raise ValueError(f"Unsupported DB type: {self.config.db_type}")
+
+        if self.config.db_type == CHROMA_DATABASE:
+            self.config.persist_directory = friendly_collectionname_string(self.config.persist_directory)
             self.db = Chroma(
                 collection_name=self.config.collection_name,
-                embedding_function=self.config.embedding_function,
+                embedding_function=self.config.common_vectordb_embedding_function,
                 persist_directory=self.config.persist_directory
             )
             self._collection = self.db._collection
@@ -269,16 +333,18 @@ class UnifiedVectorDB:
 
     def get_unique_id(self):
         """Generate or retrieve a unique ID for the collection."""
-        if self.config.unique_collection_id is None:
-            self.config.unique_collection_id = os.environ.get(
+        from utils.human_llm import HumanLLMConfig
+        if HumanLLMConfig().common_vectordb_config.unique_collection_id is None:
+            HumanLLMConfig().common_vectordb_config.unique_collection_id = os.environ.get(
                 'unique_id',
                 f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
             )
+        self.config.unique_collection_id =  HumanLLMConfig().common_vectordb_config.unique_collection_id
         return self.config.unique_collection_id
 
     def check_db(self):
         """Check the database connection."""
-        if self.db_connection_check_done:
+        if self.__class__.db_connection_check_done:
             return
         if self.config.db_type == ELASTIC_DATABASE:
             session = requests.Session()
@@ -293,7 +359,7 @@ class UnifiedVectorDB:
                 response = session.get(self.config.es_config.es_url, auth=auth, timeout=5, verify=False)
                 response.raise_for_status()
                 self.logger.info(f"Elasticsearch response: {response.text}")
-                self.db_connection_check_done = True
+                self.__class__.db_connection_check_done = True
             except requests.exceptions.RequestException as e:
                 self.logger.error(f"Error: {e}\nURL: {self.config.es_config.es_url}\nCheck Elasticsearch and credentials.")
                 exit(1)
@@ -335,15 +401,27 @@ class UnifiedVectorDB:
               custom_filter_chrome=None, custom_filter_es=None, sort_order=None):
         """Query the database with filters and sorting."""
         if self.config.db_type == CHROMA_DATABASE:
+            filter_chroma = None
             if metadata_filter and custom_filter_chrome is None:
-                filter_chroma = []
+                conditions = []
                 for key, value in metadata_filter.items():
                     sign = '$eq' if isinstance(value, str) else '$in'
-                    filter_chroma.append({key: {sign: value}})
-                filter_chroma = {('$or' if metadata_filter_or else '$and'): filter_chroma}
+                    conditions.append({key: {sign: value}})
+                # If only one condition, use it directly; otherwise wrap in $and or $or.
+                if len(conditions) == 1:
+                    filter_chroma = conditions[0]
+                else:
+                    filter_chroma = {('$or' if metadata_filter_or else '$and'): conditions}
                 if sort_order in ['asc', 'desc']:
-                    self.logger.warning("WARNING: sort not implemented for Chroma DB")
-            return self.db.query(query_text, k=k, filter=filter_chroma)
+                    self.logger.warning("WARNING: sort not implemented for Chroma DB; performing in-memory sort")
+            # Query the database using the filter (if any)
+            #results = self.db.query(query_text, k=k, filter=filter_chroma)
+            results = self.db.similarity_search(query_text, k=k, filter=filter_chroma)
+            # If a sort order is provided, sort the results in memory.
+            if sort_order in ['asc', 'desc']:
+                # Assuming each result is a tuple (Document, score) and we sort by the metadata key "time"
+                results = sorted(results, key=lambda x: x[0].metadata.get('time', ""), reverse=(sort_order == 'desc'))
+            return results
         elif self.config.db_type == ELASTIC_DATABASE:
             if metadata_filter and custom_filter_es is None:
                 custom_filter_es = []
@@ -378,13 +456,6 @@ class UnifiedVectorDB:
         elif self.config.db_type == ELASTIC_DATABASE:
             response = self.db.client.count(index=self.config.collection_name, body={"query": {"match_all": {}}})
             return response['count']
-
-    def persist(self):
-        """Persist the database."""
-        if self.config.db_type == CHROMA_DATABASE:
-            self.db.persist()
-        elif self.config.db_type == ELASTIC_DATABASE:
-            pass
 
     def clear(self):
         """Clear the database."""
@@ -858,40 +929,6 @@ def save_prompt_with_tag(prompt_name, text, new_tag, package_path="."):
     # Save the file
     return dump_text(text, prompt_file_path_name)
 
-def apply_special_criteria(agent, special_criteria, available_locals=None):
-    """
-    Apply special criteria to the attributes and parameters of an agent.
-
-    :param agent: The agent instance to modify.
-    :param special_criteria: Dictionary containing the special criteria.
-    :param available_locals: Dictionary containing the local variables of the caller function.
-    :return: Dictionary of only the modified parameters.
-    """
-    # Dictionary to store only the modified parameters
-    new_params = {}
-
-    if special_criteria:
-        if available_locals is None:
-            # Use inspect to dynamically capture arguments
-            frame = inspect.currentframe().f_back  # Go up one level
-            _, _, _, values = inspect.getargvalues(frame)
-            available_locals = values
-
-        class_name = agent.__class__.__name__
-        # Iterate through the criteria related to this class
-        for key, value in special_criteria.items():
-            if key in ['self', 'special_criteria']: continue
-            if '#' in key:
-                agent_name, key = key.split('#', 1)
-                if agent_name != class_name and agent_name not in ['all', '']: continue
-            if hasattr(agent, key):
-                setattr(agent, key, value)
-
-            elif key in available_locals:
-                new_params[key] = value
-                print(f"Special criteria applicable to {agent}'s local variables: {key} = {value}")
-    print(new_params)
-    return new_params  # Return only new params
 
 def apply_criteria_and_prepare_monitor_args(agent, special_criteria, available_locals=None):
     """
@@ -925,6 +962,7 @@ def apply_criteria_and_prepare_monitor_args(agent, special_criteria, available_l
                 setattr(agent, key, value)
                 print(f"Special criteria applied to {agent}'s class property: {key} = {value}")
             elif key in available_locals:
+            #else:
                 new_params[key] = value
                 print(f"Special criteria applicable to {agent}'s local variables: {key} = {value}")
 
@@ -1096,6 +1134,45 @@ def get_highest_score_index(score_array, mode='total'):
             highest_index = i
 
     return highest_index
+
+def flatten(nested):
+    flat_list = []
+    for item in nested:
+        if isinstance(item, (list, tuple)):
+            flat_list.extend(flatten(item))
+        elif isinstance(item, dict):
+            for value in item.values():
+                flat_list.extend(flatten(value))
+        else:
+            flat_list.append(item)
+    return flat_list
+
+# Décomposer les tuples pour éviter les tuples imbriqués
+def unpack_tuples(items):
+    unpacked = []
+    for item in items:
+        if isinstance(item, tuple):
+            unpacked.extend(unpack_tuples(item))
+        else:
+            unpacked.append(item)
+    return unpacked
+
+def flatten_and_pair(nested_list):
+    flat_list = flatten(nested_list)
+    flat_list = unpack_tuples(flat_list)
+
+    # Toujours regrouper les éléments par paires de 2 et retourner une liste de tuples
+    paired_list = []
+    i = 0
+    while i < len(flat_list):
+        if i + 1 < len(flat_list):
+            paired_list.append((flat_list[i], flat_list[i + 1]))
+            i += 2
+        else:
+            # Si le nombre d'éléments est impair, le dernier élément est ajouté seul dans un tuple
+            paired_list.append((flat_list[i],))
+            i += 1
+    return paired_list
 
 def semantic_double_pass_chunking(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list:
     """

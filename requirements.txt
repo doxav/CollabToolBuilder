@@ -1,7 +1,7 @@
 gitpython
 
 # OpenAI and tokenization
-openai~=1.43.0
+openai>=1.68.0
 tiktoken~=0.7.0
 
 # Core utilities
@@ -47,6 +47,9 @@ websockets~=11.0.3
 # Elasticsearch
 elasticsearch~=8.10.1
 
+# Chroma
+chromadb
+
 # Neo4j for graph database
 neo4j~=5.24.0
 
@@ -84,4 +87,5 @@ langchain-openai==0.2.2
 langchain-text-splitters==0.3.0
 langgraph==0.2.35
 langgraph-checkpoint==2.0.1
+langchain-chroma
 langsmith==0.1.133
