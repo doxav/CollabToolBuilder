@@ -34,7 +34,7 @@ class HumanLLM:
         system_prompt=None,
         CPS_env_type=None,
         agent_name=None,
-        model_max_context_size=16000,
+        model_max_context_size=32000,
         default_llmORchain=None,
         premium_llmORchain=None,
         premium_llm_by_default=False,
@@ -54,7 +54,8 @@ class HumanLLM:
         auto_n_rounds=None,
         recommend_critics=None,
         task_parameters=None,
-        problem_prompts_subdir=None
+        problem_prompts_subdir=None,
+        max_autofix=None
     ):
         self.config = HumanLLMConfig()
         self.logger = logging.getLogger(__name__)
@@ -111,7 +112,7 @@ class HumanLLM:
         self.last_user_message = None
         self.primitives_dir = None
         self.processed_codes = set()
-        self.max_autofix = None
+        self.max_autofix = max_autofix
         self.problem_prompts_subdir = problem_prompts_subdir 
 
     def set_print_color(self):

@@ -134,7 +134,8 @@ class CodingAgent:
         temperature_min=0.,
         temperature_max=1.,
         num_parallel_inferences=1,
-        primitives_dir=None
+        primitives_dir=None,
+        max_autofix=None
     ):
         #super().__init__(llm)
         self.logger = logging.getLogger(__name__)

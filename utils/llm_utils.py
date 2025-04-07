@@ -954,6 +954,7 @@ def apply_criteria_and_prepare_monitor_args(agent, special_criteria, available_l
                 setattr(agent, key, value)
                 print(f"Special criteria applied to {agent}'s class property: {key} = {value}")
             elif key in available_locals:
+            #else:
                 new_params[key] = value
                 print(f"Special criteria applicable to {agent}'s local variables: {key} = {value}")
 
