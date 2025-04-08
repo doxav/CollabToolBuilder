@@ -1130,19 +1130,9 @@ class SynthesisManager:
         self.target_plan_contents_embedding = np.mean([section[target_section_content_embedding_label] for section in self.target_data["plan"]], axis=0)
         self.target_plan_embedding = self.target_data[target_plan_embedding_label]
 
-        resources = {}
         embed_len = len(self.document.dumb_embedding)
-        for res in self.target_data["resources"]:
-            resources[res["resource_id"]] = res[target_resource_embedding_label]
-            # embed_len = len(res[target_resource_embedding_label])
-
-        self.target_plan_resources_embedding = np.mean([
-            np.mean([
-                resources[r] for r in section["resources_used"]
-            ], axis=0) if len(section["resources_used"]) > 0 else np.zeros((embed_len,))
-            for section in self.target_data["plan"]
-        ], axis=0)
-        self.target_resource_embedding = np.mean([r[target_resource_embedding_label] for r in self.target_data["resources"]], axis=0) if len(self.target_data["resources"]) > 0 else np.zeros((embed_len,))
+        self.target_total_resources_count = len(self.target_data["resources"])
+        self.target_plan_resources_embedding = np.mean([r[target_resource_embedding_label] for r in self.target_data["resources"]], axis=0) if len(self.target_data["resources"]) > 0 else np.zeros((embed_len,))
 
         if normalize_embeddings:
             if min_cosine_similarity is None:
@@ -1151,11 +1141,10 @@ class SynthesisManager:
                 self.min_plan_contents_cosine_similarity = cosine_similarity([dumb_embedding], [self.target_plan_contents_embedding])[0][0]
                 self.min_plan_cosine_similarity = cosine_similarity([dumb_embedding], [self.target_plan_embedding])[0][0]
                 self.min_plan_resources_cosine_similarity = cosine_similarity([dumb_embedding], [self.target_plan_resources_embedding])[0][0]
-                self.min_resources_cosine_similiarty = cosine_similarity([dumb_embedding], [self.target_resource_embedding])[0][0]
             else:
-                self.min_plan_titles_cosine_similarity = self.min_plan_contents_cosine_similarity = self.min_plan_cosine_similarity = self.min_resources_cosine_similiarty = self.min_plan_resources_cosine_similarity = min_cosine_similarity
+                self.min_plan_titles_cosine_similarity = self.min_plan_contents_cosine_similarity = self.min_plan_cosine_similarity = self.min_plan_resources_cosine_similarity = min_cosine_similarity
         else:
-            self.min_plan_titles_cosine_similarity = self.min_plan_contents_cosine_similarity = self.min_plan_cosine_similarity = self.min_resources_cosine_similiarty = self.min_plan_resources_cosine_similarity = 0 
+            self.min_plan_titles_cosine_similarity = self.min_plan_contents_cosine_similarity = self.min_plan_cosine_similarity = self.min_plan_resources_cosine_similarity = 0 
 
     def get_distance_to_targetJSON(self, target_section_title_embedding_label: str = "section_embedding_2", target_section_content_embedding_label: str = "content_embedding_2", target_plan_embedding_label: str = "plan_embedding_2", target_resource_embedding_label: str = "resource_embedding_2", get_progress: bool = False):
         # if self does not have target_file_path
@@ -1199,6 +1188,12 @@ class SynthesisManager:
             min(current_plan_non_empty_sections_content_count / (self.target_total_sections_count + 1e-5), 1.5), 3)
         sections_title_non_empty_count_ratio_to_target = round(
             min(current_plan_non_empty_sections_title_count / (self.target_total_sections_count + 1e-5), 1.5), 3)
+        resources_count_ratio_to_target = round(
+            min(len(self.document.resources) / (self.target_total_resources_count + 1e-5), 1.5), 3)
+
+        sections_with_citations = sum(1 for section in self.document.document_content.sections_list 
+                               if section.resources and len(section.resources) > 0)
+        resources_citation_coverage_score = sections_with_citations / current_sections_count if current_sections_count > 0 else 0.0
 
         # Build the result dictionary
         distance_to_targetJSON = {
@@ -1216,6 +1211,10 @@ class SynthesisManager:
             "content_length_ratio_to_target": content_length_ratio_to_target,
 
             "content_non_empty_count_ratio_to_target": sections_content_non_empty_count_ratio_to_target,
+
+            "resources_citation_coverage_score": round(resources_citation_coverage_score, 3),
+            "resources_count_ratio_to_target": resources_count_ratio_to_target,
+            "resources_count": len(self.document.resources),
         }
 
         # Progress comparison (optional)
@@ -1231,6 +1230,8 @@ class SynthesisManager:
                 distance_to_targetJSON['title_non_empty_count_ratio_to_target_progress'] = get_ratio(sections_title_non_empty_count_ratio_to_target, self.distance_to_targetJSON['title_non_empty_count_ratio_to_target'])
                 distance_to_targetJSON['content_length_ratio_to_target_progress'] = get_ratio(content_length_ratio_to_target, self.distance_to_targetJSON['content_length_ratio_to_target'])
                 distance_to_targetJSON['content_non_empty_count_ratio_to_target_progress'] = get_ratio(sections_content_non_empty_count_ratio_to_target, self.distance_to_targetJSON['content_non_empty_count_ratio_to_target'])
+                distance_to_targetJSON['resources_citation_coverage_score_progress'] = get_ratio(resources_citation_coverage_score, self.distance_to_targetJSON['resources_citation_coverage_score'])
+                distance_to_targetJSON['resources_count_ratio_to_target_progress'] = get_ratio(resources_count_ratio_to_target, self.distance_to_targetJSON['resources_count_ratio_to_target'])
 
         # Save the results
         self.distance_to_targetJSON = distance_to_targetJSON
@@ -1373,7 +1374,10 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
                 'sections contents length (top:1, <1:too short, >1:too long)': distance[
                     'content_length_ratio_to_target'],
                 'sections contents non-empty (top:1, <1:too short, >1:too long)': distance[
-                    'content_non_empty_count_ratio_to_target']}
+                    'content_non_empty_count_ratio_to_target'],
+                'resources citation coverage score (top:1, <1:too short, >1:too long)': distance[
+                    'resources_citation_coverage_score'],
+                'resources count (top:1, <1:too short, >1:too long)': distance['resources_count_ratio_to_target']}
 
     def reset(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         self.has_reset_once = True
@@ -1424,7 +1428,11 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
             document_state += f"4. title non-empty count ratio progress: {distance_to_targetJSON['title_non_empty_count_ratio_to_target']}\n"
             document_state += f"5. content length ratio progress: {distance_to_targetJSON['content_length_ratio_to_target']}\n"
             document_state += f"6. content non-empty count ratio progress: {distance_to_targetJSON['content_non_empty_count_ratio_to_target']}\n"
-            document_state += f"7. events counted: {events_action_counts if len(events_action_counts) > 0 else 'Empty'}\n"
+            document_state += f"7. resources citation coverage score: {distance_to_targetJSON['resources_citation_coverage_score']}\n"
+            document_state += f"8. resources similarity progress: {distance_to_targetJSON['plan_resources_embedding_similarity']}\n"
+            document_state += f"9. resources count: {distance_to_targetJSON['resources_count_ratio_to_target']}\n"
+            document_state += f"10. resources count: {distance_to_targetJSON['resources_count']}\n"
+            document_state += (f"11. events counted: {events_action_counts}\n" if len(events_action_counts) > 0 else '')
 
         document_state += ">>>"
         return document_state

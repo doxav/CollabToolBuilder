@@ -10,11 +10,11 @@ Coach3 = """Write generate_toc_with_bib_resources to produce a structured table 
 def objective(trial, name_xp : str):
     # Define parameters we want to tests
 
-    max_coding_attempts = 4
+    max_coding_attempts = 2
     primitives_selection = "primitives/generate_primitives"
 
     # Define fixed parameters for Coder
-    max_autofix = 3
+    max_autofix = 2
 
     fixed_coach = trial.suggest_categorical("coach_prompt", [Coach1, Coach2, Coach3])
 
@@ -51,14 +51,18 @@ def objective(trial, name_xp : str):
         #params_user_message=user_message_params,
         fixed_coach=fixed_coach,
         unique_id="OptunaReferencesScoring" + datetime.now().strftime("%Y%m%d-%Hh%M"),
-        run_graph=False
+        run_graph=False,
+        arrayn_ret=True,
     )
 
     # Log performance for analysis
     with open(f"Optuna_results/{name_xp}.txt", "a") as f:
         f.write(f"Performance: {performance}\n\n")
 
-    return performance
+    try: ret = max(performance)
+    except: ret = 0.0
+
+    return ret
 
 
 if __name__ == "__main__":
