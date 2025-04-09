@@ -39,6 +39,8 @@ pyparsing
 spacy
 nltk
 feedparser
+bibtexparser
+TexSoup
 
 # Web development
 flask

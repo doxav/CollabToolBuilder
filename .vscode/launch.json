@@ -2,11 +2,19 @@
     "version": "0.2.0",
     "configurations": [
       {
-        "name": "🧠 Run current file as module",
+        "name": "🧠 Run optimization",
         "type": "python",
         "request": "launch",
         "console": "integratedTerminal",
         "module": "optimisation.${fileBasenameNoExtension}",
+        "justMyCode": false
+      },
+      { // Test (provide a nice Test icon different from Run)
+        "name": "🚦 Run test",
+        "type": "python",
+        "request": "launch",
+        "console": "integratedTerminal",
+        "module": "tests.${fileBasenameNoExtension}",
         "justMyCode": false
       }
     ]

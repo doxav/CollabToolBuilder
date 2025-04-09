@@ -131,6 +131,7 @@ class DocumentStructure:
         self.global_feedback_to_process = []
         self.global_feedback_processed = []
         self.resources = []
+        self.section_hashes = {} # Used for tracking changes but only used for Latex conversion
         name = f"{self.synthesis_type}_{self.title}"
         self.resources_vectordb = UnifiedVectorDB(
             UnifiedVectorDBConfig(
@@ -199,7 +200,16 @@ class DocumentStructure:
             title_embeddings = [x.title_embedding for x in self.document_content.sections_list if x.title_embedding]
             content_embeddings = [x.content_embedding for x in self.document_content.sections_list if x.content_embedding]
             #resource_embeddings = [x.resource_embedding for x in self.document_content.sections_list if x.resource_embedding]
-            resource_embeddings = [resource.get('embedding', '') for resource in self.resources]
+            #resource_embeddings = [resource.get('embedding', None) for resource in self.resources]
+            for resource in self.resources:
+                if 'embedding' not in resource and 'description' in resource:
+                    resource['embedding'] = self.get_embedding(str(resource['description']) 
+                    + (("\n" + str(resource['content'])) if 'content' in resource else None)
+                    + ("\n" + str(resource['name']) if 'name' in resource else None)
+                    + ("\n" + str(resource['link']) if 'link' in resource else None))                        
+
+                    resource['embedding'] = self.get_embedding(resource['description'])
+                resource_embeddings.append(resource['embedding'])
 
             # convert self.dumb_embedding to a list to be able to use it in np.mean
             # Compute mean embedding for titles
@@ -1311,6 +1321,132 @@ class SynthesisManager:
     def reset_method_calls_counters(self):
         if hasattr(self, '_method_counts'):
             self._method_counts = {}
+
+    def GetFromLatex(self, latex_string: str, bib_file: str = None) -> None:
+        """
+        Parses a complete LaTeX document from 'latex_string' using TexSoup and updates the
+        technical synthesis document (self.document) with the extracted title, abstract,
+        sections, and bibliography.
+
+        If 'bib_file' is provided, the function extracts additional bibliography entries
+        and merges them with self.document.resources.
+        """
+        from TexSoup import TexSoup
+        import uuid
+        from datetime import datetime
+        import os
+        import re
+        try:
+            import bibtexparser
+        except ImportError:
+            raise ImportError("Please install bibtexparser with `pip install bibtexparser`.")
+
+        # --- Helper to process both internal and external BibTeX entries ---
+        def process_bib_entry(entry, default_key=None):
+            citation_key = entry.get('ID', default_key or str(uuid.uuid4()))
+            try:
+                bib_id = int(uuid.UUID(citation_key).int >> 64) if re.fullmatch(r'[0-9a-fA-F\-]{36}', citation_key) else uuid.uuid4().int >> 64
+            except Exception:
+                bib_id = uuid.uuid4().int >> 64
+
+            entry_title = entry.get('title', citation_key)
+            link = entry.get('url', '').strip() or (f"https://doi.org/{entry.get('doi', '').strip()}" if 'doi' in entry else '')
+            description = entry.get('abstract', entry.get('note', entry.get('comment', ''))).strip()
+            entry_text = bibtexparser.dumps(bibtexparser.bibdatabase.BibDatabase(entries=[entry])).strip()
+            content_hash = hash(entry_text)
+
+            existing = next((r for r in self.document.resources if r.get("id") == bib_id), None)
+            if existing:
+                if self.document.section_hashes.get(bib_id) != content_hash:
+                    existing["document"]["content"] = entry_text
+                    self.document.section_hashes[bib_id] = content_hash
+            else:
+                self.document.resources.append({
+                    "id": bib_id,
+                    "name": entry_title,
+                    "content": entry_text,
+                    "link": link,
+                    "description": description
+                })
+                self.document.section_hashes[bib_id] = content_hash
+
+        # --- Load LaTeX string ---
+        if os.path.exists(latex_string):
+            with open(latex_string, 'r', encoding="utf-8") as f:
+                latex_string = f.read()
+        try:
+            soup = TexSoup(latex_string)
+        except Exception as e:
+            raise ValueError(f"Failed to parse LaTeX string: {e}")
+
+        # --- Title & Abstract ---
+        title_node = soup.find('title')
+        if title_node and title_node.string:
+            self.document.title = title_node.string.strip()
+            self.document.set_plan_field_with_embedding('title', self.document.title)
+
+        abstract_node = soup.find('abstract')
+        abstract = abstract_node.string.strip() if abstract_node and abstract_node.string else None
+        if not abstract:
+            abstract_cmd = soup.find(lambda tag: tag.name == "abstract" and tag.string)
+            if abstract_cmd and abstract_cmd.string:
+                abstract = abstract_cmd.string.strip()
+        if abstract:
+            self.document.context = abstract
+            self.document.set_plan_field_with_embedding('context', abstract)
+
+        # --- Sections ---
+        self.document.document_content.sections_list.clear()
+        section_tags = ['section', 'subsection', 'subsubsection']
+
+        def safe_string(tag):
+            try: return tag.string.strip()
+            except (AssertionError, AttributeError):
+                return " ".join(str(child).strip() for child in tag.contents).strip()
+
+        for tag in soup.find_all(section_tags):
+            title = safe_string(tag) or "Untitled Section"
+            try:
+                sec_id = int(tag.attrs["id"]) if "id" in (tag.attrs or {}) else uuid.uuid4().int >> 64
+            except Exception:
+                sec_id = uuid.uuid4().int >> 64
+            content = safe_string(tag)
+            section = Section(
+                section_id=sec_id,
+                parent_id=0,
+                title=title,
+                content=content,
+                title_embedding=self.document.get_embedding(title),
+                content_embedding=self.document.get_embedding(content)
+            )
+            self.add_section(section)
+
+        # --- Process \bibitem as pseudo BibTeX ---
+        for bib in soup.find_all('bibitem'):
+            note = "".join(str(child).strip() for child in bib.contents).strip()
+            title = bib.attrs.get("title", f"Resource {bib.attrs.get('id', '')}")
+            key = bib.attrs.get("id", str(uuid.uuid4()))
+            fake_bibtex = f"@misc{{{key},\n  title = {{{title}}},\n  note = {{{note}}}\n}}"
+            try:
+                bib_entry = bibtexparser.loads(fake_bibtex).entries[0]
+                process_bib_entry(bib_entry, default_key=key)
+            except Exception:
+                continue  # silently skip malformed \bibitem
+
+        # --- Process External .bib File ---
+        if bib_file:
+            bib_text = bib_file
+            if os.path.exists(bib_file):
+                with open(bib_file, 'r', encoding="utf-8") as f:
+                    bib_text = f.read()
+            try:
+                entries = bibtexparser.loads(bib_text).entries
+                for entry in entries:
+                    process_bib_entry(entry)
+            except Exception as e:
+                print(f"Failed to parse external bib: {e}")
+
+        self.last_sync_time = datetime.now()
 
 class LLMResponse:
     def __init__(self, response): self.content = response.content  # Always access the .content property
