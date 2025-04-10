@@ -30,6 +30,7 @@ import tkinter as tk
 from tkinter import scrolledtext
 from utils.file_utils import dump_text, f_exists, f_move
 from config import MODELS_CONFIG_LIST, vector_store_type
+import config
 from requests.auth import HTTPBasicAuth
 
 from utils.constants import ELASTIC_DATABASE, CHROMA_DATABASE
@@ -177,7 +178,8 @@ class UserSession:
     def get_user_id(self):
         """Retrieve or prompt for the user ID."""
         if self.user_id is None:
-            self.user_id = os.environ.get('user_id')
+            # search user_id in env, then in imported config else None
+            self.user_id = os.environ.get('user_id', config.user_id if hasattr(config, 'user_id') else None)
             if self.user_id is None:
                 self.user_id = smart_input("Please enter your user id: ", "Learning Loop", message_type="USER_ID")
         return self.user_id

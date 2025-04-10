@@ -4,8 +4,8 @@ import requests
 from typing import Optional, List
 
 from config import MODELS_CONFIG_LIST
-from ..human_llm import HumanLLM, HumanLLMConfig
-from ..file_utils import load_from_pickle, save_to_pickle
+from utils.human_llm import HumanLLM, HumanLLMConfig
+from utils.file_utils import load_from_pickle, save_to_pickle
 
 
 from langchain_openai import ChatOpenAI
