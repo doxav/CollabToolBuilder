@@ -14,32 +14,30 @@ import json
 from typing import List, Annotated, Dict, Any, Optional
 from typing_extensions import TypedDict
 
+from pydantic import BaseModel, Field
+
 from langgraph.constants import Send
-from langchain_core.messages import HumanMessage, SystemMessage
-from langgraph.graph import START, END, StateGraph
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+
+from langgraph.graph import START, END, StateGraph, MessagesState
 from langgraph.checkpoint.memory import MemorySaver
 
 from config import embedding_function, use_websocket
 from utils.human_llm import HumanLLM, HumanLLMConfig
 from utils.llm_utils import smart_input, smart_print
-from utils.graph_utils.analysts import Analyst, create_analysts
 from env.IR_CPS_TechSynthesis.env import VoyagerEnvIR_CPS_TechSynthesis, Section
 from env.env import EnvironmentManager
-from utils.graph_utils.helpers_demo import (
+from utils.helpers_demo import (
     remove_think_tags,
     extract_latex_and_bib_from_llm_output,
     extract_json
 )
-from utils.graph_utils.interview import (
-    InterviewState,
-    generate_question, generate_answer, write_section,
-    search_docs_rag, search_web, search_wikipedia, search_arxiv, search_semantic_scholar
-)
+from utils import helpers_demo
 
 # 1) Initialize config + LLM handles
 config = HumanLLMConfig()
 llm_list = config.get_llmORchains_list()
-config.use_websocket = use_websocket
+config.use_websocket = use_websocket = False
 config.smart_input = smart_input
 config.smart_print = smart_print
 
@@ -54,12 +52,38 @@ if not 'reset_db_indices' in locals():
 
 config.initialize()
 
-planner = HumanLLM(agent_name="Planner", llmORchains_list=llm_list)
-section_writer = HumanLLM(agent_name="Section Writer", llmORchains_list=llm_list)
-critic = HumanLLM(agent_name="Self Critic", llmORchains_list=llm_list)
-latex_gen = HumanLLM(agent_name="Generate Latex", llmORchains_list=llm_list)
+automate_graph = True
+planner, section_writer, critic, latex_gen, analyst = None, None, None, None, None
 
 ### ----- Extended State to include new fields -----
+
+class Analyst(BaseModel):
+    affiliation: str = Field(
+        description="Primary affiliation of the analyst.",
+    )
+    # name: str = Field(
+    #     description="Name of the analyst."
+    # )
+    role: str = Field(
+        description="Role/expertise of the analyst in the context of the topic.",
+    )
+    description: str = Field(
+        description="Description of the analyst focus, concerns, and motives.",
+    )
+    @property
+    def persona(self) -> str:
+        return f"Role: {self.role}\nAffiliation: {self.affiliation}\nDescription: {self.description}\n"
+
+class Perspectives(BaseModel):
+    analysts: List[Analyst] = Field(
+        description="Comprehensive list of analysts with their roles and affiliations.",
+    )
+
+class GenerateAnalystsState(TypedDict):
+    topic: str         # Research topic
+    max_analysts: int  # Number of analysts
+    human_analyst_feedback: str  # Human feedback
+    analysts: List[Analyst]      # List of analysts
 
 class ResearchGraphState(TypedDict):
     topic: str
@@ -84,6 +108,8 @@ class ResearchGraphState(TypedDict):
     old_parsed_plan: Optional[Dict[str, Any]]  # For merging
     critic: str                       # Keep track of any critique
     source_list: Annotated[list, operator.add]
+    scores: Dict[str, Any]
+
 
 ### ----- Plan Document Node (returning JSON) -----
 
@@ -402,6 +428,364 @@ def generate_latex(state: ResearchGraphState):
     latex_report_text = remove_think_tags(result.content if hasattr(result, "content") else result)
     return {"latex_report": latex_report_text}
 
+def create_analysts(state: GenerateAnalystsState):
+    """Create Analysts Agent: Generate a list of analysts in JSON."""
+    print("Create_analysts")
+    filepath = "create_analysts"
+    prompt_file = f"./prompts/{filepath}.txt"
+    if not os.path.exists(prompt_file):
+        with open(prompt_file, "w") as f:
+            f.write(
+                "You are tasked with creating a set of AI analyst personas. Your goal is to generate a list of analysts in JSON format and nothing else. "
+                "In the user message, you will receive the following values:\n"
+                "  - 'TOPIC': the research topic,\n"
+                "  - 'FEEDBACK': any editorial feedback,\n"
+                "  - 'MAX_ANALYSTS': the maximum number of analysts to generate.\n\n"
+                "Review the topic and feedback, identify the top themes, and assign one analyst per theme. "
+                "Each analyst must have the following fields: role (string), affiliation (string), and description (string)."
+            )
+    topic = state['topic']
+    max_analysts = state['max_analysts']
+    human_analyst_feedback = state.get('human_analyst_feedback', '')
+    user_message = (
+        f"TOPIC: <<< {topic} >>>\n"
+        f"MAX_ANALYSTS: <<< {max_analysts} >>>\n"
+        f"FEEDBACK: <<< {human_analyst_feedback} >>>\n"
+        f"TASK: Generate the set of analysts in JSON format."
+    )
+    try:
+        analysts_response = analyst.invoke(
+            system_prompt_template=filepath,
+            user_message=user_message,
+            stream_output=False,
+            return_message_content_only=True,
+            use_default_llm=False
+        )[0]
+        # Extract the JSON and convert it to Analyst objects
+        analysts_response = helpers_demo.extract_json(helpers_demo.remove_think_tags(analysts_response))
+        if isinstance(analysts_response, Perspectives):
+            generated_analysts = analysts_response.analysts
+        elif isinstance(analysts_response, dict):
+            generated_analysts = analysts_response.get('analysts', [])
+        elif hasattr(analysts_response, 'analysts'):
+            generated_analysts = analysts_response.analysts
+        elif isinstance(analysts_response, list):
+            generated_analysts = analysts_response
+        else:
+            generated_analysts = [
+                Analyst(
+                    role=f"Research Specialist {i+1}",
+                    affiliation="Research Institute",
+                    description=f"Analyzing aspects of {topic}"
+                ) for i in range(max_analysts)
+            ]
+        # Conversion compatible Pydantic v1/v2
+        generated_analysts = [
+            Analyst(**(a.model_dump() if hasattr(a, "model_dump") else a.dict() if hasattr(a, "dict") else a))
+            for a in generated_analysts
+        ]
+        return {"analysts": generated_analysts}
+    except Exception as e:
+        print(f"Error generating analysts: {e}")
+        default_analysts = [
+            Analyst(
+                role=f"Research Specialist {i+1}",
+                affiliation="Research Institute",
+                description=f"Analyzing aspects of {topic}"
+            ) for i in range(max_analysts)
+        ]
+        return {"analysts": default_analysts}
+
+# def human_feedback(state: GenerateAnalystsState):
+#     """No-op node that can be interrupted for human feedback."""
+#     print("Human_feedback")
+#     pass
+
+class InterviewState(MessagesState):
+    max_num_turns: int                              # Number of conversation turns
+    context: Annotated[list, operator.add]          # Source docs
+    analyst: Analyst                                # Analyst persona
+    interview: str                                  # Interview transcript
+    sections: list                                  # Collected sections for the report
+    expert_response: str                            # Expert response
+    expert_resources: list                          # Expert resources
+    sections: Annotated[list, operator.add]         # Collected sections for the report
+    source_list: Annotated[list, operator.add]      # Collected sources for the report
+
+# Add this helper at the top of interview.py (or in a shared helpers file)
+def translate_query(query: str, target_language: str = "en") -> str:
+    """
+    Translate the given query into the target language using the available LLM.
+    """
+    print(f"Translating query to {target_language}")
+    translation_instruction = SystemMessage(content=(
+        f"Translate the following query into {target_language}: \"{query}\""
+    ))
+    # Use the existing LLM call (llm_custom is already defined in helpers_demo)
+    translated_response = helpers_demo.llm_custom.invoke([translation_instruction]).content
+    translated_query = translated_response.content if hasattr(translated_response, "content") else translated_response
+    return translated_query
+
+def generate_question(state: InterviewState):
+    print("Generate_question")
+    if "question_instructions" not in state:
+        state["question_instructions"] = (
+            "You are an analyst interviewing an expert. Your goal is to ask interesting and specific questions to gain deep insights. \n"
+            "Current document state: {document_state}\n"
+            "Previous Critique: {critic}\n"
+            "Your focus is: {goals}\n"
+            "Introduce yourself with your persona-appropriate name, then ask your question. "
+            "Continue asking until you feel you have enough insight. Conclude with: 'Thank you so much for your help!'\n"
+            "Remain in character throughout your response."
+        )
+    document_state = state.get("final_report", "")
+    critic_text = state.get("critic", "")
+    analyst = state["analyst"]
+    system_message = state["question_instructions"].format(
+        document_state=document_state,
+        critic=critic_text,
+        goals=analyst.persona
+    )
+    messages = state["messages"]
+    question_answer = helpers_demo.llm_custom.invoke([SystemMessage(content=system_message)] + messages)
+    smart_print(message=question_answer.content if isinstance(question_answer, AIMessage) else question_answer,
+                agent_name="Generate Question", message_type="NEW inference result recieved", column_id=0, column_max=1)
+    return {"messages": [question_answer]}
+
+def search_web(state: InterviewState):
+    print("Search_web")
+    if "search_instructions" not in state:
+        state["search_instructions"] = SystemMessage(content=(
+            "You will be given a conversation between an analyst and an expert. "
+            "Your goal is to generate a well-structured query for retrieval. "
+            "Analyze the conversation—especially the final question—and convert it into a search query."
+        ))
+    # Generate the base query (using the existing LLM query function)
+    base_query_obj = helpers_demo.search_llm_query(state["search_instructions"], state["messages"])
+    base_query = base_query_obj.search_query
+
+    # Define the list of languages in which to translate the query
+    languages = ["en", "fr", "es"]
+    all_results = []
+    for lang in languages:
+         translated_query = translate_query(base_query, lang)
+         # Wrap the translated string in a SearchQuery object as expected by the search function
+         search_query_lang = helpers_demo.SearchQuery(search_query=translated_query)
+         results = helpers_demo.search_web_query_get(search_query_lang)
+         all_results.append(results)
+    aggregated_results = "\n\n---\n\n".join(all_results)
+    smart_print(message=aggregated_results, agent_name="Search Web",
+                message_type="NEW inference result recieved", column_id=0, column_max=1)
+    return {"context": [aggregated_results]}
+
+def search_arxiv(state: InterviewState):
+    print("Search_arxiv")
+    if "search_instructions" not in state:
+        state["search_instructions"] = SystemMessage(content=(
+            "You are given a research topic. Your task is to generate a concise and effective search query "
+            "optimized for the arXiv API. Make sure to include relevant keywords to retrieve the most pertinent scientific articles."
+        ))
+    base_query_obj = helpers_demo.search_llm_query(state["search_instructions"], state["messages"])
+    base_query = base_query_obj.search_query
+
+    languages = ["en", "fr", "es"]
+    all_results = []
+    for lang in languages:
+         translated_query = translate_query(base_query, lang)
+         search_query_lang = helpers_demo.SearchQuery(search_query=translated_query)
+         results = helpers_demo.search_arxiv_query_get(search_query_lang)
+         all_results.append(results)
+    aggregated_results = "\n\n---\n\n".join(all_results)
+    smart_print(message=aggregated_results, agent_name="Search Arxiv",
+                message_type="NEW inference result recieved", column_id=0, column_max=1)
+    return {"context": [aggregated_results]}
+
+def search_semantic_scholar(state: InterviewState):
+    print("Search_semantic_scholar")
+    if "search_instructions" not in state:
+        state["search_instructions"] = SystemMessage(content=(
+            "You are given a research topic. Your task is to generate a concise and effective search query "
+            "optimized for the Semantic Scholar API. Ensure that the query includes relevant keywords to retrieve the most pertinent scientific articles."
+        ))
+    base_query_obj = helpers_demo.search_llm_query(state["search_instructions"], state["messages"])
+    base_query = base_query_obj.search_query
+
+    languages = ["en", "fr", "es"]
+    all_results = []
+    for lang in languages:
+         translated_query = translate_query(base_query, lang)
+         search_query_lang = helpers_demo.SearchQuery(search_query=translated_query)
+         results = helpers_demo.search_semantic_scholar_query_get(search_query_lang)
+         all_results.append(results)
+    aggregated_results = "\n\n---\n\n".join(all_results)
+    smart_print(message=aggregated_results, agent_name="Search Semantic Scholar",
+                message_type="NEW inference result recieved", column_id=0, column_max=1)
+    return {"context": [aggregated_results]}
+
+def search_wikipedia(state: InterviewState):
+    print("Search_wikipedia")
+    if "search_instructions" not in state:
+        state["search_instructions"] = SystemMessage(content=(
+            "You will be given a conversation between an analyst and an expert. "
+            "Your goal is to generate a well-structured query for retrieval. "
+            "Analyze the conversation and convert the final question into a search query."
+        ))
+    base_query_obj = helpers_demo.search_llm_query(state["search_instructions"], state["messages"])
+    base_query = base_query_obj.search_query
+
+    languages = ["en", "fr", "es"]
+    all_results = []
+    for lang in languages:
+         translated_query = translate_query(base_query, lang)
+         search_query_lang = helpers_demo.SearchQuery(search_query=translated_query)
+         results = helpers_demo.search_wikipedia_query_get(search_query_lang)
+         all_results.append(results)
+    aggregated_results = "\n\n---\n\n".join(all_results)
+    smart_print(message=aggregated_results, agent_name="Search Wikipedia",
+                message_type="NEW inference result recieved", column_id=0, column_max=1)
+    return {"context": [aggregated_results]}
+
+def search_docs_rag(state: InterviewState):
+    print("Search_docs_rag")
+    if "search_instructions" not in state:
+        state["search_instructions"] = SystemMessage(content=(
+            "You are an analyst tasked with generating a search query for the RAG retrieval model. "
+            "Analyze the conversation between the analyst and the expert and convert the final question into a search query."
+        ))
+    base_query_obj = helpers_demo.search_llm_query(state["search_instructions"], state["messages"])
+    base_query = base_query_obj.search_query
+
+    languages = ["en"]
+    all_results = []
+    for lang in languages:
+         translated_query = translate_query(base_query, lang)
+         search_query_lang = helpers_demo.SearchQuery(search_query=translated_query)
+         results = helpers_demo.search_docs_rag_get(search_query_lang)
+         all_results.append(results)
+    aggregated_results = "\n\n---\n\n".join(all_results)
+    smart_print(message=aggregated_results, agent_name="Search Docs RAG",
+                message_type="NEW inference result recieved", column_id=0, column_max=1)
+    return {"context": [aggregated_results]}
+
+def generate_answer(state: InterviewState):
+    print("Generate_answer")
+    if "answer_instructions" not in state:
+        state["answer_instructions"] = (
+            "You are an expert being interviewed.\n\n"
+            "Your focus is:{goals}\n\n"
+            "Answer the following question using only the provided context:{context}\n\n"
+            "Guidelines:\n"
+            "1. Use only the information in the context.\n"
+            "2. Do not introduce external information.\n"
+            "3. You have to cite sources from the context using latex style citations ~\\cite{{source_key}}.\n"
+            "4. The source should have at least the title, authors, and link to the document, if link is available.\n"
+            "{format_instructions}"
+        )
+    
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_core.output_parsers import JsonOutputParser
+    from langchain_core.pydantic_v1 import BaseModel, Field
+    
+    # Define the output schema
+    class ExpertResponse(BaseModel):
+        response: str = Field(description="The expert's answer to the question")
+        sources: list = Field(description="The sources used to answer the question")
+    
+    # Create the output parser
+    parser = JsonOutputParser(pydantic_object=ExpertResponse)
+    
+    answer_instructions = state["answer_instructions"]
+    analyst = state["analyst"]
+    messages = state["messages"]
+    context = state["context"]
+    
+    # Create a prompt template with format instructions
+    prompt_template = ChatPromptTemplate.from_template(answer_instructions)
+    formatted_prompt = prompt_template.format(
+        goals=analyst.persona, 
+        context=context,
+        format_instructions=parser.get_format_instructions()
+    )
+    
+    answer_resp = helpers_demo.llm_custom.invoke([SystemMessage(content=formatted_prompt)] + messages)
+    
+    try:
+        # Parse the response directly with the JsonOutputParser
+        answer_json = parser.parse(answer_resp.content)
+        smart_print(message=answer_json, agent_name="Generate Answer", message_type="NEW inference result recieved", column_id=0, column_max=1)
+        return {"expert_response": [answer_json.response], "expert_resources": answer_json.sources}
+    except Exception as e:
+        # Fallback to the original extract_json method if parsing fails
+        answer_json = extract_json(answer_resp.content)
+        smart_print(message=answer_json, agent_name="Generate Answer", message_type="NEW inference result recieved", column_id=0, column_max=1)
+        return {"expert_response": [answer_json.get("response", "")], "expert_resources": answer_json.get("sources", [])}
+
+def save_interview(state: InterviewState):
+    print("Save_interview")
+    messages = state["messages"]
+    interview = get_buffer_string(messages)
+    return {"interview": interview}
+
+def route_messages(state: InterviewState, name: str = "expert"):
+    print("Route_messages")
+    messages = state["messages"]
+    max_num_turns = state.get('max_num_turns', 2)
+    num_responses = len([m for m in messages if isinstance(m, AIMessage) and m.name == name])
+    if num_responses >= max_num_turns:
+        return 'save_interview'
+    last_question = messages[-2]
+    if "Thank you so much for your help" in last_question.content:
+        return 'save_interview'
+    return "ask_question"
+
+def write_section(state: InterviewState):
+    print("Write_section")
+    if "section_writer_instructions" not in state:
+        state["section_writer_instructions"] = (
+            "You are an expert technical writer. Your task is to create a detailed and comprehensive section of a report from the provided source documents. "
+            "You have access to the current report state and the original plan. Follow these steps:\n"
+            "1. Thoroughly analyze the provided documents (each begins with a <Document tag) and the current report content.\n"
+            "2. Structure your section using Markdown with appropriate headers (e.g., ## for titles), and include detailed explanations, technical insights, and critical analysis.\n"
+            "3. Your section should include:\n"
+            "   a. A compelling title (## header) based on the analyst’s focus: {focus}\n"
+            "   b. A detailed summary (### header) that provides context, highlights novel insights, and includes a numbered list of sources with expanded explanations.\n"
+            "   c. A detailed sources list (### header) with full links or document paths.\n"
+            "Aim to append new information and expand on existing content with substantial detail, ensuring clarity and depth without repeating what has already been provided."
+        )
+    section_writer_instructions = state["section_writer_instructions"]
+    analyst = state["analyst"]
+    context = state["context"]
+    current_report = state.get("final_report", "")
+    initial_plan = state.get("initial_plan", "")
+    system_message = section_writer_instructions.format(focus=analyst.description)
+    human_msg = (
+        f"Use this source to write your section: {context}\n"
+        f"Use this expert response to write your section: {state['expert_response'] if 'expert_response' in state else ''}\n"
+        f"Current Report: {current_report}\n"
+        f"Original Plan: {initial_plan}\n"
+        "TASK: Append new information in this section without repeating what is already present."
+    )
+    sections = helpers_demo.llm_custom.invoke([
+        SystemMessage(content=system_message),
+        HumanMessage(content=human_msg)
+    ])
+    section_final = ""
+    if isinstance(sections, list):
+        for section in sections:
+            section_final += section.content if isinstance(section, AIMessage) else section
+    else:
+        section_final = sections.content if isinstance(sections, AIMessage) else sections
+    smart_print(message=section_final, agent_name="Write Section", message_type="NEW inference result recieved", column_id=0, column_max=1)
+    # Append the new section to the existing list.
+    return {"sections": state.get("sections", []) + [section_final], "source_list": state.get("source_list", []) + state.get("expert_resources", [])}
+
+def should_continue(state: GenerateAnalystsState):
+    print("Should_continue")
+    human_analyst_feedback = state.get('human_analyst_feedback', None)
+    if human_analyst_feedback:
+        return "create_analysts"
+    return END
+
 def should_iterate(state: ResearchGraphState):
     if state.get("iteration", 0) < state.get("max_iterations", 2):
         print(f"-----------### END OF ITERATION {state.get('iteration', 0)} ###-----------")
@@ -412,16 +796,19 @@ def should_iterate(state: ResearchGraphState):
 
 ### ----- Build and Invoke Graph -----
 
-SEARCH_STRATEGY = None  # same approach for searching
+SEARCH_STRATEGY = "arxiv"  # same approach for searching
 def choose_search_strategy(state: ResearchGraphState):
     global SEARCH_STRATEGY
-    SEARCH_STRATEGY = smart_input(
-        "What searching strategy do you want to use? (Web, Wikipedia, ArXiv, Semantic, All): ",
-        column_id=0, column_max=1, optional=False
-    ).lower()
-    SEARCH_STRATEGY = (
-        "default" if SEARCH_STRATEGY not in ["web","wikipedia","arxiv","semantic","all"] else SEARCH_STRATEGY
-    )
+    if automate_graph:
+        SEARCH_STRATEGY = "default" if SEARCH_STRATEGY is None else SEARCH_STRATEGY
+    else:
+        SEARCH_STRATEGY = smart_input(
+            "What searching strategy do you want to use? (Web, Wikipedia, ArXiv, Semantic, All): ",
+            column_id=0, column_max=1, optional=False
+        ).lower()
+        SEARCH_STRATEGY = (
+            "default" if SEARCH_STRATEGY not in ["web","wikipedia","arxiv","semantic","all"] else SEARCH_STRATEGY
+        )
     print(f"Search strategy chosen: {SEARCH_STRATEGY}")
     return state
 
@@ -458,28 +845,20 @@ def initiate_all_interviews(state: ResearchGraphState):
 
 from langgraph.graph import StateGraph
 
-def score_generated_report_with_existing_env(final_report: str):
+def score_generated_report_with_existing_env(final_report_in_latex: str, topic: str = "Complex QA and language models hybrid architectures, Survey"):
     """
     Reuses the scoring logic from env.py by creating a VoyagerEnvIR_CPS_TechSynthesis
     environment, loading the same references, inserting 'final_report' into it,
     then calling get_score().
     """
 
-    documents=[{ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
-                'title':"Complex QA and language models hybrid architectures, Survey",
-            'context':"This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
-            'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"},
-            { 'id':"42252c6c-12f3-4edf-9045-8acd69bc3356",
-                'title':"Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature",
-            'context':"This paper surveys the empirical literature of inflation targeting. The main findings from our review are the following: there is robust empirical evidence that larger and more developed countries are more likely to adopt the IT regime; the introduction of this regime is conditional on previous disinflation, greater exchange rate flexibility, central bank independence, and higher level of financial development; the empirical evidence has failed to provide convincing evidence that IT itself may serve as an effective tool for stabilizing inflation expectations and for reducing inflation persistence; the empirical research focused on advanced economies has failed to provide convincing evidence on the beneficial effects of IT on inflation performance, while there is some evidence that the gains from the IT regime may have been more prevalent in the emerging market economies; there is not convincing evidence that IT is associated with either higher output growth or lower output variability; the empirical research suggests that IT may have differential effects on exchange-rate volatility in advanced economies versus EMEs; although the empirical evidence on the impact of IT on fiscal policy is quite limited, it supports the idea that IT indeed improves fiscal discipline; the empirical support to the proposition that IT is associated with lower disinflation costs seems to be rather weak. Therefore, the accumulated empirical literature implies that IT does not produce superior macroeconomic benefits in comparison with the alternative monetary strategies or, at most, they are quite modest.",
-            'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical  Literature.json"}]
+    # SHOULD NOT BE INITIALIZED EVERY TIME BUT ONLY ONCE, SHOULD ALSO SEARCH IN THE LIST OF AVAILABLE JSON OUTPUTS
+    if topic == "Complex QA and language models hybrid architectures, Survey":
+        doc={ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
+                    'title':"Complex QA and language models hybrid architectures, Survey",
+                'context':"This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
+                'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"}
 
-    # 1) Initialize the environment with any mandatory arguments:
-    #    For instance, if 'title' or 'goal' is required, supply placeholders or real data.
-    #    Importantly, set 'target_file_path' to your FIRST reference JSON:
-    
-    envs_tech_synthesis = []
-    for doc in documents:
         env = EnvironmentManager(
             env_type="techsynthesis",
             title=doc['title'],
@@ -489,34 +868,19 @@ def score_generated_report_with_existing_env(final_report: str):
             llm=llm_list["default_llm"],
             embedding_model_name=config.common_vectordb_config.embedding_function
         ).get_environment()
-        envs_tech_synthesis.append(env)
 
 
+        env.reset()
+        env.synthesis_manager.GetFromLatex(final_report_in_latex)
 
-    # 2) The environment logic expects "sections" making up the doc. If final_report is
-    #    mostly one big text, we can push it in as a single 'Section'.
-    #    If you prefer multiple sections, parse and create multiple:
-    env.reset()
-    env.synthesis_manager.create_and_add_section_then_return_id(
-        title="Generated Document",
-        content=final_report
-    )
+        scores = env.get_score()
+        if scores is not isinstance(scores, dict):
+            scores = {'score': str(scores)}
+    else:
+        # Evaluate score using an LLM
+        scores = {"qualitative feedback": "this article is not structured as a scientific article and robust citations are missing"}
 
-    # 3) Score against the FIRST reference
-    score_first = env.get_score()  # This reuses 'get_distance_to_targetJSON' etc.
-
-    # Then call get_score() again:
-    score_second = env.get_score()
-
-    # 5) Merge or average those two scores as you like:
-    merged_scores = {}
-    for key in score_first.keys():
-        val1 = score_first[key]
-        val2 = score_second.get(key, 0)
-        merged_scores[key] = round((val1 + val2) / 2, 4)  # simple average
-
-    # 6) Return or print them
-    return score_first, score_second, merged_scores
+    return scores
 
 def score_document(state: ResearchGraphState):
     """
@@ -529,26 +893,27 @@ def score_document(state: ResearchGraphState):
         print("No final_report found in state. Skipping scoring...")
         return {}
 
-    # REUSE your existing environment-based scoring approach
-    # (the snippet you provided, extracted into a function)
-    score1, score2, merged = score_generated_report_with_existing_env(final_report)
-
-    smart_print(f"Score vs Reference #1: {score1}", "score_document", "NEW INFERENCE RESULT RECEIVED", column_id=0, column_max=1)
-    smart_print(f"Score vs Reference #2: {score2}", "score_document", "NEW INFERENCE RESULT RECEIVED", column_id=0, column_max=1)
-    smart_print(f"Merged Score: {merged}", "score_document", "NEW INFERENCE RESULT RECEIVED", column_id=0, column_max=1)
+    # CONVERT REPORT TO LATEX
+    final_report_latex = final_report
+    scores = score_generated_report_with_existing_env(final_report_latex, state["topic"])
 
     # Optionally store them in the state so the next node can see them
-    return {
-        "score_1": score1,
-        "score_2": score2,
-        "score_merged": merged
-    }
-
+    return { "scores": scores}
 
 def multi_agent_research_generation_persist_at_the_end(
-    title, topic, max_analysts: int=3, max_iterations: int=2
+    title, topic, max_analysts: int=3, max_iterations: int=2, auto_n_rounds_planner: int=0, auto_n_rounds_section_writer: int=0, auto_n_rounds_analyst: int=0, auto_n_rounds_critic: int=0, auto_n_rounds_latex: int=0, automation: str="full_auto",
 ):
     print("Multi_agent_research_generation_persist_at_the_end")
+
+    if automation == "full_auto":
+        auto_n_rounds_analyst = auto_n_rounds_section_writer = auto_n_rounds_analyst = auto_n_rounds_critic = auto_n_rounds_latex = 999
+
+    global planner, section_writer, critic, latex_gen, analyst
+    planner = HumanLLM(agent_name="Planner", llmORchains_list=llm_list, automation=automation, auto_n_rounds=auto_n_rounds_planner)
+    section_writer = HumanLLM(agent_name="Section Writer", llmORchains_list=llm_list, automation=automation, auto_n_rounds=auto_n_rounds_section_writer)
+    critic = HumanLLM(agent_name="Self Critic", llmORchains_list=llm_list, automation=automation, auto_n_rounds=auto_n_rounds_critic)
+    latex_gen = HumanLLM(agent_name="Generate Latex", llmORchains_list=llm_list, automation=automation, auto_n_rounds=auto_n_rounds_latex)
+    analyst = HumanLLM(agent_name="Create Analysts", llmORchains_list=llm_list, automation=automation, auto_n_rounds=auto_n_rounds_analyst)
 
     initial_state: ResearchGraphState = {
         "topic": topic,
@@ -569,7 +934,8 @@ def multi_agent_research_generation_persist_at_the_end(
         "parsed_plan": {},
         "old_parsed_plan": {},
         "critic": "",
-        "source_list": []
+        "source_list": [],
+        "scores": {},
     }
 
     builder = StateGraph(ResearchGraphState)
@@ -588,7 +954,7 @@ def multi_agent_research_generation_persist_at_the_end(
     # Build the subgraph for multi-agent interviews (unchanged)
     interview_graph_def = StateGraph(InterviewState)
     interview_graph_def.add_node("ask_question", generate_question)
-    interview_graph_def.add_node("route_to_search_nodes", route_to_search_nodes)
+    #interview_graph_def.add_node("route_to_search_nodes", route_to_search_nodes)
     interview_graph_def.add_node("search_docs_rag", search_docs_rag)
     interview_graph_def.add_node("search_web", search_web)
     interview_graph_def.add_node("search_wikipedia", search_wikipedia)
@@ -676,8 +1042,11 @@ def multi_agent_research_generation_persist_at_the_end(
     # Example of storing graph diagram
     if not os.path.exists("images"):
         os.makedirs("images")
-    with open("images/graph_png.png", "wb") as f:
-        f.write(graph.get_graph(xray=1).draw_mermaid_png())
+    try:
+        with open("images/graph_png.png", "wb") as f:
+            f.write(graph.get_graph(xray=1).draw_mermaid_png())
+    except Exception as e:
+        print(f"Error saving graph image: {e}")
 
     return report
 
