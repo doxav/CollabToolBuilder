@@ -34,6 +34,8 @@ from utils.helpers_demo import (
 )
 from utils import helpers_demo
 
+from opto.trace import node
+
 # 1) Initialize config + LLM handles
 config = HumanLLMConfig()
 llm_list = config.get_llmORchains_list()
@@ -888,20 +890,18 @@ def score_document(state: ResearchGraphState):
     This node runs after finalize_report and before self_critique.
     """
 
-    final_report = state.get("final_report", "")
-    if not final_report:
+    final_latex_report = state.get("latex_report", "")
+    if not final_latex_report:
         print("No final_report found in state. Skipping scoring...")
         return {}
 
-    # CONVERT REPORT TO LATEX
-    final_report_latex = final_report
-    scores = score_generated_report_with_existing_env(final_report_latex, state["topic"])
+    scores = score_generated_report_with_existing_env(final_latex_report, state["topic"])
 
     # Optionally store them in the state so the next node can see them
     return { "scores": scores}
 
 def multi_agent_research_generation_persist_at_the_end(
-    title, topic, max_analysts: int=3, max_iterations: int=2, auto_n_rounds_planner: int=0, auto_n_rounds_section_writer: int=0, auto_n_rounds_analyst: int=0, auto_n_rounds_critic: int=0, auto_n_rounds_latex: int=0, automation: str="full_auto",
+    title, topic, max_analysts: int=3, max_iterations: int=2, auto_n_rounds_planner: int=0, auto_n_rounds_section_writer: int=0, auto_n_rounds_analyst: int=0, auto_n_rounds_critic: int=0, auto_n_rounds_latex: int=0, automation: str="full_auto", trace_optimization: bool=False
 ):
     print("Multi_agent_research_generation_persist_at_the_end")
 
@@ -1005,8 +1005,9 @@ def multi_agent_research_generation_persist_at_the_end(
     builder.add_edge(START, "plan_document")
 
     # Checkpointer
-    memory2 = MemorySaver()
-    graph = builder.compile(checkpointer=memory2)
+    #memory2 = MemorySaver()
+    #graph = builder.compile(checkpointer=memory2)
+    graph = builder.compile()
 
     # Optionally add your RAG documents
     # for file in os.listdir("BIBLIO-TEST"):
@@ -1019,36 +1020,36 @@ def multi_agent_research_generation_persist_at_the_end(
 
     # Invoke
     #graph.invoke(initial_state, params={ "configurable": { "thread_id": "1" }, "recursion_limit": 100 })
-    graph.invoke(initial_state, { "configurable": { "thread_id": "1" }, "recursion_limit": 100 })
-    final_state = graph.get_state({ "configurable": { "thread_id": "1" }, "recursion_limit": 100 })
+    result = graph.invoke(initial_state, { "configurable": { "thread_id": "1" }, "recursion_limit": 100 })
+    #final_state = graph.get_state({ "configurable": { "thread_id": "1" }, "recursion_limit": 100 })
 
     # Save final artifacts
-    report = final_state.values.get("final_report")
-    latex_report, bibtex_report = extract_latex_and_bib_from_llm_output(
-        final_state.values.get("latex_report","")
-    )
+    #report = final_state.values.get("final_report")
+    latex_report = result.get("latex_report","")
+    tex_report, bib_report = extract_latex_and_bib_from_llm_output(latex_report)
 
     report_folder = "./report_outputs"
     if not os.path.exists(report_folder):
         os.makedirs(report_folder)
 
-    if latex_report:
+    if tex_report:
         with open(f"{report_folder}/{topic}.tex", "w") as f:
-            f.write(latex_report)
-    if bibtex_report:
+            f.write(tex_report)
+    if bib_report:
         with open(f"{report_folder}/{topic}.bib", "w") as f:
-            f.write(bibtex_report)
+            f.write(bib_report)
 
-    # Example of storing graph diagram
-    if not os.path.exists("images"):
-        os.makedirs("images")
+    # Storing graph's diagram
     try:
+        if not os.path.exists("images"): os.makedirs("images")
         with open("images/graph_png.png", "wb") as f:
             f.write(graph.get_graph(xray=1).draw_mermaid_png())
     except Exception as e:
         print(f"Error saving graph image: {e}")
 
-    return report
+    if trace_optimization:
+        return {'final_report': node(latex_report)}
+    return latex_report
 
 
 # -------------- Example usage --------------

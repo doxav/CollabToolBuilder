@@ -374,10 +374,14 @@ class UnifiedVectorDB:
     def add_texts(self, texts, ids=None, metadatas=None):
         """Add texts to the database."""
         try:
-            if self.config.db_type == CHROMA_DATABASE:
+            if metadatas is not None and isinstance(metadatas, dict):
+                metadatas = {k: v for k, v in metadatas.items() if v is not None}
+            elif metadatas is not None and isinstance(metadatas, list):
+                metadatas = [m for m in metadatas if m is not None]
+            if self.config.db_type == CHROMA_DATABASE or self.config.db_type == ELASTIC_DATABASE:
+                if metadatas is None:
+                    return self.db.add_texts(texts=texts, ids=ids)
                 return self.db.add_texts(texts=texts, ids=ids, metadatas=metadatas)
-            elif self.config.db_type == ELASTIC_DATABASE:
-                return self.db.add_texts(texts=texts, metadatas=metadatas, ids=ids)
             else:
                 self.logger.error(f"Unsupported DB type: {self.config.db_type}")
                 return None
