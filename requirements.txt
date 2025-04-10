@@ -6,33 +6,33 @@ openai>=1.68.0
 tiktoken~=0.7.0
 
 # Core utilities
-requests~=2.31.0
+requests
 psutil
 httpx
 PyPDF2
-pydantic~=2.8.2
+pydantic
 watchdog
-PyYAML~=6.0.1
-python-dotenv~=1.0.1
-scipy~=1.13.1
+PyYAML
+python-dotenv
+scipy
 
 # Transformers and ML-related libraries
 transformers
 torch
 sentence-transformers
-scikit-learn~=1.5.1
-numpy~=1.26.4
-optuna~=3.6.1
+scikit-learn
+numpy
+optuna
 einops
-pandas~=2.2.2
+pandas
 seaborn
 
 # Web scraping and APIs
 wikipedia-api
 wikipedia
 arxiv
-bs4~=0.0.2
-beautifulsoup4~=4.12.3
+bs4
+beautifulsoup4
 
 # Parsing and NLP
 pyparsing
@@ -45,7 +45,7 @@ TexSoup
 # Web development
 flask
 flask_cors
-websockets~=11.0.3
+websockets
 
 # Elasticsearch
 elasticsearch~=8.10.1
