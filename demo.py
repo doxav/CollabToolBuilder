@@ -182,6 +182,24 @@ def plan_document(state: ResearchGraphState):
         # Fallback if the LLM messed up
         plan_json = {}
 
+    # *** Assign stable hierarchical IDs to plan_json to ease reference by other LLM/logics ***
+    def assign_ids_to_subsections(subsec_dict: dict, prefix: str):
+        """Recursively assign IDs to subsections using the given prefix."""
+        for i, (sub_name, sub_data) in enumerate(subsec_dict.items(), start=1):
+            sub_id = f"{prefix}.{i}"
+            sub_data["id"] = sub_id
+            if "subsections" in sub_data:
+                assign_ids_to_subsections(sub_data["subsections"], sub_id)
+
+    # Assign IDs for top-level sections
+    section_counter = 1
+    for section_name, section_data in plan_json.items():
+        section_id = str(section_counter)
+        section_data["id"] = section_id
+        if "subsections" in section_data:
+            assign_ids_to_subsections(section_data["subsections"], section_id)
+        section_counter += 1
+
     # Save for reference
     if not state.get("initial_plan"):
         state["initial_plan"] = raw_text
@@ -212,9 +230,23 @@ def merge_plan(state: ResearchGraphState):
     final_plan = {}
     unused_sections = {}
 
-    # Add everything from new_plan
-    for section_name, data in new_plan.items():
-        final_plan[section_name] = data
+    # Add all sections from new_plan, preserving IDs of unchanged sections
+    for section_name, new_data in new_plan.items():
+        if section_name in old_plan:
+            old_data = old_plan[section_name]
+            # **Preserve the section's ID from old plan if it exists**
+            if "id" in old_data:
+                new_data["id"] = old_data["id"]
+            # **Recursively preserve IDs for unchanged subsections** 
+            def preserve_ids_recursive(old_node, new_node):
+                for sub_name, new_sub in new_node.get("subsections", {}).items():
+                    if sub_name in old_node.get("subsections", {}):
+                        old_sub = old_node["subsections"][sub_name]
+                        if "id" in old_sub:
+                            new_sub["id"] = old_sub["id"]
+                        preserve_ids_recursive(old_sub, new_sub)
+            preserve_ids_recursive(old_data, new_data)
+        final_plan[section_name] = new_data
 
     # If old_plan has sections not in new_plan, put them in "unused_sections"
     for old_section_name, old_data in old_plan.items():
@@ -343,19 +375,18 @@ def self_critique(state: ResearchGraphState):
     if not os.path.exists(prompt_file):
         with open(prompt_file, "w") as f:
             f.write(
-                "You are an expert critic. Your task is to review a research report and provide constructive "
-                "criticism with suggestions for improvement. In the user message, you will receive 'REPORT'. "
-                "Return a JSON object with keys 'plan' (the updated plan in JSON) and 'critic' (the critique)."
+                "You are an expert critic. The plan provided is a JSON structure in which each section and subsection includes a stable hierarchical ID (for example: '1', '1.1', '2', etc.). Your task is to review the research report and provide targeted, constructive feedback. When you suggest modifications, refer explicitly to these section IDs so that existing content is not lost. \n"
+                "Return a JSON object with keys 'plan' (the updated plan that preserves each section’s ID) and 'critic' (your detailed critique, mentioning section IDs for any changes)."
             )
 
     current_report = state.get("final_report", "")
     user_message = (
         f"REPORT: <<< {current_report} >>>\n\n"
-        "TASK: Critique the report and update the plan.\n"
+        "TASK: Critique the report and update the plan using the section IDs. Please refer to each section by its unique ID (for example, '1', '1.1', etc.) so that if you recommend changes, the existing content associated with that ID is preserved if necessary/possible.\n"
         "Return JSON with structure:\n"
         "{\n"
-        "  \"plan\": { /* JSON structure for sections, like the original plan format */ },\n"
-        "  \"critic\": \"Your textual critique\"\n"
+        "  \"plan\": { /* JSON structure for sections (including their IDs, titles, and content) */ },\n"
+        "  \"critic\": \"Your textual critique with section ID references for any suggested modifications\"\n"
         "}"
     )
 
