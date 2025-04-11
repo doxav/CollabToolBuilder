@@ -34,7 +34,12 @@ from utils.helpers_demo import (
 )
 from utils import helpers_demo
 
-from opto.trace import node
+try:
+    from opto.trace import node
+except ImportError:
+    # Dummy node: simply returns the data
+    def node(data, **kwargs):
+        return data
 
 # 1) Initialize config + LLM handles
 config = HumanLLMConfig()
@@ -200,13 +205,10 @@ def plan_document(state: ResearchGraphState):
             assign_ids_to_subsections(section_data["subsections"], section_id)
         section_counter += 1
 
-    # Save for reference
-    if not state.get("initial_plan"):
-        state["initial_plan"] = raw_text
-
     return {
-        "plan": raw_text,          # the raw plan text
-        "parsed_plan": plan_json   # the structured JSON
+        "plan": json.dumps(plan_json, separators=(',', ':')),          # the raw plan text
+        "parsed_plan": plan_json,
+        "initial_plan": state.get("initial_plan", raw_text),
     }
 
 ### ----- Merge Plan Node -----
@@ -256,18 +258,15 @@ def merge_plan(state: ResearchGraphState):
     # If we want to store unused sections to remind us in the next iteration:
     final_plan["UNUSED_SECTIONS"] = unused_sections
 
-    state["old_parsed_plan"] = final_plan
-    state["parsed_plan"] = final_plan
-
     return {
-        "parsed_plan": final_plan
+        "parsed_plan": final_plan,
+        "old_parsed_plan": final_plan
     }
 
 ### ----- Write All Sections Node -----
 
 def write_all_sections(state: ResearchGraphState):
     print("write_all_sections")
-
     plan = state.get("parsed_plan", {})
     if not plan:
         print("No plan found, skipping.")
@@ -275,67 +274,64 @@ def write_all_sections(state: ResearchGraphState):
 
     new_sections_content = []
     collected_sources = []
+    seen_titles = set()  # <-- Track lowercased section titles
 
     def traverse_and_write(section_name, section_obj, depth=0):
+        # Normalize section title
+        normalized_title = section_name.strip().lower()
+        if normalized_title in seen_titles:
+            return  # Skip duplicate section by title
+        seen_titles.add(normalized_title)
+
         desc = section_obj.get("description", "")
         subsecs = section_obj.get("subsections", {})
         sources = section_obj.get("sources", [])
-
-        # Add sources to collected list
         collected_sources.extend(sources)
 
-        # Skip any section related to sources/references
-        if any(keyword in section_name.lower() 
-               for keyword in ["sources", "references", "bibliography"]):
+        if any(keyword in section_name.lower() for keyword in ["sources", "references", "bibliography"]):
             return
-        # Generate section content
+
         user_prompt = (
             f"SECTION: <<{section_name}>>\n"
             f"DESCRIPTION: <<{desc}>>\n"
-            f"SOURCES: >>{sources}>>\n\n"
+            f"SOURCES: <<{sources}>>\n\n"
             f"INTERVIEWS: <<{state.get('sections', [])}>>\n"
             f"PLAN OF DOCUMENT/SECTIONS: <<{state.get('plan', {})}>>\n"
         )
-        system_prompt = ("Write only content for this SECTION...")
+        system_prompt = "Write only content for this SECTION..."
         response = section_writer.invoke(
-            original_input_messages=[SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)],
+            original_input_messages=[
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ],
             stream_output=False,
             return_message_content_only=True,
             use_default_llm=False
         )[0]
         text = remove_think_tags(response.content if hasattr(response, "content") else response)
-
-        heading_prefix = "#" * (depth+2)
+        heading_prefix = "#" * (depth + 2)
         final_text = f"{heading_prefix} {section_name}\n\n{text}"
         new_sections_content.append(final_text)
 
-        # Recurse on subsections
         for sub_name, sub_obj in subsecs.items():
-            traverse_and_write(sub_name, sub_obj, depth+1)
+            traverse_and_write(sub_name, sub_obj, depth + 1)
 
-    # Traverse all top-level items
     for top_section, top_obj in plan.items():
         if top_section == "UNUSED_SECTIONS":
             continue
         traverse_and_write(top_section, top_obj, depth=0)
 
-    # Format collected sources as LaTeX items
     temp_source_list = state.get("source_list", [])
-    temp_source_string_list = []
-    for source in temp_source_list:
-        temp_source_string_list.append(f"{source.get('title', '')}, {source.get('authors', '')}, {source.get('link', '')}")
-
+    temp_source_string_list = [f"{source.get('title', '')}, {source.get('authors', '')}, {source.get('link', '')}" for source in temp_source_list]
     collected_sources.extend(temp_source_string_list)
     formatted_sources = [f"\\item \\textbf{{{src}}}" for src in collected_sources]
     resource_update = "\\begin{enumerate}\n" + "\n".join(formatted_sources) + "\n\\end{enumerate}"
     
-    # Clean existing sections from any source-related content
     cleaned_sections = [
         section for section in new_sections_content 
-        if not any(keyword in section.lower() 
-                  for keyword in ["# sources", "# references", "# bibliography"])
+        if not any(keyword in section.lower() for keyword in ["# sources", "# references", "# bibliography"])
     ]
-
+    
     return {
         "sections": state.get("sections", []) + cleaned_sections,
         "resource_list": resource_update
@@ -424,28 +420,29 @@ def self_critique(state: ResearchGraphState):
 
     # Also keep a 'plan' text if you want
     # (not strictly needed if everything is in parsed_plan)
-    plan_str = json.dumps(new_plan, indent=2)
+    plan_str = json.dumps(new_plan, separators=(',', ':'))
     state["plan"] = plan_str
 
     return {
         "plan": plan_str,
-        "iteration": iteration
+        "parsed_plan": new_plan,
+        "old_parsed_plan": state.get("parsed_plan"),
+        "iteration": iteration,
+        "critic": data.get("critic", "")
     }
 
 ### ----- The usual reset_for_iteration, generate_latex, etc. remain the same -----
 
 def reset_for_iteration(state: ResearchGraphState):
     print("Reset_for_iteration")
-    state["sections"] = []
-    state["introduction"] = ""
-    state["content"] = ""
-    state["conclusion"] = ""
-    state["resource_list"] = ""
-    state["plan"] = ""
-    # Keep old_parsed_plan if you want or wipe it out. We’ll keep it here:
-    # state["old_parsed_plan"] = state.get("parsed_plan", {})
-    # state["parsed_plan"] = {}
-    return state
+    return {
+        "sections": [],
+        "introduction": "",
+        "content": "",
+        "conclusion": "",
+        "resource_list": "",
+        "plan": ""
+    }
 
 def generate_latex(state: ResearchGraphState):
     print("Generate_latex")
