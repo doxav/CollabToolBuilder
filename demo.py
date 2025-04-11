@@ -17,7 +17,7 @@ from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
 
 from langgraph.constants import Send
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, get_buffer_string
 
 from langgraph.graph import START, END, StateGraph, MessagesState
 from langgraph.checkpoint.memory import MemorySaver
@@ -515,7 +515,7 @@ class InterviewState(MessagesState):
     source_list: Annotated[list, operator.add]      # Collected sources for the report
 
 # Add this helper at the top of interview.py (or in a shared helpers file)
-def translate_query(query: str, target_language: str = "en") -> str:
+def translate_query(query: str, target_language: str = "english") -> str:
     """
     Translate the given query into the target language using the available LLM.
     """
@@ -537,8 +537,7 @@ def generate_question(state: InterviewState):
             "Previous Critique: {critic}\n"
             "Your focus is: {goals}\n"
             "Introduce yourself with your persona-appropriate name, then ask your question. "
-            "Continue asking until you feel you have enough insight. Conclude with: 'Thank you so much for your help!'\n"
-            "Remain in character throughout your response."
+            "Continue asking until you feel you have enough insight."
         )
     document_state = state.get("final_report", "")
     critic_text = state.get("critic", "")
@@ -567,7 +566,7 @@ def search_web(state: InterviewState):
     base_query = base_query_obj.search_query
 
     # Define the list of languages in which to translate the query
-    languages = ["en", "fr", "es"]
+    languages = ["english", "french", "chinese"]
     all_results = []
     for lang in languages:
          translated_query = translate_query(base_query, lang)
@@ -590,10 +589,10 @@ def search_arxiv(state: InterviewState):
     base_query_obj = helpers_demo.search_llm_query(state["search_instructions"], state["messages"])
     base_query = base_query_obj.search_query
 
-    languages = ["en", "fr", "es"]
+    languages = ["english"]
     all_results = []
     for lang in languages:
-         translated_query = translate_query(base_query, lang)
+         translated_query = translate_query(base_query, lang) if lang != "english" else base_query
          search_query_lang = helpers_demo.SearchQuery(search_query=translated_query)
          results = helpers_demo.search_arxiv_query_get(search_query_lang)
          all_results.append(results)
@@ -612,10 +611,10 @@ def search_semantic_scholar(state: InterviewState):
     base_query_obj = helpers_demo.search_llm_query(state["search_instructions"], state["messages"])
     base_query = base_query_obj.search_query
 
-    languages = ["en", "fr", "es"]
+    languages = ["english", "french", "chinese"]
     all_results = []
     for lang in languages:
-         translated_query = translate_query(base_query, lang)
+         translated_query = translate_query(base_query, lang) if lang != "english" else base_query
          search_query_lang = helpers_demo.SearchQuery(search_query=translated_query)
          results = helpers_demo.search_semantic_scholar_query_get(search_query_lang)
          all_results.append(results)
@@ -635,10 +634,10 @@ def search_wikipedia(state: InterviewState):
     base_query_obj = helpers_demo.search_llm_query(state["search_instructions"], state["messages"])
     base_query = base_query_obj.search_query
 
-    languages = ["en", "fr", "es"]
+    languages = ["english", "french", "chinese"]
     all_results = []
     for lang in languages:
-         translated_query = translate_query(base_query, lang)
+         translated_query = translate_query(base_query, lang) if lang != "english" else base_query
          search_query_lang = helpers_demo.SearchQuery(search_query=translated_query)
          results = helpers_demo.search_wikipedia_query_get(search_query_lang)
          all_results.append(results)
@@ -657,10 +656,10 @@ def search_docs_rag(state: InterviewState):
     base_query_obj = helpers_demo.search_llm_query(state["search_instructions"], state["messages"])
     base_query = base_query_obj.search_query
 
-    languages = ["en"]
+    languages = ["english"]
     all_results = []
     for lang in languages:
-         translated_query = translate_query(base_query, lang)
+         translated_query = translate_query(base_query, lang) if lang != "english" else base_query
          search_query_lang = helpers_demo.SearchQuery(search_query=translated_query)
          results = helpers_demo.search_docs_rag_get(search_query_lang)
          all_results.append(results)
@@ -675,7 +674,7 @@ def generate_answer(state: InterviewState):
         state["answer_instructions"] = (
             "You are an expert being interviewed.\n\n"
             "Your focus is:{goals}\n\n"
-            "Answer the following question using only the provided context:{context}\n\n"
+            "Answer the following question using the provided context:{context}\n\n"
             "Guidelines:\n"
             "1. Use only the information in the context.\n"
             "2. Do not introduce external information.\n"
@@ -979,6 +978,8 @@ def multi_agent_research_generation_persist_at_the_end(
 
     builder.add_node("conduct_interview", compiled_interview_graph)
 
+    builder.add_edge(START, "plan_document")
+
     # --- Edges in main graph ---
     builder.add_edge("plan_document", "merge_plan")
     builder.add_edge("merge_plan", "create_analysts")
@@ -1001,30 +1002,11 @@ def multi_agent_research_generation_persist_at_the_end(
         ["reset_for_iteration", END]
     )
     builder.add_edge("reset_for_iteration", "plan_document")
-    #builder.set_start("plan_document")
-    builder.add_edge(START, "plan_document")
 
-    # Checkpointer
-    #memory2 = MemorySaver()
-    #graph = builder.compile(checkpointer=memory2)
     graph = builder.compile()
 
-    # Optionally add your RAG documents
-    # for file in os.listdir("BIBLIO-TEST"):
-    #     if file != '.DS_Store':
-    #         HumanLLM(agent_name="add_rag_doc_start", llmORchains_list=llm_list).add_rag_document(
-    #             folder_path="BIBLIO-TEST", file_path=file,
-    #             chunking_options={"chunk_size":1000,"chunk_overlap":200},
-    #             use_semantic_chunking=True
-    #         )
-
-    # Invoke
-    #graph.invoke(initial_state, params={ "configurable": { "thread_id": "1" }, "recursion_limit": 100 })
     result = graph.invoke(initial_state, { "configurable": { "thread_id": "1" }, "recursion_limit": 100 })
-    #final_state = graph.get_state({ "configurable": { "thread_id": "1" }, "recursion_limit": 100 })
 
-    # Save final artifacts
-    #report = final_state.values.get("final_report")
     latex_report = result.get("latex_report","")
     tex_report, bib_report = extract_latex_and_bib_from_llm_output(latex_report)
 
