@@ -375,14 +375,22 @@ def self_critique(state: ResearchGraphState):
     if not os.path.exists(prompt_file):
         with open(prompt_file, "w") as f:
             f.write(
-                "You are an expert critic. The plan provided is a JSON structure in which each section and subsection includes a stable hierarchical ID (for example: '1', '1.1', '2', etc.). Your task is to review the research report and provide targeted, constructive feedback. When you suggest modifications, refer explicitly to these section IDs so that existing content is not lost. \n"
-                "Return a JSON object with keys 'plan' (the updated plan that preserves each section’s ID) and 'critic' (your detailed critique, mentioning section IDs for any changes)."
-            )
+                "You are an expert critic. The plan provided is a JSON structure in which each section and subsection includes a stable hierarchical ID (for example: '1', '1.1', etc.). Your task is to review the research report and provide targeted, constructive feedback. When you suggest modifications, refer explicitly to these section IDs so that existing content is not lost.\n"
+                "Also, consider the feedback provided by the experts after their interviews (available under 'plan_feedback_by_analysts').\n"
+                "Return a JSON object with keys 'plan' (the updated plan that preserves each section’s ID) and 'critic' (your detailed critique, mentioning section IDs for any suggested modifications)."
+             )
 
     current_report = state.get("final_report", "")
+    # Retrieve the aggregated plan feedback from all analysts (if any)
+    plan_feedback = state.get("plan_feedback_by_analysts", {})
+    feedback_summary = ""
+    if plan_feedback:
+        # For brevity, we concatenate the feedback from all analysts (you could also structure it)
+        feedback_summary = "Collected analyst feedback: <<< " + "; ".join(f"{k}: {v}" for k, v in plan_feedback.items()) + " >>>\n"
     user_message = (
         f"REPORT: <<< {current_report} >>>\n\n"
         "TASK: Critique the report and update the plan using the section IDs. Please refer to each section by its unique ID (for example, '1', '1.1', etc.) so that if you recommend changes, the existing content associated with that ID is preserved if necessary/possible.\n"
+        f"{feedback_summary}"
         "Return JSON with structure:\n"
         "{\n"
         "  \"plan\": { /* JSON structure for sections (including their IDs, titles, and content) */ },\n"
@@ -756,6 +764,29 @@ def save_interview(state: InterviewState):
     print("Save_interview")
     messages = state["messages"]
     interview = get_buffer_string(messages)
+
+    # **Add a final plan-feedback/critique question and answer generation**
+    if state.get("iteration", 0) >= state.get("max_iterations", 2):
+        analyst = state["analyst"]
+        analyst_name = getattr(analyst, "name", "Analyst")
+        plan_text = state.get("initial_plan", "")
+        # Formulate the final question to ask the expert about the plan
+        system_msg = SystemMessage(content=(
+            "You are an expert who has just been interviewed. "
+            "The interviewer now asks for your feedback on the document plan."
+        ))
+        user_msg = HumanMessage(content=(
+            f"DOCUMENT PLAN: <<< {plan_text} >>>\n\n"
+            "Now that our interview is concluded, do you have any feedback or suggestions to improve this plan?"
+        ))
+        feedback_resp = helpers_demo.llm_custom.invoke([system_msg, user_msg])
+        feedback_text = feedback_resp.content if hasattr(feedback_resp, "content") else str(feedback_resp)
+        feedback_text = remove_think_tags(feedback_text)
+        # Store the expert's feedback, keyed by analyst
+        plan_feedbacks = state.get("plan_feedback_by_analysts", {})
+        plan_feedbacks[analyst_name] = feedback_text
+        state["plan_feedback_by_analysts"] = plan_feedbacks
+
     return {"interview": interview}
 
 def route_messages(state: InterviewState, name: str = "expert"):
@@ -883,36 +914,64 @@ def score_generated_report_with_existing_env(final_report_in_latex: str, topic: 
     environment, loading the same references, inserting 'final_report' into it,
     then calling get_score().
     """
+    feedback = {}
 
-    # SHOULD NOT BE INITIALIZED EVERY TIME BUT ONLY ONCE, SHOULD ALSO SEARCH IN THE LIST OF AVAILABLE JSON OUTPUTS
-    if topic == "Complex QA and language models hybrid architectures, Survey":
-        doc={ 'id':"cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
-                    'title':"Complex QA and language models hybrid architectures, Survey",
-                'context':"This paper reviews the state-of-the-art of language models architectures and strategies for 'complex' question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others.",
-                'target_file_path': "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"}
+    # TODO: make this automatic searching in env/IR_CPS_TechSynthesis/document_embedding_analysis/output all files and info from JSON file
+    known_docs = {
+        "Complex QA and language models hybrid architectures, Survey": {
+            "id": "cf0d353c-b43b-4a79-88f9-42c2c84cf75e",
+            "title": "Complex QA and language models hybrid architectures, Survey",
+            "context": "Initial placeholder context for Complex QA.", 
+            "target_file_path": "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Complex QA and language models hybrid architectures Survey.json"
+        },
+        "Macroeconomic Effects of Inflation Targeting A Survey of the Empirical Literature": {
+            "id": "42252c6c-12f3-4edf-9045-8acd69bc3356",
+            "title": "Macroeconomic Effects of Inflation Targeting A Survey of the Empirical Literature",
+            "context": "Initial placeholder context for Macroeconomic Effects.", 
+            "target_file_path": "env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv/Macroeconomic Effects of Inflation Targeting A Survey of the Empirical Literature.json"
+        }
+    }
+    # If a matching environment is available for the topic, use it for scoring
+    if topic in known_docs:
+        doc = known_docs[topic]
+        try:
+            env = EnvironmentManager(
+                env_type="techsynthesis",
+                title=doc['title'],
+                context=doc['context'],
+                target_file_path=doc['target_file_path'],
+                id=doc['id'],
+                llm=llm_list["default_llm"],
+                embedding_model_name=embedding_function  # use the configured embedding function
+            ).get_environment()
+            env.reset()
+            env.synthesis_manager.GetFromLatex(final_report_in_latex)
+            feedback["scores"] = env.get_score()
+        except Exception as e:
+            print(f"Environment scoring failed: {e}")
 
-        env = EnvironmentManager(
-            env_type="techsynthesis",
-            title=doc['title'],
-            context=doc['context'],
-            target_file_path=doc['target_file_path'],
-            id=doc['id'],
-            llm=llm_list["default_llm"],
-            embedding_model_name=config.common_vectordb_config.embedding_function
-        ).get_environment()
+    # No reference environment – perform a qualitative LLM evaluation
+    filepath = "score_document_eval"
+    prompt_file = f"./prompts/{filepath}.txt"
+    if not os.path.exists(prompt_file):
+        with open(prompt_file, "w") as f:
+            f.write(
+                "You are a research report evaluator focusing on structure, citations, and completeness.\n"
+                "In the user message, you will receive a 'REPORT' (the final report in LaTeX format).\n"
+                "Provide a brief qualitative feedback on the report, commenting on its structural organization, the use of citations, and the overall completeness of the content relative to the topic."
+            )
+    user_message = f"REPORT: <<< {final_report_in_latex} >>>"
+    critique_resp = critic.invoke(
+        system_prompt_template=filepath,
+        user_message=user_message,
+        stream_output=False,
+        return_message_content_only=True
+    )[0]
+    critique_text = remove_think_tags(critique_resp.content if hasattr(critique_resp, "content") else critique_resp)
+    feedback["qualitative feedback"] = critique_text
 
+    return feedback
 
-        env.reset()
-        env.synthesis_manager.GetFromLatex(final_report_in_latex)
-
-        scores = env.get_score()
-        if scores is not isinstance(scores, dict):
-            scores = {'score': str(scores)}
-    else:
-        # Evaluate score using an LLM
-        scores = {"qualitative feedback": "this article is not structured as a scientific article and robust citations are missing"}
-
-    return scores
 
 def score_document(state: ResearchGraphState):
     """
@@ -963,6 +1022,7 @@ def multi_agent_research_generation_persist_at_the_end(
         "cumulative_report": "",
         "parsed_plan": {},
         "old_parsed_plan": {},
+        "plan_feedback_by_analysts": {},
         "critic": "",
         "source_list": [],
         "scores": {},
