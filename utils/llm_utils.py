@@ -386,7 +386,7 @@ class UnifiedVectorDB:
                 self.logger.error(f"Unsupported DB type: {self.config.db_type}")
                 return None
         except Exception as e:
-            self.logger.error(f"Error adding texts to database: {str(e)}")
+            self.logger.error(f"Error adding texts to database: {str(e)} / Texts: {texts} / IDs: {ids} / Metadatas: {metadatas}")
             return None
 
     def delete(self, ids):
