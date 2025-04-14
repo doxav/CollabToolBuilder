@@ -4,7 +4,7 @@ Iterative Research Document Generation with Self-Critique and Improvement
 Changes in this version:
 - plan_document now requests a JSON-based plan from the LLM.
 - We store it in state["parsed_plan"].
-- We add a merge_plan node to merge old plan data with the new plan each iteration.
+- We remove merge plan for simplification.
 - We add write_all_sections, which loops over the sections from 'parsed_plan' to generate new text for each.
 """
 
@@ -119,6 +119,7 @@ class ResearchGraphState(TypedDict):
 
 
 ### ----- Plan Document Node (returning JSON) -----
+from textwrap import dedent
 
 def plan_document(state: ResearchGraphState):
     """
@@ -137,43 +138,33 @@ def plan_document(state: ResearchGraphState):
     """
     print("Plan_document")
     filepath = "plan_document_json"
-    prompt_file = f"./prompts/{filepath}.txt"
+    #prompt_file = f"./prompts/{filepath}.txt"
+    default_prompt_plan_document = dedent("""
+        You are a planning assistant. Generate a JSON object describing the plan for a research document given the TOPIC.
+        Each top-level key is the section's name (e.g., 'Introduction', 'Methods', 'Conclusion'), and its value is a dict with:
+        - 'description' (mandatory): short explanation or purpose/scope of that section.
+        - 'subsections' (optioanl): an object with subsections (same structure) if necessary.
+        For example:
+        {   "Introduction": {"description": "Gives an overview of the topic."},
+            "Background": {"description": "Reviews existing literature.",
+                "subsections": {"Scope": { "description": "Clarifies scope.", "subsections": {...}}
+                ...
+        }
+        Now return ONLY valid JSON, with no extra commentary. The topic is provided in the user message.""")
 
-    if not os.path.exists(prompt_file):
-        with open(prompt_file, "w") as f:
-            f.write(
-                "You are a planning assistant. Generate a JSON object describing the plan for a research document. "
-                "Each top-level key is the section's name (e.g., 'Introduction', 'Methods', 'Conclusion'), "
-                "and its value is a dict with at least:\n"
-                "  - 'description': short explanation or purpose of that section.\n"
-                "  - 'subsections': an object with subsections (same structure) if any.\n"
-                "  - 'sources': an array with any source references you consider relevant.\n\n"
-                "For example:\n"
-                "{\n"
-                "  \"Introduction\": {\n"
-                "    \"description\": \"Gives an overview of the topic.\",\n"
-                "    \"subsections\": {\n"
-                "       \"Scope\": {\n"
-                "          \"description\": \"Clarifies scope.\",\n"
-                "          \"subsections\": {},\n"
-                "          \"sources\": []\n"
-                "       }\n"
-                "    },\n"
-                "    \"sources\": []\n"
-                "  },\n"
-                "  \"Background\": {\n"
-                "    \"description\": \"Reviews existing literature.\",\n"
-                "    \"subsections\": {},\n"
-                "    \"sources\": []\n"
-                "  }\n"
-                "}\n\n"
-                "Now return ONLY valid JSON, with no extra commentary. The topic is provided in the user message."
-            )
+    # if not os.path.exists(prompt_file):
+    #     with open(prompt_file, "w") as f:
+    #         f.write(default_plan_prompt)
 
-    user_message = f"TOPIC: <<< {state['topic']} >>>"
+    # Include previous self-critique feedback if it exists.
+    critic_feedback = state.get("critic", "").strip()
+    feedback_part = f"\nPREVIOUS CRITIQUE: <<< {critic_feedback} >>>" if critic_feedback else ""
+    
+    user_message = f"TOPIC: <<< {state['topic']} >>>{feedback_part}"
     result = planner.invoke(
-        system_prompt_template=filepath,
-        user_message=user_message,
+        original_input_messages=[SystemMessage(content=default_prompt_plan_document), HumanMessage(content=user_message)],
+        #system_prompt_template=filepath,
+        #user_message=user_message,
         stream_output=False,
         return_message_content_only=True,
         use_default_llm=False
@@ -209,58 +200,6 @@ def plan_document(state: ResearchGraphState):
         "plan": json.dumps(plan_json, separators=(',', ':')),          # the raw plan text
         "parsed_plan": plan_json,
         "initial_plan": state.get("initial_plan", raw_text),
-    }
-
-### ----- Merge Plan Node -----
-
-def merge_plan(state: ResearchGraphState):
-    """
-    If the LLM produces a new plan each time, we can unify it with the old plan
-    so that no previously generated sections or info is lost.
-
-    For simplicity, this example merges top-level sections by name.
-    If a new plan omits a previously existing top-level section, we
-    keep the old one under "unused_sections" or similar.
-
-    In your real usage, adapt this to deeper merging logic.
-    """
-    print("Merge_plan")
-
-    old_plan = state.get("old_parsed_plan") or {}
-    new_plan = state.get("parsed_plan") or {}
-
-    final_plan = {}
-    unused_sections = {}
-
-    # Add all sections from new_plan, preserving IDs of unchanged sections
-    for section_name, new_data in new_plan.items():
-        if section_name in old_plan:
-            old_data = old_plan[section_name]
-            # **Preserve the section's ID from old plan if it exists**
-            if "id" in old_data:
-                new_data["id"] = old_data["id"]
-            # **Recursively preserve IDs for unchanged subsections** 
-            def preserve_ids_recursive(old_node, new_node):
-                for sub_name, new_sub in new_node.get("subsections", {}).items():
-                    if sub_name in old_node.get("subsections", {}):
-                        old_sub = old_node["subsections"][sub_name]
-                        if "id" in old_sub:
-                            new_sub["id"] = old_sub["id"]
-                        preserve_ids_recursive(old_sub, new_sub)
-            preserve_ids_recursive(old_data, new_data)
-        final_plan[section_name] = new_data
-
-    # If old_plan has sections not in new_plan, put them in "unused_sections"
-    for old_section_name, old_data in old_plan.items():
-        if old_section_name not in final_plan:
-            unused_sections[old_section_name] = old_data
-
-    # If we want to store unused sections to remind us in the next iteration:
-    final_plan["UNUSED_SECTIONS"] = unused_sections
-
-    return {
-        "parsed_plan": final_plan,
-        "old_parsed_plan": final_plan
     }
 
 ### ----- Write All Sections Node -----
@@ -333,7 +272,7 @@ def write_all_sections(state: ResearchGraphState):
     ]
     
     return {
-        "sections": state.get("sections", []) + cleaned_sections,
+        "sections": list(dict.fromkeys(state.get("sections", []) + cleaned_sections)),
         "resource_list": resource_update
     }
 
@@ -366,69 +305,34 @@ def self_critique(state: ResearchGraphState):
     We'll parse that, set state['parsed_plan'] accordingly. We'll store the old in old_parsed_plan if needed.
     """
     print("Self_critique")
-    filepath = "self_critique"
-    prompt_file = f"./prompts/{filepath}.txt"
-    if not os.path.exists(prompt_file):
-        with open(prompt_file, "w") as f:
-            f.write(
-                "You are an expert critic. The plan provided is a JSON structure in which each section and subsection includes a stable hierarchical ID (for example: '1', '1.1', etc.). Your task is to review the research report and provide targeted, constructive feedback. When you suggest modifications, refer explicitly to these section IDs so that existing content is not lost.\n"
-                "Also, consider the feedback provided by the experts after their interviews (available under 'plan_feedback_by_analysts').\n"
-                "Return a JSON object with keys 'plan' (the updated plan that preserves each section’s ID) and 'critic' (your detailed critique, mentioning section IDs for any suggested modifications)."
-             )
+    default_prompt_self_critique = dedent("""
+        You are an expert critic in science. You will be given a research report, if necessary some feedback from analysts and automatic evaluation.
+        Your task is to critic the provided research report with a list of critic with recommended corrective action on most important corrections to do on plan/content/bibliography/subjects covered/style.""")
 
     current_report = state.get("final_report", "")
     # Retrieve the aggregated plan feedback from all analysts (if any)
     plan_feedback = state.get("plan_feedback_by_analysts", {})
     feedback_summary = ""
     if plan_feedback:
-        # For brevity, we concatenate the feedback from all analysts (you could also structure it)
-        feedback_summary = "Collected analyst feedback: <<< " + "; ".join(f"{k}: {v}" for k, v in plan_feedback.items()) + " >>>\n"
+        feedback_summary = "Feedback from analysts: <<< " + "; ".join(f"{k}: {v}" for k, v in plan_feedback.items()) + " >>>\n"
+    if state.get("scores"):
+        feedback_summary += f"Automatic evaluation: <<< {state.get('scores')} >>>\n"
     user_message = (
         f"REPORT: <<< {current_report} >>>\n\n"
-        "TASK: Critique the report and update the plan using the section IDs. Please refer to each section by its unique ID (for example, '1', '1.1', etc.) so that if you recommend changes, the existing content associated with that ID is preserved if necessary/possible.\n"
         f"{feedback_summary}"
-        "Return JSON with structure:\n"
-        "{\n"
-        "  \"plan\": { /* JSON structure for sections (including their IDs, titles, and content) */ },\n"
-        "  \"critic\": \"Your textual critique with section ID references for any suggested modifications\"\n"
-        "}"
     )
 
     critique_response = critic.invoke(
-        system_prompt_template=filepath,
-        user_message=user_message,
+        original_input_messages=[ SystemMessage(content=default_prompt_self_critique), HumanMessage(content=user_message)],
         stream_output=False,
         return_message_content_only=True,
         use_default_llm=False
     )[0]
-    text = remove_think_tags(critique_response.content if hasattr(critique_response, "content") else critique_response)
-    # Attempt to parse
-    try:
-        data = json.loads(text)
-    except:
-        data = {}
-
-    new_plan = data.get("plan", {})
-    # Optionally store old plan
-    state["old_parsed_plan"] = state["parsed_plan"]
-    state["parsed_plan"] = new_plan
-
-    # Update iteration
-    iteration = state.get("iteration", 0) + 1
-    state["iteration"] = iteration
-    state["critic"] = data.get("critic", "")
-
-    # Also keep a 'plan' text if you want
-    # (not strictly needed if everything is in parsed_plan)
-    plan_str = json.dumps(new_plan, separators=(',', ':'))
-    state["plan"] = plan_str
+    data = remove_think_tags(critique_response.content if hasattr(critique_response, "content") else critique_response)
 
     return {
-        "plan": plan_str,
-        "parsed_plan": new_plan,
-        "old_parsed_plan": state.get("parsed_plan"),
-        "iteration": iteration,
-        "critic": data.get("critic", "")
+        "iteration": state.get("iteration", 0) + 1,
+        "critic": str(data)
     }
 
 ### ----- The usual reset_for_iteration, generate_latex, etc. remain the same -----
@@ -447,18 +351,11 @@ def reset_for_iteration(state: ResearchGraphState):
 def generate_latex(state: ResearchGraphState):
     print("Generate_latex")
     report = state.get("final_report", "")
-    filepath = "generate_latex"
-    prompt_file = f"./prompts/{filepath}.txt"
-    if not os.path.exists(prompt_file):
-        with open(prompt_file, "w") as f:
-            f.write(
-                "You are an expert tool for converting text into a LaTeX document. [same as your old code]..."
-            )
+    default_prompt_latex = dedent("""You are an expert for converting text into a LaTeX document""")
 
     user_message = f"REPORT: <<< {report} >>>"
     result = latex_gen.invoke(
-        system_prompt_template=filepath,
-        user_message=user_message,
+        original_input_messages=[SystemMessage(content=default_prompt_latex), HumanMessage(content=user_message)],
         stream_output=False,
         return_message_content_only=True,
         use_default_llm=False
@@ -469,19 +366,16 @@ def generate_latex(state: ResearchGraphState):
 def create_analysts(state: GenerateAnalystsState):
     """Create Analysts Agent: Generate a list of analysts in JSON."""
     print("Create_analysts")
-    filepath = "create_analysts"
-    prompt_file = f"./prompts/{filepath}.txt"
-    if not os.path.exists(prompt_file):
-        with open(prompt_file, "w") as f:
-            f.write(
-                "You are tasked with creating a set of AI analyst personas. Your goal is to generate a list of analysts in JSON format and nothing else. "
-                "In the user message, you will receive the following values:\n"
-                "  - 'TOPIC': the research topic,\n"
-                "  - 'FEEDBACK': any editorial feedback,\n"
-                "  - 'MAX_ANALYSTS': the maximum number of analysts to generate.\n\n"
-                "Review the topic and feedback, identify the top themes, and assign one analyst per theme. "
-                "Each analyst must have the following fields: role (string), affiliation (string), and description (string)."
-            )
+    default_prompt_create_analysts = dedent("""
+        You are tasked with creating a set of AI analyst personas. Your goal is to generate a list of analysts in JSON format and nothing else.
+        In the user message, you will receive the following values:
+          - 'TOPIC': the research topic,
+          - 'FEEDBACK': any editorial feedback,
+          - 'MAX_ANALYSTS': the maximum number of analysts to generate.
+
+        Review the topic and feedback, identify the top themes, and assign one analyst per theme.
+        Each analyst must have the following fields: role (string), affiliation (string), and description (string).""")
+
     topic = state['topic']
     max_analysts = state['max_analysts']
     human_analyst_feedback = state.get('human_analyst_feedback', '')
@@ -493,8 +387,7 @@ def create_analysts(state: GenerateAnalystsState):
     )
     try:
         analysts_response = analyst.invoke(
-            system_prompt_template=filepath,
-            user_message=user_message,
+            original_input_messages=[SystemMessage(content=default_prompt_create_analysts), HumanMessage(content=user_message)],
             stream_output=False,
             return_message_content_only=True,
             use_default_llm=False
@@ -848,33 +741,35 @@ def should_continue(state: GenerateAnalystsState):
 
 def should_iterate(state: ResearchGraphState):
     if state.get("iteration", 0) < state.get("max_iterations", 2):
-        print(f"-----------### END OF ITERATION {state.get('iteration', 0)} ###-----------")
-        return "reset_for_iteration"
+        print(f"-----------### END OF ITERATION {state.get('iteration', 0)} > NEXT: SELF-CRITIQUE ###-----------")
+        #return "reset_for_iteration"
+        return "self_critique"
     else:
         print(f"-----------### END OF ITERATION {state.get('iteration', 0)} ###-----------")
         return END
 
-### ----- Build and Invoke Graph -----
-
-SEARCH_STRATEGY = "arxiv"  # same approach for searching
 def choose_search_strategy(state: ResearchGraphState):
     global SEARCH_STRATEGY
-    if automate_graph:
-        SEARCH_STRATEGY = "default" if SEARCH_STRATEGY is None else SEARCH_STRATEGY
-    else:
-        SEARCH_STRATEGY = smart_input(
-            "What searching strategy do you want to use? (Web, Wikipedia, ArXiv, Semantic, All): ",
-            column_id=0, column_max=1, optional=False
-        ).lower()
-        SEARCH_STRATEGY = (
-            "default" if SEARCH_STRATEGY not in ["web","wikipedia","arxiv","semantic","all"] else SEARCH_STRATEGY
-        )
+    # test if SEARCH_STRATEGY exist in global scope, otherwise set it to None
+    if 'SEARCH_STRATEGY' not in globals() or SEARCH_STRATEGY is None:
+        if automate_graph:
+            SEARCH_STRATEGY = "arxiv" if ("SEARCH_STRATEGY" not in globals() or SEARCH_STRATEGY is None) else SEARCH_STRATEGY
+        else:
+            SEARCH_STRATEGY = smart_input(
+                "What searching strategy do you want to use? (Web, Wikipedia, ArXiv, Semantic, All): ",
+                column_id=0, column_max=1, optional=False
+            ).lower()
+            SEARCH_STRATEGY = (
+                "arxiv" if SEARCH_STRATEGY not in ["web","wikipedia","arxiv","semantic","all"] else SEARCH_STRATEGY
+            )
     print(f"Search strategy chosen: {SEARCH_STRATEGY}")
     return state
 
 def route_to_search_nodes(state: InterviewState):
     global SEARCH_STRATEGY
-    targets = ["search_docs_rag"]
+    targets = []
+    if SEARCH_STRATEGY in ["search_docs_rag", "default"]:
+        targets += ["search_docs_rag"]
     if SEARCH_STRATEGY == "web":
         targets += ["search_web"]
     elif SEARCH_STRATEGY == "wikipedia":
@@ -885,6 +780,8 @@ def route_to_search_nodes(state: InterviewState):
         targets += ["search_semantic_scholar"]
     elif SEARCH_STRATEGY == "all":
         targets += ["search_web","search_wikipedia","search_arxiv","search_semantic_scholar"]
+    else:
+        targets = ["arxiv"]
     return targets
 
 def initiate_all_interviews(state: ResearchGraphState):
@@ -949,18 +846,14 @@ def score_generated_report_with_existing_env(final_report_in_latex: str, topic: 
 
     # No reference environment – perform a qualitative LLM evaluation
     filepath = "score_document_eval"
-    prompt_file = f"./prompts/{filepath}.txt"
-    if not os.path.exists(prompt_file):
-        with open(prompt_file, "w") as f:
-            f.write(
-                "You are a research report evaluator focusing on structure, citations, and completeness.\n"
-                "In the user message, you will receive a 'REPORT' (the final report in LaTeX format).\n"
-                "Provide a brief qualitative feedback on the report, commenting on its structural organization, the use of citations, and the overall completeness of the content relative to the topic."
-            )
+    default_prompt_score_document_eval = dedent("""
+        You are a research report evaluator focusing on structure, citations, and completeness.
+        In the user message, you will receive a 'REPORT' (the final report in LaTeX format).
+        Provide a brief qualitative feedback on the report, commenting on its structural organization, the use of citations, and the overall completeness of the content relative to the topic.""")
+
     user_message = f"REPORT: <<< {final_report_in_latex} >>>"
     critique_resp = critic.invoke(
-        system_prompt_template=filepath,
-        user_message=user_message,
+        original_input_messages=[ SystemMessage(content=default_prompt_score_document_eval), HumanMessage(content=user_message)],
         stream_output=False,
         return_message_content_only=True
     )[0]
@@ -1029,7 +922,6 @@ def multi_agent_research_generation_persist_at_the_end(
 
     # --- Add our nodes ---
     builder.add_node("plan_document", plan_document)
-    builder.add_node("merge_plan", merge_plan)
     builder.add_node("create_analysts", create_analysts)
     builder.add_node("choose_search_strategy", choose_search_strategy)
     builder.add_node("write_all_sections", write_all_sections)
@@ -1069,8 +961,7 @@ def multi_agent_research_generation_persist_at_the_end(
     builder.add_edge(START, "plan_document")
 
     # --- Edges in main graph ---
-    builder.add_edge("plan_document", "merge_plan")
-    builder.add_edge("merge_plan", "create_analysts")
+    builder.add_edge("plan_document", "create_analysts")
     builder.add_edge("create_analysts", "choose_search_strategy")
 
     builder.add_conditional_edges("choose_search_strategy", initiate_all_interviews,
@@ -1083,12 +974,15 @@ def multi_agent_research_generation_persist_at_the_end(
     builder.add_edge("write_all_sections", "finalize_report")
     builder.add_edge("finalize_report", "generate_latex")
     builder.add_edge("generate_latex", "score_document")
-    builder.add_edge("score_document", "self_critique")
+    #builder.add_edge("score_document", "self_critique")
 
     # The self_critique can lead to a new iteration or final
-    builder.add_conditional_edges("self_critique", should_iterate,
-        ["reset_for_iteration", END]
+    #builder.add_conditional_edges("self_critique", should_iterate,
+    builder.add_conditional_edges("score_document", should_iterate,
+        ["self_critique", END]
+#        ["reset_for_iteration", END]
     )
+    builder.add_edge("self_critique", "reset_for_iteration")
     builder.add_edge("reset_for_iteration", "plan_document")
 
     graph = builder.compile()
@@ -1128,6 +1022,6 @@ if __name__ == "__main__":
         title="State of the art on Leading Edge Noise",
         topic="Research assistant framework for State of the art on Leading Edge Noise",
         max_analysts=1,
-        max_iterations=1
+        max_iterations=2
     )
     print("\n==== Final Report ====\n", final_report)
