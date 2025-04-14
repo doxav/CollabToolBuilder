@@ -60,7 +60,8 @@ class HumanLLM:
         recommend_critics=None,
         task_parameters=None,
         problem_prompts_subdir=None,
-        max_autofix=None
+        max_autofix=None,
+        skip_log_entry_if_no_change=True
     ):
         self.config = HumanLLMConfig()
         self.logger = logging.getLogger(__name__)
@@ -118,7 +119,8 @@ class HumanLLM:
         self.primitives_dir = None
         self.processed_codes = set()
         self.max_autofix = max_autofix
-        self.problem_prompts_subdir = problem_prompts_subdir 
+        self.problem_prompts_subdir = problem_prompts_subdir
+        self.skip_log_entry_if_no_change = skip_log_entry_if_no_change 
 
     def get_rag_documents(self, agent_name=None, extra_filter: Optional[Dict[str, Any]] = None, query: str = '*', **kwargs):
         """
@@ -1909,6 +1911,9 @@ class HumanLLM:
         synthesize_mode=False,
         pipeline_mode=False
     ):
+        # Check if we should skip logging when nothing has been modified
+        if self.skip_log_entry_if_no_change and not input_modified and not output_modified and not (input_comments or output_comments): return
+
         entry = {
             "input_contents": input_contents,
             "output_contents": output_contents,
