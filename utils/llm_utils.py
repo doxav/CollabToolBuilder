@@ -379,8 +379,15 @@ class UnifiedVectorDB:
             elif metadatas is not None and isinstance(metadatas, list):
                 metadatas = [m for m in metadatas if m is not None]
             if self.config.db_type == CHROMA_DATABASE or self.config.db_type == ELASTIC_DATABASE:
+                if isinstance(texts, list):
+                    texts = str(texts[0]) if len(texts) == 1 else str(texts)
+                elif not isinstance(texts, (str, int, float, bool)):
+                    texts = str(texts)
                 if metadatas is None:
                     return self.db.add_texts(texts=texts, ids=ids)
+                # metadatas is a list of dictionaries, replace any None value of the dict with '' => Chroma doesn't like None values in a metadata
+                if isinstance(metadatas, list):
+                    metadatas = [{k: v if v is not None else '' for k, v in m.items()} for m in metadatas]
                 return self.db.add_texts(texts=texts, ids=ids, metadatas=metadatas)
             else:
                 self.logger.error(f"Unsupported DB type: {self.config.db_type}")
