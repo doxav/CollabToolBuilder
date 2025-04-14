@@ -742,20 +742,14 @@ class HumanLLM:
         function_name = inspect.stack()[2].function
         use_premium_llm = use_premium_llm if use_premium_llm is not None else self.premium_llm_by_default
         forced_llm_output = forced_llm_output
-        self.config.log_agent_data(
-            self.agent_name,
-            "saved_task",
-            {
-                'prompt': messages[0].content + messages[1].content,
-                'num_parallel_inferences': self.num_parallel_inferences,
-                'task_parameters': self.task_parameters
-            },
-            before_after='before',
-            user_id=self.get_user_id(),
-            step_id=self.config.step_id,
-            type_tache="IR_CPS_TechSynthesis",
-            id_task=True
-        )
+        if not self.skip_log_entry_if_no_change:
+            self.config.log_agent_data( self.agent_name,
+                "saved_task",
+                {
+                    'prompt': messages[0].content + messages[1].content,
+                    'num_parallel_inferences': self.num_parallel_inferences,
+                    'task_parameters': self.task_parameters
+                }, before_after='before', user_id=self.get_user_id(), step_id=self.config.step_id, type_tache="IR_CPS_TechSynthesis", id_task=True)
 
         while self.skip_rounds <= 0:
             # MENU
@@ -1351,22 +1345,15 @@ class HumanLLM:
                 match = re.search(pattern, inference_result_msg.content, flags=re.MULTILINE)
                 task_name = match.group(1) if match else print("No function definitions found.")
 
-            self.config.log_agent_data(
-                self.agent_name,
-                "saved_task",
-                {
-                    'llm_output': inference_result_msg.content,
-                    'user_message': self.current_inference_context['input_contents'][1].content,
-                    'num_parallel_inferences': self.num_parallel_inferences,
-                    'task_parameters': self.task_parameters
-                },
-                before_after='after',
-                user_id=self.get_user_id(),
-                step_id=self.config.step_id,
-                type_tache="IR_CPS_TechSynthesis",
-                id_task=True,
-                function_name=task_name
-            )
+            if not self.skip_log_entry_if_no_change:
+                self.config.log_agent_data( self.agent_name,
+                    "saved_task",
+                    {
+                        'llm_output': inference_result_msg.content,
+                        'user_message': self.current_inference_context['input_contents'][1].content,
+                        'num_parallel_inferences': self.num_parallel_inferences,
+                        'task_parameters': self.task_parameters
+                    }, before_after='after', user_id=self.get_user_id(), step_id=self.config.step_id, type_tache="IR_CPS_TechSynthesis", id_task=True, function_name=task_name)
             menu = (
                 f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n{check_display}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")
 
@@ -1912,7 +1899,7 @@ class HumanLLM:
         pipeline_mode=False
     ):
         # Check if we should skip logging when nothing has been modified
-        if self.skip_log_entry_if_no_change and not input_modified and not output_modified and not (input_comments or output_comments): return
+        if self.skip_log_entry_if_no_change and not input_modified and not output_modified and not (input_comments or (output_comments and (output_comments[0] if len(output_comments)>0 else True))): return
 
         entry = {
             "input_contents": input_contents,
