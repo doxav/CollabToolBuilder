@@ -88,9 +88,58 @@ def test_GetFromLatex():
         # Call GetFromLatex (assumed to be a method on env.synthesis_manager)
         env.synthesis_manager.GetFromLatex(latex_content, bib_file=bib_content)
 
+    def filter_strings_only(obj, seen=None, depth=0, max_depth=2):
+        if seen is None:
+            seen = set()
+        # Cycle detection: avoid processing the same object twice.
+        if id(obj) in seen:
+            return None
+        seen.add(id(obj))
+        
+        # When the maximum depth is reached, only extract direct string values.
+        if depth >= max_depth:
+            if isinstance(obj, str):
+                return obj
+            elif isinstance(obj, dict):
+                # Only keep key-value pairs where the value is a string.
+                return {k: v for k, v in obj.items() if isinstance(v, str)}
+            elif isinstance(obj, list):
+                # Only keep elements that are strings.
+                return [item for item in obj if isinstance(item, str)]
+            elif hasattr(obj, '__dict__'):
+                # Convert object attributes to dict and only keep strings.
+                return {k: v for k, v in vars(obj).items() if isinstance(v, str)}
+            return None
+
+        # If the object is a string, simply return it.
+        if isinstance(obj, str):
+            return obj
+        # Recursively process dictionaries.
+        elif isinstance(obj, dict):
+            filtered = {
+                k: v_filtered
+                for k, v in obj.items()
+                if (v_filtered := filter_strings_only(v, seen, depth + 1, max_depth)) is not None
+            }
+            return filtered if filtered else None
+        # Recursively process lists.
+        elif isinstance(obj, list):
+            filtered = [
+                value
+                for item in obj
+                if (value := filter_strings_only(item, seen, depth + 1, max_depth)) is not None
+            ]
+            return filtered if filtered else None
+        # Process object attributes if the object has a __dict__.
+        elif hasattr(obj, '__dict__'):
+            return filter_strings_only(vars(obj), seen, depth + 1, max_depth)
+        # For any other types that are not strings or containers, return None.
+        return None
+
     print("\n== Updated Distance Scores (after loading LaTeX content) ==")
     for env in envs_updated:
         new_score = env.get_score() # get_distance_to_targetJSON()
+        #print(f"=============================================================\nEnv content of document: <<< {filter_strings_only(env.synthesis_manager.document.document_content, max_depth=3)} >>>\n=============================================================")
         print(f"Updated Env ID: {env.id} -- New Distance Score: {new_score}")
 
 if __name__ == "__main__":
