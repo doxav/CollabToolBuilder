@@ -70,11 +70,21 @@ def extract_json(data: any) -> dict:
     regex_pattern = r'(\{.*\}|\[.*\])'
     match = re.search(regex_pattern, data, re.DOTALL)
     if match:
-        candidate = match.group(0).replace("\\n", "\n")
-        try:
-            return json.loads(candidate)
-        except json.JSONDecodeError:
-            print("If the candidate isn't valid JSON, we try the next method.")
+        candidate = match.group(0)
+        if candidate and candidate[0] in ['{', '[']:
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                print("Method 1: Regex-based extraction ---> Not a valid JSON")
+            if "\\n" in candidate:
+                print("Method 1: Regex-based extraction ---> Trying to replace \\n with newline characters.")
+                candidate = candidate.replace("\\n", "\n")
+                try:
+                    return json.loads(candidate)
+                except json.JSONDecodeError:
+                    print("Method 1: Regex-based extraction ---> If the candidate isn't valid JSON, we try the next method.")
+        else:
+            print("Method 1: Regex-based extraction ---> did not match")
 
     # --- Method 2: Using JSONDecoder's raw_decode method ---
     decoder = json.JSONDecoder()
@@ -83,7 +93,10 @@ def extract_json(data: any) -> dict:
         if data[i] in ['{', '[']:
             try:
                 obj, idx = decoder.raw_decode(data[i:])
-                return obj
+                # if it is a dict, return obj
+                if isinstance(obj, dict):
+                    return obj
+                continue
             except json.JSONDecodeError:
                 continue
 

@@ -227,7 +227,7 @@ def write_all_sections(state: ResearchGraphState):
         desc = section_obj.get("description", "")
         subsecs = section_obj.get("subsections", {})
         sources = section_obj.get("sources", None)
-        collected_sources.extend(sources)
+        if sources: collected_sources.extend(sources)
 
         if any(keyword in section_name.lower() for keyword in ["sources", "references", "bibliography"]):
             return
@@ -656,7 +656,10 @@ def generate_answer(state: InterviewState):
         # Fallback to the original extract_json method if parsing fails
         answer_json = extract_json(answer_resp.content)
         smart_print(message=answer_json, agent_name="Generate Answer", message_type="NEW inference result recieved", column_id=0, column_max=1)
-        return {"expert_response": [answer_json.get("response", "")], "expert_resources": answer_json.get("sources", [])}
+        if isinstance(answer_json, dict):
+            return {"expert_response": [answer_json.get("response", "")], "expert_resources": answer_json.get("sources", [])}
+        else:
+            return {"expert_response": [str(answer_resp.content)], "expert_resources": []}
 
 def save_interview(state: InterviewState):
     print("Save_interview")
