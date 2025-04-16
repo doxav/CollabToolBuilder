@@ -158,9 +158,11 @@ def plan_document(state: ResearchGraphState):
 
     # Include previous self-critique feedback if it exists.
     critic_feedback = state.get("critic", "").strip()
-    feedback_part = f"\nPREVIOUS CRITIQUE: <<< {critic_feedback} >>>" if critic_feedback else ""
+    previous_report = state.get("plan", "").strip()
+    report_part = f"\nPREVIOUS REPORT'S PLAN: <<< {previous_report} >>>" if previous_report else ""
+    feedback_part = f"\nCRITIQUES OF THE PREVIOUS REPORT (BE CARREFUL, SOME CRITIQUES MIGHT NOT APPLY TO THE PLAN): <<< {critic_feedback} >>>" if critic_feedback else ""
     
-    user_message = f"TOPIC: <<< {state['topic']} >>>{feedback_part}"
+    user_message = f"TOPIC: <<< {state['topic']} >>>{report_part}{feedback_part}"
     result = planner.invoke(
         original_input_messages=[SystemMessage(content=default_prompt_plan_document), HumanMessage(content=user_message)],
         #system_prompt_template=filepath,
@@ -224,18 +226,22 @@ def write_all_sections(state: ResearchGraphState):
 
         desc = section_obj.get("description", "")
         subsecs = section_obj.get("subsections", {})
-        sources = section_obj.get("sources", [])
+        sources = section_obj.get("sources", None)
         collected_sources.extend(sources)
 
         if any(keyword in section_name.lower() for keyword in ["sources", "references", "bibliography"]):
             return
+        
+        report_part = f"\nPREVIOUS REPORT: <<< {state.get('final_report', '')} >>>" if state.get('final_report') else ""
+        feedback_part = f"\nCRITIQUES OF THE PREVIOUS REPORT: <<< {state.get('critic', '')} >>>" if state.get("critic") else ""
 
         user_prompt = (
             f"SECTION: <<{section_name}>>\n"
             f"DESCRIPTION: <<{desc}>>\n"
-            f"SOURCES: <<{sources}>>\n\n"
+            f"SOURCES: <<{sources}>>\n" if sources else ""
             f"INTERVIEWS: <<{state.get('sections', [])}>>\n"
-            f"PLAN OF DOCUMENT/SECTIONS: <<{state.get('plan', {})}>>\n"
+            f"PLAN OF DOCUMENT & SECTIONS: <<{state.get('plan', {})}>>\n"
+            f"{report_part}{feedback_part}"
         )
         system_prompt = "Write only content for this SECTION..."
         response = section_writer.invoke(
@@ -272,7 +278,8 @@ def write_all_sections(state: ResearchGraphState):
     ]
     
     return {
-        "sections": list(dict.fromkeys(state.get("sections", []) + cleaned_sections)),
+        #"sections": list(dict.fromkeys(state.get("sections", []) + cleaned_sections)),
+        "sections": cleaned_sections,
         "resource_list": resource_update
     }
 
@@ -306,7 +313,7 @@ def self_critique(state: ResearchGraphState):
     """
     print("Self_critique")
     default_prompt_self_critique = dedent("""
-        You are an expert critic in science. You will be given a research report, if necessary some feedback from analysts and automatic evaluation.
+        You are an expert critic in science. You will be given a research report, and optionally some feedback from analysts and automatic evaluation.
         Your task is to critic the provided research report with a list of critic with recommended corrective action on most important corrections to do on plan/content/bibliography/subjects covered/style.""")
 
     current_report = state.get("final_report", "")
@@ -339,13 +346,13 @@ def self_critique(state: ResearchGraphState):
 
 def reset_for_iteration(state: ResearchGraphState):
     print("Reset_for_iteration")
+    state["sections"] = []
     return {
         "sections": [],
         "introduction": "",
         "content": "",
         "conclusion": "",
-        "resource_list": "",
-        "plan": ""
+        "resource_list": ""
     }
 
 def generate_latex(state: ResearchGraphState):
@@ -366,6 +373,7 @@ def generate_latex(state: ResearchGraphState):
 def create_analysts(state: GenerateAnalystsState):
     """Create Analysts Agent: Generate a list of analysts in JSON."""
     print("Create_analysts")
+    critic_feedback = state.get("critic", "").strip()
     default_prompt_create_analysts = dedent("""
         You are tasked with creating a set of AI analyst personas. Your goal is to generate a list of analysts in JSON format and nothing else.
         In the user message, you will receive the following values:

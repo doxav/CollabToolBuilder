@@ -239,7 +239,6 @@ class TestSynthesisManagerLoading(unittest.TestCase):
         for i, section in enumerate(document.document_content.sections_list):
             section_embedding = section.title_embedding
             content_embedding = section.content_embedding
-            resource_embedding = section.resource_embedding
             #print(title +  " => " + data["plan"][i]["section"])
             #print(cosine_similarity([section_embedding], [data["plan"][i]["section_embedding"+EMBED_POSTFIX]])[0][0])
             #print(cosine_similarity([content_embedding], [data["plan"][i]["content_embedding"+EMBED_POSTFIX]])[0][0])

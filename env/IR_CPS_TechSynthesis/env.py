@@ -192,6 +192,7 @@ class DocumentStructure:
         title_embeddings = []  # List to hold title embeddings
         content_embeddings = []  # List to hold content embeddings
         resource_embeddings = []
+        embedding_label = 'resource_embedding_' + ('1' if self.embedding_model_name == 'text-embedding-ada-002' else '2')  # get mode embeddings length
         # get mode embeddings length 
         
         try:
@@ -200,16 +201,16 @@ class DocumentStructure:
             title_embeddings = [x.title_embedding for x in self.document_content.sections_list if x.title_embedding]
             content_embeddings = [x.content_embedding for x in self.document_content.sections_list if x.content_embedding]
             #resource_embeddings = [x.resource_embedding for x in self.document_content.sections_list if x.resource_embedding]
-            #resource_embeddings = [resource.get('embedding', None) for resource in self.resources]
+            #resource_embeddings = [resource.get(embedding_label, None) for resource in self.resources]
             for resource in self.resources:
-                if 'embedding' not in resource and 'description' in resource:
-                    resource['embedding'] = self.get_embedding(str(resource['description']) 
-                    + (("\n" + str(resource['content'])) if 'content' in resource else None)
-                    + ("\n" + str(resource['name']) if 'name' in resource else None)
-                    + ("\n" + str(resource['link']) if 'link' in resource else None))                        
-
-                    resource['embedding'] = self.get_embedding(resource['description'])
-                resource_embeddings.append(resource['embedding'])
+                if embedding_label not in resource and 'description' in resource:
+                    # resource_description = str(resource['description']) 
+                    # + (("\n" + str(resource['content'])) if 'content' in resource else None)
+                    # + ("\n" + str(resource['name']) if 'name' in resource else None)
+                    # + ("\n" + str(resource['link']) if 'link' in resource else None)
+                    resource_description = str(resource['name'])
+                    resource[embedding_label] = self.get_embedding(resource_description)                        
+                resource_embeddings.append(resource[embedding_label])
 
             # convert self.dumb_embedding to a list to be able to use it in np.mean
             # Compute mean embedding for titles
@@ -218,7 +219,7 @@ class DocumentStructure:
             content_mean = np.mean(content_embeddings, axis=0).tolist() if content_embeddings else self.dumb_embedding
             resource_mean = np.mean(resource_embeddings, axis=0).tolist() if resource_embeddings else self.dumb_embedding
             # Combine title and content embeddings and compute their mean
-            all_embeddings = title_embeddings + content_embeddings + resource_embeddings
+            all_embeddings = title_embeddings + content_embeddings # + resource_embeddings
             total_mean = np.mean(all_embeddings, axis=0).tolist() if all_embeddings else self.dumb_embedding
 
         except KeyError:
@@ -1023,6 +1024,7 @@ class SynthesisManager:
         if metadatas.get('description') and not content:
             content = metadatas.get('description', '')
             metadatas.pop('description')
+        resource_embedding_label = "resource_embedding_" + ('1' if self.document.embedding_model_name == 'text-embedding-ada-002' else '2')
 
         # assert name or link are provided to identify the resource
         if not name and not link:
@@ -1059,7 +1061,7 @@ class SynthesisManager:
                 'id': id,
                 'metadatas': metadatas,
                 'document': document,
-                'embedding': embedding,
+                resource_embedding_label: embedding,
             })
             if store_linked_document_content:
                 childs_ids_list = self.get_and_store_link_content(link=link, parent_id=id, chaining=False)
@@ -1198,12 +1200,15 @@ class SynthesisManager:
             min(current_plan_non_empty_sections_content_count / (self.target_total_sections_count + 1e-5), 1.5), 3)
         sections_title_non_empty_count_ratio_to_target = round(
             min(current_plan_non_empty_sections_title_count / (self.target_total_sections_count + 1e-5), 1.5), 3)
+        # count number of resources from self.document.resources list which are cited/resources_used in self.document.document_content.sections_list
+        cited_resources_count = sum(1 for resource in self.document.resources if any(resource['id'] in section.resources for section in self.document.document_content.sections_list if section.resources and len(section.resources) > 0))
         resources_count_ratio_to_target = round(
-            min(len(self.document.resources) / (self.target_total_resources_count + 1e-5), 1.5), 3)
+            min(cited_resources_count / (self.target_total_resources_count + 1e-5), 1.5), 3)
 
-        sections_with_citations = sum(1 for section in self.document.document_content.sections_list 
-                               if section.resources and len(section.resources) > 0)
-        resources_citation_coverage_score = sections_with_citations / current_sections_count if current_sections_count > 0 else 0.0
+        sections_with_citations = sum(1 for section in self.document.document_content.sections_list  if section.resources and len(section.resources) > 0)
+        # Count similarly the sum in target_data
+        target_sections_with_citations = sum(1 for section in self.target_data["plan"] if section["resources_used"] and len(section["resources_used"]) > 0)
+        resources_citation_coverage_score = sections_with_citations / target_sections_with_citations if target_sections_with_citations > 0 else 0.0
 
         # Build the result dictionary
         distance_to_targetJSON = {
@@ -1322,7 +1327,7 @@ class SynthesisManager:
         if hasattr(self, '_method_counts'):
             self._method_counts = {}
 
-    def GetFromLatex(self, latex_string: str, bib_file: str = None) -> None:
+    def GetFromLatex(self, latex_string: str, bib_file: str = None, debug: bool = False) -> None:
         """
         Parses a complete LaTeX document from 'latex_string' using TexSoup and updates the
         technical synthesis document (self.document) with the extracted title, abstract,
@@ -1343,32 +1348,90 @@ class SynthesisManager:
 
         # --- Helper to process both internal and external BibTeX entries ---
         def process_bib_entry(entry, default_key=None):
-            citation_key = entry.get('ID', default_key or str(uuid.uuid4()))
-            try:
-                bib_id = int(uuid.UUID(citation_key).int >> 64) if re.fullmatch(r'[0-9a-fA-F\-]{36}', citation_key) else uuid.uuid4().int >> 64
-            except Exception:
-                bib_id = uuid.uuid4().int >> 64
-
-            entry_title = entry.get('title', citation_key)
+            bib_id = entry.get('ID', default_key or str(uuid.uuid4()))
+            entry_title = entry.get('title', bib_id)
+            if entry.get('author'):
+                entry_title += f"; Author: {entry['author']}"
+            if entry.get('year'):
+                entry_title += f"; Year: {entry['year']}"
             link = entry.get('url', '').strip() or (f"https://doi.org/{entry.get('doi', '').strip()}" if 'doi' in entry else '')
             description = entry.get('abstract', entry.get('note', entry.get('comment', ''))).strip()
-            entry_text = bibtexparser.dumps(bibtexparser.bibdatabase.BibDatabase(entries=[entry])).strip()
+            db = bibtexparser.bibdatabase.BibDatabase()
+            db.entries = [entry]
+            entry_text = bibtexparser.dumps(db).strip()
+            #entry_text = bibtexparser.dumps(bibtexparser.bibdatabase.BibDatabase(entries=[entry])).strip()
             content_hash = hash(entry_text)
 
             existing = next((r for r in self.document.resources if r.get("id") == bib_id), None)
             if existing:
-                if self.document.section_hashes.get(bib_id) != content_hash:
-                    existing["document"]["content"] = entry_text
-                    self.document.section_hashes[bib_id] = content_hash
+                print(f'Updating of existing bib resource entry not implemented yet (bib_id: {bib_id})')
             else:
                 self.document.resources.append({
                     "id": bib_id,
+                    "key": bib_id,
                     "name": entry_title,
                     "content": entry_text,
                     "link": link,
                     "description": description
                 })
                 self.document.section_hashes[bib_id] = content_hash
+
+        def latex_extract_citations(text, references):
+            citations = re.findall(r'\\cite[t|p]*\{([^}]+)\}', text)
+            all_keys = []
+            for cite in citations:
+                keys = [key.strip().lower() for key in cite.split(',')]
+                all_keys.extend(keys)
+            if references and len(references):
+                return list({citation for citation in all_keys if citation in references})
+            else:
+                return all_keys
+
+        def safe_string(tag):
+            try: return tag.string.strip()
+            except (AssertionError, AttributeError):
+                return " ".join(str(child).strip() for child in tag.contents).strip()
+
+        def get_full_section_content(tag, section_tags, raw_latex):
+            content = []
+            # Attempt to get the next_elements attribute and default to [] if it is None.
+            siblings = tag.next_elements
+            if siblings is None:
+                siblings = []
+            for element in siblings:
+                # If we encounter another section tag, stop processing.
+                if hasattr(element, 'name') and element.name in section_tags:
+                    break
+                # Only process text nodes.
+                if isinstance(element, str):
+                    stripped = element.strip()
+                    if stripped:
+                        content.append(stripped)
+            extracted = " ".join(content).strip()
+            if extracted:
+                return extracted
+            else:
+                # Fallback: use regex on the raw LaTeX.
+                from re import compile, escape, DOTALL
+                title = safe_string(tag)
+                title_esc = escape(title)
+                # Build a regex that matches the section command with this title and captures subsequent content.
+                pattern_str = r'\\(?:' + '|'.join(section_tags) + r')\*?\{\s*' + title_esc + r'\s*\}(?P<content>.*?)(?=\\(?:' + '|'.join(section_tags) + r')\*?\{|\\end\{document\})'
+                pattern = compile(pattern_str, DOTALL)
+                match = pattern.search(raw_latex)
+                if match:
+                    return match.group("content").strip()
+                else:
+                    # Provide detailed debug information.
+                    if debug:
+                        print(f"DEBUG: Regex fallback did not find content for section with title: '{title}'.")
+                        print(f"DEBUG: Regex pattern used: {pattern.pattern}")
+                        if hasattr(tag, "position"):
+                            pos = tag.position
+                            snippet = raw_latex[max(0, pos-50):pos+400]
+                            print(f"DEBUG: Raw LaTeX snippet around tag position: {snippet}")
+                    return ""
+
 
         # --- Load LaTeX string ---
         if os.path.exists(latex_string):
@@ -1378,48 +1441,6 @@ class SynthesisManager:
             soup = TexSoup(latex_string)
         except Exception as e:
             raise ValueError(f"Failed to parse LaTeX string: {e}")
-
-        # --- Title & Abstract ---
-        title_node = soup.find('title')
-        if title_node and title_node.string:
-            self.document.title = title_node.string.strip()
-            self.document.set_plan_field_with_embedding('title', self.document.title)
-
-        abstract_node = soup.find('abstract')
-        abstract = abstract_node.string.strip() if abstract_node and abstract_node.string else None
-        if not abstract:
-            abstract_cmd = soup.find(lambda tag: tag.name == "abstract" and tag.string)
-            if abstract_cmd and abstract_cmd.string:
-                abstract = abstract_cmd.string.strip()
-        if abstract:
-            self.document.context = abstract
-            self.document.set_plan_field_with_embedding('context', abstract)
-
-        # --- Sections ---
-        self.document.document_content.sections_list.clear()
-        section_tags = ['section', 'subsection', 'subsubsection']
-
-        def safe_string(tag):
-            try: return tag.string.strip()
-            except (AssertionError, AttributeError):
-                return " ".join(str(child).strip() for child in tag.contents).strip()
-
-        for tag in soup.find_all(section_tags):
-            title = safe_string(tag) or "Untitled Section"
-            try:
-                sec_id = int(tag.attrs["id"]) if "id" in (tag.attrs or {}) else uuid.uuid4().int >> 64
-            except Exception:
-                sec_id = uuid.uuid4().int >> 64
-            content = safe_string(tag)
-            section = Section(
-                section_id=sec_id,
-                parent_id=0,
-                title=title,
-                content=content,
-                title_embedding=self.document.get_embedding(title),
-                content_embedding=self.document.get_embedding(content)
-            )
-            self.add_section(section)
 
         # --- Process \bibitem as pseudo BibTeX ---
         for bib in soup.find_all('bibitem'):
@@ -1441,11 +1462,69 @@ class SynthesisManager:
                     bib_text = f.read()
             try:
                 entries = bibtexparser.loads(bib_text).entries
-                for entry in entries:
-                    process_bib_entry(entry)
             except Exception as e:
-                print(f"Failed to parse external bib: {e}")
+                print(f"Failed to load bib: {e}\nbib_text:{bib_text}")
+            for entry in entries:
+                try: process_bib_entry(entry)
+                except Exception as e:
+                    print(f"Failed to process bib entry: {e}\nbib_entry:{entry}")
+                    continue
 
+        all_ref_keys = {ref.get("key", '').lower() for ref in self.document.resources if "key" in ref}
+
+        # --- Title & Abstract ---
+        title_node = soup.find('title')
+        if debug: print(f"DEBUG: Title node string: {title_node.string}")
+        if title_node and title_node.string:
+            self.document.title = title_node.string.strip()
+            self.document.set_plan_field_with_embedding('title', self.document.title)
+
+        abstract_node = soup.find('abstract')
+        if debug: print(f"DEBUG: Abstract node string: {abstract_node.string}")
+        abstract = abstract_node.string.strip()
+        if not abstract:
+            abstract_cmd = soup.find(lambda tag: tag.name == "abstract" and tag.string)
+            if abstract_cmd and abstract_cmd.string:
+                abstract = abstract_cmd.string.strip()
+        if abstract:
+            self.document.context = abstract
+            self.document.set_plan_field_with_embedding('context', abstract)
+
+        # --- Sections ---
+        self.document.document_content.sections_list.clear()
+        section_tags = ['section', 'subsection', 'subsubsection']
+
+        for tag in soup.find_all(section_tags):
+            title = safe_string(tag) or "Untitled Section"
+            try:
+                sec_id = int(tag.attrs.get("id", uuid.uuid4().int >> 64))
+            except Exception:
+                sec_id = uuid.uuid4().int >> 64
+            content = get_full_section_content(tag, section_tags, latex_string)
+            if title == "Untitled Section" and content == '':
+                print(f"Warning: No title or content found for section. Skipping this section.")
+                continue
+            if not content:
+                print(f"Warning: No content found for section {title} using get_full_section_content. Fall-back to minimal safe_string.")
+                content = safe_string(tag)
+            
+            citations = latex_extract_citations(content, all_ref_keys)
+
+            section = Section(
+                section_id=sec_id,
+                parent_id=0,
+                title=title,
+                content=content,
+                title_embedding=self.document.get_embedding(title),
+                content_embedding=self.document.get_embedding(content),
+                resources=citations,
+            )
+            self.add_section(section)
+            if debug: print(f"DEBUG: Added section with Title:<<<{title}>>>\nID:{sec_id}, Content:<<<{content}>>>")
+
+        used_keys = {key for section in self.document.document_content.sections_list for key in section.resources}
+        self.document.resources = [r for r in self.document.resources if r.get("key","").lower() in used_keys]
+        self.plan_embedding_update_required = True
         self.last_sync_time = datetime.now()
 
 class LLMResponse:
