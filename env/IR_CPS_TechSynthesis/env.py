@@ -1346,6 +1346,11 @@ class SynthesisManager:
         except ImportError:
             raise ImportError("Please install bibtexparser with `pip install bibtexparser`.")
 
+        if "```latex" in latex_string:
+            m = re.search(r"```latex\s*(.*?)```", latex_string, re.I | re.S)
+            if m and any(t in m.group(1) for t in ("\\documentclass", "\\begin{document}")):
+                latex_string = m.group(1).strip()
+
         # --- Helper to process both internal and external BibTeX entries ---
         def process_bib_entry(entry, default_key=None):
             bib_id = entry.get('ID', default_key or str(uuid.uuid4()))
@@ -1479,13 +1484,9 @@ class SynthesisManager:
             self.document.title = title_node.string.strip()
             self.document.set_plan_field_with_embedding('title', self.document.title)
 
-        abstract_node = soup.find('abstract')
-        if debug: print(f"DEBUG: Abstract node string: {abstract_node.string}")
-        abstract = abstract_node.string.strip()
-        if not abstract:
-            abstract_cmd = soup.find(lambda tag: tag.name == "abstract" and tag.string)
-            if abstract_cmd and abstract_cmd.string:
-                abstract = abstract_cmd.string.strip()
+        abstract_node = (soup.find('abstract') or soup.find(lambda t: getattr(t, 'name', None) == 'abstract' and getattr(t, 'string', None)))
+        abstract = (getattr(abstract_node, 'string', '') or '').strip()
+        if debug: print(f"DEBUG: abstract → {abstract!r}")
         if abstract:
             self.document.context = abstract
             self.document.set_plan_field_with_embedding('context', abstract)
