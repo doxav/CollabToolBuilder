@@ -1030,8 +1030,8 @@ def multi_agent_research_generation_persist_at_the_end(
 # -------------- Example usage --------------
 if __name__ == "__main__":
     final_report = multi_agent_research_generation_persist_at_the_end(
-        title="State of the art on Leading Edge Noise",
-        topic="Research assistant framework for State of the art on Leading Edge Noise",
+        title="State of the art on complex QA and language models hybrid architecture",
+        topic="Complex QA and language models hybrid architectures, Survey",
         max_analysts=1,
         max_iterations=2
     )
