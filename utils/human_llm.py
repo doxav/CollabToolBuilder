@@ -61,7 +61,8 @@ class HumanLLM:
         task_parameters=None,
         problem_prompts_subdir=None,
         max_autofix=None,
-        skip_log_entry_if_no_change=True
+        skip_log_entry_if_no_change=True,
+        fusion_mode=None, # Can be "best", "best_of_n", "concat"
     ):
         self.config = HumanLLMConfig()
         self.logger = logging.getLogger(__name__)
@@ -120,7 +121,8 @@ class HumanLLM:
         self.processed_codes = set()
         self.max_autofix = max_autofix
         self.problem_prompts_subdir = problem_prompts_subdir
-        self.skip_log_entry_if_no_change = skip_log_entry_if_no_change 
+        self.skip_log_entry_if_no_change = skip_log_entry_if_no_change
+        self.fusion_mode = fusion_mode
 
     def get_rag_documents(self, agent_name=None, extra_filter: Optional[Dict[str, Any]] = None, query: str = '*', **kwargs):
         """
@@ -1374,13 +1376,11 @@ class HumanLLM:
             self.menu_start_time = time.time()
 
             if self.automation:
-                if comments is None:
-                    temp, _ = self.config.get_agent_data(self.agent_name, "llm_suggestions")
-                    if temp:
-                        comments = temp[0]['llm_suggestions']
                 if (hasattr(self, 'recommend_critics') and self.recommend_critics) and self.outputs[output_id - 1] is None:
-                    inference_result_msg.content = self.critic_answer(
-                        comments,
+                    if comments is None:
+                        comments = self.generate_best_improvement_suggestions( inference_result_msg.content, output_id=output_id)
+                    inference_result_msg.content = self.apply_critic_answer(
+                        comments["suggestions"],
                         inference_result_msg.content,
                         text_has_annotations=False
                     )
@@ -1402,7 +1402,7 @@ class HumanLLM:
                 self.modify_answer(inference_result_msg, output_id)
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
-                inference_result_msg.content = self.critic_answer(
+                inference_result_msg.content = self.apply_critic_answer(
                     comments,
                     inference_result_msg.content,
                     text_has_annotations=False
@@ -1561,7 +1561,7 @@ class HumanLLM:
                 save_prompt_with_tag(self.system_prompt, new_template, tag_option)
         return comments
 
-    def critic_answer(
+    def apply_critic_answer(
         self,
         suggestions,
         text_content,
@@ -1647,6 +1647,7 @@ class HumanLLM:
                         instructions[id_] = instruction
             return instructions
 
+        # Get suggestions from the last inference check results if exist and suggestions is empty / log critic to agent data in any case
         critic = None
         if self.inference_tracking.last_inference_check_results:
             for result in self.inference_tracking.last_inference_check_results:
@@ -1658,18 +1659,18 @@ class HumanLLM:
                 else:
                     break
 
-        if critic:
-            if suggestions == "":
-                suggestions = critic['suggestions']
-            self.config.log_agent_data(
-                self.agent_name,
-                "llm_suggestions",
-                {
-                    'llm_suggestions': critic['suggestions'],
-                    'user_suggestions': suggestions,
-                    'llm_suggestions_prompt': critic['improvement_prompt']
-                }
-            )
+            if critic:
+                if suggestions == "":
+                    suggestions = critic['suggestions']
+                self.config.log_agent_data(
+                    self.agent_name,
+                    "llm_suggestions",
+                    {
+                        'llm_suggestions': critic['suggestions'],
+                        'user_suggestions': suggestions,
+                        'llm_suggestions_prompt': critic['improvement_prompt']
+                    }
+                )
 
         if text_has_annotations:
             if annotation_format is None:
@@ -2015,6 +2016,7 @@ class HumanLLM:
         prompt_directory="prompts",
         generation_technique='temperature_variation',
         forced_llm_output=None,
+        fusion_mode=None,
     ):
         """
         This method can perform different multi-inference strategies depending on 
@@ -2461,6 +2463,10 @@ class HumanLLM:
             if not self.auto_n_rounds:
                 self.automation = None
 
+        if fusion_mode or self.fusion_mode:
+            # If we are in fusion mode, we need to merge the outputs
+            output_messages = self.fusion_candidates(output_messages, fusion_mode or self.fusion_mode)
+
         caller_function_name = inspect.stack()[1].function
         call_duration = time.time() - call_start_time
 
@@ -2487,6 +2493,36 @@ class HumanLLM:
         )
 
         return ([msg.content for msg in output_messages] if return_message_content_only else output_messages)
+
+    def fusion_candidates(self, output_messages, fusion_mode=None):
+        """
+        Merges multiple LLM outputs/candidates into a single according to fusion_mode (concat, best_of_n, last)
+        """
+        if fusion_mode is None:
+            fusion_mode = self.fusion_mode
+        if fusion_mode == "concat":
+            # Concatenate all outputs
+            return [AIMessage(content="\n".join([msg.content for msg in output_messages]))]
+        elif fusion_mode == "last":
+            # Return the last output
+            return [output_messages[-1]]
+        elif fusion_mode == "best_of_n":
+            if len(output_messages) == 1:
+                return output_messages
+            system_prompt = (f"Given the following responses candidate below and the initial question below, "
+        f"provide an optimal response to the question mixing best elements of each and following the same answer output structure.\n"
+        f"Initial question: <<<\n{self.llm_input_messages[0].content}\n{self.llm_input_messages[1].content}\n>>>\n\n")
+            user_prompt = (
+                "\n\n".join([ f"Response candidate {i + 1}:\n{{{output_messages[i]}}}\n\n\n" for i in range(len(output_messages))])
+                + "\n\nOptimal Response:\n")
+        # Use the premium LLM to generate the best response
+            response = self.premium_llm.invoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ])
+            return [AIMessage(content=response.content)]            
+        else:
+            raise ValueError(f"Invalid fusion_mode: {fusion_mode}. Supported options: 'concat', 'best_of_n', 'last'.")
 
     def generate_best_improvement_suggestions(self, inference_result_content=None, output_id=None):
         """

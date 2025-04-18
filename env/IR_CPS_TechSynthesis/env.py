@@ -1491,6 +1491,7 @@ class SynthesisManager:
             self.document.context = abstract
             self.document.set_plan_field_with_embedding('context', abstract)
 
+
         # --- Sections ---
         self.document.document_content.sections_list.clear()
         section_tags = ['section', 'subsection', 'subsubsection']

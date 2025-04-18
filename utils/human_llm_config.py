@@ -110,7 +110,7 @@ class HumanLLMConfig:
                     temperature=0.
                 ),
                 "premium_llm": ChatOpenAI(
-                    model_name="gpt-4o-mini-2024-07-18",
+                    model_name="gpt-4.1-mini-2025-04-14",
                     cache=False,
                     temperature=0.
                 ),
@@ -213,7 +213,8 @@ class HumanLLMConfig:
         k=5,
         start_index=0,
         end_index=None,
-        query_text='*'
+        query_text='*',
+        new_storage=True
     ):
         """Retrieves agent-specific data based on the agent name, data key, and additional metadata.
         Supports pagination by specifying start and end indices.
@@ -258,13 +259,18 @@ class HumanLLMConfig:
 
         ret = []
         for item in paginated_results:
-            temp = json.loads(item.page_content)
-            val = None
-            if isinstance(temp, dict):
-                if data_key in temp:
-                    val = temp[data_key]
-            ret.append(val)
-        # Ret contains only text field of the data, results contains all the metadata
+            try:
+                temp = json.loads(item.page_content)
+            except Exception as e:
+                temp = item.page_content
+            if new_storage:
+                ret.append(temp)
+            else:
+                val = None
+                if isinstance(temp, dict):                
+                    if data_key in temp:
+                        val = temp[data_key]
+                ret.append(val)
         return ret, results
 
     def get_tasks(self, page_size: int = 200, nb_pages: int = 1, id_last_task: Optional[str] = None):
