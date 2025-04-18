@@ -25,6 +25,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from config import embedding_function, use_websocket
 from utils.human_llm import HumanLLM, HumanLLMConfig
 from utils.llm_utils import smart_input, smart_print
+from utils.file_utils import load_from_pickle, save_to_pickle
 from env.IR_CPS_TechSynthesis.env import VoyagerEnvIR_CPS_TechSynthesis, Section
 from env.env import EnvironmentManager
 from utils.helpers_demo import (
@@ -33,6 +34,7 @@ from utils.helpers_demo import (
     extract_json
 )
 from utils import helpers_demo
+import time
 
 try:
     from opto.trace import node
@@ -93,6 +95,7 @@ class GenerateAnalystsState(TypedDict):
     analysts: List[Analyst]      # List of analysts
 
 class ResearchGraphState(TypedDict):
+    title: str
     topic: str
     max_analysts: int
     human_analyst_feedback: str
@@ -105,10 +108,12 @@ class ResearchGraphState(TypedDict):
     conclusion: str
     resource_list: str
     final_report: str
-    iteration: int
-    max_iterations: int
+    report_iteration: int
+    max_report_iterations: int
     latex_report: str
     cumulative_report: str
+
+    init_max_interview_iterations: int
 
     # NEW:
     parsed_plan: Dict[str, Any]       # JSON plan with sections, subsections, etc.
@@ -232,18 +237,20 @@ def write_all_sections(state: ResearchGraphState):
         if any(keyword in section_name.lower() for keyword in ["sources", "references", "bibliography"]):
             return
         
-        report_part = f"\nPREVIOUS REPORT: <<< {state.get('final_report', '')} >>>" if state.get('final_report') else ""
-        feedback_part = f"\nCRITIQUES OF THE PREVIOUS REPORT: <<< {state.get('critic', '')} >>>" if state.get("critic") else ""
+        report_part = f"\nPREVIOUS VERSION OF THE REPORT: <<< {state.get('final_report', '')} >>>" if state.get('final_report') else ""
+        feedback_part = f"\nCRITIQUES OF THE PREVIOUS VERSION OF THE REPORT: <<< {state.get('critic', '')} >>>" if state.get("critic") else ""
 
         user_prompt = (
-            f"SECTION: <<{section_name}>>\n"
+            f"SECTION TO WRITE: <<{section_name}>>\n"
+            f"EXPECTED PLAN OF THE REPORT: <<{state.get('plan', {})}>>\n"
+            f"TITLE OF THE REPORT: <<{state['title']}>>\n"
+            f"TOPIC: <<{state['topic']}>>\n"
             f"DESCRIPTION: <<{desc}>>\n"
             f"SOURCES: <<{sources}>>\n" if sources else ""
             f"INTERVIEWS: <<{state.get('sections', [])}>>\n"
-            f"PLAN OF DOCUMENT & SECTIONS: <<{state.get('plan', {})}>>\n"
             f"{report_part}{feedback_part}"
         )
-        system_prompt = "Write only content for this SECTION..."
+        system_prompt = "You are a researcher, write the content for this SECTION (cite SOURCES when appropriate)"
         response = section_writer.invoke(
             original_input_messages=[
                 SystemMessage(content=system_prompt),
@@ -262,6 +269,8 @@ def write_all_sections(state: ResearchGraphState):
             traverse_and_write(sub_name, sub_obj, depth + 1)
 
     for top_section, top_obj in plan.items():
+        # Display status out of the plan length
+        print(f"({len(new_sections_content)}/{len(plan)}) >> Processing section: {top_section} ")
         if top_section == "UNUSED_SECTIONS":
             continue
         traverse_and_write(top_section, top_obj, depth=0)
@@ -338,7 +347,7 @@ def self_critique(state: ResearchGraphState):
     data = remove_think_tags(critique_response.content if hasattr(critique_response, "content") else critique_response)
 
     return {
-        "iteration": state.get("iteration", 0) + 1,
+        "report_iteration": state.get("report_iteration", 0) + 1,
         "critic": str(data)
     }
 
@@ -358,7 +367,7 @@ def reset_for_iteration(state: ResearchGraphState):
 def generate_latex(state: ResearchGraphState):
     print("Generate_latex")
     report = state.get("final_report", "")
-    default_prompt_latex = dedent("""You are an expert for converting text into a LaTeX document""")
+    default_prompt_latex = "Convert all the provided report into a LaTeX document"
 
     user_message = f"REPORT: <<< {report} >>>"
     result = latex_gen.invoke(
@@ -441,15 +450,17 @@ def create_analysts(state: GenerateAnalystsState):
 #     pass
 
 class InterviewState(MessagesState):
-    max_num_turns: int                              # Number of conversation turns
+    max_interview_iterations: int                              # Number of conversation turns
     context: Annotated[list, operator.add]          # Source docs
     analyst: Analyst                                # Analyst persona
     interview: str                                  # Interview transcript
+    interview_iteration: int                                  # Iteration number
     sections: list                                  # Collected sections for the report
     expert_response: str                            # Expert response
     expert_resources: list                          # Expert resources
     sections: Annotated[list, operator.add]         # Collected sections for the report
     source_list: Annotated[list, operator.add]      # Collected sources for the report
+    initial_plan: str                               # Initial plan
 
 # Add this helper at the top of interview.py (or in a shared helpers file)
 def translate_query(query: str, target_language: str = "english") -> str:
@@ -606,7 +617,7 @@ def search_docs_rag(state: InterviewState):
     return {"context": [aggregated_results]}
 
 def generate_answer(state: InterviewState):
-    print("Generate_answer")
+    print(f">>> Generate_answer for analyst '{state['analyst']}' - interview_iteration {state['interview_iteration']}")
     if "answer_instructions" not in state:
         state["answer_instructions"] = (
             "You are an expert being interviewed.\n\n"
@@ -651,23 +662,24 @@ def generate_answer(state: InterviewState):
         # Parse the response directly with the JsonOutputParser
         answer_json = parser.parse(answer_resp.content)
         smart_print(message=answer_json, agent_name="Generate Answer", message_type="NEW inference result recieved", column_id=0, column_max=1)
-        return {"expert_response": [answer_json.response], "expert_resources": answer_json.sources}
+        return {"expert_response": [answer_json.response], "expert_resources": answer_json.sources, 'interview_iteration': state.get("interview_iteration", 0) + 1}
     except Exception as e:
         # Fallback to the original extract_json method if parsing fails
         answer_json = extract_json(answer_resp.content)
         smart_print(message=answer_json, agent_name="Generate Answer", message_type="NEW inference result recieved", column_id=0, column_max=1)
         if isinstance(answer_json, dict):
-            return {"expert_response": [answer_json.get("response", "")], "expert_resources": answer_json.get("sources", [])}
+            return {"expert_response": [answer_json.get("response", "")], "expert_resources": answer_json.get("sources", []), 'interview_iteration': state.get("interview_iteration", 0) + 1}
         else:
-            return {"expert_response": [str(answer_resp.content)], "expert_resources": []}
+            return {"expert_response": [str(answer_resp.content)], "expert_resources": [], 'interview_iteration': state.get("interview_iteration", 0) + 1}
 
 def save_interview(state: InterviewState):
     print("Save_interview")
     messages = state["messages"]
     interview = get_buffer_string(messages)
 
-    # **Add a final plan-feedback/critique question and answer generation**
-    if state.get("iteration", 0) >= state.get("max_iterations", 2):
+    print(f"INTERVIEW STATE: analyst={state['analyst']}, interview_iteration={state['interview_iteration']}, max_interview_iterations={state['max_interview_iterations']}") 
+
+    if state.get("interview_iteration", 0) >= state.get("max_interview_iterations", 2):
         analyst = state["analyst"]
         analyst_name = getattr(analyst, "name", "Analyst")
         plan_text = state.get("initial_plan", "")
@@ -691,11 +703,11 @@ def save_interview(state: InterviewState):
     return {"interview": interview}
 
 def route_messages(state: InterviewState, name: str = "expert"):
-    print("Route_messages")
     messages = state["messages"]
-    max_num_turns = state.get('max_num_turns', 2)
-    num_responses = len([m for m in messages if isinstance(m, AIMessage) and m.name == name])
-    if num_responses >= max_num_turns:
+    max_interview_iterations = state.get('max_interview_iterations', 2)
+    num_responses = max(len(messages)/2, state.get('interview_iteration', 0))
+    print(f"Route_messages - num_responses={num_responses}, max_interview_iterations={max_interview_iterations}")
+    if num_responses >= max_interview_iterations:
         return 'save_interview'
     last_question = messages[-2]
     if "Thank you so much for your help" in last_question.content:
@@ -706,14 +718,11 @@ def write_section(state: InterviewState):
     print("Write_section")
     if "section_writer_instructions" not in state:
         state["section_writer_instructions"] = (
-            "You are an expert technical writer. Your task is to create a detailed and comprehensive section of a report from the provided source documents. "
+            "You are an expert technical writer. Your task is to create a detailed and comprehensive report from the provided source documents. "
             "You have access to the current report state and the original plan. Follow these steps:\n"
             "1. Thoroughly analyze the provided documents (each begins with a <Document tag) and the current report content.\n"
-            "2. Structure your section using Markdown with appropriate headers (e.g., ## for titles), and include detailed explanations, technical insights, and critical analysis.\n"
-            "3. Your section should include:\n"
-            "   a. A compelling title (## header) based on the analyst’s focus: {focus}\n"
-            "   b. A detailed summary (### header) that provides context, highlights novel insights, and includes a numbered list of sources with expanded explanations.\n"
-            "   c. A detailed sources list (### header) with full links or document paths.\n"
+            "2. Structure your report using Markdown with appropriate headers (e.g., ## for titles), and include detailed explanations, technical insights, and critical analysis from the expert.\n"
+            "3. Your section should include detailed sources list with full links or document paths to support your report.\n"
             "Aim to append new information and expand on existing content with substantial detail, ensuring clarity and depth without repeating what has already been provided."
         )
     section_writer_instructions = state["section_writer_instructions"]
@@ -723,22 +732,22 @@ def write_section(state: InterviewState):
     initial_plan = state.get("initial_plan", "")
     system_message = section_writer_instructions.format(focus=analyst.description)
     human_msg = (
-        f"Use this source to write your section: {context}\n"
-        f"Use this expert response to write your section: {state['expert_response'] if 'expert_response' in state else ''}\n"
-        f"Current Report: {current_report}\n"
-        f"Original Plan: {initial_plan}\n"
-        "TASK: Append new information in this section without repeating what is already present."
+        f"Use this source to write your section: <<< {context} >>>\n"
+        f"Use this expert response to write your section: <<< {state['expert_response'] if 'expert_response' in state else ''} >>> \n"
+        f"Current Report: <<< {current_report} >>>\n"
+        f"Original Plan: <<< {initial_plan} >>>\n"
+        "TASK: Append new information in this report without repeating what is already present."
     )
-    sections = helpers_demo.llm_custom.invoke([
+    propositions = helpers_demo.llm_custom.invoke([
         SystemMessage(content=system_message),
         HumanMessage(content=human_msg)
     ])
     section_final = ""
-    if isinstance(sections, list):
-        for section in sections:
+    if isinstance(propositions, list):
+        for section in propositions:
             section_final += section.content if isinstance(section, AIMessage) else section
     else:
-        section_final = sections.content if isinstance(sections, AIMessage) else sections
+        section_final = propositions.content if isinstance(propositions, AIMessage) else propositions
     smart_print(message=section_final, agent_name="Write Section", message_type="NEW inference result recieved", column_id=0, column_max=1)
     # Append the new section to the existing list.
     return {"sections": state.get("sections", []) + [section_final], "source_list": state.get("source_list", []) + state.get("expert_resources", [])}
@@ -751,12 +760,12 @@ def should_continue(state: GenerateAnalystsState):
     return END
 
 def should_iterate(state: ResearchGraphState):
-    if state.get("iteration", 0) < state.get("max_iterations", 2):
-        print(f"-----------### END OF ITERATION {state.get('iteration', 0)} > NEXT: SELF-CRITIQUE ###-----------")
+    if state.get("report_iteration", 0) < state.get("max_report_iterations", 2):
+        print(f"-----------### END OF ITERATION {state.get('report_iteration', 0)} > NEXT: SELF-CRITIQUE ###-----------")
         #return "reset_for_iteration"
         return "self_critique"
     else:
-        print(f"-----------### END OF ITERATION {state.get('iteration', 0)} ###-----------")
+        print(f"-----------### END OF ITERATION {state.get('report_iteration', 0)} ###-----------")
         return END
 
 def choose_search_strategy(state: ResearchGraphState):
@@ -797,23 +806,22 @@ def route_to_search_nodes(state: InterviewState):
 
 def initiate_all_interviews(state: ResearchGraphState):
     print("Initiate_all_interviews")
-    human_analyst_feedback = state.get('human_analyst_feedback')
-    if human_analyst_feedback:
-        return "create_analysts"
-    else:
-        topic = state["topic"]
-        return [
-            Send("conduct_interview", {
-                "analyst": a,
-                "messages": [HumanMessage(content=f"So you said you were writing an article on {topic}?")]
-            }) for a in state["analysts"]
-        ]
+    topic = state["topic"]
+    return [
+        Send("conduct_interview", {
+            "analyst": a,
+            "messages": [HumanMessage(content=f"So you said you were writing an article on {topic}?")],
+            "interview_iteration": 0,
+            "max_interview_iterations": state.get("init_max_interview_iterations", 2),
+            "initial_plan": state.get("plan", ""),
+        }) for a in state["analysts"]
+    ]
 
 ### --------- Combine everything into a main function ----------
 
 from langgraph.graph import StateGraph
 
-def score_generated_report_with_existing_env(final_report_in_latex: str, topic: str = "Complex QA and language models hybrid architectures, Survey"):
+def score_generated_report_with_existing_env(final_report_in_latex: str, topic: str, title: str = None):
     """
     Reuses the scoring logic from env.py by creating a VoyagerEnvIR_CPS_TechSynthesis
     environment, loading the same references, inserting 'final_report' into it,
@@ -837,8 +845,8 @@ def score_generated_report_with_existing_env(final_report_in_latex: str, topic: 
         }
     }
     # If a matching environment is available for the topic, use it for scoring
-    if topic in known_docs:
-        doc = known_docs[topic]
+    if topic in known_docs or title in known_docs:
+        doc = known_docs[topic if topic in known_docs else title]
         try:
             env = EnvironmentManager(
                 env_type="techsynthesis",
@@ -885,13 +893,13 @@ def score_document(state: ResearchGraphState):
         print("No final_report found in state. Skipping scoring...")
         return {}
 
-    scores = score_generated_report_with_existing_env(final_latex_report, state["topic"])
+    scores = score_generated_report_with_existing_env(final_latex_report, state["topic"], state["title"])
 
     # Optionally store them in the state so the next node can see them
     return { "scores": scores}
 
 def multi_agent_research_generation_persist_at_the_end(
-    title, topic, max_analysts: int=3, max_iterations: int=2, auto_n_rounds_planner: int=0, auto_n_rounds_section_writer: int=0, auto_n_rounds_analyst: int=0, auto_n_rounds_critic: int=0, auto_n_rounds_latex: int=0, automation: str="full_auto", trace_optimization: bool=False
+    title, topic, max_analysts: int=3, max_report_iterations: int=2, auto_n_rounds_planner: int=0, auto_n_rounds_section_writer: int=0, auto_n_rounds_analyst: int=0, auto_n_rounds_critic: int=0, auto_n_rounds_latex: int=0, automation: str="full_auto", trace_optimization: bool=False, max_interview_iterations: int=2,
 ):
     print("Multi_agent_research_generation_persist_at_the_end")
 
@@ -906,6 +914,7 @@ def multi_agent_research_generation_persist_at_the_end(
     analyst = HumanLLM(agent_name="Create Analysts", llmORchains_list=llm_list, automation=automation, auto_n_rounds=auto_n_rounds_analyst)
 
     initial_state: ResearchGraphState = {
+        "title": title,
         "topic": topic,
         "max_analysts": max_analysts,
         "human_analyst_feedback": "",
@@ -917,8 +926,8 @@ def multi_agent_research_generation_persist_at_the_end(
         "conclusion": "",
         "resource_list": "",
         "final_report": "",
-        "iteration": 0,
-        "max_iterations": max_iterations,
+        "report_iteration": 0,
+        "max_report_iterations": max_report_iterations,
         "latex_report": "",
         "cumulative_report": "",
         "parsed_plan": {},
@@ -927,6 +936,7 @@ def multi_agent_research_generation_persist_at_the_end(
         "critic": "",
         "source_list": [],
         "scores": {},
+        "init_max_interview_iterations": max_interview_iterations,
     }
 
     builder = StateGraph(ResearchGraphState)
@@ -952,6 +962,7 @@ def multi_agent_research_generation_persist_at_the_end(
     interview_graph_def.add_node("search_semantic_scholar", search_semantic_scholar)
     interview_graph_def.add_node("answer_question", generate_answer)
     interview_graph_def.add_node("write_section", write_section)
+    interview_graph_def.add_node("save_interview", save_interview)
     interview_graph_def.add_conditional_edges("ask_question", route_to_search_nodes,
         ["search_docs_rag", "search_web", "search_wikipedia", "search_arxiv", "search_semantic_scholar"]
     )
@@ -960,7 +971,8 @@ def multi_agent_research_generation_persist_at_the_end(
     interview_graph_def.add_edge("search_wikipedia", "answer_question")
     interview_graph_def.add_edge("search_arxiv", "answer_question")
     interview_graph_def.add_edge("search_semantic_scholar", "answer_question")
-    interview_graph_def.add_edge("answer_question", "write_section")
+    interview_graph_def.add_conditional_edges("answer_question", route_messages,['ask_question','save_interview'])
+    interview_graph_def.add_edge("save_interview", "write_section")
     #interview_graph_def.set_start("ask_question") # to be replace by add_edge START
     interview_graph_def.add_edge(START, "ask_question")
     #interview_graph_def.set_end("write_section")
@@ -975,9 +987,7 @@ def multi_agent_research_generation_persist_at_the_end(
     builder.add_edge("plan_document", "create_analysts")
     builder.add_edge("create_analysts", "choose_search_strategy")
 
-    builder.add_conditional_edges("choose_search_strategy", initiate_all_interviews,
-        ["create_analysts","conduct_interview"]
-    )
+    builder.add_conditional_edges("choose_search_strategy", initiate_all_interviews, ["conduct_interview"])
 
     builder.add_edge("conduct_interview", "write_all_sections")
 
@@ -987,7 +997,7 @@ def multi_agent_research_generation_persist_at_the_end(
     builder.add_edge("generate_latex", "score_document")
     #builder.add_edge("score_document", "self_critique")
 
-    # The self_critique can lead to a new iteration or final
+    # The self_critique can lead to a new report_iteration or final
     #builder.add_conditional_edges("self_critique", should_iterate,
     builder.add_conditional_edges("score_document", should_iterate,
         ["self_critique", END]
@@ -997,6 +1007,17 @@ def multi_agent_research_generation_persist_at_the_end(
     builder.add_edge("reset_for_iteration", "plan_document")
 
     graph = builder.compile()
+
+    start_time = time.time()
+    # Storing graph's diagram
+    try:
+        if not os.path.exists("images"): os.makedirs("images")
+        with open("images/graph_png.png", "wb") as f:
+            f.write(graph.get_graph(xray=1).draw_mermaid_png())
+    except Exception as e:
+        print(f"Error saving graph image: {e}")
+    end_time = time.time()
+    print(f"Graph diagram saved in {end_time - start_time:.2f} seconds.")
 
     result = graph.invoke(initial_state, { "configurable": { "thread_id": "1" }, "recursion_limit": 100 })
 
@@ -1014,25 +1035,21 @@ def multi_agent_research_generation_persist_at_the_end(
         with open(f"{report_folder}/{topic}.bib", "w") as f:
             f.write(bib_report)
 
-    # Storing graph's diagram
-    try:
-        if not os.path.exists("images"): os.makedirs("images")
-        with open("images/graph_png.png", "wb") as f:
-            f.write(graph.get_graph(xray=1).draw_mermaid_png())
-    except Exception as e:
-        print(f"Error saving graph image: {e}")
-
     if trace_optimization:
         return {'final_report': node(latex_report)}
     return latex_report
 
 
 # -------------- Example usage --------------
+title = "Complex QA and language models hybrid architectures, Survey" # "State of the art on 'Leading-Edge Noise'"
+topic = """This paper reviews the state-of-the-art of language models architectures and strategies for "complex" question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others."""
+SEARCH_STRATEGY = "arxiv"
 if __name__ == "__main__":
     final_report = multi_agent_research_generation_persist_at_the_end(
-        title="State of the art on complex QA and language models hybrid architecture",
-        topic="Complex QA and language models hybrid architectures, Survey",
-        max_analysts=1,
-        max_iterations=2
+        title=title,
+        topic=topic,
+        max_analysts=2,
+        max_report_iterations=2,
+        max_interview_iterations=1,
     )
     print("\n==== Final Report ====\n", final_report)

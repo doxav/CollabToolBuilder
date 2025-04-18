@@ -1346,6 +1346,11 @@ class SynthesisManager:
         except ImportError:
             raise ImportError("Please install bibtexparser with `pip install bibtexparser`.")
 
+        if "```latex" in latex_string:
+            m = re.search(r"```latex\s*(.*?)```", latex_string, re.I | re.S)
+            if m and any(t in m.group(1) for t in ("\\documentclass", "\\begin{document}")):
+                latex_string = m.group(1).strip()
+
         # --- Helper to process both internal and external BibTeX entries ---
         def process_bib_entry(entry, default_key=None):
             bib_id = entry.get('ID', default_key or str(uuid.uuid4()))
