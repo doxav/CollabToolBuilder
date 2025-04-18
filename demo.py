@@ -65,23 +65,23 @@ automate_graph = True
 planner, section_writer, critic, latex_gen, analyst = None, None, None, None, None
 
 SIMULATION_MODES = {
-    "intelligent": {  # Stratégie 1 : LLM intelligent unique
+    "intelligent": {  # Strategy 1 : LLM intelligent unique
         "planner": {"default_llmORchain": "premium_llm"},
-        "section_writer": {"default_llmORchain": "premium_llm"},
-        "critic": {"default_llmORchain": "premium_llm"},
-        "analyst": {"default_llmORchain": "premium_llm"},
+        "section_writer": {},
+        "critic": {},
+        "analyst": {},
     },
-    "critique": {  # Stratégie 2 : critique + suggestion
-        "planner": {"default_llmORchain": "premium_llm"},
-        "section_writer": {"default_llmORchain": "premium_llm"},
-        "critic": {"default_llmORchain": "premium_llm", "recommend_critics": True},
-        "analyst": {"default_llmORchain": "premium_llm"},
+    "critique": {  # Strategy 2 : critique + suggestion
+        "planner": {"recommend_critics": True},
+        "section_writer": {},
+        "critic": {},
+        "analyst": {},
     },
-    "multi_expert": {  # Stratégie 3 : plusieurs analystes + outputs parallèles
-        "planner": {"default_llmORchain": "premium_llm"},
-        "section_writer": {"default_llmORchain": "premium_llm", "num_parallel_inferences": 3},
-        "critic": {"default_llmORchain": "premium_llm"},
-        "analyst": {"default_llmORchain": "premium_llm"},
+    "multi_expert": {  # Strategy 3 : multiple generations according to strategy + fuse or choose
+        "planner": {"num_parallel_inferences": 3},
+        "section_writer": {},
+        "critic": {},
+        "analyst": {},
     },
 }
 
@@ -1077,15 +1077,15 @@ topic = """This paper reviews the state-of-the-art of language models architectu
 SEARCH_STRATEGY = "arxiv"
 if __name__ == "__main__":
     title1 = "Complex QA and language models hybrid architectures, Survey"
-    topic1 = "... (reprends le topic du haut du fichier demo.py)"
+    topic1 = "Complex QA and language models hybrid architectures, Survey"
 
-    for mode in ["intelligent", "critique", "multi_expert"]:
+    for mode in ["critique", "intelligent", "multi_expert"]:
         print(f"\n===== MODE: {mode} =====\n")
         final_report = multi_agent_research_generation_persist_at_the_end(
             title=title1,
             topic=topic1,
-            max_analysts=3 if mode == "multi_expert" else 1,
-            max_report_iterations=2 if mode == "critique" else 1,
+            max_analysts=3,
+            max_report_iterations=2,
             automation="full_auto",
             human_simulation_mode=mode,
         )

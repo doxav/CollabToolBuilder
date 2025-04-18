@@ -377,17 +377,14 @@ class UnifiedVectorDB:
             if metadatas is not None and isinstance(metadatas, dict):
                 metadatas = {k: v for k, v in metadatas.items() if v is not None}
             elif metadatas is not None and isinstance(metadatas, list):
-                metadatas = [m for m in metadatas if m is not None]
+                metadatas = [{k: v if v is not None else '' for k, v in m.items()} for m in metadatas]
             if self.config.db_type == CHROMA_DATABASE or self.config.db_type == ELASTIC_DATABASE:
                 if isinstance(texts, list):
-                    texts = str(texts[0]) if len(texts) == 1 else str(texts)
-                elif not isinstance(texts, (str, int, float, bool)):
-                    texts = str(texts)
+                    for i in range(len(texts)):
+                        if not isinstance(texts[i], str):
+                            texts[i] = str(texts[i])
                 if metadatas is None:
                     return self.db.add_texts(texts=texts, ids=ids)
-                # metadatas is a list of dictionaries, replace any None value of the dict with '' => Chroma doesn't like None values in a metadata
-                if isinstance(metadatas, list):
-                    metadatas = [{k: v if v is not None else '' for k, v in m.items()} for m in metadatas]
                 return self.db.add_texts(texts=texts, ids=ids, metadatas=metadatas)
             else:
                 self.logger.error(f"Unsupported DB type: {self.config.db_type}")
@@ -428,8 +425,17 @@ class UnifiedVectorDB:
                 if sort_order in ['asc', 'desc']:
                     self.logger.warning("WARNING: sort not implemented for Chroma DB; performing in-memory sort")
             # Query the database using the filter (if any)
-            #results = self.db.query(query_text, k=k, filter=filter_chroma)
-            results = self.db.similarity_search(query_text, k=k, filter=filter_chroma)
+            # Check db size, if 0 skip, if less than k, set k to db size
+            if self.db._collection.count() == 0:
+                self.logger.warning("WARNING: Chroma DB is empty, returning empty results")
+                return []
+            elif self.db._collection.count() < k:
+                k = self.db._collection.count()
+            try:
+                results = self.db.similarity_search(query_text, k=k, filter=filter_chroma)
+            except Exception as e:
+                self.logger.error(f"Error querying Chroma DB: {str(e)}")
+                return []
             # If a sort order is provided, sort the results in memory.
             if sort_order in ['asc', 'desc']:
                 # Assuming each result is a tuple (Document, score) and we sort by the metadata key "time"

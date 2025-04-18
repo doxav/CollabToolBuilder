@@ -1374,13 +1374,11 @@ class HumanLLM:
             self.menu_start_time = time.time()
 
             if self.automation:
-                if comments is None:
-                    temp, _ = self.config.get_agent_data(self.agent_name, "llm_suggestions")
-                    if temp:
-                        comments = temp[0]['llm_suggestions']
                 if (hasattr(self, 'recommend_critics') and self.recommend_critics) and self.outputs[output_id - 1] is None:
-                    inference_result_msg.content = self.critic_answer(
-                        comments,
+                    if comments is None:
+                        comments = self.generate_best_improvement_suggestions( inference_result_msg.content, output_id=output_id)
+                    inference_result_msg.content = self.apply_critic_answer(
+                        comments["suggestions"],
                         inference_result_msg.content,
                         text_has_annotations=False
                     )
@@ -1402,7 +1400,7 @@ class HumanLLM:
                 self.modify_answer(inference_result_msg, output_id)
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
-                inference_result_msg.content = self.critic_answer(
+                inference_result_msg.content = self.apply_critic_answer(
                     comments,
                     inference_result_msg.content,
                     text_has_annotations=False
@@ -1561,7 +1559,7 @@ class HumanLLM:
                 save_prompt_with_tag(self.system_prompt, new_template, tag_option)
         return comments
 
-    def critic_answer(
+    def apply_critic_answer(
         self,
         suggestions,
         text_content,
@@ -1647,6 +1645,7 @@ class HumanLLM:
                         instructions[id_] = instruction
             return instructions
 
+        # Get suggestions from the last inference check results if exist and suggestions is empty / log critic to agent data in any case
         critic = None
         if self.inference_tracking.last_inference_check_results:
             for result in self.inference_tracking.last_inference_check_results:
@@ -1658,18 +1657,18 @@ class HumanLLM:
                 else:
                     break
 
-        if critic:
-            if suggestions == "":
-                suggestions = critic['suggestions']
-            self.config.log_agent_data(
-                self.agent_name,
-                "llm_suggestions",
-                {
-                    'llm_suggestions': critic['suggestions'],
-                    'user_suggestions': suggestions,
-                    'llm_suggestions_prompt': critic['improvement_prompt']
-                }
-            )
+            if critic:
+                if suggestions == "":
+                    suggestions = critic['suggestions']
+                self.config.log_agent_data(
+                    self.agent_name,
+                    "llm_suggestions",
+                    {
+                        'llm_suggestions': critic['suggestions'],
+                        'user_suggestions': suggestions,
+                        'llm_suggestions_prompt': critic['improvement_prompt']
+                    }
+                )
 
         if text_has_annotations:
             if annotation_format is None:
