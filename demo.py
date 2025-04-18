@@ -78,7 +78,7 @@ SIMULATION_MODES = {
         "analyst": {},
     },
     "multi_expert": {  # Strategy 3 : multiple generations according to strategy + fuse or choose
-        "planner": {"num_parallel_inferences": 3},
+        "planner": {"num_parallel_inferences": 3, 'fusion_mode': "best_of_n"},
         "section_writer": {},
         "critic": {},
         "analyst": {},
@@ -1079,7 +1079,7 @@ if __name__ == "__main__":
     title1 = "Complex QA and language models hybrid architectures, Survey"
     topic1 = "Complex QA and language models hybrid architectures, Survey"
 
-    for mode in ["critique", "intelligent", "multi_expert"]:
+    for mode in ["multi_expert", "intelligent", "critique"]: # Loop over the different Human Simulation Modes / Missing testing the different experiments
         print(f"\n===== MODE: {mode} =====\n")
         final_report = multi_agent_research_generation_persist_at_the_end(
             title=title1,

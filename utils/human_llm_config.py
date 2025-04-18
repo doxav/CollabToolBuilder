@@ -110,7 +110,7 @@ class HumanLLMConfig:
                     temperature=0.
                 ),
                 "premium_llm": ChatOpenAI(
-                    model_name="gpt-4o-mini-2024-07-18",
+                    model_name="gpt-4.1-mini-2025-04-14",
                     cache=False,
                     temperature=0.
                 ),
