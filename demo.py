@@ -64,6 +64,27 @@ config.initialize()
 automate_graph = True
 planner, section_writer, critic, latex_gen, analyst = None, None, None, None, None
 
+SIMULATION_MODES = {
+    "intelligent": {  # Stratégie 1 : LLM intelligent unique
+        "planner": {"default_llmORchain": "premium_llm"},
+        "section_writer": {"default_llmORchain": "premium_llm"},
+        "critic": {"default_llmORchain": "premium_llm"},
+        "analyst": {"default_llmORchain": "premium_llm"},
+    },
+    "critique": {  # Stratégie 2 : critique + suggestion
+        "planner": {"default_llmORchain": "premium_llm"},
+        "section_writer": {"default_llmORchain": "premium_llm"},
+        "critic": {"default_llmORchain": "premium_llm", "recommend_critics": True},
+        "analyst": {"default_llmORchain": "premium_llm"},
+    },
+    "multi_expert": {  # Stratégie 3 : plusieurs analystes + outputs parallèles
+        "planner": {"default_llmORchain": "premium_llm"},
+        "section_writer": {"default_llmORchain": "premium_llm", "num_parallel_inferences": 3},
+        "critic": {"default_llmORchain": "premium_llm"},
+        "analyst": {"default_llmORchain": "premium_llm"},
+    },
+}
+
 ### ----- Extended State to include new fields -----
 
 class Analyst(BaseModel):
@@ -899,7 +920,7 @@ def score_document(state: ResearchGraphState):
     return { "scores": scores}
 
 def multi_agent_research_generation_persist_at_the_end(
-    title, topic, max_analysts: int=3, max_report_iterations: int=2, auto_n_rounds_planner: int=0, auto_n_rounds_section_writer: int=0, auto_n_rounds_analyst: int=0, auto_n_rounds_critic: int=0, auto_n_rounds_latex: int=0, automation: str="full_auto", trace_optimization: bool=False, max_interview_iterations: int=2,
+    title, topic, max_analysts: int=3, max_report_iterations: int=2, auto_n_rounds_planner: int=0, auto_n_rounds_section_writer: int=0, auto_n_rounds_analyst: int=0, auto_n_rounds_critic: int=0, auto_n_rounds_latex: int=0, automation: str="full_auto", trace_optimization: bool=False, max_interview_iterations: int=2, human_simulation_mode: str="intelligent"
 ):
     print("Multi_agent_research_generation_persist_at_the_end")
 
@@ -907,11 +928,21 @@ def multi_agent_research_generation_persist_at_the_end(
         auto_n_rounds_analyst = auto_n_rounds_section_writer = auto_n_rounds_analyst = auto_n_rounds_critic = auto_n_rounds_latex = 999
 
     global planner, section_writer, critic, latex_gen, analyst
-    planner = HumanLLM(agent_name="Planner", llmORchains_list=llm_list, automation=automation, auto_n_rounds=auto_n_rounds_planner)
-    section_writer = HumanLLM(agent_name="Section Writer", llmORchains_list=llm_list, automation=automation, auto_n_rounds=auto_n_rounds_section_writer)
-    critic = HumanLLM(agent_name="Self Critic", llmORchains_list=llm_list, automation=automation, auto_n_rounds=auto_n_rounds_critic)
+    sim_config = SIMULATION_MODES[human_simulation_mode]
+
+    planner = HumanLLM(agent_name="Planner", llmORchains_list=llm_list,
+                    automation=automation, auto_n_rounds=auto_n_rounds_planner,
+                    **sim_config["planner"])
+    section_writer = HumanLLM(agent_name="Section Writer", llmORchains_list=llm_list,
+                            automation=automation, auto_n_rounds=auto_n_rounds_section_writer,
+                            **sim_config["section_writer"])
+    critic = HumanLLM(agent_name="Self Critic", llmORchains_list=llm_list,
+                    automation=automation, auto_n_rounds=auto_n_rounds_critic,
+                    **sim_config["critic"])
+    analyst = HumanLLM(agent_name="Create Analysts", llmORchains_list=llm_list,
+                    automation=automation, auto_n_rounds=auto_n_rounds_analyst,
+                    **sim_config["analyst"])
     latex_gen = HumanLLM(agent_name="Generate Latex", llmORchains_list=llm_list, automation=automation, auto_n_rounds=auto_n_rounds_latex)
-    analyst = HumanLLM(agent_name="Create Analysts", llmORchains_list=llm_list, automation=automation, auto_n_rounds=auto_n_rounds_analyst)
 
     initial_state: ResearchGraphState = {
         "title": title,
@@ -1045,11 +1076,16 @@ title = "Complex QA and language models hybrid architectures, Survey" # "State o
 topic = """This paper reviews the state-of-the-art of language models architectures and strategies for "complex" question-answering (QA, CQA, CPS) with a focus on hybridization. Large Language Models (LLM) are good at leveraging public data on standard problems but once you want to tackle more specific complex questions or problems (e.g. How does the concept of personal freedom vary between different cultures ? What is the best mix of power generation methods to reduce climate change ?) you may need specific architecture, knowledge, skills, methods, sensitive data protection, explainability, human approval and versatile feedback... Recent projects like ChatGPT and GALACTICA have allowed non-specialists to grasp the great potential as well as the equally strong limitations of LLM in complex QA. In this paper, we start by reviewing required skills and evaluation techniques. We integrate findings from the robust community edited research papers BIG, BLOOM and HELM which open source, benchmark and analyze limits and challenges of LLM in terms of tasks complexity and strict evaluation on accuracy (e.g. fairness, robustness, toxicity, ...) as a baseline. We discuss some challenges associated with complex QA, including domain adaptation, decomposition and efficient multi-step QA, long form and non-factoid QA, safety and multi-sensitivity data protection, multimodal search, hallucinations, explainability and truthfulness, temporal reasoning. We analyze current solutions and promising research trends, using elements such as: hybrid LLM architectural patterns, training and prompting strategies, active human reinforcement learning supervised with AI, neuro-symbolic and structured knowledge grounding, program synthesis, iterated decomposition and others."""
 SEARCH_STRATEGY = "arxiv"
 if __name__ == "__main__":
-    final_report = multi_agent_research_generation_persist_at_the_end(
-        title=title,
-        topic=topic,
-        max_analysts=2,
-        max_report_iterations=2,
-        max_interview_iterations=1,
-    )
-    print("\n==== Final Report ====\n", final_report)
+    title1 = "Complex QA and language models hybrid architectures, Survey"
+    topic1 = "... (reprends le topic du haut du fichier demo.py)"
+
+    for mode in ["intelligent", "critique", "multi_expert"]:
+        print(f"\n===== MODE: {mode} =====\n")
+        final_report = multi_agent_research_generation_persist_at_the_end(
+            title=title1,
+            topic=topic1,
+            max_analysts=3 if mode == "multi_expert" else 1,
+            max_report_iterations=2 if mode == "critique" else 1,
+            automation="full_auto",
+            human_simulation_mode=mode,
+        )
