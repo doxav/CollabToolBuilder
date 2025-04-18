@@ -64,25 +64,10 @@ config.initialize()
 automate_graph = True
 planner, section_writer, critic, latex_gen, analyst = None, None, None, None, None
 
-SIMULATION_MODES = {
-    "intelligent": {  # Strategy 1 : LLM intelligent unique
-        "planner": {"default_llmORchain": "premium_llm"},
-        "section_writer": {},
-        "critic": {},
-        "analyst": {},
-    },
-    "critique": {  # Strategy 2 : critique + suggestion
-        "planner": {"recommend_critics": True},
-        "section_writer": {},
-        "critic": {},
-        "analyst": {},
-    },
-    "multi_expert": {  # Strategy 3 : multiple generations according to strategy + fuse or choose
-        "planner": {"num_parallel_inferences": 3, 'fusion_mode': "best_of_n"},
-        "section_writer": {},
-        "critic": {},
-        "analyst": {},
-    },
+HUMAN_SIMULATION_MODES = {
+    "intelligent":   {"default_llmORchain": "premium_llm"},
+    "critique":      {"recommend_critics": True},
+    "multi_expert":  {"num_parallel_inferences": 3, "fusion_mode": "best_of_n"},
 }
 
 ### ----- Extended State to include new fields -----
@@ -920,29 +905,26 @@ def score_document(state: ResearchGraphState):
     return { "scores": scores}
 
 def multi_agent_research_generation_persist_at_the_end(
-    title, topic, max_analysts: int=3, max_report_iterations: int=2, auto_n_rounds_planner: int=0, auto_n_rounds_section_writer: int=0, auto_n_rounds_analyst: int=0, auto_n_rounds_critic: int=0, auto_n_rounds_latex: int=0, automation: str="full_auto", trace_optimization: bool=False, max_interview_iterations: int=2, human_simulation_mode: str="intelligent"
-):
+    title, topic, max_analysts: int=3, max_report_iterations: int=2, auto_n_rounds_planner: int=0, auto_n_rounds_section_writer: int=0, auto_n_rounds_analyst: int=0, auto_n_rounds_critic: int=0, auto_n_rounds_latex: int=0, automation: str="full_auto", trace_optimization: bool=False, max_interview_iterations: int=2, human_simulation_mode: str="intelligent", agents_with_human: tuple = ("planner",),):
     print("Multi_agent_research_generation_persist_at_the_end")
 
     if automation == "full_auto":
         auto_n_rounds_analyst = auto_n_rounds_section_writer = auto_n_rounds_analyst = auto_n_rounds_critic = auto_n_rounds_latex = 999
 
     global planner, section_writer, critic, latex_gen, analyst
-    sim_config = SIMULATION_MODES[human_simulation_mode]
+    kwargs_human = HUMAN_SIMULATION_MODES[human_simulation_mode]
 
-    planner = HumanLLM(agent_name="Planner", llmORchains_list=llm_list,
-                    automation=automation, auto_n_rounds=auto_n_rounds_planner,
-                    **sim_config["planner"])
-    section_writer = HumanLLM(agent_name="Section Writer", llmORchains_list=llm_list,
-                            automation=automation, auto_n_rounds=auto_n_rounds_section_writer,
-                            **sim_config["section_writer"])
-    critic = HumanLLM(agent_name="Self Critic", llmORchains_list=llm_list,
-                    automation=automation, auto_n_rounds=auto_n_rounds_critic,
-                    **sim_config["critic"])
-    analyst = HumanLLM(agent_name="Create Analysts", llmORchains_list=llm_list,
-                    automation=automation, auto_n_rounds=auto_n_rounds_analyst,
-                    **sim_config["analyst"])
-    latex_gen = HumanLLM(agent_name="Generate Latex", llmORchains_list=llm_list, automation=automation, auto_n_rounds=auto_n_rounds_latex)
+    def mk(agent_name, **extra):
+        """Factory : if agent_name is "humanised", inject kwargs_human."""
+        base = kwargs_human if agent_name in agents_with_human else {}
+        base.update(extra)
+        return base
+    
+    planner        = HumanLLM(agent_name="Planner",         automation=automation, auto_n_rounds=auto_n_rounds_analyst, llmORchains_list=llm_list, **mk("planner"))
+    section_writer = HumanLLM(agent_name="Section Writer",  automation=automation, auto_n_rounds=auto_n_rounds_analyst, llmORchains_list=llm_list, **mk("section_writer"))
+    critic         = HumanLLM(agent_name="Self Critic",     automation=automation, auto_n_rounds=auto_n_rounds_analyst, llmORchains_list=llm_list, **mk("critic"))
+    analyst        = HumanLLM(agent_name="Create Analysts", automation=automation, auto_n_rounds=auto_n_rounds_analyst, llmORchains_list=llm_list, **mk("analyst"))
+    latex_gen      = HumanLLM(agent_name="Generate Latex",  automation=automation, auto_n_rounds=auto_n_rounds_analyst, llmORchains_list=llm_list)  # never humanised
 
     initial_state: ResearchGraphState = {
         "title": title,
