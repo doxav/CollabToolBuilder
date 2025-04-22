@@ -395,6 +395,8 @@ def create_analysts(state: GenerateAnalystsState):
           - 'TOPIC': the research topic,
           - 'FEEDBACK': any editorial feedback,
           - 'MAX_ANALYSTS': the maximum number of analysts to generate.
+          - 'PREVIOUS CRITIQUE': any previous critique on the report.
+                                            
 
         Review the topic and feedback, identify the top themes, and assign one analyst per theme.
         Each analyst must have the following fields: role (string), affiliation (string), and description (string).""")
@@ -406,6 +408,8 @@ def create_analysts(state: GenerateAnalystsState):
         f"TOPIC: <<< {topic} >>>\n"
         f"MAX_ANALYSTS: <<< {max_analysts} >>>\n"
         f"FEEDBACK: <<< {human_analyst_feedback} >>>\n"
+        f"PREVIOUS CRITIQUE: <<< {critic_feedback} >>>\n"
+        f"DOCUMENT's PLAN to cover TOPIC: <<< {state.get('plan', '')} >>>\n"
         f"TASK: Generate the set of analysts in JSON format."
     )
     try:
@@ -827,6 +831,20 @@ def initiate_all_interviews(state: ResearchGraphState):
 
 from langgraph.graph import StateGraph
 
+from pathlib import Path
+import re, glob                                       # ➊ FIX  (nouveaux imports)
+
+def _find_target_json(title:str)->str:                # ➋ FIX  (helper robuste)
+    base = Path("env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv")
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", title).strip("_")
+    #  1) slug exact
+    cand = list(base.glob(f"*{slug}*.json"))
+    if cand: return str(cand[0])
+    #  2) fallback : premières 3 mots
+    pat  = "_".join(slug.split("_")[:3])
+    cand = glob.glob(str(base / f"*{pat}*.json"))
+    return cand[0] if cand else None
+
 def score_generated_report_with_existing_env(final_report_in_latex: str, topic: str, title: str = None):
     """
     Reuses the scoring logic from env.py by creating a VoyagerEnvIR_CPS_TechSynthesis
@@ -853,6 +871,13 @@ def score_generated_report_with_existing_env(final_report_in_latex: str, topic: 
     # If a matching environment is available for the topic, use it for scoring
     if topic in known_docs or title in known_docs:
         doc = known_docs[topic if topic in known_docs else title]
+        # Check if doc['target_file_path'] exists, else check alternative_target_path exist then change doc['target_file_path']
+        if not Path(doc['target_file_path']).exists(): 
+            alternative_target_path = _find_target_json(title or topic)          # FIX
+            if alternative_target_path and Path(alternative_target_path).exists():
+                doc['target_file_path'] = alternative_target_path
+            else:
+                raise FileNotFoundError(f"Target file path not found for {doc['title']}.")
         try:
             env = EnvironmentManager(
                 env_type="techsynthesis",
@@ -865,7 +890,21 @@ def score_generated_report_with_existing_env(final_report_in_latex: str, topic: 
             ).get_environment()
             env.reset()
             env.synthesis_manager.GetFromLatex(final_report_in_latex)
-            feedback["scores"] = env.get_score()
+            try:
+                detailed_score = env.synthesis_manager.get_distance_to_targetJSON()
+            except Exception as e:
+                print(f"Error getting detailed score: {e}")
+                detailed_score = None
+            try:
+                global_score = env.get_score()
+            except Exception as e:
+                print(f"Error getting global score: {e}")
+                global_score = None
+
+            scores_dict = {}
+            if isinstance(detailed_score, dict): scores_dict.update(detailed_score)
+            if isinstance(global_score,  dict): scores_dict.update({f"global_{k}": v for k, v in global_score.items()})
+            feedback["scores"] = scores_dict 
         except Exception as e:
             print(f"Environment scoring failed: {e}")
 
