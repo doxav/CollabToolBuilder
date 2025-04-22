@@ -1484,8 +1484,12 @@ class SynthesisManager:
             self.document.title = title_node.string.strip()
             self.document.set_plan_field_with_embedding('title', self.document.title)
 
-        abstract_node = (soup.find('abstract') or soup.find(lambda t: getattr(t, 'name', None) == 'abstract' and getattr(t, 'string', None)))
-        abstract = (getattr(abstract_node, 'string', '') or '').strip()
+        try:
+            abstract_node = (soup.find('abstract') or soup.find(lambda t: getattr(t, 'name', None) == 'abstract' and getattr(t, 'string', None)))
+            abstract = (getattr(abstract_node, 'string', '') or '').strip()
+        except Exception as e:
+            print(f"Failed to extract abstract: {e}")
+            abstract, abstract_node = '', None
         if debug: print(f"DEBUG: abstract → {abstract!r}")
         if abstract:
             self.document.context = abstract

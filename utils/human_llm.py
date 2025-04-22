@@ -362,7 +362,7 @@ class HumanLLM:
             "31": ["CriticAgent", "ValidationAgent"],
             "33": ["SkillManager", "CapitalizationAgent"],
         }
-        for key, value in color_table:
+        for key, value in color_table.items():
             if self.agent_name in value:
                 self.print_color = key
 

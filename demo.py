@@ -64,25 +64,10 @@ config.initialize()
 automate_graph = True
 planner, section_writer, critic, latex_gen, analyst = None, None, None, None, None
 
-SIMULATION_MODES = {
-    "intelligent": {  # Strategy 1 : LLM intelligent unique
-        "planner": {"default_llmORchain": "premium_llm"},
-        "section_writer": {},
-        "critic": {},
-        "analyst": {},
-    },
-    "critique": {  # Strategy 2 : critique + suggestion
-        "planner": {"recommend_critics": True},
-        "section_writer": {},
-        "critic": {},
-        "analyst": {},
-    },
-    "multi_expert": {  # Strategy 3 : multiple generations according to strategy + fuse or choose
-        "planner": {"num_parallel_inferences": 3, 'fusion_mode': "best_of_n"},
-        "section_writer": {},
-        "critic": {},
-        "analyst": {},
-    },
+HUMAN_SIMULATION_MODES = {
+    "intelligent":   {"default_llmORchain": "premium_llm"},
+    "critique":      {"recommend_critics": True},
+    "multi_expert":  {"num_parallel_inferences": 3, "fusion_mode": "best_of_n"},
 }
 
 ### ----- Extended State to include new fields -----
@@ -410,6 +395,8 @@ def create_analysts(state: GenerateAnalystsState):
           - 'TOPIC': the research topic,
           - 'FEEDBACK': any editorial feedback,
           - 'MAX_ANALYSTS': the maximum number of analysts to generate.
+          - 'PREVIOUS CRITIQUE': any previous critique on the report.
+                                            
 
         Review the topic and feedback, identify the top themes, and assign one analyst per theme.
         Each analyst must have the following fields: role (string), affiliation (string), and description (string).""")
@@ -421,6 +408,8 @@ def create_analysts(state: GenerateAnalystsState):
         f"TOPIC: <<< {topic} >>>\n"
         f"MAX_ANALYSTS: <<< {max_analysts} >>>\n"
         f"FEEDBACK: <<< {human_analyst_feedback} >>>\n"
+        f"PREVIOUS CRITIQUE: <<< {critic_feedback} >>>\n"
+        f"DOCUMENT's PLAN to cover TOPIC: <<< {state.get('plan', '')} >>>\n"
         f"TASK: Generate the set of analysts in JSON format."
     )
     try:
@@ -842,6 +831,20 @@ def initiate_all_interviews(state: ResearchGraphState):
 
 from langgraph.graph import StateGraph
 
+from pathlib import Path
+import re, glob                                       # ➊ FIX  (nouveaux imports)
+
+def _find_target_json(title:str)->str:                # ➋ FIX  (helper robuste)
+    base = Path("env/IR_CPS_TechSynthesis/document_embedding_analysis/output/arxiv")
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", title).strip("_")
+    #  1) slug exact
+    cand = list(base.glob(f"*{slug}*.json"))
+    if cand: return str(cand[0])
+    #  2) fallback : premières 3 mots
+    pat  = "_".join(slug.split("_")[:3])
+    cand = glob.glob(str(base / f"*{pat}*.json"))
+    return cand[0] if cand else None
+
 def score_generated_report_with_existing_env(final_report_in_latex: str, topic: str, title: str = None):
     """
     Reuses the scoring logic from env.py by creating a VoyagerEnvIR_CPS_TechSynthesis
@@ -868,6 +871,13 @@ def score_generated_report_with_existing_env(final_report_in_latex: str, topic: 
     # If a matching environment is available for the topic, use it for scoring
     if topic in known_docs or title in known_docs:
         doc = known_docs[topic if topic in known_docs else title]
+        # Check if doc['target_file_path'] exists, else check alternative_target_path exist then change doc['target_file_path']
+        if not Path(doc['target_file_path']).exists(): 
+            alternative_target_path = _find_target_json(title or topic)          # FIX
+            if alternative_target_path and Path(alternative_target_path).exists():
+                doc['target_file_path'] = alternative_target_path
+            else:
+                raise FileNotFoundError(f"Target file path not found for {doc['title']}.")
         try:
             env = EnvironmentManager(
                 env_type="techsynthesis",
@@ -880,7 +890,21 @@ def score_generated_report_with_existing_env(final_report_in_latex: str, topic: 
             ).get_environment()
             env.reset()
             env.synthesis_manager.GetFromLatex(final_report_in_latex)
-            feedback["scores"] = env.get_score()
+            try:
+                detailed_score = env.synthesis_manager.get_distance_to_targetJSON()
+            except Exception as e:
+                print(f"Error getting detailed score: {e}")
+                detailed_score = None
+            try:
+                global_score = env.get_score()
+            except Exception as e:
+                print(f"Error getting global score: {e}")
+                global_score = None
+
+            scores_dict = {}
+            if isinstance(detailed_score, dict): scores_dict.update(detailed_score)
+            if isinstance(global_score,  dict): scores_dict.update({f"global_{k}": v for k, v in global_score.items()})
+            feedback["scores"] = scores_dict 
         except Exception as e:
             print(f"Environment scoring failed: {e}")
 
@@ -920,29 +944,26 @@ def score_document(state: ResearchGraphState):
     return { "scores": scores}
 
 def multi_agent_research_generation_persist_at_the_end(
-    title, topic, max_analysts: int=3, max_report_iterations: int=2, auto_n_rounds_planner: int=0, auto_n_rounds_section_writer: int=0, auto_n_rounds_analyst: int=0, auto_n_rounds_critic: int=0, auto_n_rounds_latex: int=0, automation: str="full_auto", trace_optimization: bool=False, max_interview_iterations: int=2, human_simulation_mode: str="intelligent"
-):
+    title, topic, max_analysts: int=3, max_report_iterations: int=2, auto_n_rounds_planner: int=0, auto_n_rounds_section_writer: int=0, auto_n_rounds_analyst: int=0, auto_n_rounds_critic: int=0, auto_n_rounds_latex: int=0, automation: str="full_auto", trace_optimization: bool=False, max_interview_iterations: int=2, human_simulation_mode: str="intelligent", agents_with_human: tuple = ("planner",),):
     print("Multi_agent_research_generation_persist_at_the_end")
 
     if automation == "full_auto":
         auto_n_rounds_analyst = auto_n_rounds_section_writer = auto_n_rounds_analyst = auto_n_rounds_critic = auto_n_rounds_latex = 999
 
     global planner, section_writer, critic, latex_gen, analyst
-    sim_config = SIMULATION_MODES[human_simulation_mode]
+    kwargs_human = HUMAN_SIMULATION_MODES[human_simulation_mode]
 
-    planner = HumanLLM(agent_name="Planner", llmORchains_list=llm_list,
-                    automation=automation, auto_n_rounds=auto_n_rounds_planner,
-                    **sim_config["planner"])
-    section_writer = HumanLLM(agent_name="Section Writer", llmORchains_list=llm_list,
-                            automation=automation, auto_n_rounds=auto_n_rounds_section_writer,
-                            **sim_config["section_writer"])
-    critic = HumanLLM(agent_name="Self Critic", llmORchains_list=llm_list,
-                    automation=automation, auto_n_rounds=auto_n_rounds_critic,
-                    **sim_config["critic"])
-    analyst = HumanLLM(agent_name="Create Analysts", llmORchains_list=llm_list,
-                    automation=automation, auto_n_rounds=auto_n_rounds_analyst,
-                    **sim_config["analyst"])
-    latex_gen = HumanLLM(agent_name="Generate Latex", llmORchains_list=llm_list, automation=automation, auto_n_rounds=auto_n_rounds_latex)
+    def mk(agent_name, **extra):
+        """Factory : if agent_name is "humanised", inject kwargs_human."""
+        base = kwargs_human if agent_name in agents_with_human else {}
+        base.update(extra)
+        return base
+    
+    planner        = HumanLLM(agent_name="Planner",         automation=automation, auto_n_rounds=auto_n_rounds_analyst, llmORchains_list=llm_list, **mk("planner"))
+    section_writer = HumanLLM(agent_name="Section Writer",  automation=automation, auto_n_rounds=auto_n_rounds_analyst, llmORchains_list=llm_list, **mk("section_writer"))
+    critic         = HumanLLM(agent_name="Self Critic",     automation=automation, auto_n_rounds=auto_n_rounds_analyst, llmORchains_list=llm_list, **mk("critic"))
+    analyst        = HumanLLM(agent_name="Create Analysts", automation=automation, auto_n_rounds=auto_n_rounds_analyst, llmORchains_list=llm_list, **mk("analyst"))
+    latex_gen      = HumanLLM(agent_name="Generate Latex",  automation=automation, auto_n_rounds=auto_n_rounds_analyst, llmORchains_list=llm_list)  # never humanised
 
     initial_state: ResearchGraphState = {
         "title": title,
