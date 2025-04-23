@@ -1,4 +1,6 @@
-import os
+import os, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from env.env import EnvironmentManager
 from utils.human_llm_config import HumanLLMConfig
 from config import *
@@ -70,7 +72,7 @@ def test_GetFromLatex():
     # Define the file paths for the LaTeX and corresponding BibTeX files.
     # (Make sure these files exist in your data directory.)
     latex_files = [
-        "env/IR_CPS_TechSynthesis/document_embedding_analysis/data/latex/Complex QA & language models hybrid architectures, Survey.tex",
+        "Optuna_report_outputs/demo_human_sim_20250422_1422/intelligent_('analyst',)_Complex_QA_101f4a3a.tex",
         "env/IR_CPS_TechSynthesis/document_embedding_analysis/data/latex/Macroeconomic_Effects_of_Inflation_Targeting_A_Survey_of_the_Empirical__Literature.tex"
     ]
     bib_files = [
