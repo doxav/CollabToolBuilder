@@ -33,7 +33,7 @@ from langchain_core.messages.system import SystemMessage
 from langchain_core.messages.function import FunctionMessage
 from langchain_core.runnables import RunnableSequence, ConfigurableField
 
-class HumanLLM:
+class HumanLLM():
     def __init__(
         self,
         system_prompt=None,
@@ -63,6 +63,7 @@ class HumanLLM:
         max_autofix=None,
         skip_log_entry_if_no_change=True,
         fusion_mode=None, # Can be "best", "best_of_n", "concat"
+        **kwargs
     ):
         self.config = HumanLLMConfig()
         self.logger = logging.getLogger(__name__)
@@ -2235,7 +2236,7 @@ class HumanLLM:
                 SystemMessage(content=self.system_prompt),
                 HumanMessage(content=user_message)
             ]
-        elif original_input_messages is None:
+        elif original_input_messages is None or len(original_input_messages) == 0:
             # Standard usage if no special automation
             self.logger.info(f"****user_message {self.agent_name} : {user_message}****")
             original_input_messages = [
@@ -3278,3 +3279,33 @@ class HumanLLM:
                     print(f"Special criteria applicable to {agent}'s local variables: {key} = {value}")
         print(new_params)
         return new_params  # Return only new params
+    
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        # Convert LangChain message history into your expected format
+        msg_history = []
+        for m in messages:
+            if isinstance(m, HumanMessage):
+                msg_history.append({"role": "user", "content": m.content})
+            elif isinstance(m, AIMessage):
+                msg_history.append({"role": "assistant", "content": m.content})
+
+        user_msg = msg_history[-1]["content"]  # last user message
+        previous_messages = []
+        for message in msg_history[:-1]:
+            if message["role"] == "user":
+                previous_messages.append(HumanMessage(content=message["content"]))
+            elif message["role"] == "assistant":
+                previous_messages.append(SystemMessage(content=message["content"]))
+
+        # Your custom call
+        answers = self.premium_llm.invoke(
+            # system_prompt_template=system_message,
+            user_message=user_msg,
+            prompt_directory=None,
+            original_input_messages=previous_messages,
+        )
+        return AIMessage(content=answers[0])
+
+    @property
+    def _llm_type(self) -> str:
+        return "custom-human-llm"
