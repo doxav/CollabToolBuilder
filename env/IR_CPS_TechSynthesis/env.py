@@ -307,7 +307,7 @@ class SynthesisManager:
         self.document = document
         self.title = self.document.title
         self.abstract = self.document.context
-        self.min_cosine_similarity = cosine_similarity([self.document.embedding_model.embed_query(".")], [self.document.embedding_model.embed_query("If you can keep your head when all about you are losing theirs and blaming it on you, If you can trust yourself when all men doubt you, But make allowance for their doubting too ; If you can wait and not be tired by waiting, Or being lied about, don’t deal in lies, Or being hated, don’t give way to hating, And yet don’t look too good, nor talk too wise")])[0][0]
+        self.min_cosine_similarity = cosine_similarity([self.document.embedding_model.embed_query(".")], [self.document.embedding_model.embed_query("If you can keep your head when all about you are losing theirs and blaming it on you, If you can trust yourself when all men doubt you, But make allowance for their doubting too ; If you can wait and not be tired by waiting, Or being lied about, don't deal in lies, Or being hated, don't give way to hating, And yet don't look too good, nor talk too wise")])[0][0]
         if target_file_path:
             self.target_file_path = target_file_path
 
@@ -1450,8 +1450,14 @@ class SynthesisManager:
         # --- Process \bibitem as pseudo BibTeX ---
         for bib in soup.find_all('bibitem'):
             note = "".join(str(child).strip() for child in bib.contents).strip()
-            title = bib.attrs.get("title", f"Resource {bib.attrs.get('id', '')}")
-            key = bib.attrs.get("id", str(uuid.uuid4()))
+            # Check if bib.attrs exists before trying to access it
+            if not hasattr(bib, 'attrs') or bib.attrs is None:
+                bib_attrs = {}
+            else:
+                bib_attrs = bib.attrs
+            
+            title = bib_attrs.get("title", f"Resource {bib_attrs.get('id', '')}")
+            key = bib_attrs.get("id", str(uuid.uuid4()))
             fake_bibtex = f"@misc{{{key},\n  title = {{{title}}},\n  note = {{{note}}}\n}}"
             try:
                 bib_entry = bibtexparser.loads(fake_bibtex).entries[0]
