@@ -163,4 +163,4 @@ if __name__ == "__main__":
     default_name = f"demo_human_sim_{datetime.datetime.now():%Y%m%d_%H%M}"
     name_exp = sys.argv[1] if len(sys.argv) > 1 else default_name
     n_trials = int(sys.argv[2]) if len(sys.argv) > 2 else 4
-    global_main(objective, "demo", "human_sim", name_exp=name_exp, n_trials=n_trials)
+    global_main(objective, "demo", "human_sim", name_exp=name_exp, n_trials=n_trials, n_jobs=1)
