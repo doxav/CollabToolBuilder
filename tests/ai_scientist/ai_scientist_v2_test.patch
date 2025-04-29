@@ -1,0 +1,228 @@
+diff --git a/ai_scientist/llm.py b/ai_scientist/llm.py
+index e265f09..9e6dd47 100644
+--- a/ai_scientist/llm.py
++++ b/ai_scientist/llm.py
+@@ -335,6 +335,40 @@ def get_response_from_llm(
+         )
+         content = response.choices[0].message.content
+         new_msg_history = new_msg_history + [{"role": "assistant", "content": content}]
++    elif model == "human-llm":
++        from langchain_core.messages.human import HumanMessage
++        from langchain_core.messages.system import SystemMessage
++        previous_messages = []
++        for message in msg_history:
++            if message["role"] == "user":
++                previous_messages.append(HumanMessage(content=message["content"]))
++            elif message["role"] == "assistant":
++                previous_messages.append(SystemMessage(content=message["content"]))
++        new_msg_history = msg_history + [{"role": "user", "content": msg}]
++        answers = client.invoke(
++            system_prompt_template=system_message,
++            user_message=msg,
++            prompt_directory=None,
++            original_input_messages=previous_messages)
++        content = answers[0]
++        new_msg_history = new_msg_history + [{"role": "assistant", "content": content}]
++    elif "human-llm" == model:
++        from langchain_core.messages.human import HumanMessage
++        from langchain_core.messages.system import SystemMessage
++        previous_messages = []
++        for message in msg_history:
++            if message["role"] == "user":
++                previous_messages.append(HumanMessage(content=message["content"]))
++            elif message["role"] == "assistant":
++                previous_messages.append(SystemMessage(content=message["content"]))
++        new_msg_history = msg_history + [{"role": "user", "content": msg}]
++        answers = client.invoke(
++            system_prompt_template=system_message,
++            user_message=msg,
++            prompt_directory=None,
++            original_input_messages=previous_messages)
++        content = answers[0]
++        new_msg_history = new_msg_history + [{"role": "assistant", "content": content}]
+     else:
+         raise ValueError(f"Model {model} not supported.")
+ 
+@@ -426,5 +460,15 @@ def create_client(model) -> tuple[Any, str]:
+             ),
+             "meta-llama/llama-3.1-405b-instruct",
+         )
++    elif model == "human-llm":
++        from utils.human_llm import HumanLLM, HumanLLMConfig
++        config = HumanLLMConfig()
++        config.common_vectordb_config.embedding_function = "text-embedding-ada-002"
++        config.initialize()
++        return HumanLLM(
++            agent_name="agent",
++            automation=True,
++            llmORchains_list=config.get_llmORchains_list(),
++        ), model
+     else:
+         raise ValueError(f"Model {model} not supported.")
+diff --git a/ai_scientist/perform_icbinb_writeup.py b/ai_scientist/perform_icbinb_writeup.py
+index 4080b97..30cfca4 100644
+--- a/ai_scientist/perform_icbinb_writeup.py
++++ b/ai_scientist/perform_icbinb_writeup.py
+@@ -742,7 +742,7 @@ def filter_experiment_summaries(exp_summaries, step_name):
+     return filtered_summaries
+ 
+ 
+-def gather_citations(base_folder, num_cite_rounds=20, small_model="gpt-4o-2024-05-13"):
++def gather_citations(base_folder, num_cite_rounds=20, small_model="gpt-4o-mini"):
+     """
+     Gather citations for a paper, with ability to resume from previous progress.
+ 
+diff --git a/ai_scientist/treesearch/backend/__init__.py b/ai_scientist/treesearch/backend/__init__.py
+index 926faf0..62e7586 100644
+--- a/ai_scientist/treesearch/backend/__init__.py
++++ b/ai_scientist/treesearch/backend/__init__.py
+@@ -1,4 +1,4 @@
+-from . import backend_anthropic, backend_openai
++from . import backend_anthropic, backend_openai, backend_human_llm
+ from .utils import FunctionSpec, OutputType, PromptType, compile_prompt_to_md
+ 
+ 
+@@ -34,14 +34,17 @@ def query(
+ 
+     # Handle models with beta limitations
+     # ref: https://platform.openai.com/docs/guides/reasoning/beta-limitations
+-    if model.startswith("o1"):
++    if model.startswith("o1") or model == "human-llm":
+         if system_message and user_message is None:
+             user_message = system_message
+         elif system_message is None and user_message:
+             pass
+         elif system_message and user_message:
+             system_message["Main Instructions"] = {}
+-            system_message["Main Instructions"] |= user_message
++            if isinstance(user_message, dict):
++                system_message["Main Instructions"] |= user_message
++            else:
++                system_message["Main Instructions"] = user_message
+             user_message = system_message
+         system_message = None
+         # model_kwargs["temperature"] = 0.5
+@@ -52,7 +55,10 @@ def query(
+     else:
+         model_kwargs["max_tokens"] = max_tokens
+ 
+-    query_func = backend_anthropic.query if "claude-" in model else backend_openai.query
++    if model == "human-llm":
++        query_func = backend_human_llm.query
++    else:
++        query_func = backend_anthropic.query if "claude-" in model else backend_openai.query
+     output, req_time, in_tok_count, out_tok_count, info = query_func(
+         system_message=compile_prompt_to_md(system_message) if system_message else None,
+         user_message=compile_prompt_to_md(user_message) if user_message else None,
+diff --git a/ai_scientist/treesearch/journal.py b/ai_scientist/treesearch/journal.py
+index 0dc1695..024d4e1 100644
+--- a/ai_scientist/treesearch/journal.py
++++ b/ai_scientist/treesearch/journal.py
+@@ -471,7 +471,7 @@ class Journal:
+                 system_message=prompt,
+                 user_message=None,
+                 func_spec=node_selection_spec,
+-                model="gpt-4o",
++                model="human-llm",
+                 temperature=0.3,
+             )
+ 
+@@ -535,7 +535,7 @@ class Journal:
+                 "2. Common failure patterns and pitfalls to avoid\n"
+                 "3. Specific recommendations for future experiments based on both successes and failures"
+             ),
+-            model="gpt-4o",
++            model="human-llm", # "gpt-4o",
+             temperature=0.3,
+         )
+ 
+diff --git a/ai_scientist/treesearch/log_summarization.py b/ai_scientist/treesearch/log_summarization.py
+index 436cdd1..1d990c2 100644
+--- a/ai_scientist/treesearch/log_summarization.py
++++ b/ai_scientist/treesearch/log_summarization.py
+@@ -11,7 +11,7 @@ sys.path.insert(0, parent_dir)
+ from ai_scientist.llm import get_response_from_llm, extract_json_between_markers
+ 
+ client = openai.OpenAI()
+-model = "gpt-4o-2024-08-06"
++model = "gpt-4o-mini" # "gpt-4o-2024-08-06"
+ 
+ report_summarizer_sys_msg = """You are an expert machine learning researcher.
+ You are given multiple experiment logs, each representing a node in a stage of exploring scientific ideas and implementations.
+@@ -349,6 +349,7 @@ def overall_summarize(journals):
+                 total=len(list(journals)),
+             )
+         )
++        print("Results:", results)
+         draft_summary, baseline_summary, research_summary, ablation_summary = results
+ 
+     return draft_summary, baseline_summary, research_summary, ablation_summary
+diff --git a/ai_scientist/treesearch/parallel_agent.py b/ai_scientist/treesearch/parallel_agent.py
+index 8498ee7..34ec5e6 100644
+--- a/ai_scientist/treesearch/parallel_agent.py
++++ b/ai_scientist/treesearch/parallel_agent.py
+@@ -709,8 +709,8 @@ class MinimalAgent:
+             ),
+         )
+ 
+-        node.analysis = response["summary"]
+-        node.is_buggy = response["is_bug"] or node.exc_type is not None
++        node.analysis = response["summary"] if isinstance(response, dict) else ""
++        node.is_buggy = response["is_bug"] if isinstance(response, dict) else "" or node.exc_type is not None
+         print(
+             "[red]Checking if response contains metric name and description[/red]",
+             flush=True,
+diff --git a/bfts_config.yaml b/bfts_config.yaml
+index a4461d4..1f7d0ec 100644
+--- a/bfts_config.yaml
++++ b/bfts_config.yaml
+@@ -20,10 +20,10 @@ exec:
+   agent_file_name: runfile.py
+   format_tb_ipython: False
+ 
+-generate_report: True
++generate_report: False
+ # LLM settings for final report from journal
+ report:
+-  model: gpt-4o-2024-11-20
++  model: human-llm # gpt-4o-2024-11-20
+   temp: 1.0
+ 
+ experiment:
+@@ -54,19 +54,19 @@ agent:
+ 
+   # LLM settings for coding
+   code:
+-    model: anthropic.claude-3-5-sonnet-20241022-v2:0
++    model: human-llm # anthropic.claude-3-5-sonnet-20241022-v2:0
+     temp: 1.0
+     max_tokens: 12000
+ 
+   # LLM settings for evaluating program output / tracebacks
+   feedback:
+-    model: gpt-4o-2024-11-20
++    model: human-llm # gpt-4o-2024-11-20
+     # gpt-4o
+     temp: 0.5
+     max_tokens: 8192
+ 
+   vlm_feedback:
+-    model: gpt-4o-2024-11-20
++    model: human-llm # gpt-4o-2024-11-20
+     temp: 0.5
+     max_tokens: null
+ 
+diff --git a/launch_scientist_bfts.py b/launch_scientist_bfts.py
+index ea8f02a..0f47acd 100644
+--- a/launch_scientist_bfts.py
++++ b/launch_scientist_bfts.py
+@@ -258,7 +258,8 @@ if __name__ == "__main__":
+ 
+     aggregate_plots(base_folder=idea_dir, model=args.model_agg_plots)
+ 
+-    shutil.rmtree(osp.join(idea_dir, "experiment_results"))
++    if os.path.exists(osp.join(idea_dir, "experiment_results")):
++        shutil.rmtree(osp.join(idea_dir, "experiment_results"))
+ 
+     save_token_tracker(idea_dir)
+ 
