@@ -114,6 +114,56 @@ index 926faf0..62e7586 100644
      output, req_time, in_tok_count, out_tok_count, info = query_func(
          system_message=compile_prompt_to_md(system_message) if system_message else None,
          user_message=compile_prompt_to_md(user_message) if user_message else None,
+diff --git a/ai_scientist/treesearch/backend/backend_human_llm.py b/ai_scientist/treesearch/backend/backend_human_llm.py
+new file mode 100644
+index 0000000..f49761f
+--- /dev/null
++++ b/ai_scientist/treesearch/backend/backend_human_llm.py
+@@ -0,0 +1,43 @@
++import time, logging, json
++from .utils import FunctionSpec, OutputType
++from funcy import once
++from langchain_core.messages.human import HumanMessage
++from langchain_core.messages.system import SystemMessage
++
++import sys
++import os
++sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), '../../../')))
++from utils.human_llm import HumanLLM, HumanLLMConfig
++
++@once
++def _setup_openai_client():
++    global _client
++    config = HumanLLMConfig()
++    config.common_vectordb_config.embedding_function = "text-embedding-ada-002"
++    config.initialize()
++    _client = HumanLLM(
++        agent_name="agent",
++        automation=True,
++        llmORchains_list=config.get_llmORchains_list(),
++    )
++
++def query(
++    system_message: str | None,
++    user_message: str | None,
++    func_spec: FunctionSpec | None = None,
++    **model_kwargs,
++) -> tuple[OutputType, float, int, int, dict]:
++    _setup_openai_client()
++
++    t0 = time.time()
++    completion = _client.invoke(
++        system_prompt_template=system_message,
++        user_message=user_message,
++        prompt_directory=None,
++    )
++    req_time = time.time() - t0
++
++    output = completion[0]
++
++
++    return output, req_time, None, None, completion
+\ No newline at end of file
 diff --git a/ai_scientist/treesearch/journal.py b/ai_scientist/treesearch/journal.py
 index 0dc1695..024d4e1 100644
 --- a/ai_scientist/treesearch/journal.py
