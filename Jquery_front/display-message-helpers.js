@@ -41,7 +41,7 @@ function SetInferenceStreamingOutput(data) {
   if (
     "message" in data &&
     data.message_type &&
-    data.message_type.includes("Inference streaming output")
+    data.message_type?.includes("Inference streaming output")
   ) {
     // Do not wrap the message in collapsible container
     content = `${formatMessage(data.message)}`;
@@ -192,8 +192,8 @@ function updateDataInColumns(data) {
 function updateDataInColumnsForTaskIdentificationAgent(data) {
   if (
     data.agent_name === "TaskIdentificationAgent" &&
-    (data.message_type.includes("MULTIPLE inferences received") ||
-      data.message_type.includes("AFTER"))
+    (data.message_type?.includes("MULTIPLE inferences received") ||
+      data.message_type?.includes("AFTER"))
   ) {
     // Retrieve the columns of the TaskIdentificationAgent
     let $agentAccordion = $(

@@ -31,6 +31,14 @@ class WebSocketHandler {
 
       const data = JSON.parse(event.data);
       console.log("Message received:", data);
+      if (data.function === "critic_answer") {
+        if (!data.message) {
+          data.message = data.result;
+        }
+        if (!data.agent_name) {
+          data.agent_name = currentAgent;
+        }
+      }
 
       // Assign client_id if provided
       if (data.client_id) {
@@ -56,7 +64,7 @@ class WebSocketHandler {
           "Choose an action",
           "Do you want to edit the code",
           "CODE SELECTION Please select the code to keep",
-        ].some((text) => data.message.includes(text))
+        ].some((text) => data.message?.includes(text))
       ) {
         isInputRequired = false;
         displayInputField(); // Show input area
@@ -66,10 +74,10 @@ class WebSocketHandler {
         hideInputField(); // Hide input area
       }
       if (
-        data.message.includes("(yes/no)") ||
-        data.message.includes("(E/EXIT)") ||
-        data.message.includes("(Y/YES)") ||
-        data.message.includes("(N/NO)")
+        data.message?.includes("(yes/no)") ||
+        data.message?.includes("(E/EXIT)") ||
+        data.message?.includes("(Y/YES)") ||
+        data.message?.includes("(N/NO)")
       ) {
         isInputRequired = true;
         displayInputField();
@@ -78,7 +86,7 @@ class WebSocketHandler {
       }
 
       // If input is required or certain messages appear, remove buffering animation
-      if (data.input || data.message.includes("Choose an action")) {
+      if (data.input || data.message?.includes("Choose an action")) {
         $(".buffering-circle").hide();
       }
     } catch (e) {
@@ -236,8 +244,6 @@ function sendFunctionCall(agentName, functionName, params, callback = null) {
     if (functionCallQueue.length > 0) functionCallQueue.shift()();
   }
 }
-
-
 
 $(document).on("click", ".toggle-code-result", function (e) {
   e.preventDefault(); // Prevent the default link behavior

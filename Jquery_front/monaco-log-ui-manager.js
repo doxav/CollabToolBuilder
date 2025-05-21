@@ -418,9 +418,6 @@ function updateButtonVisibility() {
     const $column = $greenContinueButton.closest(".solution-column");
 
     if ($column.length === 0) {
-      console.error(
-        "Could not find the closest solution column for the green Continue button."
-      );
       return;
     }
 
