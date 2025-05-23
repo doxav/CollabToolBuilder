@@ -5,25 +5,9 @@
       "name": "Python Debugger: Current File with Arguments",
       "type": "debugpy",
       "request": "launch",
-      "program": "${file}",
+      "program": "${workspaceFolder}/tests/storm-swarm/storm/examples/costorm_examples/run_costorm_gpt.py",
+      "args": ["--output-dir", "outputs", "--retriever", "searxng", "--lm-type", "human-llm"],
       "console": "integratedTerminal",
-      "args": "${command:pickArgs}"
     },
-    {
-      "name": "🧠 Run optimization",
-      "type": "python",
-      "request": "launch",
-      "console": "integratedTerminal",
-      "module": "optimisation.${fileBasenameNoExtension}",
-      "justMyCode": false
-    },
-    { // Test (provide a nice Test icon different from Run)
-      "name": "🚦 Run test",
-      "type": "python",
-      "request": "launch",
-      "console": "integratedTerminal",
-      "module": "tests.${fileBasenameNoExtension}",
-      "justMyCode": false
-    }
   ]
 }

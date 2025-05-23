@@ -472,6 +472,8 @@ class HumanLLMConfig:
         Returns:
             str: The modified prompt content with few shots inserted.
         """
+        if prompt is None:
+            return ""
         # Match 'few_shots' and capture the curly braces, manually handling nested braces
         pattern = r"few_shots:\s*\{"
         matches = list(re.finditer(pattern, prompt, re.DOTALL))

@@ -63,6 +63,7 @@ class HumanLLM:
         max_autofix=None,
         skip_log_entry_if_no_change=True,
         fusion_mode=None, # Can be "best", "best_of_n", "concat"
+        **kwargs
     ):
         self.config = HumanLLMConfig()
         self.logger = logging.getLogger(__name__)
@@ -2017,6 +2018,7 @@ class HumanLLM:
         generation_technique='temperature_variation',
         forced_llm_output=None,
         fusion_mode=None,
+        **kwargs
     ):
         """
         This method can perform different multi-inference strategies depending on 

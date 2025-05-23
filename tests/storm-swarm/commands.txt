@@ -1,0 +1,12 @@
+1. Run SearXNG server as docker server
+docker run --rm -d -p 8080:8080 -v ${PWD}/searxng:/etc/searxng -e "BASE_URL=http://localhost:8080/" -e "INSTANCE_NAME=my-instance" searxng/searxng
+
+2. Run cli command to use human_llm
+
+python examples/costorm_examples/run_costorm_gpt.py \
+    --output-dir outputs \
+    --retriever searxng
+    --lm-type human-llm
+
+3. Unit test
+pytest tests/test.py
