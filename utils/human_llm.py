@@ -63,6 +63,7 @@ class HumanLLM:
         max_autofix=None,
         skip_log_entry_if_no_change=True,
         fusion_mode=None, # Can be "best", "best_of_n", "concat"
+        **kwargs
     ):
         self.config = HumanLLMConfig()
         self.logger = logging.getLogger(__name__)
@@ -2235,7 +2236,7 @@ class HumanLLM:
                 SystemMessage(content=self.system_prompt),
                 HumanMessage(content=user_message)
             ]
-        elif original_input_messages is None:
+        elif original_input_messages is None or len(original_input_messages) == 0:
             # Standard usage if no special automation
             self.logger.info(f"****user_message {self.agent_name} : {user_message}****")
             original_input_messages = [
