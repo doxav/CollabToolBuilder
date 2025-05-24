@@ -1,4 +1,5 @@
 from typing import TypedDict, Sequence, Union, Optional, Dict, Any, List
+from langchain_core.messages.base import BaseMessage
 from langgraph.graph import StateGraph, END
 import time
 import random  # Import random for generating step_id
@@ -8,8 +9,8 @@ from utils.llm_utils import (
     get_success_value_in_text
 )
 from utils.human_llm import HumanLLM
-from learn import TaskIdentificationAgent, CodingAgent, ValidationAgent, CapitalizationAgent, \
-    create_Nmajority_chain,  # TODO: move those functions to a separate file agents.py
+from learn import TaskIdentificationAgent, CodingAgent, ValidationAgent, CapitalizationAgent
+from utils.llm_utils import create_Nmajority_chain
 
 # 2 IMPLEMENTATIONS OF THE LEARNING LOOP: 1 MODULAR AND ADVANCED IN STATE MANAGEMENT, 1 SIMPLE IN 1 FUNCTION
 
@@ -187,7 +188,7 @@ def create_workflow_graph(
     
     return compiled_workflow
 
-def run_4agents_learning_loop_graph(
+def run_4agents_learning_loop_graph_alternative(
     default_llm_key: str,
     premium_llm_key: str,
     test_environments=None,
@@ -198,6 +199,7 @@ def run_4agents_learning_loop_graph(
     special_criteria: Optional[dict] = None,
     max_execution_time: int = 900,
     continue_each_loop: bool = False,
+    date_start = None,
     **kwargs
 ) -> Union[float, List[float]]:
     
@@ -310,7 +312,8 @@ def run_4agents_learning_loop_graph(
     continue_each_loop=False,
     primitives_dir=None,
     functions_to_import=None,
-    embedding_function=None
+    embedding_function=None,
+    date_start=None,
 ):
     from learn import coding_and_validation_loop
 
@@ -490,8 +493,6 @@ if __name__ == "__main__":
     import openai
     from typing import Dict
 
-    from utils.llm_utils import UnifiedVectorDB, HumanLLM, _visual_input, smart_print, smart_input
-
     import os
     import uuid
     import re
@@ -508,13 +509,13 @@ if __name__ == "__main__":
     from langchain_core.messages.human import HumanMessage
     from langchain_core.messages.ai import AIMessage
     from langchain_core.messages.system import SystemMessage
-    from langchain_core.messages.base import BaseMessage
     from langchain_openai import ChatOpenAI
     from langgraph.graph import StateGraph
     from langgraph.graph import END, START
     from config import *
     from env.env import EnvironmentManager, validate_function_code
-    from utils.llm_utils import UnifiedVectorDB, HumanLLM, _visual_input, smart_print, smart_input
+    from utils.llm_utils import UnifiedVectorDB, _visual_input, smart_print, smart_input
+    from utils.human_llm import HumanLLM
     from env.IR_CPS_TechSynthesis.env import *
     from env.SWEBench.env import *
     from env.env import Environment, EnvironmentManager
@@ -531,14 +532,7 @@ if __name__ == "__main__":
     openai.api_key = os.environ['OPENAI_API_KEY']
     if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
 
-    UnifiedVectorDB.db_type = "elasticsearch"  # "elasticsearch" "chroma"
-    UnifiedVectorDB.es_url = elastic_url_port
-    # UnifiedVectorDB.es_user = elastic_user
-    # UnifiedVectorDB.es_password = elastic_password
-    UnifiedVectorDB.OpenAI_embedding_function_name = "text-embedding-ada-002"  # "nomic-ai/nomic-embed-text-v1"
-
-
-    embedding_function = "text-embedding-ada-002" if embedding_function is None else embedding_function  #"Alibaba-NLP/gte-base-en-v1.5" UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
+    embedding_function = embedding_function or "text-embedding-ada-002"  #"Alibaba-NLP/gte-base-en-v1.5" UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
     # test if reset_db_indices exists
     if not 'reset_db_indices' in locals():
         reset_db_indices = False  # Set it in your config.py to True if you want to reset "after changing embeddings"
@@ -566,10 +560,6 @@ if __name__ == "__main__":
 
         # Suppression du fichier pickle après utilisation pour éviter les conflits lors des prochains lancements
         os.remove(f'pickle/{args.pickle_name}.pkl')
-
-    # Initialize HumanLLMMonitor databases
-    HumanLLM._check_and_init_vector_db(embedding_function=embedding_function, reset_db_indices=reset_db_indices)
-    HumanLLM.check_init_class_db(force=True)
 
     # Allow some time for the WebSocket server to start
     time.sleep(1)  # Adjust if necessary

@@ -47,7 +47,7 @@ class Environment:
 
         try:
             # Execute code with redirected stdout and stderr
-            print(f"Code execution contect: <<<{context}>>>")
+            print(f"Code execution context: <<<{context}>>>")
             with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                 exec(action_code + helper, context)
             std_out_err = {"stdout": stdout.getvalue(), "stderr": stderr.getvalue()}
@@ -77,9 +77,9 @@ class Environment:
         if unique_id is None:
             self.last_unique_id_backup = os.environ["unique_id"] = str(uuid.uuid4())
         unique_id = os.environ.get("unique_id")
-        if os.path.exists(os.path.join(self.temp_root_dir, "backups", unique_id)):
-            shutil.rmtree(os.path.join(self.temp_root_dir, "backups", unique_id))
         if self.get_state(unique_id) != self.get_state():
+            if os.path.exists(os.path.join(self.temp_root_dir, "backups", unique_id)):
+                shutil.rmtree(os.path.join(self.temp_root_dir, "backups", unique_id))
             shutil.copytree(self.current_temp_dir, os.path.join(self.temp_root_dir, "backups", unique_id), ignore=shutil.ignore_patterns('data'))
         return os.environ.get("unique_id")
 

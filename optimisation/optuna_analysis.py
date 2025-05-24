@@ -37,9 +37,13 @@ def analysis(name_exp: str, in_dir = False):
 
         write_to_file("Start analysis", "w")
 
-        # Copy the database file to avoid conflict
-        shutil.copy(sqlite_file_original, sqlite_file)
-        write_to_file(f"Database file copied to {sqlite_file}")
+        if os.path.exists(sqlite_file_original):
+            # Copy the database file to avoid conflict
+            shutil.copy(sqlite_file_original, sqlite_file)
+            write_to_file(f"Database file copied to {sqlite_file}")
+        else:
+            print(f"Database file {sqlite_file_original} not found.")
+            return
 
         # Get all studies in the database
         study_summaries = optuna.study.get_all_study_summaries(storage=f"sqlite:///{sqlite_file}")

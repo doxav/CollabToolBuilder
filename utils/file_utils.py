@@ -73,6 +73,8 @@ def save_to_pickle(func):
             return result
         filename = get_hashed_filename(func.__name__, *args, **kwargs)
         # update filename given pkl files are in pkl_cache folder
+        if not os.path.exists("pkl_cache"):
+            os.makedirs("pkl_cache")
         filename = os.path.join("pkl_cache", filename)
         with open(filename, 'wb') as file:
             pickle.dump(result, file)
@@ -589,21 +591,6 @@ def insert_before_ext(name, insert):
 def timestamp_file_name(fname):
     timestr = datetime.now().strftime("_%H-%M-%S_%m-%d-%y")
     return insert_before_ext(fname, timestr)
-
-
-def get_file_lock(*fpath, timeout: int = 15, logging_level="critical"):
-    """
-    NFS-safe filesystem-backed lock. `pip install flufl.lock`
-    https://flufllock.readthedocs.io/en/stable/apiref.html
-
-    Args:
-        fpath: should be a path on NFS so that every process can see it
-        timeout: seconds
-    """
-    from flufl.lock import Lock
-
-    logging.getLogger("flufl.lock").setLevel(logging_level.upper())
-    return Lock(f_join(*fpath), lifetime=timeout)
 
 
 def load_pickle(*fpaths):

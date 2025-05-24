@@ -6,7 +6,6 @@ from typing import List, Optional, Union, Dict, Any
 from dataclasses import dataclass, field
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry  # type: ignore
-from elasticsearch import Elasticsearch
 from langchain_community.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
 from langchain_core.runnables import RunnableSequence, ConfigurableField, Runnable
 from langchain_core.messages.human import HumanMessage
@@ -16,11 +15,23 @@ from langchain_core.messages.function import FunctionMessage
 from langchain_openai import ChatOpenAI
 from langchain_community.chat_models import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_community.vectorstores import Chroma, ElasticsearchStore
+try:
+    from elasticsearch import Elasticsearch
+    from langchain_community.vectorstores import ElasticsearchStore
+except ImportError:
+    print("Elasticsearch not installed")
+    Elasticsearch, ElasticsearchStore = None, None
+try:
+    from langchain_chroma import Chroma
+except ImportError:
+    print("langchain_chroma not installed")
+    Chroma = None
 import tkinter as tk
 from tkinter import scrolledtext
 from utils.file_utils import dump_text, f_exists, f_move
+# from config import MODELS_CONFIG_LIST, vector_store_type
 from config import MODELS_CONFIG_LIST
+import config
 from requests.auth import HTTPBasicAuth
 
 from utils.constants import ELASTIC_DATABASE, CHROMA_DATABASE
@@ -77,6 +88,7 @@ class PrintPromptRunnable(Runnable):
 
 class UnifiedVectorDBConfig:
     """Configuration for the vector database."""
+    common_vectordb_embedding_function = None
 
     def __init__(
         self,
@@ -91,36 +103,37 @@ class UnifiedVectorDBConfig:
         self.collection_name = collection_name.lower()
         self.persist_directory = persist_directory
         self.reset_indices = reset_indices
-        self.common_vectordb_embedding_function = embedding_function
+        self.set_common_vectordb_embedding_function()
         self.openai_embedding_function_name = "text-embedding-ada-002"
 
+        # self.db_type: str = vector_store_type.lower()  if vector_store_type else ELASTIC_DATABASE
         self.db_type: str = ELASTIC_DATABASE
-        self.es_config = ElasticSearchDB_Config()
+        self.es_config = ElasticSearchDB_Config() if self.db_type == ELASTIC_DATABASE else None
         self.unique_collection_id: Optional[str] = unique_collection_id
         
     def set_common_vectordb_embedding_function(self):
         """Set the embedding function for the vector database."""
-        if self.common_vectordb_embedding_function is not None:
+        if self.__class__.common_vectordb_embedding_function is not None:
             return
         if isinstance(self.embedding_function, str):
             if self.embedding_function in ["OpenAIEmbeddings", "text-embedding-ada-002"]:
-                self.common_vectordb_embedding_function = OpenAIEmbeddings(
+                self.__class__.common_vectordb_embedding_function = OpenAIEmbeddings(
                     model=self.embedding_function,
                     deployment=self.openai_embedding_function_name
                 )
-            elif self.embedding_function == "HuggingFaceEmbeddings":
+            elif self.__class__.common_vectordb_embedding_function == "HuggingFaceEmbeddings":
                 self.common_vectordb_embedding_function = HuggingFaceEmbeddings(
                     model_name="intfloat/e5-base-v2",
                     encode_kwargs={"normalize_embeddings": True}
                 )
             else:
-                self.common_vectordb_embedding_function = HuggingFaceEmbeddings(
+                self.__class__.common_vectordb_embedding_function = HuggingFaceEmbeddings(
                     model_name=self.embedding_function,
                     encode_kwargs={"normalize_embeddings": True},
                     model_kwargs={"trust_remote_code": True}
                 )
         else:
-            self.common_vectordb_embedding_function = self.embedding_function
+            self.__class__.common_vectordb_embedding_function = self.embedding_function
 
     def set_unique_collection_id(self, unique_id):
         self.unique_collection_id = unique_id
@@ -167,7 +180,8 @@ class UserSession:
     def get_user_id(self):
         """Retrieve or prompt for the user ID."""
         if self.user_id is None:
-            self.user_id = os.environ.get('user_id')
+            # search user_id in env, then in imported config else None
+            self.user_id = os.environ.get('user_id', config.user_id if hasattr(config, 'user_id') else None)
             if self.user_id is None:
                 self.user_id = smart_input("Please enter your user id: ", "Learning Loop", message_type="USER_ID")
         return self.user_id
@@ -230,18 +244,35 @@ class TaskHistory:
 
 class ElasticSearchDB_Config:
     def __init__(self):
-        self.es_url: str = 'http://127.0.0.1:9200'
-        self.es_user: Optional[str] = None
-        self.es_password: Optional[str] = None
-
+        try: import config as cfg
+        except: cfg = None
+        self.es_url: str = 'http://127.0.0.1:9200' if not hasattr(cfg, 'elastic_url_port') else cfg.elastic_url_port
+        self.es_user: Optional[str] = None if not hasattr(cfg, 'elastic_user') else cfg.elastic_user
+        self.es_password: Optional[str] = None if not hasattr(cfg, 'elastic_password') else cfg.elastic_password
 
 class UnifiedVectorDB:
     """Unified interface for vector databases (Elasticsearch or Chroma)."""
+    db_connection_check_done = False
 
     def __init__(self, config: Optional[UnifiedVectorDBConfig]=None, check_db:bool=False):
         """Initialize UnifiedVectorDB."""
+        def friendly_collectionname_string(s):
+            # Constraint 1: Truncate or pad the string to ensure it's between 3-63 characters
+            s = s[:63].ljust(3, 'a')
+            # Constraint 2: Ensure it starts and ends with an alphanumeric character
+            if not s[0].isalnum():
+                s = 'a' + s[1:]
+            if not s[-1].isalnum():
+                s = s[:-1] + 'a'
+            # Constraint 3: Replace invalid characters with underscores
+            s = re.sub(r'[^a-zA-Z0-9_-]', '_', s)
+            # Constraint 4: Replace two consecutive periods with underscores
+            s = s.replace('..', '__')
+            # Constraint 5: Ensure it's not a valid IPv4 address
+            if re.match(r'^(\d{1,3}\.){3}\d{1,3}$', s):
+                s = 'a' + s[1:]
+            return s[:63]
         self.logger = logging.getLogger(__name__)
-        self.db_connection_check_done: bool = False
         
         self.elastic_client: Optional[Any] = None
         self.db: Optional[Any] = None
@@ -253,12 +284,23 @@ class UnifiedVectorDB:
         self.get_unique_id()
 
         if self.config.unique_collection_id is not None:
-            self.config.collection_name += f"_{self.config.unique_collection_id}".lower()
+            self.config.collection_name = f"{self.config.unique_collection_id}_{self.config.collection_name}".lower()
+        self.config.collection_name = friendly_collectionname_string(self.config.collection_name)
 
         if self.config.db_type == CHROMA_DATABASE:
+            if Chroma is None:
+                raise ImportError("Chroma vector store selected but 'chromadb' or langchain community support is not installed.")
+        elif self.config.db_type == ELASTIC_DATABASE:
+            if Elasticsearch is None or ElasticsearchStore is None:
+                raise ImportError("Elasticsearch vector store selected but 'elasticsearch' library or LangChain ES support is not installed.")
+        else:
+            raise ValueError(f"Unsupported DB type: {self.config.db_type}")
+
+        if self.config.db_type == CHROMA_DATABASE:
+            self.config.persist_directory = friendly_collectionname_string(self.config.persist_directory)
             self.db = Chroma(
                 collection_name=self.config.collection_name,
-                embedding_function=self.config.embedding_function,
+                embedding_function=self.config.common_vectordb_embedding_function,
                 persist_directory=self.config.persist_directory
             )
             self._collection = self.db._collection
@@ -306,7 +348,7 @@ class UnifiedVectorDB:
 
     def check_db(self):
         """Check the database connection."""
-        if self.db_connection_check_done:
+        if self.__class__.db_connection_check_done:
             return
         if self.config.db_type == ELASTIC_DATABASE:
             session = requests.Session()
@@ -321,7 +363,7 @@ class UnifiedVectorDB:
                 response = session.get(self.config.es_config.es_url, auth=auth, timeout=5, verify=False)
                 response.raise_for_status()
                 self.logger.info(f"Elasticsearch response: {response.text}")
-                self.db_connection_check_done = True
+                self.__class__.db_connection_check_done = True
             except requests.exceptions.RequestException as e:
                 self.logger.error(f"Error: {e}\nURL: {self.config.es_config.es_url}\nCheck Elasticsearch and credentials.")
                 exit(1)
@@ -333,10 +375,25 @@ class UnifiedVectorDB:
 
     def add_texts(self, texts, ids=None, metadatas=None):
         """Add texts to the database."""
-        if self.config.db_type == CHROMA_DATABASE:
-            return self.db.add_texts(texts=texts, ids=ids, metadatas=metadatas)
-        elif self.config.db_type == ELASTIC_DATABASE:
-            return self.db.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+        try:
+            if metadatas is not None and isinstance(metadatas, dict):
+                metadatas = {k: v for k, v in metadatas.items() if v is not None}
+            elif metadatas is not None and isinstance(metadatas, list):
+                metadatas = [{k: v if v is not None else '' for k, v in m.items()} for m in metadatas]
+            if self.config.db_type == CHROMA_DATABASE or self.config.db_type == ELASTIC_DATABASE:
+                if isinstance(texts, list):
+                    for i in range(len(texts)):
+                        if not isinstance(texts[i], str):
+                            texts[i] = str(texts[i])
+                if metadatas is None:
+                    return self.db.add_texts(texts=texts, ids=ids)
+                return self.db.add_texts(texts=texts, ids=ids, metadatas=metadatas)
+            else:
+                self.logger.error(f"Unsupported DB type: {self.config.db_type}")
+                return None
+        except Exception as e:
+            self.logger.error(f"Error adding texts to database: {str(e)} / Texts: {texts} / IDs: {ids} / Metadatas: {metadatas}")
+            return None
 
     def delete(self, ids):
         """Delete entries from the database by IDs."""
@@ -356,15 +413,36 @@ class UnifiedVectorDB:
               custom_filter_chrome=None, custom_filter_es=None, sort_order=None):
         """Query the database with filters and sorting."""
         if self.config.db_type == CHROMA_DATABASE:
+            filter_chroma = None
             if metadata_filter and custom_filter_chrome is None:
-                filter_chroma = []
+                conditions = []
                 for key, value in metadata_filter.items():
-                    sign = '$eq' if isinstance(value, str) else '$in'
-                    filter_chroma.append({key: {sign: value}})
-                filter_chroma = {('$or' if metadata_filter_or else '$and'): filter_chroma}
+                    sign = '$eq' if (isinstance(value, str) or isinstance(value, bool)) else '$in'
+                    conditions.append({key: {sign: value}})
+                # If only one condition, use it directly; otherwise wrap in $and or $or.
+                if len(conditions) == 1:
+                    filter_chroma = conditions[0]
+                else:
+                    filter_chroma = {('$or' if metadata_filter_or else '$and'): conditions}
                 if sort_order in ['asc', 'desc']:
-                    self.logger.warning("WARNING: sort not implemented for Chroma DB")
-            return self.db.query(query_text, k=k, filter=filter_chroma)
+                    self.logger.warning("WARNING: sort not implemented for Chroma DB; performing in-memory sort")
+            # Query the database using the filter (if any)
+            # Check db size, if 0 skip, if less than k, set k to db size
+            if self.db._collection.count() == 0:
+                self.logger.warning("WARNING: Chroma DB is empty, returning empty results")
+                return []
+            elif self.db._collection.count() < k:
+                k = self.db._collection.count()
+            try:
+                results = self.db.similarity_search(query_text, k=k, filter=filter_chroma)
+            except Exception as e:
+                self.logger.error(f"Error querying Chroma DB: {str(e)}")
+                return []
+            # If a sort order is provided, sort the results in memory.
+            if sort_order in ['asc', 'desc']:
+                # Assuming each result is a tuple (Document, score) and we sort by the metadata key "time"
+                results = sorted(results, key=lambda x: x[0].metadata.get('time', ""), reverse=(sort_order == 'desc'))
+            return results
         elif self.config.db_type == ELASTIC_DATABASE:
             if metadata_filter and custom_filter_es is None:
                 custom_filter_es = []
@@ -399,13 +477,6 @@ class UnifiedVectorDB:
         elif self.config.db_type == ELASTIC_DATABASE:
             response = self.db.client.count(index=self.config.collection_name, body={"query": {"match_all": {}}})
             return response['count']
-
-    def persist(self):
-        """Persist the database."""
-        if self.config.db_type == CHROMA_DATABASE:
-            self.db.persist()
-        elif self.config.db_type == ELASTIC_DATABASE:
-            pass
 
     def clear(self):
         """Clear the database."""
@@ -543,10 +614,11 @@ def smart_print(
             logger.info("WebSocket server initialized.")
 
         # Check if in the message there are no unexpected non-whitespace characters
-        if regex.search(r'[^\P{C}\t\n\r]', message):
+        message_str = str(message) if not type(message) == str else message
+        if regex.search(r'[^\P{C}\t\n\r]', message_str):           
             # Remove unexpected characters
-            message = regex.sub(r'[^\P{C}\t\n\r]', "", message)
-        message_dict = {'message': message, 'agent_name': agent_name, 'message_type': message_type, 'append': append,
+            message_str = regex.sub(r'[^\P{C}\t\n\r]', "", message_str)
+        message_dict = {'message': message_str, 'agent_name': agent_name, 'message_type': message_type, 'append': append,
                         'column_id': column_id, 'column_max': column_max, 'optional': optional,
                         'step_id': HumanLLMConfig().step_id}
         # convert message_dict to json
@@ -556,19 +628,6 @@ def smart_print(
         if HumanLLMConfig().ws_server.message_count % 500 == 0:
             time.sleep(0.5)
         HumanLLMConfig().ws_server.send_message(message)
-
-    elif IN_NOTEBOOK and agent_name:
-        # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
-        if 'AgentDisplayManager' not in globals():
-            try:
-                from utils.jupyter_agents_display import AgentDisplayManager
-            except:
-                logger.info("AgentDisplayManager cannot be imported/initialized")
-                return
-        # create string with time of format HH:MM:SS
-        time_str = datetime.now().strftime("%H:%M:%S")
-        AgentDisplayManager.write_to_agent(agent_name, message, element_name=message_type + " " + time_str,
-                                           append=append)
     else:
         if append:
             print(message, end="", flush=True)
@@ -578,16 +637,6 @@ def smart_print(
 def smart_input(message: str, agent_name=None, message_type=None, column_id=None, column_max=None, optional=False):
     logger = logging.getLogger(__name__)
     from utils.human_llm import HumanLLMConfig
-    # Determine if running in a notebook environment
-    if 'IN_NOTEBOOK' not in globals():
-        try:  # test if IN_NOTEBOOK
-            from IPython import get_ipython
-            globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = get_ipython().__class__.__name__ == 'ZMQInteractiveShell'
-
-        except:
-            globals()['IN_NOTEBOOK'] = IN_NOTEBOOK = False
-    else:
-        IN_NOTEBOOK = globals()['IN_NOTEBOOK']
 
     # Determine if using WebSocket
     if 'IN_WEBSOCKET' not in globals():
@@ -696,17 +745,6 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
         except RuntimeError:
             # No running loop, create a new event loop and run the coroutine
             return asyncio.run(receive_message())
-
-    elif IN_NOTEBOOK and agent_name:  # Currently DE-ACTIVATED
-        # import AgentDisplayManager from utils.jupyter_agents_display if AgentDisplayManager is not initialized
-        if 'AgentDisplayManager' not in globals():
-            try:
-                from utils.jupyter_agents_display import AgentDisplayManager
-            except:
-                logger.info("AgentDisplayManager cannot be imported/initialized")
-                logger.info(message)
-                return
-        return AgentDisplayManager.get_input(agent_name, message)
     else:
         return input(message)
 
@@ -910,6 +948,7 @@ def apply_criteria_and_prepare_monitor_args(agent, special_criteria, available_l
                 setattr(agent, key, value)
                 print(f"Special criteria applied to {agent}'s class property: {key} = {value}")
             elif key in available_locals:
+            #else:
                 new_params[key] = value
                 print(f"Special criteria applicable to {agent}'s local variables: {key} = {value}")
 
@@ -1120,3 +1159,103 @@ def flatten_and_pair(nested_list):
             paired_list.append((flat_list[i],))
             i += 1
     return paired_list
+
+def semantic_double_pass_chunking(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list:
+    """
+    Splits the text into chunks using a two-pass semantic approach.
+    First, it splits the text by paragraph breaks, then merges smaller chunks to achieve the desired chunk size,
+    adding an overlap between chunks to preserve context.
+    """
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    chunks = []
+    current_chunk = ""
+    for p in paragraphs:
+        if len(current_chunk) + len(p) <= chunk_size:
+            current_chunk += p + "\n\n"
+        else:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+            current_chunk = p + "\n\n"
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+   
+    # Add overlapping between chunks
+    if chunk_overlap > 0 and len(chunks) > 1:
+        overlapped_chunks = []
+        for i, chunk in enumerate(chunks):
+            if i > 0:
+                prev_overlap = chunks[i-1][-chunk_overlap:]
+                overlapped_chunks.append(prev_overlap + " " + chunk)
+            else:
+                overlapped_chunks.append(chunk)
+        return overlapped_chunks
+    else:
+        return chunks
+
+def extract_json(data: any) -> dict:
+    """
+    Extract and return a JSON object from the given input 'data'.
+
+    If 'data' is already a dict or list, it is returned as-is.
+    If 'data' is a string:
+      - First, it attempts to parse it entirely as JSON.
+      - If that fails, it uses two alternative methods:
+        
+        Method 1: Regex-based extraction.
+          - Uses a regex pattern to extract a substring that looks like JSON.
+          - Advantage: Very simple and concise.
+          - Drawback: It may fail or capture too little/much if the string contains extra text
+            or if the JSON has nested structures with inner braces/brackets.
+
+        Method 2: Decoder-based extraction.
+          - Iterates over the string and uses JSONDecoder.raw_decode() to try to decode a JSON
+            object from positions where a '{' or '[' appears.
+          - Advantage: This method leverages the JSON parser’s own grammar, making it more
+            robust for nested objects or arrays.
+          - Drawback: It may be slightly less intuitive than a one-line regex.
+
+    Returns:
+        A parsed JSON object (usually a dict or list).
+
+    Raises:
+        ValueError: If no valid JSON can be extracted from the input.
+    """
+    # If the data is already a dict or list, assume it's valid JSON.
+    if isinstance(data, (dict, list)):
+        return data
+
+    # Ensure we have a string (if not, convert it).
+    if not isinstance(data, str):
+        data = str(data)
+
+    data = data.strip()
+
+    # First attempt: Try to parse the whole string as JSON.
+    try:
+        return json.loads(data)
+    except json.JSONDecodeError:
+        print("Not a pure JSON string, so we try to extract the JSON part.")
+
+    # --- Method 1: Regex-based extraction ---
+    regex_pattern = r'(\{.*\}|\[.*\])'
+    match = re.search(regex_pattern, data, re.DOTALL)
+    if match:
+        candidate = match.group(0)
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            print("If the candidate isn't valid JSON, we try the next method.")
+
+    # --- Method 2: Using JSONDecoder's raw_decode method ---
+    decoder = json.JSONDecoder()
+    # Iterate over the string; try to decode JSON starting at every '{' or '['.
+    for i in range(len(data)):
+        if data[i] in ['{', '[']:
+            try:
+                obj, idx = decoder.raw_decode(data[i:])
+                return obj
+            except json.JSONDecodeError:
+                continue
+
+    # If both methods fail, raise an error.
+    print("No valid JSON found in the input data.")

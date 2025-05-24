@@ -16,12 +16,15 @@ websocket*.txt
 mvenv/
 
 .venv/
+.DS_Store
 
 BIBLIO-TEST/
 report_outputs/
 pkl_cache/
 
+JupyterDocUI/
 websocketdata*
 AgentLaboratory/
 composio/
 goto_output/
+AI-Scientist-v2/

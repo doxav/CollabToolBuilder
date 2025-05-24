@@ -1,5 +1,6 @@
 import logging, json, uuid, os, subprocess, time, pickle, requests, re
 from datetime import datetime
+# from config import MODELS_CONFIG_LIST, vector_store_type
 from config import MODELS_CONFIG_LIST
 from utils.websocket_server import WebsocketServer, WebSocketServerConfig
 from utils.llm_utils import (
@@ -62,7 +63,7 @@ class HumanLLMConfig:
         if self.use_websocket:
             self.init_ws_server()
         self.common_vectordb = UnifiedVectorDB(self.common_vectordb_config, check_db=True)
-
+        
     def init_ws_server(self):
         if self.ws_server is None:
             self.ws_server = WebsocketServer(self.ws_server_config)
@@ -109,7 +110,7 @@ class HumanLLMConfig:
                     temperature=0.
                 ),
                 "premium_llm": ChatOpenAI(
-                    model_name="gpt-4o-mini-2024-07-18",
+                    model_name="gpt-4.1-mini-2025-04-14",
                     cache=False,
                     temperature=0.
                 ),
@@ -211,7 +212,9 @@ class HumanLLMConfig:
         sort_order=None,
         k=5,
         start_index=0,
-        end_index=None
+        end_index=None,
+        query_text='*',
+        new_storage=True
     ):
         """Retrieves agent-specific data based on the agent name, data key, and additional metadata.
         Supports pagination by specifying start and end indices.
@@ -241,7 +244,7 @@ class HumanLLMConfig:
         # Fetch results with a large 'k' to ensure we have enough data
         max_k = end_index if end_index is not None else k
         results = self.common_vectordb.query(
-            query_text='*',
+            query_text=query_text,
             metadata_filter=metadata,
             sort_order=sort_order,
             k=max_k
@@ -256,16 +259,18 @@ class HumanLLMConfig:
 
         ret = []
         for item in paginated_results:
-            temp = json.loads(item.page_content)
-            if isinstance(temp, dict):
-                tmp = {}
-                for key in temp:
-                    if temp[key]:
-                        tmp[key] = temp[key]
-                ret.append(tmp)
+            try:
+                temp = json.loads(item.page_content)
+            except Exception as e:
+                temp = item.page_content
+            if new_storage:
+                ret.append(temp)
             else:
-                ret += temp[data_key]
-        # Ret contains only text field of the data, results contains all the metadata
+                val = None
+                if isinstance(temp, dict):                
+                    if data_key in temp:
+                        val = temp[data_key]
+                ret.append(val)
         return ret, results
 
     def get_tasks(self, page_size: int = 200, nb_pages: int = 1, id_last_task: Optional[str] = None):
@@ -467,6 +472,8 @@ class HumanLLMConfig:
         Returns:
             str: The modified prompt content with few shots inserted.
         """
+        if prompt is None:
+            return ""
         # Match 'few_shots' and capture the curly braces, manually handling nested braces
         pattern = r"few_shots:\s*\{"
         matches = list(re.finditer(pattern, prompt, re.DOTALL))

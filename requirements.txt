@@ -1,54 +1,60 @@
-gitpython
+accelerate
+torchao
 
 # OpenAI and tokenization
-openai~=1.43.0
+openai>=1.68.0
 tiktoken~=0.7.0
 
 # Core utilities
-requests~=2.31.0
+requests
 psutil
 httpx
 PyPDF2
-pydantic~=2.8.2
+pydantic
 watchdog
-PyYAML~=6.0.1
-python-dotenv~=1.0.1
-scipy==1.13.1
+PyYAML
+python-dotenv
+scipy
 
 # Transformers and ML-related libraries
 transformers
 torch
 sentence-transformers
-scikit-learn~=1.5.1
-numpy~=1.26.4
-optuna~=3.6.1
+scikit-learn
+numpy
+optuna
 einops
-pandas~=2.2.2
+pandas
 seaborn
 
 # Web scraping and APIs
 wikipedia-api
 wikipedia
 arxiv
-bs4~=0.0.2
-beautifulsoup4~=4.12.3
+bs4
+beautifulsoup4
 
 # Parsing and NLP
 pyparsing
 spacy
 nltk
 feedparser
+bibtexparser
+TexSoup
 
 # Web development
 flask
 flask_cors
-websockets~=11.0.3
+websockets
 
 # Elasticsearch
 elasticsearch~=8.10.1
 
+# Chroma
+chromadb
+
 # Neo4j for graph database
-neo4j~=5.24.0
+#neo4j~=5.24.0
 
 # Jupyter and IPython tools
 ipywidgets 
@@ -58,9 +64,9 @@ jupyter_client
 nbformat 
 
 # LLaMA index and embeddings
-llama-index==0.11.12
-llama-index-llms-ollama==0.3.2
-llama-index-embeddings-ollama==0.3.1
+#llama-index==0.11.12
+#llama-index-llms-ollama==0.3.2
+#llama-index-embeddings-ollama==0.3.1
 
 #config
 Jinja2 
@@ -75,14 +81,16 @@ python-git
 
 gitpython
 
-langchain==0.3.3
-langchain-community==0.3.2
-langchain-core==0.3.10
-langchain-experimental==0.3.2
-langchain-groq==0.2.0
-langchain-openai==0.2.2
-langchain-text-splitters==0.3.0
-langgraph==0.2.35
-langgraph-checkpoint==2.0.1
-langsmith==0.1.133
+
+langchain~=0.3.3
+langchain-community~=0.3.2
+langchain-core~=0.3.10
+langchain-experimental~=0.3.2
+langchain-groq~=0.2.0
+langchain-openai~=0.2.2
+langchain-text-splitters~=0.3.0
+langgraph~=0.3
+langgraph-checkpoint
+langchain-chroma
+langsmith
 regex==2024.11.6

@@ -413,7 +413,7 @@ def run_planner(*args, **kwargs):
             }
             logging.info(f"Adding learnt task: {humanLLM.add_learnt_task(serialized_entry, tags)}")
 
-    successful_tasks = humanLLM.config.get_learnt_tasks()
+    successful_tasks = humanLLM.get_learnt_tasks()
     successful_tasks_list = [task for task in successful_tasks]
     logging.info(f"{len(successful_tasks)} successful tasks:<<<\n{successful_tasks_list}>>>")
 
@@ -444,7 +444,7 @@ def run_planner(*args, **kwargs):
     )
 
     # Initialize WebSocket server if used
-    if HumanLLMConfig().use_websocket and HumanLLMConfig().ws_server is None:
+    if humanLLM.use_websocket and humanLLM.ws_server is None:
         humanLLM.init_ws_server()
 
     # Select the problem prompts subdirectory if not provided
@@ -575,7 +575,7 @@ def coding_and_validation_loop(
     human_evaluation_required=False
 ):
     humanLLM = HumanLLMConfig()
-    metadata = {'step_id': config.step_id}
+    metadata = {'step_id': humanLLM.step_id}
     # Retrieve data
     previous_errors, _ = humanLLM.get_agent_data(
         agent_coding.name,
@@ -597,7 +597,9 @@ def coding_and_validation_loop(
         'unique_codes',
         metadata_filter=metadata
     )
-    unique_codes = set(unique_codes) if unique_codes != [{}] else set()
+    if isinstance(unique_codes, dict): unique_codes = list(unique_codes.values())
+    if not isinstance(unique_codes, list): unique_codes = []
+    #unique_codes = set([code for code in unique_codes if isinstance(code, (str, int, tuple))]) # filter unashable data
     successful_codes, _ = humanLLM.get_agent_data(
         agent_coding.name,
         'successful_codes',
@@ -618,7 +620,7 @@ def coding_and_validation_loop(
         temp_errors, temp_codes, temp_scores = [], [], []
         for err, code, score in zip(previous_errors, previous_codes, previous_scores):
             if code and code not in unique_codes:
-                unique_codes.add(code)
+                unique_codes.append(code)
                 temp_errors.append(err)
                 temp_codes.append(code)
                 temp_scores.append(score)
@@ -824,8 +826,10 @@ def coding_and_validation_loop(
             all_scores['validated_scores'] = scores
             return selected_code, "success", all_scores
 
+    try: parsed_code = results[0][0]
+    except: parsed_code = None
     # If no successful code was selected, return failure
-    return None, "failed", all_scores
+    return parsed_code, "failed", all_scores
 
 def prepare_configs(args):
     config = HumanLLMConfig()
@@ -848,14 +852,6 @@ def prepare_configs(args):
     if not 'reset_db_indices' in locals():
         config.common_vectordb_config.reset_indices = False
 
-    config.common_vectordb_config.db_type = ELASTIC_DATABASE
-    if elastic_url_port:
-        config.common_vectordb_config.es_config.es_url = elastic_url_port
-    if elastic_user:
-        config.common_vectordb_config.es_config.es_user = elastic_user
-    if elastic_password:
-        config.common_vectordb_config.es_config.es_password = elastic_password
-    
     openai.api_key = os.environ['OPENAI_API_KEY']
     if 'OPENAI_BASE_URL' in os.environ:
         openai.base_url = os.environ['OPENAI_BASE_URL']

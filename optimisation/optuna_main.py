@@ -5,10 +5,15 @@ import optuna as opt
 import time
 import os
 from langchain_openai import ChatOpenAI
-from config import MODELS_CONFIG_LIST
-from learn import EnvironmentManager, run_planner
+from config import MODELS_CONFIG_LIST, embedding_function
+from learn import EnvironmentManager, run_4agents_learning_loop, run_planner
+from learn_graph import run_4agents_learning_loop_graph
 from optimisation.optuna_analysis import analysis
-from utils.llm_utils import HumanLLM, UnifiedVectorDB
+#from utils.llm_utils import HumanLLM, UnifiedVectorDB
+from utils.human_llm import HumanLLM
+from utils.llm_utils import UnifiedVectorDB
+from utils.human_llm_config import HumanLLMConfig
+from datetime import datetime
 
 # Set the class variable
 HumanLLM.use_websocket = False
@@ -137,14 +142,14 @@ def definition_global_parameters(temperature : float = None, presence_penalty : 
     envs = []
     for doc in documents:
         env = EnvironmentManager(env_type="techsynthesis", title=doc['title'], context=doc['context'],
-                                target_file_path=doc['target_file_path'], id=doc['id']).get_environment()
+                                target_file_path=doc['target_file_path'], id=doc['id'], llm=llmORchains_list["default_llm"]).get_environment()
         envs.append(env)
 
     return llmORchains_list, envs
 
 def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "premium_llm", problem_prompts_subdir : str = None, max_coding_attempts : int = 2, max_execution_time : int = 900,
                model_choice=None, automation : str = "coach", params_user_message : str = None, special_criteria : dict = None, name_exp : str = "", temperature_max : float = None, number_inferences : int = 1,
-               fixed_coach : bool = False, arrayn_ret : bool = False, continue_each_loop : bool = False, unique_id : str = None):
+               fixed_coach : bool = False, arrayn_ret : bool = False, continue_each_loop : bool = False, unique_id : str = None, run_graph : bool = False):
     """
     Launch the run with the specified parameters.
 
@@ -173,9 +178,15 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
         # Delete the presence_penalty from the special_criteria - Why ?
         special_criteria.pop("presence_penalty", None)
     # Set unique collection ID based on name_exp
-    UnifiedVectorDB.set_unique_collection_id(f"{name_exp}")
-
-    performance = run_planner(default_llm_key=default_llm_key,
+    #UnifiedVectorDB.set_unique_collection_id(f"{name_exp}")
+    HumanLLMConfig().common_vectordb_config.set_unique_collection_id(f"{name_exp}" if unique_id is None else unique_id)
+    HumanLLMConfig().common_vectordb_config.embedding_function = embedding_function
+    HumanLLMConfig().common_vectordb_config.set_common_vectordb_embedding_function()
+    HumanLLMConfig().common_vectordb_config.set_unique_collection_id
+    HumanLLMConfig().user_session.user_id = name_exp
+    
+    run_function = run_4agents_learning_loop_graph if run_graph else run_4agents_learning_loop
+    performance = run_function(default_llm_key=default_llm_key,
                               premium_llm_key=premium_llm_key,
                               llmORchains_list=llmORchains_list,
                               test_environments=envs,
@@ -200,13 +211,13 @@ def launch_run(default_llm_key : str = "default_llm", premium_llm_key : str = "p
                               fixed_coach=fixed_coach,
                               return_array=arrayn_ret,
                               continue_each_loop=continue_each_loop,
-                              unique_id=unique_id)
+                              date_start=datetime.now())
     print("Analysis...")
     analysis(name_exp)
     print("Analysis done.")
     return performance
 
-def launch_study(objective, name_exp : str, n_trials=200, sampler=None):
+def launch_study(objective, name_exp : str, n_trials=200, sampler=None, n_jobs=1):
     """
     Launch the Optuna study with the specified objective and experiment name.
 
@@ -230,9 +241,17 @@ def launch_study(objective, name_exp : str, n_trials=200, sampler=None):
         study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}", study_name=name_exp, sampler=sampler)
     else:
         study = opt.create_study(direction="maximize", storage=f"sqlite:///{sqlite_file}", study_name=name_exp)
-    study.optimize(objective, n_trials=n_trials)
 
-def global_main(objective, agent_name : str = "", params_tested : str = "", name_exp : str = None, n_trials = 200, sampler=None):
+    # Run optimization study
+    if n_jobs > 1:
+        # to Avoid non-thread-safe or non-process-safe operations we use the JoblibParallelBackend
+        from optuna.integration import JoblibParallelBackend
+        with JoblibParallelBackend(n_jobs=n_jobs):
+            study.optimize(lambda trial: objective(trial), n_trials=n_trials)
+    else:
+        study.optimize(lambda trial: objective(trial), n_trials=n_trials)
+
+def global_main(objective, agent_name : str = "", params_tested : str = "", name_exp : str = None, n_trials = 200, sampler=None, n_jobs=1):
     """
     Main function to launch the Optuna study.
 
@@ -252,7 +271,7 @@ def global_main(objective, agent_name : str = "", params_tested : str = "", name
         else :
             timestamp_xp = int(time.time())
             name_exp = f"xp_{agent_name}{params_tested}{timestamp_xp}"
-    launch_study(lambda trial: objective(trial, name_exp), name_exp, n_trials=n_trials, sampler=sampler)
+    launch_study(lambda trial: objective(trial, name_exp), name_exp, n_trials=n_trials, sampler=sampler, n_jobs=n_jobs)
 
 documentation = """
 DOCUMENTATION OF AVAILABLE FUNCTIONS IN THE "bot" OBJECT (SynthesisManager class): {{{

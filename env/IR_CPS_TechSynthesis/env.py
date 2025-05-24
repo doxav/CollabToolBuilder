@@ -58,8 +58,8 @@ class Section:
     title_embedding: List[float] = field(default_factory=list)
     content: str = ""
     content_embedding: List[float] = field(default_factory=list)
-    resource: str = ""
-    resource_embedding: List[float] = field(default_factory=list)
+    resource: str = "" # temporary support
+    resources: List[str] = None
     title_validation_status: int = 0
     content_progress_validation_status: int = 0
     local_feedback_to_process: List[str] = field(default_factory=list) # could be citation to integrate, critics to process...
@@ -71,8 +71,8 @@ class Document:
     title_embedding: List[float] = field(default_factory=list) # TODO: check if we need to store the embedding of the title because, differently to sections, it is not used in comparison to target because it is an input
     context: str = "" # e.g. should be the abstract content of the document if the goal is to write a SOTA survey paper, the introduction of a Wikipedia article if the goal is to write a Wikipedia article, the introduction of a patent if the goal is to write a patent, ...
     context_embedding: List[float] = field(default_factory=list)  # TODO: check if we need to store the embedding of the context because, differently to sections content, it is not used in comparison to target because it is an input
-    resource: str = ""
-    resource_embedding: List[float] = field(default_factory=list)
+    #resource: str = ""
+    resources_embedding: List[float] = field(default_factory=list)
     sections_list: List[Any] = field(default_factory=list)  
     sections_list_embedding: List[float] = field(default_factory=list)
     embedding_model_name: str = "intfloat/e5-base-v2" # e.g. "nomic-embed-text:latest" for OpenAI ada-002, "intfloat/e5-base-v2" for HuggingFace e5-base-v2, ...
@@ -131,28 +131,13 @@ class DocumentStructure:
         self.global_feedback_to_process = []
         self.global_feedback_processed = []
         self.resources = []
-        def filename_friendly_collection_string(s):
-            # Constraint 1: Truncate or pad the string to ensure it's between 3-63 characters
-            s = s[:63].ljust(3, 'a')
-            # Constraint 2: Ensure it starts and ends with an alphanumeric character
-            if not s[0].isalnum():
-                s = 'a' + s[1:]
-            if not s[-1].isalnum():
-                s = s[:-1] + 'a'
-            # Constraint 3: Replace invalid characters with underscores
-            s = re.sub(r'[^a-zA-Z0-9_-]', '_', s)
-            # Constraint 4: Replace two consecutive periods with underscores
-            s = s.replace('..', '__')
-            # Constraint 5: Ensure it's not a valid IPv4 address
-            if re.match(r'^(\d{1,3}\.){3}\d{1,3}$', s):
-                s = 'a' + s[1:]
-            return s
-        friendly_collection = filename_friendly_collection_string(self.synthesis_type)+"__"+filename_friendly_collection_string(self.title)
+        self.section_hashes = {} # Used for tracking changes but only used for Latex conversion
+        name = f"{self.synthesis_type}_{self.title}"
         self.resources_vectordb = UnifiedVectorDB(
             UnifiedVectorDBConfig(
-                collection_name=friendly_collection[1:63],
+                collection_name=name,
                 embedding_function=self.embedding_model,
-                persist_directory=f"ckpt/doc/{friendly_collection}",
+                persist_directory=f"ckpt/doc/{name}",
             )
         )
         self.events = []
@@ -165,7 +150,7 @@ class DocumentStructure:
         # else:
         return self.embedding_model.embed_query(self.embedding_model_query_prefix + text)
 
-    def update_sections_embeddings(self, section_ids: List[int] = None, force_update: bool = False, batch_update: bool = False):
+    def update_sections_embeddings(self, section_ids: List[int] = None, force_update: bool = False, batch_update: bool = False, skip_plan_embeddings_update: bool = False):
     # compute and set embeddings of any empty content_embedding or title_embedding when not set, and if content or title is not empty (nor None, nor '')
     # if section_id is provided, only update the section with this id
         if batch_update:
@@ -191,13 +176,6 @@ class DocumentStructure:
                     sections_label_to_update.append('title_embedding')
                 else:
                     section.title_embedding = self.get_embedding(section.title)
-            if (not section.resource_embedding and section.resource) or force_update:
-                if batch_update:
-                    texts_to_embed.append(section.resource)
-                    sections_to_update.append(section)
-                    sections_label_to_update.append("resource_embedding")
-                else:
-                    section.resource_embedding = self.get_embedding(section.resource)
         
         if batch_update:
             # Get embeddings in one batch call
@@ -206,13 +184,15 @@ class DocumentStructure:
             for section, emb, label in zip(sections_to_update, embeddings, sections_label_to_update):
                 setattr(section, label, emb)
 
-        self.update_plan_embedding()
+        if not skip_plan_embeddings_update:
+            self.update_plan_embedding()
 
     def update_plan_embedding(self):
         """ update plan embedding by computing mean of all section embeddings and the title embedding (if any) of the synthesis plan """
         title_embeddings = []  # List to hold title embeddings
         content_embeddings = []  # List to hold content embeddings
         resource_embeddings = []
+        embedding_label = 'resource_embedding_' + ('1' if self.embedding_model_name == 'text-embedding-ada-002' else '2')  # get mode embeddings length
         # get mode embeddings length 
         
         try:
@@ -220,7 +200,17 @@ class DocumentStructure:
             # x.title_embedding should be added only if x.title_embedding is not empty (nor None, nor '')
             title_embeddings = [x.title_embedding for x in self.document_content.sections_list if x.title_embedding]
             content_embeddings = [x.content_embedding for x in self.document_content.sections_list if x.content_embedding]
-            resource_embeddings = [x.resource_embedding for x in self.document_content.sections_list if x.resource_embedding]
+            #resource_embeddings = [x.resource_embedding for x in self.document_content.sections_list if x.resource_embedding]
+            #resource_embeddings = [resource.get(embedding_label, None) for resource in self.resources]
+            for resource in self.resources:
+                if embedding_label not in resource and 'description' in resource:
+                    # resource_description = str(resource['description']) 
+                    # + (("\n" + str(resource['content'])) if 'content' in resource else None)
+                    # + ("\n" + str(resource['name']) if 'name' in resource else None)
+                    # + ("\n" + str(resource['link']) if 'link' in resource else None)
+                    resource_description = str(resource['name'])
+                    resource[embedding_label] = self.get_embedding(resource_description)                        
+                resource_embeddings.append(resource[embedding_label])
 
             # convert self.dumb_embedding to a list to be able to use it in np.mean
             # Compute mean embedding for titles
@@ -229,7 +219,7 @@ class DocumentStructure:
             content_mean = np.mean(content_embeddings, axis=0).tolist() if content_embeddings else self.dumb_embedding
             resource_mean = np.mean(resource_embeddings, axis=0).tolist() if resource_embeddings else self.dumb_embedding
             # Combine title and content embeddings and compute their mean
-            all_embeddings = title_embeddings + content_embeddings + resource_embeddings
+            all_embeddings = title_embeddings + content_embeddings # + resource_embeddings
             total_mean = np.mean(all_embeddings, axis=0).tolist() if all_embeddings else self.dumb_embedding
 
         except KeyError:
@@ -237,7 +227,7 @@ class DocumentStructure:
         
         self.document_content.sections_list_title_embedding = title_mean  # Store the mean title embedding
         self.document_content.sections_list_content_embedding = content_mean  # Store the mean content embedding
-        self.document_content.sections_list_resource_embedding = resource_mean
+        self.document_content.resources_embedding = resource_mean
         self.document_content.sections_list_embedding = total_mean  # Store the combined mean embedding
 
     def set_plan_field_with_embedding(self, field: str, value: str, event: str = None, section_id: int = None):
@@ -294,7 +284,7 @@ class DocumentStructure:
         for section in self.document_content.sections_list:
             section.content_embedding = []
             section.title_embedding = []
-            section.resource_embedding = []
+            section.resources = []
         self.document_content.sections_list_embedding = []
         self.document_content = Document() # self.document_content = copy.deepcopy(DOCUMENT_SCHEMA)
 
@@ -313,10 +303,11 @@ class DocumentStructure:
 
 class SynthesisManager:
     def __init__(self, document: DocumentStructure, target_file_path: str = None):
+        self.plan_embedding_update_required = False
         self.document = document
         self.title = self.document.title
         self.abstract = self.document.context
-        self.min_cosine_similarity = cosine_similarity([self.document.embedding_model.embed_query(".")], [self.document.embedding_model.embed_query("If you can keep your head when all about you are losing theirs and blaming it on you, If you can trust yourself when all men doubt you, But make allowance for their doubting too ; If you can wait and not be tired by waiting, Or being lied about, don’t deal in lies, Or being hated, don’t give way to hating, And yet don’t look too good, nor talk too wise")])[0][0]
+        self.min_cosine_similarity = cosine_similarity([self.document.embedding_model.embed_query(".")], [self.document.embedding_model.embed_query("If you can keep your head when all about you are losing theirs and blaming it on you, If you can trust yourself when all men doubt you, But make allowance for their doubting too ; If you can wait and not be tired by waiting, Or being lied about, don't deal in lies, Or being hated, don't give way to hating, And yet don't look too good, nor talk too wise")])[0][0]
         if target_file_path:
             self.target_file_path = target_file_path
 
@@ -822,6 +813,7 @@ class SynthesisManager:
         text = ""
         try:
             with open(pdf_path, "rb") as file:
+                import PyPDF2
                 reader = PyPDF2.PdfReader(file)
                 for page_num in range(len(reader.pages)):
                     page = reader.pages[page_num]
@@ -846,7 +838,7 @@ class SynthesisManager:
         for filename in os.listdir(directory_path):
             if filename.endswith(".pdf"):
                 pdf_path = os.path.join(directory_path, filename)
-                text = extract_text_from_pdf(pdf_path)
+                text = SynthesisManager.extract_text_from_pdf(pdf_path)
                 if query.lower() in text.lower():
                     results.append({
                         'filename': filename,
@@ -917,19 +909,20 @@ class SynthesisManager:
     def add_section(self, section: Section):
         if self.validate_section_format(asdict(section)):  # Convert dataclass to dict for validation
             self.document.document_content.sections_list.append(section)
-            self.document.update_sections_embeddings([section.section_id])
+            self.document.update_sections_embeddings([section.section_id], skip_plan_embeddings_update=True)
+            self.plan_embedding_update_required = True
             self.document.add_event({'action': 'add_section', 'section_id': section.section_id})
         else:
             print('Invalid section format.')
         return self
     
     @method_call_counter
-    def create_and_add_section_then_return_id(self, title: str, content: str, section_id: int = None, parent_id: int = None) -> int:
+    def create_and_add_section_then_return_id(self, title: str, content: str, section_id: int = None, parent_id: int = None, resources: list | str | int = None) -> int:
         if not section_id:
             # Generate section_id by using max section_id + 1
             section_id = (max([s.section_id for s in self.document.document_content.sections_list]) + 1) if len(self.document.document_content.sections_list) > 0 else 1
 
-        self.add_section(Section(section_id=section_id, parent_id=parent_id, title=title, content=content))
+        self.add_section(Section(section_id=section_id, parent_id=parent_id, title=title, content=content, resources=resources))
         return section_id
 
     @method_call_counter
@@ -945,15 +938,14 @@ class SynthesisManager:
         section = next((s for s in self.document.document_content.sections_list if s.section_id == section_id), None)
         if section:
             self.document.document_content.sections_list = [s for s in self.document.document_content.sections_list if s.section_id != section_id]
-            self.document.update_plan_embedding()
+            self.requires_update_plan_embedding()
             self.document.add_event({'action': 'remove_section','section_id': section_id})
             return True
         else:
             return False
 
     @method_call_counter
-    def edit_section(self, section_id: int, new_content: str = None, new_title: str = None, new_resource: str = None, new_parent_id: int = None) -> bool:
-        #section = next((s for s in self.document.document_content if s['id'] == section_id), None)
+    def edit_section(self, section_id: int, new_content: str = None, new_title: str = None, new_resources: list | str | int = None, new_parent_id: int = None) -> bool:
         section = next((s for s in self.document.document_content.sections_list if s.section_id == section_id), None)
         if section:
             action_event = {'action': 'edit_section','section_id': section_id}
@@ -966,16 +958,18 @@ class SynthesisManager:
                 section.title = new_title
                 update_embeddings = True
                 action_event['new_title'] = new_title
-            if new_resource:
-                section.resource = new_resource
-                update_embeddings = True
-                action_event['new_resource'] = new_resource
+            if new_resources:
+                if not isinstance(new_resources, list):
+                    new_resources = [str(new_resources)]
+                section.resources = [str(resource) for resource in new_resources]
+                action_event['new_resources'] = new_resources
             if new_parent_id:
                 section.parent_id = new_parent_id
                 action_event['new_parent_id'] = new_parent_id
             self.document.add_event('observation', action_event)
             if update_embeddings:
-                self.document.update_sections_embeddings([section_id])
+                self.document.update_sections_embeddings([section_id], skip_plan_embeddings_update=True)
+                self.plan_embedding_update_required = True
             return True
         else:
             return False
@@ -1015,6 +1009,7 @@ class SynthesisManager:
                 content=content, 
                 store_linked_document_content=store_linked_document_content
             )
+        self.plan_embedding_update_required = True
         return self
     
     @method_call_counter
@@ -1027,8 +1022,9 @@ class SynthesisManager:
             link = metadatas.get('link')
             metadatas.pop('link')
         if metadatas.get('description') and not content:
-            content = {'description': metadatas.get('description')}
+            content = metadatas.get('description', '')
             metadatas.pop('description')
+        resource_embedding_label = "resource_embedding_" + ('1' if self.document.embedding_model_name == 'text-embedding-ada-002' else '2')
 
         # assert name or link are provided to identify the resource
         if not name and not link:
@@ -1036,8 +1032,9 @@ class SynthesisManager:
 
         # Generate id using max
         id = max([r['id'] for r in self.document.resources]) + 1 if len(self.document.resources) > 0 else 1
-        document = {'name': name, 'link': link, 'content': {'description': content} if isinstance(content, str) else content} # Convert content to dict if it's a string
-        
+        document = {'name': name, 'link': link, 'content': str(content), 'description': str(content.get('description', '') if isinstance(content, dict) else content)}
+        embedding = self.document.embedding_model.embed_query(str(content) + (("\n" + str(name)) if name else '') + (("\n" + link) if link else ''))
+
         # Check for existing document
         existing_doc = next((doc for doc in self.document.resources if (doc['document']['name'] == name or (link and doc['document']['link'] == link))), None)
         
@@ -1064,6 +1061,7 @@ class SynthesisManager:
                 'id': id,
                 'metadatas': metadatas,
                 'document': document,
+                resource_embedding_label: embedding,
             })
             if store_linked_document_content:
                 childs_ids_list = self.get_and_store_link_content(link=link, parent_id=id, chaining=False)
@@ -1072,6 +1070,7 @@ class SynthesisManager:
             self.document.add_event('observation', {'action': 'add_resource', 'document_name': name})
             #print(f"Resource added - VectorDB collection count: {self.document.resources_vectordb.count()}")
 
+        self.plan_embedding_update_required = True
         return self if chaining else (existing_doc if existing_doc else self.document.resources[-1])
 
     @method_call_counter
@@ -1112,6 +1111,7 @@ class SynthesisManager:
         elif isinstance(resource_id, int):
             self.document.resources = [r for r in self.document.resources if r['id'] != resource_id]
         self.document.add_event('observation', {'action': 'remove_resources','resource_id': str(resource_id)})
+        self.plan_embedding_update_required = True
         return self
     
     @method_call_counter
@@ -1142,19 +1142,9 @@ class SynthesisManager:
         self.target_plan_contents_embedding = np.mean([section[target_section_content_embedding_label] for section in self.target_data["plan"]], axis=0)
         self.target_plan_embedding = self.target_data[target_plan_embedding_label]
 
-        resources = {}
         embed_len = len(self.document.dumb_embedding)
-        for res in self.target_data["resources"]:
-            resources[res["resource_id"]] = res[target_resource_embedding_label]
-            # embed_len = len(res[target_resource_embedding_label])
-
-        self.target_plan_resources_embedding = np.mean([
-            np.mean([
-                resources[r] for r in section["resources_used"]
-            ], axis=0) if len(section["resources_used"]) > 0 else np.zeros((embed_len,))
-            for section in self.target_data["plan"]
-        ], axis=0)
-        self.target_resource_embedding = np.mean([r[target_resource_embedding_label] for r in self.target_data["resources"]], axis=0) if len(self.target_data["resources"]) > 0 else np.zeros((embed_len,))
+        self.target_total_resources_count = len(self.target_data["resources"])
+        self.target_plan_resources_embedding = np.mean([r[target_resource_embedding_label] for r in self.target_data["resources"]], axis=0) if len(self.target_data["resources"]) > 0 else np.zeros((embed_len,))
 
         if normalize_embeddings:
             if min_cosine_similarity is None:
@@ -1163,11 +1153,10 @@ class SynthesisManager:
                 self.min_plan_contents_cosine_similarity = cosine_similarity([dumb_embedding], [self.target_plan_contents_embedding])[0][0]
                 self.min_plan_cosine_similarity = cosine_similarity([dumb_embedding], [self.target_plan_embedding])[0][0]
                 self.min_plan_resources_cosine_similarity = cosine_similarity([dumb_embedding], [self.target_plan_resources_embedding])[0][0]
-                self.min_resources_cosine_similiarty = cosine_similarity([dumb_embedding], [self.target_resource_embedding])[0][0]
             else:
-                self.min_plan_titles_cosine_similarity = self.min_plan_contents_cosine_similarity = self.min_plan_cosine_similarity = self.min_resources_cosine_similiarty = self.min_plan_resources_cosine_similarity = min_cosine_similarity
+                self.min_plan_titles_cosine_similarity = self.min_plan_contents_cosine_similarity = self.min_plan_cosine_similarity = self.min_plan_resources_cosine_similarity = min_cosine_similarity
         else:
-            self.min_plan_titles_cosine_similarity = self.min_plan_contents_cosine_similarity = self.min_plan_cosine_similarity = self.min_resources_cosine_similiarty = self.min_plan_resources_cosine_similarity = 0 
+            self.min_plan_titles_cosine_similarity = self.min_plan_contents_cosine_similarity = self.min_plan_cosine_similarity = self.min_plan_resources_cosine_similarity = 0 
 
     def get_distance_to_targetJSON(self, target_section_title_embedding_label: str = "section_embedding_2", target_section_content_embedding_label: str = "content_embedding_2", target_plan_embedding_label: str = "plan_embedding_2", target_resource_embedding_label: str = "resource_embedding_2", get_progress: bool = False):
         # if self does not have target_file_path
@@ -1181,7 +1170,7 @@ class SynthesisManager:
                                            target_plan_embedding_label=target_plan_embedding_label,
                                            target_resource_embedding_label=target_resource_embedding_label)
             self.document.update_plan_embedding()
-        elif not hasattr(self.document.document_content, 'sections_list_title_embedding'):
+        elif self.plan_embedding_update_required or not hasattr(self.document.document_content, 'sections_list_title_embedding'):
             self.document.update_plan_embedding()
 
         # Compute current document metrics
@@ -1194,7 +1183,7 @@ class SynthesisManager:
         plan_embedding = self.document.document_content.sections_list_embedding
         plan_titles_embedding = self.document.document_content.sections_list_title_embedding
         plan_contents_embedding = self.document.document_content.sections_list_content_embedding
-        plan_resources_embedding = self.document.document_content.sections_list_resource_embedding
+        plan_resources_embedding = self.document.document_content.resources_embedding
 
         # Compute embedding similarity
         plan_embedding_similarity = self.normalized_cosine_similarity(plan_embedding, self.target_plan_embedding, self.min_plan_cosine_similarity)
@@ -1204,30 +1193,43 @@ class SynthesisManager:
 
         # Refined ratio calculations
         content_length_ratio_to_target = round(
-            min(current_content_length / (self.target_total_content_length + 1e-5), 1.5), 4)
+            min(current_content_length / (self.target_total_content_length + 1e-5), 1.5), 3)
         sections_count_ratio_to_target = round(
-            min(current_sections_count / (self.target_total_sections_count + 1e-5), 1.5), 4)
+            min(current_sections_count / (self.target_total_sections_count + 1e-5), 1.5), 3)
         sections_content_non_empty_count_ratio_to_target = round(
-            min(current_plan_non_empty_sections_content_count / (self.target_total_sections_count + 1e-5), 1.5), 4)
+            min(current_plan_non_empty_sections_content_count / (self.target_total_sections_count + 1e-5), 1.5), 3)
         sections_title_non_empty_count_ratio_to_target = round(
-            min(current_plan_non_empty_sections_title_count / (self.target_total_sections_count + 1e-5), 1.5), 4)
+            min(current_plan_non_empty_sections_title_count / (self.target_total_sections_count + 1e-5), 1.5), 3)
+        # count number of resources from self.document.resources list which are cited/resources_used in self.document.document_content.sections_list
+        cited_resources_count = sum(1 for resource in self.document.resources if any(resource['id'] in section.resources for section in self.document.document_content.sections_list if section.resources and len(section.resources) > 0))
+        resources_count_ratio_to_target = round(
+            min(cited_resources_count / (self.target_total_resources_count + 1e-5), 1.5), 3)
+
+        sections_with_citations = sum(1 for section in self.document.document_content.sections_list  if section.resources and len(section.resources) > 0)
+        # Count similarly the sum in target_data
+        target_sections_with_citations = sum(1 for section in self.target_data["plan"] if section["resources_used"] and len(section["resources_used"]) > 0)
+        resources_citation_coverage_score = sections_with_citations / target_sections_with_citations if target_sections_with_citations > 0 else 0.0
 
         # Build the result dictionary
         distance_to_targetJSON = {
-            "plan_embedding_similarity": round(plan_embedding_similarity, 6),
-            "plan_titles_embedding_similarity": round(plan_titles_embedding_similarity, 6),
-            "plan_contents_embedding_similarity": round(plan_contents_embedding_similarity, 6),
-            "plan_resources_embedding_similarity": round(plan_resources_embedding_similarity, 6),
+            "plan_embedding_similarity": round(plan_embedding_similarity, 3),
+            "plan_titles_embedding_similarity": round(plan_titles_embedding_similarity, 3),
+            "plan_contents_embedding_similarity": round(plan_contents_embedding_similarity, 3),
+            "plan_resources_embedding_similarity": round(plan_resources_embedding_similarity, 3),
 
             "current_sections_count": current_sections_count,
             "sections_count_ratio_to_target": sections_count_ratio_to_target,
 
             "title_non_empty_count_ratio_to_target": sections_title_non_empty_count_ratio_to_target,
 
-            "current_content_length": current_content_length,
+            #"current_content_length": current_content_length,
             "content_length_ratio_to_target": content_length_ratio_to_target,
 
             "content_non_empty_count_ratio_to_target": sections_content_non_empty_count_ratio_to_target,
+
+            "resources_citation_coverage_score": round(resources_citation_coverage_score, 3),
+            "resources_count_ratio_to_target": resources_count_ratio_to_target,
+            #"resources_count": len(self.document.resources),
         }
 
         # Progress comparison (optional)
@@ -1243,6 +1245,8 @@ class SynthesisManager:
                 distance_to_targetJSON['title_non_empty_count_ratio_to_target_progress'] = get_ratio(sections_title_non_empty_count_ratio_to_target, self.distance_to_targetJSON['title_non_empty_count_ratio_to_target'])
                 distance_to_targetJSON['content_length_ratio_to_target_progress'] = get_ratio(content_length_ratio_to_target, self.distance_to_targetJSON['content_length_ratio_to_target'])
                 distance_to_targetJSON['content_non_empty_count_ratio_to_target_progress'] = get_ratio(sections_content_non_empty_count_ratio_to_target, self.distance_to_targetJSON['content_non_empty_count_ratio_to_target'])
+                distance_to_targetJSON['resources_citation_coverage_score_progress'] = get_ratio(resources_citation_coverage_score, self.distance_to_targetJSON['resources_citation_coverage_score'])
+                distance_to_targetJSON['resources_count_ratio_to_target_progress'] = get_ratio(resources_count_ratio_to_target, self.distance_to_targetJSON['resources_count_ratio_to_target'])
 
         # Save the results
         self.distance_to_targetJSON = distance_to_targetJSON
@@ -1323,6 +1327,218 @@ class SynthesisManager:
         if hasattr(self, '_method_counts'):
             self._method_counts = {}
 
+    def GetFromLatex(self, latex_string: str, bib_file: str = None, debug: bool = False) -> None:
+        """
+        Parses a complete LaTeX document from 'latex_string' using TexSoup and updates the
+        technical synthesis document (self.document) with the extracted title, abstract,
+        sections, and bibliography.
+
+        If 'bib_file' is provided, the function extracts additional bibliography entries
+        and merges them with self.document.resources.
+        """
+        from TexSoup import TexSoup
+        import uuid
+        from datetime import datetime
+        import os
+        import re
+        try:
+            import bibtexparser
+        except ImportError:
+            raise ImportError("Please install bibtexparser with `pip install bibtexparser`.")
+
+        if "```latex" in latex_string:
+            m = re.search(r"```latex\s*(.*?)```", latex_string, re.I | re.S)
+            if m and any(t in m.group(1) for t in ("\\documentclass", "\\begin{document}")):
+                latex_string = m.group(1).strip()
+
+        # --- Helper to process both internal and external BibTeX entries ---
+        def process_bib_entry(entry, default_key=None):
+            bib_id = entry.get('ID', default_key or str(uuid.uuid4()))
+            entry_title = entry.get('title', bib_id)
+            if entry.get('author'):
+                entry_title += f"; Author: {entry['author']}"
+            if entry.get('year'):
+                entry_title += f"; Year: {entry['year']}"
+            link = entry.get('url', '').strip() or (f"https://doi.org/{entry.get('doi', '').strip()}" if 'doi' in entry else '')
+            description = entry.get('abstract', entry.get('note', entry.get('comment', ''))).strip()
+            db = bibtexparser.bibdatabase.BibDatabase()
+            db.entries = [entry]
+            entry_text = bibtexparser.dumps(db).strip()
+            #entry_text = bibtexparser.dumps(bibtexparser.bibdatabase.BibDatabase(entries=[entry])).strip()
+            content_hash = hash(entry_text)
+
+            existing = next((r for r in self.document.resources if r.get("id") == bib_id), None)
+            if existing:
+                print(f'Updating of existing bib resource entry not implemented yet (bib_id: {bib_id})')
+            else:
+                self.document.resources.append({
+                    "id": bib_id,
+                    "key": bib_id,
+                    "name": entry_title,
+                    "content": entry_text,
+                    "link": link,
+                    "description": description
+                })
+                self.document.section_hashes[bib_id] = content_hash
+
+        def latex_extract_citations(text, references):
+            citations = re.findall(r'\\cite[t|p]*\{([^}]+)\}', text)
+            all_keys = []
+            for cite in citations:
+                keys = [key.strip().lower() for key in cite.split(',')]
+                all_keys.extend(keys)
+            if references and len(references):
+                return list({citation for citation in all_keys if citation in references})
+            else:
+                return all_keys
+
+        def safe_string(tag):
+            try: return tag.string.strip()
+            except (AssertionError, AttributeError):
+                return " ".join(str(child).strip() for child in tag.contents).strip()
+
+        def get_full_section_content(tag, section_tags, raw_latex):
+            content = []
+            # Attempt to get the next_elements attribute and default to [] if it is None.
+            siblings = tag.next_elements
+            if siblings is None:
+                siblings = []
+            for element in siblings:
+                # If we encounter another section tag, stop processing.
+                if hasattr(element, 'name') and element.name in section_tags:
+                    break
+                # Only process text nodes.
+                if isinstance(element, str):
+                    stripped = element.strip()
+                    if stripped:
+                        content.append(stripped)
+            extracted = " ".join(content).strip()
+            if extracted:
+                return extracted
+            else:
+                # Fallback: use regex on the raw LaTeX.
+                from re import compile, escape, DOTALL
+                title = safe_string(tag)
+                title_esc = escape(title)
+                # Build a regex that matches the section command with this title and captures subsequent content.
+                pattern_str = r'\\(?:' + '|'.join(section_tags) + r')\*?\{\s*' + title_esc + r'\s*\}(?P<content>.*?)(?=\\(?:' + '|'.join(section_tags) + r')\*?\{|\\end\{document\})'
+                pattern = compile(pattern_str, DOTALL)
+                match = pattern.search(raw_latex)
+                if match:
+                    return match.group("content").strip()
+                else:
+                    # Provide detailed debug information.
+                    if debug:
+                        print(f"DEBUG: Regex fallback did not find content for section with title: '{title}'.")
+                        print(f"DEBUG: Regex pattern used: {pattern.pattern}")
+                        if hasattr(tag, "position"):
+                            pos = tag.position
+                            snippet = raw_latex[max(0, pos-50):pos+400]
+                            print(f"DEBUG: Raw LaTeX snippet around tag position: {snippet}")
+                    return ""
+
+
+        # --- Load LaTeX string ---
+        if os.path.exists(latex_string):
+            with open(latex_string, 'r', encoding="utf-8") as f:
+                latex_string = f.read()
+        try:
+            soup = TexSoup(latex_string)
+        except Exception as e:
+            raise ValueError(f"Failed to parse LaTeX string: {e}")
+
+        # --- Process \bibitem as pseudo BibTeX ---
+        for bib in soup.find_all('bibitem'):
+            note = "".join(str(child).strip() for child in bib.contents).strip()
+            # Check if bib.attrs exists before trying to access it
+            if not hasattr(bib, 'attrs') or bib.attrs is None:
+                bib_attrs = {}
+            else:
+                bib_attrs = bib.attrs
+            
+            title = bib_attrs.get("title", f"Resource {bib_attrs.get('id', '')}")
+            key = bib_attrs.get("id", str(uuid.uuid4()))
+            fake_bibtex = f"@misc{{{key},\n  title = {{{title}}},\n  note = {{{note}}}\n}}"
+            try:
+                bib_entry = bibtexparser.loads(fake_bibtex).entries[0]
+                process_bib_entry(bib_entry, default_key=key)
+            except Exception:
+                continue  # silently skip malformed \bibitem
+
+        # --- Process External .bib File ---
+        if bib_file:
+            bib_text = bib_file
+            if os.path.exists(bib_file):
+                with open(bib_file, 'r', encoding="utf-8") as f:
+                    bib_text = f.read()
+            try:
+                entries = bibtexparser.loads(bib_text).entries
+            except Exception as e:
+                print(f"Failed to load bib: {e}\nbib_text:{bib_text}")
+            for entry in entries:
+                try: process_bib_entry(entry)
+                except Exception as e:
+                    print(f"Failed to process bib entry: {e}\nbib_entry:{entry}")
+                    continue
+
+        all_ref_keys = {ref.get("key", '').lower() for ref in self.document.resources if "key" in ref}
+
+        # --- Title & Abstract ---
+        title_node = soup.find('title')
+        if debug: print(f"DEBUG: Title node string: {title_node.string}")
+        if title_node and title_node.string:
+            self.document.title = title_node.string.strip()
+            self.document.set_plan_field_with_embedding('title', self.document.title)
+
+        try:
+            abstract_node = (soup.find('abstract') or soup.find(lambda t: getattr(t, 'name', None) == 'abstract' and getattr(t, 'string', None)))
+            abstract = (getattr(abstract_node, 'string', '') or '').strip()
+        except Exception as e:
+            print(f"Failed to extract abstract: {e}")
+            abstract, abstract_node = '', None
+        if debug: print(f"DEBUG: abstract → {abstract!r}")
+        if abstract:
+            self.document.context = abstract
+            self.document.set_plan_field_with_embedding('context', abstract)
+
+
+        # --- Sections ---
+        self.document.document_content.sections_list.clear()
+        section_tags = ['section', 'subsection', 'subsubsection']
+
+        for tag in soup.find_all(section_tags):
+            title = safe_string(tag) or "Untitled Section"
+            try:
+                sec_id = int(tag.attrs.get("id", uuid.uuid4().int >> 64))
+            except Exception:
+                sec_id = uuid.uuid4().int >> 64
+            content = get_full_section_content(tag, section_tags, latex_string)
+            if title == "Untitled Section" and content == '':
+                print(f"Warning: No title or content found for section. Skipping this section.")
+                continue
+            if not content:
+                print(f"Warning: No content found for section {title} using get_full_section_content. Fall-back to minimal safe_string.")
+                content = safe_string(tag)
+            
+            citations = latex_extract_citations(content, all_ref_keys)
+
+            section = Section(
+                section_id=sec_id,
+                parent_id=0,
+                title=title,
+                content=content,
+                title_embedding=self.document.get_embedding(title),
+                content_embedding=self.document.get_embedding(content),
+                resources=citations,
+            )
+            self.add_section(section)
+            if debug: print(f"DEBUG: Added section with Title:<<<{title}>>>\nID:{sec_id}, Content:<<<{content}>>>")
+
+        used_keys = {key for section in self.document.document_content.sections_list for key in section.resources}
+        self.document.resources = [r for r in self.document.resources if r.get("key","").lower() in used_keys]
+        self.plan_embedding_update_required = True
+        self.last_sync_time = datetime.now()
+
 class LLMResponse:
     def __init__(self, response): self.content = response.content  # Always access the .content property
     def __str__(self): return self.content  # Ensure it behaves like a string
@@ -1385,7 +1601,10 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
                 'sections contents length (top:1, <1:too short, >1:too long)': distance[
                     'content_length_ratio_to_target'],
                 'sections contents non-empty (top:1, <1:too short, >1:too long)': distance[
-                    'content_non_empty_count_ratio_to_target']}
+                    'content_non_empty_count_ratio_to_target'],
+                'resources citation coverage score (top:1, <1:too short, >1:too long)': distance[
+                    'resources_citation_coverage_score'],
+                'resources count (top:1, <1:too short, >1:too long)': distance['resources_count_ratio_to_target']}
 
     def reset(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         self.has_reset_once = True
@@ -1413,7 +1632,7 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
         if not self.has_reset_once:
             print("Environment has not been reset yet - resetting now !")
             self.reset()
-        return super().step(action_code=code, context={'problem': self.synthesis_manager, 'bot': self.synthesis_manager, 'results': None, 'SynthesisManager': SynthesisManager, 'DocumentStructure': DocumentStructure, 'Section': Section, 'Document': Document, 'llm':VoyagerEnvIR_CPS_TechSynthesis.llm})
+        return super().step(action_code=code, context={'problem': self.synthesis_manager, 'bot': self.synthesis_manager, 'results': None, 'SynthesisManager': SynthesisManager, 'DocumentStructure': DocumentStructure, 'Section': Section, 'Document': Document, 'llm':VoyagerEnvIR_CPS_TechSynthesis.llm_model})
 
     def get_state(self, extended: bool = False):
         #TODO: move to self.document.get_state() ?
@@ -1436,7 +1655,11 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
             document_state += f"4. title non-empty count ratio progress: {distance_to_targetJSON['title_non_empty_count_ratio_to_target']}\n"
             document_state += f"5. content length ratio progress: {distance_to_targetJSON['content_length_ratio_to_target']}\n"
             document_state += f"6. content non-empty count ratio progress: {distance_to_targetJSON['content_non_empty_count_ratio_to_target']}\n"
-            document_state += f"7. events counted: {events_action_counts if len(events_action_counts) > 0 else 'Empty'}\n"
+            document_state += f"7. resources citation coverage score: {distance_to_targetJSON['resources_citation_coverage_score']}\n"
+            document_state += f"8. resources similarity progress: {distance_to_targetJSON['plan_resources_embedding_similarity']}\n"
+            document_state += f"9. resources count: {distance_to_targetJSON['resources_count_ratio_to_target']}\n"
+            document_state += f"10. resources count: {distance_to_targetJSON['resources_count']}\n"
+            document_state += (f"11. events counted: {events_action_counts}\n" if len(events_action_counts) > 0 else '')
 
         document_state += ">>>"
         return document_state
