@@ -1229,7 +1229,7 @@ class SynthesisManager:
 
             "resources_citation_coverage_score": round(resources_citation_coverage_score, 3),
             "resources_count_ratio_to_target": resources_count_ratio_to_target,
-            #"resources_count": len(self.document.resources),
+            "resources_count": len(self.document.resources),
         }
 
         # Progress comparison (optional)
