@@ -2297,7 +2297,7 @@ class HumanLLM:
                     smart_print(
                         llm_outputs[0].content if llm_outputs else "No LLM output",
                         self.agent_name,
-                        "NEW inference result recieved",
+                        "NEW inference result received",
                         column_id=0,
                         column_max=1
                     )
@@ -2389,9 +2389,9 @@ class HumanLLM:
                                     llm_response = future.result(timeout=timeout_seconds)
                                     outputs.append(llm_response)
                                     if self.config.use_websocket:
-                                        smart_print( llm_response.content, self.agent_name,  "NEW inference result recieved", column_id=idx, column_max=self.num_parallel_inferences)
+                                        smart_print( llm_response.content, self.agent_name,  "NEW inference result received", column_id=idx, column_max=self.num_parallel_inferences)
                                     else:
-                                        smart_print( f'\033[0m**** New inference result recieved and added to outputs as #{len(outputs)}\033[0m:\n{llm_response.content}\n\033[9mEND OF #{len(outputs)}****\033[0m', self.agent_name, "NEW inference result recieved", column_id=idx, column_max=self.num_parallel_inferences )
+                                        smart_print( f'\033[0m**** New inference result received and added to outputs as #{len(outputs)}\033[0m:\n{llm_response.content}\n\033[9mEND OF #{len(outputs)}****\033[0m', self.agent_name, "NEW inference result received", column_id=idx, column_max=self.num_parallel_inferences )
                                 except concurrent.futures.TimeoutError:
                                     smart_print( 'A task ran longer than the allotted timeout and was cancelled.', self.agent_name, "Inference result TIMEOUT" )
                                 except Exception as exc:
@@ -2400,7 +2400,7 @@ class HumanLLM:
 
                         # Check how many we got
                         if len(outputs) == 0:
-                            smart_print( '**** No inference result recieved, set output to None', self.agent_name, "NO inference recieved")
+                            smart_print( '**** No inference result received, set output to None', self.agent_name, "NO inference received")
                             llm_outputs = None
                         elif len(outputs) == 1:
                             llm_outputs = outputs
@@ -3031,7 +3031,7 @@ class HumanLLM:
                                 HumanMessage(content=error_with_info_to_help_prompt)
                             ])
                             smart_print(
-                                "ANALYSIS RECIEVED, GENERATING A FIX",
+                                "ANALYSIS RECEIVED, GENERATING A FIX",
                                 custom_agent if custom_agent else self.agent_name,
                                 "code_task_and_run_test SystemMessage",
                                 optional=False,

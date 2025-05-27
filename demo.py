@@ -508,7 +508,7 @@ def generate_question(state: InterviewState):
     messages = state["messages"]
     question_answer = helpers_demo.llm_custom.invoke([SystemMessage(content=system_message)] + messages)
     smart_print(message=question_answer.content if isinstance(question_answer, AIMessage) else question_answer,
-                agent_name="Generate Question", message_type="NEW inference result recieved", column_id=0, column_max=1)
+                agent_name="Generate Question", message_type="NEW inference result received", column_id=0, column_max=1)
     return {"messages": [question_answer]}
 
 def search_web(state: InterviewState):
@@ -534,7 +534,7 @@ def search_web(state: InterviewState):
          all_results.append(results)
     aggregated_results = "\n\n---\n\n".join(all_results)
     smart_print(message=aggregated_results, agent_name="Search Web",
-                message_type="NEW inference result recieved", column_id=0, column_max=1)
+                message_type="NEW inference result received", column_id=0, column_max=1)
     return {"context": [aggregated_results]}
 
 def search_arxiv(state: InterviewState):
@@ -556,7 +556,7 @@ def search_arxiv(state: InterviewState):
          all_results.append(results)
     aggregated_results = "\n\n---\n\n".join(all_results)
     smart_print(message=aggregated_results, agent_name="Search Arxiv",
-                message_type="NEW inference result recieved", column_id=0, column_max=1)
+                message_type="NEW inference result received", column_id=0, column_max=1)
     return {"context": [aggregated_results]}
 
 def search_semantic_scholar(state: InterviewState):
@@ -578,7 +578,7 @@ def search_semantic_scholar(state: InterviewState):
          all_results.append(results)
     aggregated_results = "\n\n---\n\n".join(all_results)
     smart_print(message=aggregated_results, agent_name="Search Semantic Scholar",
-                message_type="NEW inference result recieved", column_id=0, column_max=1)
+                message_type="NEW inference result received", column_id=0, column_max=1)
     return {"context": [aggregated_results]}
 
 def search_wikipedia(state: InterviewState):
@@ -601,7 +601,7 @@ def search_wikipedia(state: InterviewState):
          all_results.append(results)
     aggregated_results = "\n\n---\n\n".join(all_results)
     smart_print(message=aggregated_results, agent_name="Search Wikipedia",
-                message_type="NEW inference result recieved", column_id=0, column_max=1)
+                message_type="NEW inference result received", column_id=0, column_max=1)
     return {"context": [aggregated_results]}
 
 def search_docs_rag(state: InterviewState):
@@ -623,7 +623,7 @@ def search_docs_rag(state: InterviewState):
          all_results.append(results)
     aggregated_results = "\n\n---\n\n".join(all_results)
     smart_print(message=aggregated_results, agent_name="Search Docs RAG",
-                message_type="NEW inference result recieved", column_id=0, column_max=1)
+                message_type="NEW inference result received", column_id=0, column_max=1)
     return {"context": [aggregated_results]}
 
 def generate_answer(state: InterviewState):
@@ -671,12 +671,12 @@ def generate_answer(state: InterviewState):
     try:
         # Parse the response directly with the JsonOutputParser
         answer_json = parser.parse(answer_resp.content)
-        smart_print(message=answer_json, agent_name="Generate Answer", message_type="NEW inference result recieved", column_id=0, column_max=1)
+        smart_print(message=answer_json, agent_name="Generate Answer", message_type="NEW inference result received", column_id=0, column_max=1)
         return {"expert_response": [answer_json.response], "expert_resources": answer_json.sources, 'interview_iteration': state.get("interview_iteration", 0) + 1}
     except Exception as e:
         # Fallback to the original extract_json method if parsing fails
         answer_json = extract_json(answer_resp.content)
-        smart_print(message=answer_json, agent_name="Generate Answer", message_type="NEW inference result recieved", column_id=0, column_max=1)
+        smart_print(message=answer_json, agent_name="Generate Answer", message_type="NEW inference result received", column_id=0, column_max=1)
         if isinstance(answer_json, dict):
             return {"expert_response": [answer_json.get("response", "")], "expert_resources": answer_json.get("sources", []), 'interview_iteration': state.get("interview_iteration", 0) + 1}
         else:
@@ -758,7 +758,7 @@ def write_section(state: InterviewState):
             section_final += section.content if isinstance(section, AIMessage) else section
     else:
         section_final = propositions.content if isinstance(propositions, AIMessage) else propositions
-    smart_print(message=section_final, agent_name="Write Section", message_type="NEW inference result recieved", column_id=0, column_max=1)
+    smart_print(message=section_final, agent_name="Write Section", message_type="NEW inference result received", column_id=0, column_max=1)
     # Append the new section to the existing list.
     return {"sections": state.get("sections", []) + [section_final], "source_list": state.get("source_list", []) + state.get("expert_resources", [])}
 
