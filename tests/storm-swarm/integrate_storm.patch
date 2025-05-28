@@ -164,14 +164,16 @@ index 1acd9b2..cca40e4 100644
 -        if lm_type and lm_type == "openai":
 +        if lm_type and lm_type == "human-llm":
 +            config = HumanLLMConfig()
++            config.use_websocket = True
++            automation = False
 +            config.common_vectordb_config.embedding_function = "text-embedding-ada-002"
 +            config.initialize()
-+            self.question_answering_lm = HumanLLMAdapter(human_llm=HumanLLM(agent_name="question_answering_lm", automation=True, llmORchains_list=config.get_llmORchains_list(), temperature=temperature, top_p=top_p))
-+            self.discourse_manage_lm = HumanLLMAdapter(HumanLLM(agent_name="discourse_manage_lm", automation=True, llmORchains_list=config.get_llmORchains_list(), temperature=temperature, top_p=top_p))
-+            self.utterance_polishing_lm = HumanLLMAdapter(HumanLLM(agent_name="utterance_polishing_lm", automation=True, llmORchains_list=config.get_llmORchains_list(), temperature=temperature, top_p=top_p))
-+            self.warmstart_outline_gen_lm = HumanLLMAdapter(HumanLLM(agent_name="warmstart_outline_gen_lm", automation=True, llmORchains_list=config.get_llmORchains_list(), temperature=temperature, top_p=top_p))
-+            self.question_asking_lm =HumanLLMAdapter( HumanLLM(agent_name="question_asking_lm", automation=True, llmORchains_list=config.get_llmORchains_list(), temperature=temperature, top_p=top_p))
-+            self.knowledge_base_lm = HumanLLMAdapter(HumanLLM(agent_name="knowledge_base_lm", automation=True, llmORchains_list=config.get_llmORchains_list(), temperature=temperature, top_p=top_p))
++            self.question_answering_lm = HumanLLMAdapter(human_llm=HumanLLM(agent_name="question_answering_lm", automation=automation, llmORchains_list=config.get_llmORchains_list(), temperature=temperature, top_p=top_p))
++            self.discourse_manage_lm = HumanLLMAdapter(HumanLLM(agent_name="discourse_manage_lm", automation=automation, llmORchains_list=config.get_llmORchains_list(), temperature=temperature, top_p=top_p))
++            self.utterance_polishing_lm = HumanLLMAdapter(HumanLLM(agent_name="utterance_polishing_lm", automation=automation, llmORchains_list=config.get_llmORchains_list(), temperature=temperature, top_p=top_p))
++            self.warmstart_outline_gen_lm = HumanLLMAdapter(HumanLLM(agent_name="warmstart_outline_gen_lm", automation=automation, llmORchains_list=config.get_llmORchains_list(), temperature=temperature, top_p=top_p))
++            self.question_asking_lm =HumanLLMAdapter( HumanLLM(agent_name="question_asking_lm", automation=automation, llmORchains_list=config.get_llmORchains_list(), temperature=temperature, top_p=top_p))
++            self.knowledge_base_lm = HumanLLMAdapter(HumanLLM(agent_name="knowledge_base_lm", automation=automation, llmORchains_list=config.get_llmORchains_list(), temperature=temperature, top_p=top_p))
 +        elif  lm_type and lm_type == "openai":
              openai_kwargs = {
                  "api_key": os.getenv("OPENAI_API_KEY"),
