@@ -11,9 +11,13 @@ html = re.sub(r'<link rel="stylesheet" href="style.css">', f'<style>{css_content
 
 # List of JavaScript files to inline
 js_files = [
+    "Jquery_front/global.js",
+    "Jquery_front/utils.js",
+    "Jquery_front/display-message-helpers.js",
+    "Jquery_front/display-message.js",
+    "Jquery_front/websocket-handler.js",
     "Jquery_front/floating-div.js",
-    "Jquery_front/monaco-log-ui-manager.js",
-    "Jquery_front/websocket-handler.js"
+    "Jquery_front/monaco-log-ui-manager.js"
 ]
 
 # Inline JavaScript safely

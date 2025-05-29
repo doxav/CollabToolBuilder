@@ -62,7 +62,7 @@ function displayMessage(data) {
   if (
     data.column_max !== undefined &&
     data.column_id !== undefined &&
-    data.message_type === "NEW inference result recieved"
+    data.message_type === "NEW inference result received"
   ) {
     updateNewInferenceResult(data);
   } else if (data.message_type === "successful_tasks_list") {

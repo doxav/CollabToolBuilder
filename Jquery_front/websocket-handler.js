@@ -4,7 +4,7 @@ class WebSocketHandler {
     this.socket = null;
 
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
+    this.maxReconnectAttempts = 50;
 
     this.initWebSocket();
   }
@@ -13,7 +13,22 @@ class WebSocketHandler {
     this.socket = new WebSocket(this.url);
 
     this.socket.onopen = () => {
-      console.log("Connected to WebSocket");
+      let statusDiv = document.getElementById("connection-status");
+      if (statusDiv) {
+        statusDiv.style.display = "none";
+        statusDiv.innerText = "";
+      }
+
+      let SuccessStatusDiv = document.getElementById("success-status");
+      if (SuccessStatusDiv) {
+        SuccessStatusDiv.style.display = "block";
+        SuccessStatusDiv.innerText = "Successfully connected to the server.";
+      }
+      setTimeout(() => {
+        SuccessStatusDiv.style.display = "none";
+        SuccessStatusDiv.innerText = "";
+      }, 1000 * 5);
+
       this.reconnectAttempts = 0; // Reset reconnect count
     };
 
@@ -89,6 +104,7 @@ class WebSocketHandler {
       if (data.input || data.message?.includes("Choose an action")) {
         $(".buffering-circle").hide();
       }
+      addLogLine(event.data);
     } catch (e) {
       console.error("Error parsing WebSocket message:", e);
       console.debug("Raw event data:", event);
@@ -162,15 +178,6 @@ setTimeout(() => {
   }
   // Initialize WebSocket handler with final wsUrl
   wsHandler = new WebSocketHandler(wsUrl);
-
-  // Ajouter un écouteur pour les messages WebSocket sans écraser les existants
-  wsHandler.socket.addEventListener("message", function (event) {
-    if (logEditorInstance) {
-      addLogLine(event.data);
-    } else {
-      console.warn("Log not initialized.");
-    }
-  });
 }, 1000); // Delay prompt slightly to avoid blocking
 
 function sendWebSocketMessage(message) {
