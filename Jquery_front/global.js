@@ -1,0 +1,24 @@
+currentAgent = "";
+let savedSelection = null;
+let debounceSaveTimer = null;
+let number_created_functions = 0;
+let number_validated_functions = 0;
+let inputAwaited = false; // Flag to track if input is awaited
+let isInputRequired = false; // Callback function for input
+let socket; // WebSocket connection
+let pendingCallbacks = {}; // Store pending callbacks for function calls
+let wsUrl = "ws://localhost:6789"; // Default WebSocket URL
+let reconnectAttempts = 0; // Track the number of reconnection attempts
+const maxAutoReconnectAttempts = 10; // Set the number of reconnection attempts
+let isFunctionCallInProgress = false; // Flag to track if a function call is in progress
+let selectedLLM = ""; // Track the selected LLM
+let annotationId = 0; // Track the annotation ID
+let annotationswithID = ""; // Track the annotations with ID
+let unique_id_sent = false; // Track if the unique_id has been sent to the server
+let init_task_list = false; // Track if the task list has been initialized
+let clientId = ""; // Track the client ID
+let parallelFunctions = ["update_answer", "critic_answer", "get_tasks"];
+let activeFunctionCalls = {};
+let functionCallQueue = [];
+let wsHandler = null;
+// let uniqueId = "";

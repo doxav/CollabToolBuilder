@@ -1,6 +1,7 @@
 import logging, json, uuid, os, subprocess, time, pickle, requests, re
 from datetime import datetime
-from config import MODELS_CONFIG_LIST, vector_store_type
+# from config import MODELS_CONFIG_LIST, vector_store_type
+from config import MODELS_CONFIG_LIST
 from utils.websocket_server import WebsocketServer, WebSocketServerConfig
 from utils.llm_utils import (
     create_Nmajority_chain,
@@ -61,7 +62,6 @@ class HumanLLMConfig:
         self.configure_vector_store()
         if self.use_websocket:
             self.init_ws_server()
-        self.common_vectordb_config.db_type = vector_store_type
         self.common_vectordb = UnifiedVectorDB(self.common_vectordb_config, check_db=True)
         
     def init_ws_server(self):

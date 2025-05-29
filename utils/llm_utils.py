@@ -29,12 +29,13 @@ except ImportError:
 import tkinter as tk
 from tkinter import scrolledtext
 from utils.file_utils import dump_text, f_exists, f_move
-from config import MODELS_CONFIG_LIST, vector_store_type
+# from config import MODELS_CONFIG_LIST, vector_store_type
+from config import MODELS_CONFIG_LIST
 import config
 from requests.auth import HTTPBasicAuth
 
 from utils.constants import ELASTIC_DATABASE, CHROMA_DATABASE
-
+import regex as regex 
 
 @dataclass
 class FewShotsParams:
@@ -105,7 +106,8 @@ class UnifiedVectorDBConfig:
         self.set_common_vectordb_embedding_function()
         self.openai_embedding_function_name = "text-embedding-ada-002"
 
-        self.db_type: str = vector_store_type.lower()  if vector_store_type else ELASTIC_DATABASE
+        # self.db_type: str = vector_store_type.lower()  if vector_store_type else ELASTIC_DATABASE
+        self.db_type: str = ELASTIC_DATABASE
         self.es_config = ElasticSearchDB_Config() if self.db_type == ELASTIC_DATABASE else None
         self.unique_collection_id: Optional[str] = unique_collection_id
         
@@ -613,9 +615,9 @@ def smart_print(
 
         # Check if in the message there are no unexpected non-whitespace characters
         message_str = str(message) if not type(message) == str else message
-        if re.search(r'[^\x20-\x7E\t\n\r]', message_str):
+        if regex.search(r'[^\P{C}\t\n\r]', message_str):           
             # Remove unexpected characters
-            message_str = re.sub(r'[^\x20-\x7E\t\n\r]', "", message_str)
+            message_str = regex.sub(r'[^\P{C}\t\n\r]', "", message_str)
         message_dict = {'message': message_str, 'agent_name': agent_name, 'message_type': message_type, 'append': append,
                         'column_id': column_id, 'column_max': column_max, 'optional': optional,
                         'step_id': HumanLLMConfig().step_id}
@@ -682,7 +684,7 @@ def smart_input(message: str, agent_name=None, message_type=None, column_id=None
         HumanLLMConfig().ws_server.send_message(message_json)
 
         async def receive_message(timeout=86400):
-            async with websockets.connect(ws_url, ping_interval=30, ping_timeout=60) as websocket:
+            async with websockets.connect(f"{ws_url}?self=true", ping_interval=30, ping_timeout=60) as websocket:
                 try:
                     logger.info("SMART INPUT Waiting for response from WebSocket")
                     while True:
