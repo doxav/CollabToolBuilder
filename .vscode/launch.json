@@ -17,13 +17,57 @@
       "module": "optimisation.${fileBasenameNoExtension}",
       "justMyCode": false
     },
-    { // Test (provide a nice Test icon different from Run)
-      "name": "🚦 Run test",
+  { 
+    "name": "🚦 Test (stop on first fail)",
+    "type": "python",
+    "request": "launch",
+    "console": "integratedTerminal",
+    // Use pytest as the module
+    "module": "pytest",
+    // Pass flags: -vvs for verbose + show captured output,
+    // and -x (or --maxfail=1) to stop at the first failure
+    "args": [
+      "-vvs",
+      "-x",
+      "${file}"
+    ],
+    "justMyCode": false
+  },
+    {
+      "name": "🚦 Test NO exit",
       "type": "python",
       "request": "launch",
       "console": "integratedTerminal",
-      "module": "tests.${fileBasenameNoExtension}",
+      // Use pytest as the module
+      "module": "pytest",
+      // Pass flags: -vvs for verbose+show captured output, and --maxfail=0 to keep going on errors
+      "args": [
+        "-vvs",
+        "--maxfail=0",
+        "${file}"
+      ],
       "justMyCode": false
+    },
+{
+  "name": "🪲 Debug: Pytest (prompt for target)",
+  "type": "python",
+  "request": "launch",
+  "console": "integratedTerminal",
+  "module": "pytest",
+  "args": [
+    "-v",
+    // Prompt you to type in the test target (e.g. tests/test_mod.py::test_func)
+    "${input:pytestTarget}"
+  ],
+  "justMyCode": false
+}
+  ],
+  "inputs": [
+    {
+      "id": "pytestTarget",
+      "type": "promptString",
+      "description": "Enter pytest target (e.g. tests/test_mod.py::TestClass::test_name)",
+      "default": ""
     }
   ]
 }

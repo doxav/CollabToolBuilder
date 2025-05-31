@@ -664,8 +664,8 @@ def coding_and_validation_loop(
                 "coding_and_validation_loop WARNING"
             )
 
-            validation_agent_feedback = validation_agent_feedback[0]
-            afb = validation_agent_feedback.content.replace('\\n', '\n')
+            validation_agent_feedback = "\n".join(x.content if hasattr(x, "content") else str(x) for x in (validation_agent_feedback if isinstance(validation_agent_feedback, list) else [validation_agent_feedback])).replace("\\n", "\n")
+            afb = validation_agent_feedback
             smart_print(
                 "#" * 20 + f"\nAgent validation feedback: {afb}",
                 "coding_and_validation_loop",
@@ -684,7 +684,7 @@ def coding_and_validation_loop(
                 validated = get_success_value_in_text(afb) in ["yes", "y", True]
 
             if validated:
-                successful_codes.append((parsed_code, validation_agent_feedback.content, scores))
+                successful_codes.append((parsed_code, validation_agent_feedback, scores))
 
             if index < len(previous_errors):
                 previous_errors[index] = validation_agent_feedback

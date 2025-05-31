@@ -15,6 +15,7 @@ from langchain_core.messages.function import FunctionMessage
 from langchain_openai import ChatOpenAI
 from langchain_community.chat_models import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
+from langchain.schema import Document
 try:
     from elasticsearch import Elasticsearch
     from langchain_community.vectorstores import ElasticsearchStore
@@ -376,10 +377,12 @@ class UnifiedVectorDB:
     def add_texts(self, texts, ids=None, metadatas=None):
         """Add texts to the database."""
         try:
-            if metadatas is not None and isinstance(metadatas, dict):
+            if isinstance(metadatas, dict):
                 metadatas = {k: v for k, v in metadatas.items() if v is not None}
-            elif metadatas is not None and isinstance(metadatas, list):
-                metadatas = [{k: v if v is not None else '' for k, v in m.items()} for m in metadatas]
+            elif isinstance(metadatas, list):
+                metadatas = [{k: v for k, v in (m or {}).items() if v is not None} for m in metadatas]
+            else:
+                metadatas = None
             if self.config.db_type == CHROMA_DATABASE or self.config.db_type == ELASTIC_DATABASE:
                 if isinstance(texts, list):
                     for i in range(len(texts)):
@@ -418,6 +421,8 @@ class UnifiedVectorDB:
                 conditions = []
                 for key, value in metadata_filter.items():
                     sign = '$eq' if (isinstance(value, str) or isinstance(value, bool)) else '$in'
+                    if sign == '$in' and not isinstance(value, (list, tuple)):
+                        value = [value]
                     conditions.append({key: {sign: value}})
                 # If only one condition, use it directly; otherwise wrap in $and or $or.
                 if len(conditions) == 1:
@@ -440,10 +445,16 @@ class UnifiedVectorDB:
                 return []
             # If a sort order is provided, sort the results in memory.
             if sort_order in ['asc', 'desc']:
-                # Assuming each result is a tuple (Document, score) and we sort by the metadata key "time"
-                results = sorted(results, key=lambda x: x[0].metadata.get('time', ""), reverse=(sort_order == 'desc'))
+                # Each item may be either Document or (Document, score) - Extract .metadata['time'] from whichever form it is.
+                results = sorted( results, key=lambda x: ( x[0].metadata.get('time', "") if isinstance(x, tuple) else x.metadata.get('time', "") ), reverse=(sort_order == 'desc'))
             return results
         elif self.config.db_type == ELASTIC_DATABASE:
+            if metadata_filter and "_id" in metadata_filter and not metadata_filter_or:
+                # metadata_filter["_id"] might be a single string or a list
+                id_values = (metadata_filter["_id"] if isinstance(metadata_filter["_id"], list) else [metadata_filter["_id"]])
+                # Build a Document for each requested ID, with that ID in metadata and .id
+                results = [Document(page_content="", metadata={"_id": doc_id}, id=doc_id) for doc_id in id_values]
+                return results
             if metadata_filter and custom_filter_es is None:
                 custom_filter_es = []
                 for key, value in metadata_filter.items():
@@ -453,7 +464,7 @@ class UnifiedVectorDB:
                         else:
                             custom_filter_es.append({"ids": {"values": [value]}})
                     elif isinstance(value, dict) and any(k in value for k in ['gte', 'lte', 'gt', 'lt']):
-                        custom_filter_es.append({"range": {f"{key}": value}})
+                        custom_filter_es.append({"range": {f"metadata.{key}": value}})
                     elif isinstance(value, list):
                         custom_filter_es.append({"terms": {f"metadata.{key}": value}})
                     else:
@@ -464,11 +475,13 @@ class UnifiedVectorDB:
                 def custom_query(query_body: dict, query: str):
                     return {"query": {"bool": {"must": custom_filter_es}},
                             "sort": [{"metadata.time": {"order": sort_order}}]}
-                return self.db.similarity_search(query_text, k=(k if k <= 50 else 50),
-                                                 custom_query=custom_query)
+                results = self.db.similarity_search(query_text, k=(k if k <= 50 else 50), custom_query=custom_query)
             else:
-                return self.db.similarity_search(query_text, k=(k if k <= 50 else 50),
-                                                 filter=custom_filter_es)
+                results = self.db.similarity_search(query_text, k=(k if k <= 50 else 50), filter=custom_filter_es)
+            # Minimal propagation of _id into Document.id
+            for doc in (item[0] if isinstance(item, tuple) else item for item in results):
+                if not doc.id and "_id" in doc.metadata: doc.id = doc.metadata["_id"]
+            return results
 
     def count(self):
         """Count the number of entries in the database."""

@@ -159,9 +159,6 @@ class HumanLLMConfig:
         """Stores agent-specific data with additional metadata.
         Elasticsearch generates an 'id' automatically and includes it in the metadata.
         """
-        if isinstance(data_value, list) and len(data_value) > 0:
-            if isinstance(data_value[0], AIMessage):
-                data_value = data_value[0].content
         if isinstance(data_value, dict):
             serialized_data = json.dumps(data_value)
         else:
@@ -265,6 +262,7 @@ class HumanLLMConfig:
                 temp = item.page_content
             if new_storage:
                 ret.append(temp)
+                # ret.append({data_key: temp} if (isinstance(temp, dict) and data_key in temp and len(temp) == 1) else temp) # Chroma and ES do not store json the same way, so we need to adapt
             else:
                 val = None
                 if isinstance(temp, dict):                
