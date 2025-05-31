@@ -9,6 +9,8 @@ from learn import PlannerAgent  # For add_learnt_task / add_failed_task
 from learn import TaskIdentificationAgent
 from utils.llm_utils import UnifiedVectorDB  # To reference the real class if needed
 
+from config import *
+
 # ------------------------------------------------------------------------------
 # Fixture: patch out all UnifiedVectorDB constructors so they return the same MagicMock
 # ------------------------------------------------------------------------------

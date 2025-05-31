@@ -6,6 +6,7 @@ from typing import List, Optional, Union, Dict, Any
 from dataclasses import dataclass, field
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry  # type: ignore
+
 from langchain_community.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
 from langchain_core.runnables import RunnableSequence, ConfigurableField, Runnable
 from langchain_core.messages.human import HumanMessage
@@ -16,17 +17,7 @@ from langchain_openai import ChatOpenAI
 from langchain_community.chat_models import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.schema import Document
-try:
-    from elasticsearch import Elasticsearch
-    from langchain_community.vectorstores import ElasticsearchStore
-except ImportError:
-    print("Elasticsearch not installed")
-    Elasticsearch, ElasticsearchStore = None, None
-try:
-    from langchain_chroma import Chroma
-except ImportError:
-    print("langchain_chroma not installed")
-    Chroma = None
+
 import tkinter as tk
 from tkinter import scrolledtext
 from utils.file_utils import dump_text, f_exists, f_move
@@ -35,8 +26,31 @@ from config import MODELS_CONFIG_LIST
 import config
 from requests.auth import HTTPBasicAuth
 
-from utils.constants import ELASTIC_DATABASE, CHROMA_DATABASE
 import regex as regex 
+
+from utils.db_utils import (UnifiedVectorDB as _DB_Impl, UnifiedVectorDBConfig as _DBConfig_Impl, ElasticSearchDB_Config as _ESConfig_Impl, CHROMA_DATABASE, ELASTIC_DATABASE)
+
+# (1) Re‐export the classes under the old names to avoid breaking changes
+UnifiedVectorDB        = _DB_Impl
+UnifiedVectorDBConfig  = _DBConfig_Impl
+ElasticSearchDB_Config = _ESConfig_Impl
+
+# (2) Subclass to “add old” get_unique_id(...):
+class _UnifiedVectorDB_with_get_id(_DB_Impl):
+    def get_unique_id(self) -> str:
+        from utils.human_llm_config import HumanLLMConfig
+
+        single_cfg = HumanLLMConfig().common_vectordb_config
+        if single_cfg.unique_collection_id is None:
+            single_cfg.unique_collection_id = os.environ.get(
+                'unique_id',
+                f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
+            )
+        self.config.unique_collection_id = single_cfg.unique_collection_id
+        return self.config.unique_collection_id
+
+# (3) Use the subclass as the new UnifiedVectorDB
+UnifiedVectorDB = _UnifiedVectorDB_with_get_id
 
 @dataclass
 class FewShotsParams:
@@ -86,58 +100,6 @@ class PrintPromptRunnable(Runnable):
         smart_print("\033[31m" + formatted_prompt + "\033[0m")
         return input_msg
 
-
-class UnifiedVectorDBConfig:
-    """Configuration for the vector database."""
-    common_vectordb_embedding_function = None
-
-    def __init__(
-        self,
-        embedding_function: Optional[Any] = None,
-        collection_name: Optional[str] = "human_llm_logs",
-        persist_directory: Optional[str] = "human_llm_vectordb",
-        reset_indices: bool = False,
-        unique_collection_id: Optional[str] = None
-    ):
-        """Initialize VectorDBConfig."""
-        self.embedding_function = embedding_function
-        self.collection_name = collection_name.lower()
-        self.persist_directory = persist_directory
-        self.reset_indices = reset_indices
-        self.set_common_vectordb_embedding_function()
-        self.openai_embedding_function_name = "text-embedding-ada-002"
-
-        # self.db_type: str = vector_store_type.lower()  if vector_store_type else ELASTIC_DATABASE
-        self.db_type: str = ELASTIC_DATABASE
-        self.es_config = ElasticSearchDB_Config() if self.db_type == ELASTIC_DATABASE else None
-        self.unique_collection_id: Optional[str] = unique_collection_id
-        
-    def set_common_vectordb_embedding_function(self):
-        """Set the embedding function for the vector database."""
-        if self.__class__.common_vectordb_embedding_function is not None:
-            return
-        if isinstance(self.embedding_function, str):
-            if self.embedding_function in ["OpenAIEmbeddings", "text-embedding-ada-002"]:
-                self.__class__.common_vectordb_embedding_function = OpenAIEmbeddings(
-                    model=self.embedding_function,
-                    deployment=self.openai_embedding_function_name
-                )
-            elif self.__class__.common_vectordb_embedding_function == "HuggingFaceEmbeddings":
-                self.common_vectordb_embedding_function = HuggingFaceEmbeddings(
-                    model_name="intfloat/e5-base-v2",
-                    encode_kwargs={"normalize_embeddings": True}
-                )
-            else:
-                self.__class__.common_vectordb_embedding_function = HuggingFaceEmbeddings(
-                    model_name=self.embedding_function,
-                    encode_kwargs={"normalize_embeddings": True},
-                    model_kwargs={"trust_remote_code": True}
-                )
-        else:
-            self.__class__.common_vectordb_embedding_function = self.embedding_function
-
-    def set_unique_collection_id(self, unique_id):
-        self.unique_collection_id = unique_id
 
 
 class LLMConfig:
@@ -242,263 +204,6 @@ class TaskHistory:
         """Returns all failed tasks."""
         return self.failed_tasks
 
-
-class ElasticSearchDB_Config:
-    def __init__(self):
-        try: import config as cfg
-        except: cfg = None
-        self.es_url: str = 'http://127.0.0.1:9200' if not hasattr(cfg, 'elastic_url_port') else cfg.elastic_url_port
-        self.es_user: Optional[str] = None if not hasattr(cfg, 'elastic_user') else cfg.elastic_user
-        self.es_password: Optional[str] = None if not hasattr(cfg, 'elastic_password') else cfg.elastic_password
-
-class UnifiedVectorDB:
-    """Unified interface for vector databases (Elasticsearch or Chroma)."""
-    db_connection_check_done = False
-
-    def __init__(self, config: Optional[UnifiedVectorDBConfig]=None, check_db:bool=False):
-        """Initialize UnifiedVectorDB."""
-        def friendly_collectionname_string(s):
-            # Constraint 1: Truncate or pad the string to ensure it's between 3-63 characters
-            s = s[:63].ljust(3, 'a')
-            # Constraint 2: Ensure it starts and ends with an alphanumeric character
-            if not s[0].isalnum():
-                s = 'a' + s[1:]
-            if not s[-1].isalnum():
-                s = s[:-1] + 'a'
-            # Constraint 3: Replace invalid characters with underscores
-            s = re.sub(r'[^a-zA-Z0-9_-]', '_', s)
-            # Constraint 4: Replace two consecutive periods with underscores
-            s = s.replace('..', '__')
-            # Constraint 5: Ensure it's not a valid IPv4 address
-            if re.match(r'^(\d{1,3}\.){3}\d{1,3}$', s):
-                s = 'a' + s[1:]
-            return s[:63]
-        self.logger = logging.getLogger(__name__)
-        
-        self.elastic_client: Optional[Any] = None
-        self.db: Optional[Any] = None
-        self._collection: Optional[Any] = None
-        self.config: Optional[UnifiedVectorDBConfig] = config
-        
-        if check_db:
-            self.check_db()
-        self.get_unique_id()
-
-        if self.config.unique_collection_id is not None:
-            self.config.collection_name = f"{self.config.unique_collection_id}_{self.config.collection_name}".lower()
-        self.config.collection_name = friendly_collectionname_string(self.config.collection_name)
-
-        if self.config.db_type == CHROMA_DATABASE:
-            if Chroma is None:
-                raise ImportError("Chroma vector store selected but 'chromadb' or langchain community support is not installed.")
-        elif self.config.db_type == ELASTIC_DATABASE:
-            if Elasticsearch is None or ElasticsearchStore is None:
-                raise ImportError("Elasticsearch vector store selected but 'elasticsearch' library or LangChain ES support is not installed.")
-        else:
-            raise ValueError(f"Unsupported DB type: {self.config.db_type}")
-
-        if self.config.db_type == CHROMA_DATABASE:
-            self.config.persist_directory = friendly_collectionname_string(self.config.persist_directory)
-            self.db = Chroma(
-                collection_name=self.config.collection_name,
-                embedding_function=self.config.common_vectordb_embedding_function,
-                persist_directory=self.config.persist_directory
-            )
-            self._collection = self.db._collection
-        elif self.config.db_type == ELASTIC_DATABASE:
-            self.elastic_client = Elasticsearch(
-                self.config.es_config.es_url,
-                http_auth=(
-                    self.config.es_config.es_user,
-                    self.config.es_config.es_password
-                ) if (self.config.es_config.es_user not in [False, "", None]) else None,
-                verify_certs=True,
-                ssl_show_warn=False
-            )
-            self.db = ElasticsearchStore(
-                index_name=self.config.collection_name,
-                embedding=self.config.common_vectordb_embedding_function,
-                es_connection=self.elastic_client,
-                distance_strategy="COSINE"
-            )
-            self._collection = self.db
-            embedding_test = self.config.common_vectordb_embedding_function.embed_query("test")
-            embedding_size = len(embedding_test)
-            if self.config.reset_indices:
-                self.db.client.indices.delete(
-                    index=self.config.collection_name,
-                    ignore=[400, 404]
-                )
-            self.db._create_index_if_not_exists(
-                index_name=self.config.collection_name,
-                dims_length=embedding_size
-            )
-        else:
-            raise ValueError(f"Unsupported DB type: {self.config.db_type}")
-
-    def get_unique_id(self):
-        """Generate or retrieve a unique ID for the collection."""
-        from utils.human_llm import HumanLLMConfig
-        if HumanLLMConfig().common_vectordb_config.unique_collection_id is None:
-            HumanLLMConfig().common_vectordb_config.unique_collection_id = os.environ.get(
-                'unique_id',
-                f"{socket.gethostname()}_{datetime.now().strftime('%d-%m-%Y-%H-%M-%S')}"
-            )
-        self.config.unique_collection_id =  HumanLLMConfig().common_vectordb_config.unique_collection_id
-        return self.config.unique_collection_id
-
-    def check_db(self):
-        """Check the database connection."""
-        if self.__class__.db_connection_check_done:
-            return
-        if self.config.db_type == ELASTIC_DATABASE:
-            session = requests.Session()
-            retry = Retry(total=5, backoff_factor=1)
-            adapter = HTTPAdapter(max_retries=retry)
-            session.mount("https://", adapter)
-            auth = (
-                HTTPBasicAuth(self.config.es_config.es_user, self.config.es_config.es_password)
-                if self.config.es_config.es_user else None
-            )
-            try:
-                response = session.get(self.config.es_config.es_url, auth=auth, timeout=5, verify=False)
-                response.raise_for_status()
-                self.logger.info(f"Elasticsearch response: {response.text}")
-                self.__class__.db_connection_check_done = True
-            except requests.exceptions.RequestException as e:
-                self.logger.error(f"Error: {e}\nURL: {self.config.es_config.es_url}\nCheck Elasticsearch and credentials.")
-                exit(1)
-        elif self.config.db_type == CHROMA_DATABASE:
-            self.logger.info("Chroma DB check is not yet implemented")
-            self.db_connection_check_done = True
-        else:
-            raise ValueError(f"Unsupported DB type: {self.config.db_type}")
-
-    def add_texts(self, texts, ids=None, metadatas=None):
-        """Add texts to the database."""
-        try:
-            if isinstance(metadatas, dict):
-                metadatas = {k: v for k, v in metadatas.items() if v is not None}
-            elif isinstance(metadatas, list):
-                metadatas = [{k: v for k, v in (m or {}).items() if v is not None} for m in metadatas]
-            else:
-                metadatas = None
-            if self.config.db_type == CHROMA_DATABASE or self.config.db_type == ELASTIC_DATABASE:
-                if isinstance(texts, list):
-                    for i in range(len(texts)):
-                        if not isinstance(texts[i], str):
-                            texts[i] = str(texts[i])
-                if metadatas is None:
-                    return self.db.add_texts(texts=texts, ids=ids)
-                return self.db.add_texts(texts=texts, ids=ids, metadatas=metadatas)
-            else:
-                self.logger.error(f"Unsupported DB type: {self.config.db_type}")
-                return None
-        except Exception as e:
-            self.logger.error(f"Error adding texts to database: {str(e)} / Texts: {texts} / IDs: {ids} / Metadatas: {metadatas}")
-            return None
-
-    def delete(self, ids):
-        """Delete entries from the database by IDs."""
-        if self.config.db_type == CHROMA_DATABASE:
-            return self.db.delete(ids=ids)
-        elif self.config.db_type == ELASTIC_DATABASE:
-            return self.db.delete(ids=ids)
-
-    def similarity_search_with_score(self, query, k=1):
-        """Perform a similarity search with scores."""
-        if self.config.db_type == CHROMA_DATABASE:
-            return self.db.similarity_search_with_score(query, k=k)
-        elif self.config.db_type == ELASTIC_DATABASE:
-            return self.db.similarity_search_with_score(query, k=(k if k <= 50 else 50))
-
-    def query(self, query_text="", k=1, metadata_filter=None, metadata_filter_or=False,
-              custom_filter_chrome=None, custom_filter_es=None, sort_order=None):
-        """Query the database with filters and sorting."""
-        if self.config.db_type == CHROMA_DATABASE:
-            filter_chroma = None
-            if metadata_filter and custom_filter_chrome is None:
-                conditions = []
-                for key, value in metadata_filter.items():
-                    sign = '$eq' if (isinstance(value, str) or isinstance(value, bool)) else '$in'
-                    if sign == '$in' and not isinstance(value, (list, tuple)):
-                        value = [value]
-                    conditions.append({key: {sign: value}})
-                # If only one condition, use it directly; otherwise wrap in $and or $or.
-                if len(conditions) == 1:
-                    filter_chroma = conditions[0]
-                else:
-                    filter_chroma = {('$or' if metadata_filter_or else '$and'): conditions}
-                if sort_order in ['asc', 'desc']:
-                    self.logger.warning("WARNING: sort not implemented for Chroma DB; performing in-memory sort")
-            # Query the database using the filter (if any)
-            # Check db size, if 0 skip, if less than k, set k to db size
-            if self.db._collection.count() == 0:
-                self.logger.warning("WARNING: Chroma DB is empty, returning empty results")
-                return []
-            elif self.db._collection.count() < k:
-                k = self.db._collection.count()
-            try:
-                results = self.db.similarity_search(query_text, k=k, filter=filter_chroma)
-            except Exception as e:
-                self.logger.error(f"Error querying Chroma DB: {str(e)}")
-                return []
-            # If a sort order is provided, sort the results in memory.
-            if sort_order in ['asc', 'desc']:
-                # Each item may be either Document or (Document, score) - Extract .metadata['time'] from whichever form it is.
-                results = sorted( results, key=lambda x: ( x[0].metadata.get('time', "") if isinstance(x, tuple) else x.metadata.get('time', "") ), reverse=(sort_order == 'desc'))
-            return results
-        elif self.config.db_type == ELASTIC_DATABASE:
-            if metadata_filter and "_id" in metadata_filter and not metadata_filter_or:
-                # metadata_filter["_id"] might be a single string or a list
-                id_values = (metadata_filter["_id"] if isinstance(metadata_filter["_id"], list) else [metadata_filter["_id"]])
-                # Build a Document for each requested ID, with that ID in metadata and .id
-                results = [Document(page_content="", metadata={"_id": doc_id}, id=doc_id) for doc_id in id_values]
-                return results
-            if metadata_filter and custom_filter_es is None:
-                custom_filter_es = []
-                for key, value in metadata_filter.items():
-                    if key == '_id':
-                        if isinstance(value, list):
-                            custom_filter_es.append({"ids": {"values": value}})
-                        else:
-                            custom_filter_es.append({"ids": {"values": [value]}})
-                    elif isinstance(value, dict) and any(k in value for k in ['gte', 'lte', 'gt', 'lt']):
-                        custom_filter_es.append({"range": {f"metadata.{key}": value}})
-                    elif isinstance(value, list):
-                        custom_filter_es.append({"terms": {f"metadata.{key}": value}})
-                    else:
-                        custom_filter_es.append({"match": {f"metadata.{key}": value}})
-                if metadata_filter_or:
-                    custom_filter_es = {"bool": {"should": custom_filter_es}}
-            if sort_order in ['asc', 'desc']:
-                def custom_query(query_body: dict, query: str):
-                    return {"query": {"bool": {"must": custom_filter_es}},
-                            "sort": [{"metadata.time": {"order": sort_order}}]}
-                results = self.db.similarity_search(query_text, k=(k if k <= 50 else 50), custom_query=custom_query)
-            else:
-                results = self.db.similarity_search(query_text, k=(k if k <= 50 else 50), filter=custom_filter_es)
-            # Minimal propagation of _id into Document.id
-            for doc in (item[0] if isinstance(item, tuple) else item for item in results):
-                if not doc.id and "_id" in doc.metadata: doc.id = doc.metadata["_id"]
-            return results
-
-    def count(self):
-        """Count the number of entries in the database."""
-        if self.config.db_type == CHROMA_DATABASE:
-            return self.db._collection.count()
-        elif self.config.db_type == ELASTIC_DATABASE:
-            response = self.db.client.count(index=self.config.collection_name, body={"query": {"match_all": {}}})
-            return response['count']
-
-    def clear(self):
-        """Clear the database."""
-        if self.config.db_type == CHROMA_DATABASE:
-            self.db._collection.clear()
-        if self.config.db_type == ELASTIC_DATABASE:
-            response = self.db.client.delete_by_query(index=self.config.collection_name, body={"query": {"match_all": {}}})
-            self.logger.info(f"Deleted {response['deleted']} documents from index {self.config.collection_name}")
-            time.sleep(2)
 
 
 def format_prompt(messages):
