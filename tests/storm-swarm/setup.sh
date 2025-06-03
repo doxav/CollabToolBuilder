@@ -12,31 +12,31 @@ pip install -r requirements.txt
 
 # Step 3: Clone the GitHub Repository
 echo "Cloning the GitHub repository..."
-git clone https://github.com/stanford-oval/storm.git
+git clone https://github.com/doxav/storm-swarm.git storm
 
 
 # Step 4: Check if secrets.toml contains a valid OPENAI_API_KEY
-SECRETS_FILE="secrets.toml"
-if [ -f "$SECRETS_FILE" ]; then
-    # Extract the value of OPENAI_API_KEY
-    OPENAI_API_KEY=$(grep -oP '^OPENAI_API_KEY="\K[^"]*' "$SECRETS_FILE")
+# SECRETS_FILE="secrets.toml"
+# if [ -f "$SECRETS_FILE" ]; then
+#     # Extract the value of OPENAI_API_KEY
+#     OPENAI_API_KEY=$(grep -oP '^OPENAI_API_KEY="\K[^"]*' "$SECRETS_FILE")
     
-    if [ -z "$OPENAI_API_KEY" ]; then
-        echo "Error: OPENAI_API_KEY is empty or not set in $SECRETS_FILE."
-        exit 1
-    elif [[ "$OPENAI_API_KEY" == *"{{"* || "$OPENAI_API_KEY" == *"}}"* ]]; then
-        echo "Error: OPENAI_API_KEY contains a template string in $SECRETS_FILE."
-        exit 1
-    else
-        echo "Valid OPENAI_API_KEY found in $SECRETS_FILE."
-        echo $OPENAI_API_KEY
-        export OPENAI_API_KEY=$OPENAI_API_KEY
-        echo "OPENAI_API_KEY exported as an environment variable."
-    fi
-else
-    echo "Error: $SECRETS_FILE does not exist."
-    exit 1
-fi
+#     if [ -z "$OPENAI_API_KEY" ]; then
+#         echo "Error: OPENAI_API_KEY is empty or not set in $SECRETS_FILE."
+#         exit 1
+#     elif [[ "$OPENAI_API_KEY" == *"{{"* || "$OPENAI_API_KEY" == *"}}"* ]]; then
+#         echo "Error: OPENAI_API_KEY contains a template string in $SECRETS_FILE."
+#         exit 1
+#     else
+#         echo "Valid OPENAI_API_KEY found in $SECRETS_FILE."
+#         echo $OPENAI_API_KEY
+#         export OPENAI_API_KEY=$OPENAI_API_KEY
+#         echo "OPENAI_API_KEY exported as an environment variable."
+#     fi
+# else
+#     echo "Error: $SECRETS_FILE does not exist."
+#     exit 1
+# fi
 
 # Step 5: Copy secrets.toml to the storm directory
 cp secrets.toml storm/
