@@ -2023,6 +2023,7 @@ class HumanLLM:
         generation_technique='temperature_variation',
         forced_llm_output=None,
         fusion_mode=None,
+        **kwargs
     ):
         """
         This method can perform different multi-inference strategies depending on 

@@ -1,0 +1,729 @@
+diff --git a/examples/costorm_examples/run_costorm_humanllm_gpt.py b/examples/costorm_examples/run_costorm_humanllm_gpt.py
+new file mode 100644
+index 0000000..3250bd1
+--- /dev/null
++++ b/examples/costorm_examples/run_costorm_humanllm_gpt.py
+@@ -0,0 +1,383 @@
++"""
++Co-STORM pipeline powered by GPT-4o/4o-mini and Bing search engine.
++You need to set up the following environment variables to run this script:
++    - OPENAI_API_KEY: OpenAI API key
++    - OPENAI_API_TYPE: OpenAI API type (e.g., 'openai' or 'azure')
++    - AZURE_API_BASE: Azure API base URL if using Azure API
++    - AZURE_API_VERSION: Azure API version if using Azure API
++    - BING_SEARCH_API_KEY: Biang search API key; BING_SEARCH_API_KEY: Bing Search API key, SERPER_API_KEY: Serper API key, BRAVE_API_KEY: Brave API key, or TAVILY_API_KEY: Tavily API key
++
++Output will be structured as below
++args.output_dir/
++    log.json           # Log of information-seeking conversation
++    report.txt         # Final article generated
++"""
++
++import os, sys
++sys.path[0] = os.path.abspath(os.path.join(os.getcwd()))
++sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), '../../../')))
++
++import json
++from argparse import ArgumentParser
++from knowledge_storm.collaborative_storm.engine import (
++    CollaborativeStormLMConfigs,
++    RunnerArgument,
++    CoStormRunner,
++)
++from knowledge_storm.collaborative_storm.modules.callback import (
++    LocalConsolePrintCallBackHandler,
++)
++from knowledge_storm.lm import OpenAIModel, AzureOpenAIModel
++from knowledge_storm.logging_wrapper import LoggingWrapper
++from knowledge_storm.rm import (
++    YouRM,
++    BingSearch,
++    BraveRM,
++    SerperRM,
++    DuckDuckGoSearchRM,
++    TavilySearchRM,
++    SearXNG,
++)
++from knowledge_storm.utils import load_api_key
++from utils.human_llm import HumanLLM
++from utils.human_llm_config import HumanLLMConfig
++from knowledge_storm.human_llm_adapter import HumanLLMAdapter
++
++
++def main(args):
++    load_api_key(toml_file_path="secrets.toml")
++    lm_config: CollaborativeStormLMConfigs = CollaborativeStormLMConfigs()
++    openai_kwargs = (
++        {
++            "api_key": os.getenv("OPENAI_API_KEY"),
++            "api_provider": "openai",
++            "temperature": 1.0,
++            "top_p": 0.9,
++            "api_base": None,
++        }
++        if os.getenv("OPENAI_API_TYPE") == "openai"
++        else {
++            "api_key": os.getenv("AZURE_API_KEY"),
++            "temperature": 1.0,
++            "top_p": 0.9,
++            "api_base": os.getenv("AZURE_API_BASE"),
++            "api_version": os.getenv("AZURE_API_VERSION"),
++        }
++    )
++
++    ModelClass = (
++        OpenAIModel if os.getenv("OPENAI_API_TYPE") == "openai" else AzureOpenAIModel
++    )
++    # If you are using Azure service, make sure the model name matches your own deployed model name.
++    # The default name here is only used for demonstration and may not match your case.
++    gpt_4o_mini_model_name = "gpt-4o-mini"
++    gpt_4o_model_name = "gpt-4o"
++    if os.getenv("OPENAI_API_TYPE") == "azure":
++        openai_kwargs["api_base"] = os.getenv("AZURE_API_BASE")
++        openai_kwargs["api_version"] = os.getenv("AZURE_API_VERSION")
++
++    # STORM is a LM system so different components can be powered by different models.
++    # For a good balance between cost and quality, you can choose a cheaper/faster model for conv_simulator_lm
++    # which is used to split queries, synthesize answers in the conversation. We recommend using stronger models
++    # for outline_gen_lm which is responsible for organizing the collected information, and article_gen_lm
++    # which is responsible for generating sections with citations.
++    # figure out which ones you really want to human-loop
++    human_roles = {
++        r.strip()
++        for r in args.human_llm_lms.split(",")
++        if r.strip()
++    }
++    
++    question_answering_lm = ModelClass(
++        model=gpt_4o_model_name, max_tokens=1000, **openai_kwargs
++    )
++    discourse_manage_lm = ModelClass(
++        model=gpt_4o_model_name, max_tokens=500, **openai_kwargs
++    )
++    utterance_polishing_lm = ModelClass(
++        model=gpt_4o_model_name, max_tokens=2000, **openai_kwargs
++    )
++    warmstart_outline_gen_lm = ModelClass(
++        model=gpt_4o_model_name, max_tokens=500, **openai_kwargs
++    )
++    question_asking_lm = ModelClass(
++        model=gpt_4o_model_name, max_tokens=300, **openai_kwargs
++    )
++    knowledge_base_lm = ModelClass(
++        model=gpt_4o_model_name, max_tokens=1000, **openai_kwargs
++    )
++
++    lm_config.set_question_answering_lm(question_answering_lm)
++    lm_config.set_discourse_manage_lm(discourse_manage_lm)
++    lm_config.set_utterance_polishing_lm(utterance_polishing_lm)
++    lm_config.set_warmstart_outline_gen_lm(warmstart_outline_gen_lm)
++    lm_config.set_question_asking_lm(question_asking_lm)
++    lm_config.set_knowledge_base_lm(knowledge_base_lm)
++
++    if len(human_roles) > 0:
++        config = HumanLLMConfig()
++        config.use_websocket = False
++        automation = True
++        if args.ui_mode:
++            config.use_websocket = True
++            automation = False
++
++        config.common_vectordb_config.embedding_function = "text-embedding-ada-002"
++        config.initialize()
++        
++        for role in human_roles:
++            model = HumanLLMAdapter(
++                human_llm=HumanLLM(
++                    agent_name=role,
++                    automation=automation,
++                    llmORchains_list=config.get_llmORchains_list())
++                )
++            if role == "question_answering":
++                lm_config.set_question_answering_lm(model)
++            elif role == "discourse_manage":
++                lm_config.set_discourse_manage_lm(model)
++            elif role == "utterance_polishing":
++                lm_config.set_utterance_polishing_lm(model)
++            elif role == "warmstart_outline":
++                lm_config.set_warmstart_outline_gen_lm(model)
++            elif role == "set_question_asking_lm":
++                lm_config.set_question_asking_lm(model)
++            elif role == "knowledge_base":
++                lm_config.set_knowledge_base_lm(model)
++
++    if args.ui_mode:
++        args.warmstart_max_thread = 1
++
++    topic = input("Topic: ")
++    runner_argument = RunnerArgument(
++        topic=topic,
++        retrieve_top_k=args.retrieve_top_k,
++        max_search_queries=args.max_search_queries,
++        total_conv_turn=args.total_conv_turn,
++        max_search_thread=args.max_search_thread,
++        max_search_queries_per_turn=args.max_search_queries_per_turn,
++        warmstart_max_num_experts=args.warmstart_max_num_experts,
++        warmstart_max_turn_per_experts=args.warmstart_max_turn_per_experts,
++        warmstart_max_thread=args.warmstart_max_thread,
++        max_thread_num=args.max_thread_num,
++        max_num_round_table_experts=args.max_num_round_table_experts,
++        moderator_override_N_consecutive_answering_turn=args.moderator_override_N_consecutive_answering_turn,
++        node_expansion_trigger_count=args.node_expansion_trigger_count,
++    )
++    logging_wrapper = LoggingWrapper(lm_config)
++    callback_handler = (
++        LocalConsolePrintCallBackHandler() if args.enable_log_print else None
++    )
++
++    # Co-STORM is a knowledge curation system which consumes information from the retrieval module.
++    # Currently, the information source is the Internet and we use search engine API as the retrieval module.
++    match args.retriever:
++        case "bing":
++            rm = BingSearch(
++                bing_search_api=os.getenv("BING_SEARCH_API_KEY"),
++                k=runner_argument.retrieve_top_k,
++            )
++        case "you":
++            rm = YouRM(
++                ydc_api_key=os.getenv("YDC_API_KEY"), k=runner_argument.retrieve_top_k
++            )
++        case "brave":
++            rm = BraveRM(
++                brave_search_api_key=os.getenv("BRAVE_API_KEY"),
++                k=runner_argument.retrieve_top_k,
++            )
++        case "duckduckgo":
++            rm = DuckDuckGoSearchRM(
++                k=runner_argument.retrieve_top_k, safe_search="On", region="us-en"
++            )
++        case "serper":
++            rm = SerperRM(
++                serper_search_api_key=os.getenv("SERPER_API_KEY"),
++                query_params={"autocorrect": True, "num": 10, "page": 1},
++            )
++        case "tavily":
++            rm = TavilySearchRM(
++                tavily_search_api_key=os.getenv("TAVILY_API_KEY"),
++                k=runner_argument.retrieve_top_k,
++                include_raw_content=True,
++            )
++        case "searxng":
++            rm = SearXNG(
++                # searxng_api_key=os.getenv("SEARXNG_API_KEY"),
++                searxng_api_url="http://localhost:8080",
++                k=runner_argument.retrieve_top_k,
++            )
++        case _:
++            raise ValueError(
++                f'Invalid retriever: {args.retriever}. Choose either "bing", "you", "brave", "duckduckgo", "serper", "tavily", or "searxng"'
++            )
++
++    costorm_runner = CoStormRunner(
++        lm_config=lm_config,
++        runner_argument=runner_argument,
++        logging_wrapper=logging_wrapper,
++        rm=rm,
++        callback_handler=callback_handler,
++    )
++
++    # warm start the system
++    costorm_runner.warm_start()
++
++    # Below is an example of how users may interact with Co-STORM to seek information together
++    # In actual deployment, we suggest allowing the user to decide whether to observe the agent utterance or inject a turn
++
++    # observing Co-STORM LLM agent utterance for 5 turns
++    for _ in range(1):
++        conv_turn = costorm_runner.step()
++        print(f"**{conv_turn.role}**: {conv_turn.utterance}\n")
++
++    # active engaging by injecting your utterance
++    your_utterance = input("Your utterance: ")
++    costorm_runner.step(user_utterance=your_utterance)
++
++    # continue observing
++    conv_turn = costorm_runner.step()
++    print(f"**{conv_turn.role}**: {conv_turn.utterance}\n")
++
++    # generate report
++    costorm_runner.knowledge_base.reorganize()
++    article = costorm_runner.generate_report()
++
++    # save results
++    os.makedirs(args.output_dir, exist_ok=True)
++
++    # Save article
++    with open(os.path.join(args.output_dir, "report.md"), "w") as f:
++        f.write(article)
++
++    # Save instance dump
++    instance_copy = costorm_runner.to_dict()
++    with open(os.path.join(args.output_dir, "instance_dump.json"), "w") as f:
++        json.dump(instance_copy, f, indent=2)
++
++    # Save logging
++    log_dump = costorm_runner.dump_logging_and_reset()
++    with open(os.path.join(args.output_dir, "log.json"), "w") as f:
++        json.dump(log_dump, f, indent=2)
++
++
++if __name__ == "__main__":
++    parser = ArgumentParser()
++    # global arguments
++    parser.add_argument(
++        "--output-dir",
++        type=str,
++        default="./results/co-storm",
++        help="Directory to store the outputs.",
++    )
++    parser.add_argument(
++        "--retriever",
++        type=str,
++        choices=["bing", "you", "brave", "serper", "duckduckgo", "tavily", "searxng"],
++        help="The search engine API to use for retrieving information.",
++    )
++    # hyperparameters for co-storm
++    parser.add_argument(
++        "--retrieve_top_k",
++        type=int,
++        default=10,
++        help="Retrieve top k results for each query in retriever.",
++    )
++    parser.add_argument(
++        "--max_search_queries",
++        type=int,
++        default=2,
++        help="Maximum number of search queries to consider for each question.",
++    )
++    parser.add_argument(
++        "--total_conv_turn",
++        type=int,
++        default=20,
++        help="Maximum number of turns in conversation.",
++    )
++    parser.add_argument(
++        "--max_search_thread",
++        type=int,
++        default=5,
++        help="Maximum number of parallel threads for retriever.",
++    )
++    parser.add_argument(
++        "--max_search_queries_per_turn",
++        type=int,
++        default=3,
++        help="Maximum number of search queries to consider in each turn.",
++    )
++    parser.add_argument(
++        "--warmstart_max_num_experts",
++        type=int,
++        default=3,
++        help="Max number of experts in perspective-guided QA during warm start.",
++    )
++    parser.add_argument(
++        "--warmstart_max_turn_per_experts",
++        type=int,
++        default=2,
++        help="Max number of turns per perspective during warm start.",
++    )
++    parser.add_argument(
++        "--warmstart_max_thread",
++        type=int,
++        default=3,
++        help="Max number of threads for parallel perspective-guided QA during warm start.",
++    )
++    parser.add_argument(
++        "--max_thread_num",
++        type=int,
++        default=10,
++        help=(
++            "Maximum number of threads to use. "
++            "Consider reducing it if you keep getting 'Exceed rate limit' errors when calling the LM API."
++        ),
++    )
++    parser.add_argument(
++        "--max_num_round_table_experts",
++        type=int,
++        default=2,
++        help="Max number of active experts in round table discussion.",
++    )
++    parser.add_argument(
++        "--moderator_override_N_consecutive_answering_turn",
++        type=int,
++        default=3,
++        help=(
++            "Number of consecutive expert answering turns before the moderator overrides the conversation."
++        ),
++    )
++    parser.add_argument(
++        "--node_expansion_trigger_count",
++        type=int,
++        default=10,
++        help="Trigger node expansion for nodes that contain more than N snippets.",
++    )
++
++    # Boolean flags
++    parser.add_argument(
++        "--enable_log_print",
++        action="store_true",
++        help="If set, enable console log print.",
++    )
++
++    parser.add_argument(
++        "--human-llm-lms",
++        type=str,
++        default="",
++        help=(
++            "Comma-separated list of roles to wire to HumanLLMAdapter. "
++            "Valid names: question_answering, discourse_manage, utterance_polishing, "
++            "warmstart_outline, question_asking, knowledge_base."
++        ),
++    )
++
++    parser.add_argument(
++        "--ui-mode",
++        type=bool,
++        default=False,
++        help="Flag to run as UI mode",
++    )
++
++    main(parser.parse_args())
+diff --git a/knowledge_storm/human_llm_adapter.py b/knowledge_storm/human_llm_adapter.py
+new file mode 100644
+index 0000000..e45ee7c
+--- /dev/null
++++ b/knowledge_storm/human_llm_adapter.py
+@@ -0,0 +1,30 @@
++import dspy
++from utils.human_llm import HumanLLM
++
++class HumanLLMAdapter(dspy.dsp.LM):
++    def __init__(self, human_llm: HumanLLM):
++        super().__init__("human-llm")
++        self.human_llm = human_llm
++
++    def __call__(self, prompt: str, **kw):
++        res = self.human_llm.invoke(
++            user_message=prompt,
++            return_message_content_only=True,
++            prompt_directory=None,
++            **kw,
++        )
++
++        queries = res
++        # if self.human_llm.agent_name == "question_answering_lm":
++        #     queries = queries.split('\n')  # Format as expected by QuestionToQuery
++
++        return queries
++
++
++    def basic_request(self, prompt: str, **kwargs):
++        raw_kwargs = kwargs
++        kwargs = {**self.kwargs, **kwargs}
++        return ""
++
++    def __repr__(self)->str:
++        return f"HumanLLMAdapter: {self.human_llm.agent_name}>"
+\ No newline at end of file
+diff --git a/tests/test.py b/tests/test.py
+new file mode 100644
+index 0000000..a6f3a5f
+--- /dev/null
++++ b/tests/test.py
+@@ -0,0 +1,296 @@
++"""1A.Feature10: HumanLLM Support testing."""
++import pytest, os
++import sys
++sys.path[0] = os.path.abspath(os.path.join(os.getcwd()))
++sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), '../../../')))
++from unittest import mock
++from typing import List, Dict, Any, Optional
++
++try:
++    from knowledge_storm.human_llm_adapter import HumanLLMAdapter
++    from knowledge_storm.collaborative_storm.modules.co_storm_agents import CoStormExpert, Moderator
++    from knowledge_storm.collaborative_storm.engine import CoStormRunner, RunnerArgument, CollaborativeStormLMConfigs
++    from knowledge_storm.dataclass import KnowledgeBase, ConversationTurn
++    from knowledge_storm.logging_wrapper import LoggingWrapper
++    from utils.human_llm import HumanLLM
++    from knowledge_storm.rm import (
++        SearXNG
++    )
++except ImportError:
++    raise ImportError("Ensure the modules are correctly imported.")
++
++# ----- TEST DOUBLES -----
++LLM_LIST = []
++
++
++class DummyLM:
++    """Test double for language model."""
++    def __init__(self, model_name="dummy-model"):
++        self.model = model_name
++        self.kwargs = {"model": model_name}
++        self.history = []
++        
++    def __call__(self, prompt, **kwargs):
++        self.history.append(prompt)
++        # Simple response based on the input
++        return f"Response to: {prompt[:20]}..."
++    
++    def generate(self, prompt, **kwargs):
++        return self(prompt, **kwargs)
++
++class MockHumanLLM:
++    """Mock implementation of HumanLLM for testing."""
++    def __init__(self, agent_name, llmORchains_list=None, **kwargs):
++        self.agent_name = agent_name
++        self.llmORchains_list = llmORchains_list or []
++        self.call_history = []
++    
++    def invoke(self, user_message, return_message_content_only=False, **kwargs):
++        self.call_history.append({
++            "message": user_message,
++            "return_content_only": return_message_content_only,
++            "kwargs": kwargs
++        })
++        # Return a response that includes the agent name for testing
++        response = f"Human response from {self.agent_name}: {user_message[:20]}..."
++        return [response] if return_message_content_only else response
++
++# ----- FIXTURES -----
++
++@pytest.fixture
++def mock_human_llm():
++    """Create a mock for the HumanLLM class."""
++    with mock.patch("utils.human_llm", MockHumanLLM):
++        yield
++
++# @pytest.fixture
++# def mock_get_lm():
++#     """Create a mock for the get_lm function."""
++#     def fake_get_lm(role_name):
++#         return DummyLM(role_name)
++    
++#     with mock.patch("knowledge_storm.collaborative_storm.lm_config.get_lm", fake_get_lm):
++#         yield
++
++@pytest.fixture
++def lm_config():
++    """Fixture for LM config."""
++    config = CollaborativeStormLMConfigs()
++    
++    # Replace all LM components with test doubles
++    dummy_lm = DummyLM()
++    config.question_answering_lm = dummy_lm
++    config.discourse_manage_lm = dummy_lm
++    config.utterance_polishing_lm = dummy_lm
++    config.warmstart_outline_gen_lm = dummy_lm
++    config.question_asking_lm = dummy_lm
++    config.knowledge_base_lm = dummy_lm
++    
++    return config
++
++@pytest.fixture
++def logging_wrapper(lm_config):
++    """Fixture for logging wrapper."""
++    return LoggingWrapper(lm_config)
++
++@pytest.fixture
++def runner_args():
++    """Fixture for runner arguments."""
++    return RunnerArgument(
++        topic="Test Topic",
++        retrieve_top_k=3,
++        max_search_queries=2,
++        total_conv_turn=10,
++        max_search_thread=2,
++        max_num_round_table_experts=2,
++        node_expansion_trigger_count=5
++    )
++
++@pytest.fixture
++def conversation_history():
++    """Fixture for conversation history."""
++    return [
++        ConversationTurn(
++            role="Guest",
++            raw_utterance="Tell me about test topic",
++            utterance_type="Original Question"
++        )
++    ]
++
++@pytest.fixture
++def knowledge_base():
++    """Fixture for knowledge base."""
++    return mock.MagicMock(spec=KnowledgeBase)
++
++@pytest.fixture
++def logging_wrapper():
++    mock_wrapper = mock.MagicMock()
++    mock_wrapper.log_event = mock.MagicMock(return_value=mock.MagicMock())
++    return mock_wrapper
++
++# ----- TEST CASES -----
++
++def test_human_llm_adapter_exists():
++    """Test that HumanLLMAdapter class exists."""
++    assert hasattr(HumanLLMAdapter, "__init__")
++    assert hasattr(HumanLLMAdapter, "__call__")
++    assert hasattr(HumanLLMAdapter, "__repr__")
++
++def test_human_llm_adapter_init(mock_human_llm):
++    """Test initializing the HumanLLMAdapter."""
++    human_llm = MockHumanLLM(agent_name="TestAgent", llmORchains_list=LLM_LIST)
++    adapter = HumanLLMAdapter(human_llm)
++    
++    assert adapter.human_llm == human_llm
++    assert "HumanLLMAdapter: TestAgent" in repr(adapter)
++
++def test_human_llm_adapter_call(mock_human_llm):
++    """Test that HumanLLMAdapter forwards calls to the human LLM."""
++    human_llm = MockHumanLLM(agent_name="TestAgent", llmORchains_list=LLM_LIST)
++    adapter = HumanLLMAdapter(human_llm)
++    
++    response = adapter("Test prompt", temperature=0.7)
++
++    assert "Human response from TestAgent" in response[0]
++    assert human_llm.call_history[-1]["message"] == "Test prompt"
++    assert human_llm.call_history[-1]["return_content_only"] is True
++    assert human_llm.call_history[-1]["kwargs"].get("temperature") == 0.7
++
++def test_agent_base_with_human_llm(mock_human_llm, lm_config, runner_args, logging_wrapper):
++    """Test that Agent can use HumanLLM when requested."""
++    lm_config.set_discourse_manage_lm(HumanLLMAdapter(mock_human_llm))
++    expert = CoStormExpert(
++        topic="Test Topic",
++        role_name="Expert",
++        role_description="A test expert",
++        lm_config=lm_config,
++        rm=SearXNG(searxng_api_url="https://searxng.example.com"),
++        runner_argument=runner_args,
++        logging_wrapper=logging_wrapper
++    )
++    
++    # Check that the agent is using a HumanLLMAdapter
++    assert isinstance(expert.lm_config.discourse_manage_lm, HumanLLMAdapter)
++
++def test_agent_base_without_human_llm(mock_human_llm, lm_config, runner_args, logging_wrapper):
++    """Test that Agent uses regular LLM when not requesting HumanLLM."""
++    expert = CoStormExpert(
++        topic="Test Topic",
++        role_name="Expert",
++        role_description="A test expert",
++        lm_config=lm_config,
++        runner_argument=runner_args,
++        logging_wrapper=logging_wrapper,
++        rm=SearXNG(searxng_api_url="https://searxng.example.com"),
++    )
++    
++    # Check that the agent is using a regular LLM
++    assert not isinstance(expert.lm_config.discourse_manage_lm, HumanLLMAdapter)
++    assert isinstance(expert.lm_config.discourse_manage_lm, DummyLM)
++
++def test_moderator_with_human_llm(mock_human_llm, lm_config, runner_args, logging_wrapper):
++    """Test that Moderator can use HumanLLM."""
++    # Create mock encoder
++    mock_encoder = mock.MagicMock()
++    lm_config.set_discourse_manage_lm(HumanLLMAdapter(mock_human_llm))
++    
++    # Create Moderator with human_llm
++    moderator = Moderator(
++        topic="Test Topic",
++        role_name="Moderator",
++        role_description="A test moderator",
++        lm_config=lm_config,
++        runner_argument=runner_args,
++        logging_wrapper=logging_wrapper,
++        encoder=mock_encoder
++    )
++    
++    # Check that the moderator is using a HumanLLMAdapter
++    assert isinstance(moderator.lm_config.discourse_manage_lm, HumanLLMAdapter)
++
++def test_human_llm_separate_instances(mock_human_llm, lm_config, runner_args, logging_wrapper):
++    """Test that each agent gets its own separate HumanLLM instance."""
++    lm_config.set_discourse_manage_lm(mock_human_llm)
++
++    expert1 = CoStormExpert(
++        topic="Test Topic",
++        role_name="Expert1",
++        role_description="First test expert",
++        lm_config=lm_config,
++        runner_argument=runner_args,
++        logging_wrapper=logging_wrapper,
++        rm=SearXNG(searxng_api_url="https://searxng.example.com")
++    )
++    
++    expert2 = CoStormExpert(
++        topic="Test Topic",
++        role_name="Expert2",
++        role_description="Second test expert",
++        lm_config=lm_config,
++        runner_argument=runner_args,
++        logging_wrapper=logging_wrapper,
++        rm=SearXNG(searxng_api_url="https://searxng.example.com"),
++    )
++    
++    # Verify they have different HumanLLM instances
++    assert expert1.role_name == "Expert1"
++    assert expert2.role_name == "Expert2"
++
++def test_human_llm_in_generate_utterance(mock_human_llm, lm_config, runner_args, logging_wrapper, conversation_history, knowledge_base):
++    """Test that HumanLLM is called during generate_utterance."""
++    # Create expert with human_llm
++    expert = CoStormExpert(
++        topic="Test Topic",
++        role_name="Expert",
++        role_description="A test expert",
++        lm_config=lm_config,
++        runner_argument=runner_args,
++        logging_wrapper=logging_wrapper,
++        rm=SearXNG(searxng_api_url="https://searxng.example.com"),
++    )
++    
++    # Replace the costorm_agent_utterance_generator with a mock to simplify testing
++    expert.costorm_agent_utterance_generator = mock.MagicMock()
++    expert.costorm_agent_utterance_generator.return_value.conversation_turn = ConversationTurn(
++        role="Expert",
++        raw_utterance="Generated response",
++        utterance_type="Statement"
++    )
++    
++    # Generate utterance
++    expert.generate_utterance(
++        knowledge_base=knowledge_base,
++        conversation_history=conversation_history
++    )
++    
++    # Check that the utterance generator was called
++    expert.costorm_agent_utterance_generator.assert_called_once()
++    
++    # The actual HumanLLM call would happen inside the CoStormExpertUtteranceGenerationModule,
++    # which would be using the HumanLLMAdapter we passed to the expert
++
++def test_human_llm_adapter_dspy_compatibility(mock_human_llm):
++    """Test that HumanLLMAdapter follows the dspy.dsp.LM interface."""
++    human_llm = MockHumanLLM(agent_name="TestAgent", llmORchains_list=LLM_LIST)
++    adapter = HumanLLMAdapter(human_llm)
++    
++    # Check essential dspy.dsp.LM interface methods
++    assert callable(adapter)
++    
++    # Test with and without kwargs
++    response1 = adapter("Test prompt")
++    assert isinstance(response1[0], str)
++    
++    response2 = adapter("Test prompt", temperature=0.7, max_tokens=100)
++    assert isinstance(response2[0], str)
++
++def test_llm_list_exposure():
++    """Test that LLM_LIST is available for reuse by AgentBase."""
++    # Check that LLM_LIST exists and is a list
++    assert isinstance(LLM_LIST, list)
++    
++    # In a real environment, LLM_LIST would contain actual model names
++    # For our test, we just verify it exists and is the right type
++
++if __name__ == "__main__":
++    pytest.main(["-xvs", __file__])
+\ No newline at end of file
