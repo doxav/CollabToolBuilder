@@ -6,8 +6,9 @@ from utils.human_llm_config import HumanLLMConfig
 from config import *
 
 # Assume llmORchains_list is already defined in your project configuration.
-from config import MODELS_CONFIG_LIST as llmORchains_list
+from config import MODELS_CONFIG_LIST as llmORchains_list, embedding_function
 config = HumanLLMConfig()
+config.common_vectordb_config.embedding_function = embedding_function
 config.initialize()  # Initialize configuration if not already done
 llmORchains_list = config.get_llmORchains_list()
 config.common_vectordb_config.embedding_function = embedding_function

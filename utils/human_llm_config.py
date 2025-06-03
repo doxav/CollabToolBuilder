@@ -1,6 +1,7 @@
 import logging, json, uuid, os, subprocess, time, pickle, requests, re
 from datetime import datetime
-from config import MODELS_CONFIG_LIST, vector_store_type
+# from config import MODELS_CONFIG_LIST, vector_store_type
+from config import MODELS_CONFIG_LIST
 from utils.websocket_server import WebsocketServer, WebSocketServerConfig
 from utils.llm_utils import (
     create_Nmajority_chain,
@@ -61,7 +62,6 @@ class HumanLLMConfig:
         self.configure_vector_store()
         if self.use_websocket:
             self.init_ws_server()
-        self.common_vectordb_config.db_type = vector_store_type
         self.common_vectordb = UnifiedVectorDB(self.common_vectordb_config, check_db=True)
         
     def init_ws_server(self):
@@ -159,9 +159,6 @@ class HumanLLMConfig:
         """Stores agent-specific data with additional metadata.
         Elasticsearch generates an 'id' automatically and includes it in the metadata.
         """
-        if isinstance(data_value, list) and len(data_value) > 0:
-            if isinstance(data_value[0], AIMessage):
-                data_value = data_value[0].content
         if isinstance(data_value, dict):
             serialized_data = json.dumps(data_value)
         else:
@@ -265,6 +262,7 @@ class HumanLLMConfig:
                 temp = item.page_content
             if new_storage:
                 ret.append(temp)
+                # ret.append({data_key: temp} if (isinstance(temp, dict) and data_key in temp and len(temp) == 1) else temp) # Chroma and ES do not store json the same way, so we need to adapt
             else:
                 val = None
                 if isinstance(temp, dict):                

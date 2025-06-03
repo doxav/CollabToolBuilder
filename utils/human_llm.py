@@ -32,6 +32,7 @@ from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.system import SystemMessage
 from langchain_core.messages.function import FunctionMessage
 from langchain_core.runnables import RunnableSequence, ConfigurableField
+import regex as regex 
 
 class HumanLLM:
     def __init__(
@@ -1314,6 +1315,7 @@ class HumanLLM:
         outputs_count=None,
         task_name=None
     ):
+        action=""
         if not self.outputs:
             self.outputs = {}
             for i in range(outputs_count):
@@ -1392,6 +1394,9 @@ class HumanLLM:
                     f"\n\033[32mAFTER\033[0m inference @ {self.agent_name}-> Choose an action (or hit Enter for inference) :",
                     self.agent_name, optional=False, column_id=output_id-1, column_max=outputs_count).upper()
 
+            if action.endswith("NOT FOUND"):
+                action="NOT FOUND"
+                break
             # if modified async, it is important in case of edition ("A") to keep the modified content
             if self.temp_inference_result_content:
                 inference_result_msg.content = self.temp_inference_result_content
@@ -1438,22 +1443,22 @@ class HumanLLM:
             # proceed = smart_input("Continue 'y' (or 'n' to go back to menu) ? ", self.agent_name, column_id=output_id, column_max=outputs_count).lower()
             # if proceed in ["y", ""]:
             #     break
+        if action!="NOT FOUND":
+            if self.skip_rounds > 0:
+                check_results = self.run_manage_inference_checks(output_id - 1, inference_result_msg.content)
+                check_display = ""
+                # Display inference check results
+                for check_name, result in check_results.items():
+                    check_display += f"{nl}CHECK {check_name} result: " + str(result).replace("\\n", "\n")
 
-        if self.skip_rounds > 0:
-            check_results = self.run_manage_inference_checks(output_id - 1, inference_result_msg.content)
-            check_display = ""
-            # Display inference check results
-            for check_name, result in check_results.items():
-                check_display += f"{nl}CHECK {check_name} result: " + str(result).replace("\\n", "\n")
-
-            smart_print(
-                f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[2].function} LLM ANSWER content****\n{inference_result_msg.content}\n{check_display}\n*****************\033[0m",
-                self.agent_name, "LLM ANSWER content", column_id=output_id)
-            self.skip_rounds -= 1
-        else:
-            smart_print(
-                f"Time spent in each option and occurrences: {self.after_inference_option_times} - {self.after_inference_option_counts}",
-                self.agent_name, optional=True, column_max=outputs_count)
+                smart_print(
+                    f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[2].function} LLM ANSWER content****\n{inference_result_msg.content}\n{check_display}\n*****************\033[0m",
+                    self.agent_name, "LLM ANSWER content", column_id=output_id)
+                self.skip_rounds -= 1
+            else:
+                smart_print(
+                    f"Time spent in each option and occurrences: {self.after_inference_option_times} - {self.after_inference_option_counts}",
+                    self.agent_name, optional=True, column_max=outputs_count)
 
         self.mode = None
         return inference_result_msg, comments, score
@@ -2237,7 +2242,7 @@ class HumanLLM:
                 SystemMessage(content=self.system_prompt),
                 HumanMessage(content=user_message)
             ]
-        elif original_input_messages is None:
+        elif original_input_messages is None or len(original_input_messages) == 0:
             # Standard usage if no special automation
             self.logger.info(f"****user_message {self.agent_name} : {user_message}****")
             original_input_messages = [
@@ -2293,7 +2298,7 @@ class HumanLLM:
                     smart_print(
                         llm_outputs[0].content if llm_outputs else "No LLM output",
                         self.agent_name,
-                        "NEW inference result recieved",
+                        "NEW inference result received",
                         column_id=0,
                         column_max=1
                     )
@@ -2385,9 +2390,9 @@ class HumanLLM:
                                     llm_response = future.result(timeout=timeout_seconds)
                                     outputs.append(llm_response)
                                     if self.config.use_websocket:
-                                        smart_print( llm_response.content, self.agent_name,  "NEW inference result recieved", column_id=idx, column_max=self.num_parallel_inferences)
+                                        smart_print( llm_response.content, self.agent_name,  "NEW inference result received", column_id=idx, column_max=self.num_parallel_inferences)
                                     else:
-                                        smart_print( f'\033[0m**** New inference result recieved and added to outputs as #{len(outputs)}\033[0m:\n{llm_response.content}\n\033[9mEND OF #{len(outputs)}****\033[0m', self.agent_name, "NEW inference result recieved", column_id=idx, column_max=self.num_parallel_inferences )
+                                        smart_print( f'\033[0m**** New inference result received and added to outputs as #{len(outputs)}\033[0m:\n{llm_response.content}\n\033[9mEND OF #{len(outputs)}****\033[0m', self.agent_name, "NEW inference result received", column_id=idx, column_max=self.num_parallel_inferences )
                                 except concurrent.futures.TimeoutError:
                                     smart_print( 'A task ran longer than the allotted timeout and was cancelled.', self.agent_name, "Inference result TIMEOUT" )
                                 except Exception as exc:
@@ -2396,7 +2401,7 @@ class HumanLLM:
 
                         # Check how many we got
                         if len(outputs) == 0:
-                            smart_print( '**** No inference result recieved, set output to None', self.agent_name, "NO inference recieved")
+                            smart_print( '**** No inference result received, set output to None', self.agent_name, "NO inference received")
                             llm_outputs = None
                         elif len(outputs) == 1:
                             llm_outputs = outputs
@@ -2599,8 +2604,13 @@ class HumanLLM:
         ])
 
         # Clean up the response content
-        response.content = re.sub(r'[^\x20-\x7E\t\n\r]', '', response.content)
-        improvement_prompt = re.sub(r'[^\x20-\x7E\t\n\r]', '', improvement_prompt)
+        # response.content = re.sub(r'[^\x20-\x7E\t\n\r]', '', response.content)
+        # improvement_prompt = re.sub(r'[^\x20-\x7E\t\n\r]', '', improvement_prompt)
+
+        # Allow printable Unicode characters, remove only control characters
+        response.content = regex.sub(r'[^\P{C}\t\n\r]', '', response.content)
+        improvement_prompt = regex.sub(r'[^\P{C}\t\n\r]', '', improvement_prompt)
+     
         response.content = re.sub(r'\\u[0-9A-Fa-f]{4}', '', response.content)
         improvement_prompt = re.sub(r'\\u[0-9A-Fa-f]{4}', '', improvement_prompt)
 
@@ -2640,7 +2650,8 @@ class HumanLLM:
 
         # Clean up the annotation response
         annotations = annotation_response.content.strip()
-        annotations = re.sub(r'[^\x20-\x7E\t\n\r]', '', annotations)
+        # annotations = re.sub(r'[^\x20-\x7E\t\n\r]', '', annotations)
+        annotations = regex.sub(r'[^\P{C}\t\n\r]', '', annotations)
         annotations = re.sub(r'\\u[0-9A-Fa-f]{4}', '', annotations)
 
         # Save the annotations using add_agent_data
@@ -3021,7 +3032,7 @@ class HumanLLM:
                                 HumanMessage(content=error_with_info_to_help_prompt)
                             ])
                             smart_print(
-                                "ANALYSIS RECIEVED, GENERATING A FIX",
+                                "ANALYSIS RECEIVED, GENERATING A FIX",
                                 custom_agent if custom_agent else self.agent_name,
                                 "code_task_and_run_test SystemMessage",
                                 optional=False,

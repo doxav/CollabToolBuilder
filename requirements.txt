@@ -93,3 +93,4 @@ langgraph~=0.3
 langgraph-checkpoint
 langchain-chroma
 langsmith
+regex==2024.11.6

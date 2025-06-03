@@ -1,0 +1,376 @@
+body {
+    display: flex;
+    font-family: Arial, sans-serif;
+    background-color: #f6f6f6; /* Light Blue */
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.applied-annotation {
+    color: black;
+}
+
+#main-container {
+    display: flex;
+    width: 100%;
+    height: 100%;
+}
+
+#history-sidebar, #settings-sidebar {
+    width: 20%;
+    padding: 20px;
+    border-color: #f6f6f6; /* Light Blue */
+    display: none;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+#history-sidebar {
+    border-right: 1px solid #f6f6f6;
+}
+
+#settings-sidebar {
+    border-left: 1px solid #f6f6f6;
+}
+
+#main-content {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    box-sizing: border-box;
+    background-color: #FFFFFF; /* White */
+    margin-top: 0;
+    padding-top: 0;
+}
+
+.accordion {
+    margin-bottom: 20px;
+    background-color: #67a1d5; /* Primary Blue */
+    color: white;
+}
+
+.menu-option {
+    display: inline-block;
+    margin: 5px;
+    padding: 5px 10px;
+    border: 1px solid #1976D2; /* Darker Blue */
+    border-radius: 15px;
+    cursor: pointer;
+    color: white;
+    background-color: #67a1d5; /* Primary Blue */
+    z-index: 99999;
+}
+
+.sidebar-toggle, .default_button {
+    cursor: pointer;
+    padding: 5px 10px;
+    background-color: #67a1d5; /* Primary Blue */
+    border: 1px solid #1976D2; /* Darker Blue */
+    margin-bottom: 10px;
+    color: white;
+}
+
+/* New CSS for the toggle-buttons container */
+#main-content .toggle-buttons {
+    display: flex;
+}
+
+/* Ensure the buttons inside toggle-buttons take equal space */
+#main-content .toggle-buttons .sidebar-toggle {
+    flex: 1;
+    text-align: center; /* Center the text inside the buttons */
+    margin-bottom: 0; /* Remove bottom margin since buttons are side by side */
+}
+
+/* Optional: Add a small margin between the buttons */
+#main-content .toggle-buttons .sidebar-toggle:not(:last-child) {
+    margin-right: 10px;
+}
+
+.expand-button {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 10;
+    padding: 10px;
+    background-color: #BBDEFB; /* Lighter Blue */
+    border: 1px solid #90CAF9; /* Light Blue */
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.solution-column {
+    flex: 1 1 calc(100% / 1 - 20px); /* Par défaut, 4 colonnes */
+    box-sizing: border-box;
+    border: 1px solid #90CAF9; /* Light Blue */
+    padding: 10px;
+    margin-bottom: 10px;
+    position: relative;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+    background-color: #E3F2FD; /* Light Blue */
+}
+
+.pagination button {
+    margin: 0 5px;
+    padding: 5px 10px;
+    background-color: #67a1d5; /* Darker Blue */
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+
+.annotation-menu {
+    display: none;
+    position: absolute; /* Ensure absolute positioning */
+    background: #67a1d5; /* Primary Blue */
+    border: 1px solid #1976D2; /* Darker Blue */
+    padding: 10px;
+    z-index: 10000; /* Ensure it appears above other elements */
+    color: white;
+    border-radius: 5px;
+}
+
+.ui-autocomplete {
+    z-index: 1000000 !important;
+}
+
+pre {
+    background-color: #F5F5F5; /* Light Grey */
+    padding: 10px;
+    border-radius: 5px;
+    overflow-x: auto;
+    max-width: 100%;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    display: block;
+}
+
+.button {
+    background-color: #67a1d5; /* Primary Blue */
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+.solution-columns {
+    display: flex; /* Ensure flexbox is used */
+    flex-wrap: nowrap; /* Allow wrapping for responsiveness */
+    gap: 20px; /* Space between the columns */
+    width: 100%; /* Full width */
+    box-sizing: border-box; /* Make sure padding and border are considered in width */
+}
+
+.expand-button i {
+    transition: transform 0.3s ease;
+}
+
+.solution-column.expanded .expand-button i {
+    transform: rotate(180deg);
+}
+
+.solution-column.expanded {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    height: 90%;
+    max-width: 1200px;
+    max-height: 800px;
+    z-index: 90;
+    background-color: white;
+    overflow-y: auto;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    padding: 20px;
+    border-radius: 15px;
+    backface-visibility: hidden;
+    will-change: transform;
+}
+
+.solution-column.expanded .solution-content {
+    height: 100%;
+    overflow-y: auto;
+    backface-visibility: hidden;
+    will-change: transform;
+}
+
+.foldable-header {
+    display: flex; /* Align items in a row */
+    align-items: center; /* Vertically center-align the items */
+    gap: 8px; /* Add spacing between the arrow and the text */
+}
+
+.arrow {
+    display: flex; /* Ensure proper alignment for the icon */
+    align-items: center;
+}
+
+
+/* Add an overlay when expanded */
+.overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    z-index: 90;
+    backface-visibility: hidden;
+    will-change: transform;
+}
+
+.solution-column.expanded + .overlay {
+    display: block;
+    backface-visibility: hidden;
+    will-change: transform;
+}
+
+
+.pagination button {
+    margin: 0 5px;
+    padding: 5px 10px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+.filter-bar { margin-bottom: 20px; }
+.column { display: inline-block; vertical-align: top; margin-right: 20px; width: 30%; }
+#user-input { width: 100%; padding: 10px; margin-top: 10px; box-sizing: border-box; }
+#send-button { margin-top: 10px; }
+.close-btn { position: absolute; top: -4px; right: -4px; cursor: pointer; background-color: transparent; border: none; color: white; font-size: 16px; }
+.message {
+    max-width: 100%;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+
+code {
+    font-family: 'Courier New', Courier, monospace;
+    white-space: pre-wrap; /* Preserve line breaks and wrap text */
+    word-wrap: break-word;
+    overflow-x: auto;
+    display: block;
+}
+.column-container { display: flex; flex-wrap: wrap;}
+.auto-open-checkbox {
+margin-top: 10px;
+color: white;
+}
+.collapsible-message .collapsible-header {
+    cursor: pointer;
+    user-select: none;
+}
+.collapsible-message .collapsible-content {
+    display: none;
+}
+.collapsible-message .arrow {
+    display: inline-block;
+    transform: rotate(0deg);
+    transition: transform 0.2s;
+}
+.collapsible-message.open .arrow {
+    transform: rotate(180deg);
+}
+.collapsible-message.open .collapsible-content {
+    display: block;
+}
+
+.input-area {
+    display: none; /* Hide input area by default - replaced display: flex; */
+    align-items: center;
+}
+
+.input-area input[type="text"] {
+    flex: 1;
+    margin-right: 10px;
+}
+
+.input-area .auto-open-checkbox {
+    margin-left: 10px;
+}
+
+.buffering-circle {
+            width: 15px;
+            height: 15px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: none; /* Hide by default */
+        }
+
+.monaco-editor .margin-view-overlays .folding::after {
+z-index: -1;
+}
+
+.user-message{
+    background-color: #67a1d5;
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    }
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@media (min-width: 1200px) {
+    .solution-column {
+        flex: 1 1 calc(25% - 20px); /* 4 colonnes */
+    }
+}
+
+@media (max-width: 1199px) and (min-width: 900px) {
+    .solution-column {
+        flex: 1 1 calc(33.33% - 20px); /* 3 colonnes */
+    }
+}
+
+@media (max-width: 899px) and (min-width: 600px) {
+    .solution-column {
+        flex: 1 1 calc(50% - 20px); /* 2 colonnes */
+    }
+}
+
+@media (max-width: 599px) {
+    .solution-column {
+        flex: 1 1 calc(100% - 20px); /* 1 colonne */
+    }
+}
+
+/* Floating div style */
+#floating-div {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    max-width: 40%; /* Limit the width to 40% of the page */
+    background-color: rgba(255, 255, 255, 0.8); /* White with 80% opacity */
+    border: 1px solid #90CAF9;
+    padding: 10px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    border-radius: 5px; /* Optional: Add rounded corners */
+    overflow-wrap: break-word; /* Ensure text wraps within the div */
+}
