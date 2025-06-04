@@ -35,38 +35,39 @@ def is_elasticsearch_available(es_url: str):
     except Exception:
         return False
 
-@pytest.fixture(params=[CHROMA_DATABASE, ELASTIC_DATABASE])
+@pytest.fixture(params=[CHROMA_DATABASE, ELASTIC_DATABASE]) # [CHROMA_DATABASE, ELASTIC_DATABASE]
+
 def backend(request, tmp_path):
-    """
-    Spins up a real UnifiedVectorDB for each of Chroma/Elasticsearch. 
-    Passing `reset_indices=True` ensures a clean collection.
-    """
     db_type = request.param
+
+    # Build a config that forces the chosen backend and uses our non‐zero dummy.
     config = UnifiedVectorDBConfig(
         embedding_function=DummyEmbeddingNonZero(dim=16),
         collection_name=f"test_collection_{db_type}",
-        persist_directory=str(tmp_path / f"vectordb_data_{db_type}"),
-        reset_indices=True
+        persist_directory=str(tmp_path / f"chroma_data_{db_type}"),
+        reset_indices=True,
     )
     config.db_type = db_type
 
-    # This actually instantiates a Chroma or ES store under the hood
     uvdb = UnifiedVectorDB(config=config, check_db=True)
     yield uvdb
 
-    # Teardown: clear everything after each test
+    # Teardown: attempt to delete everything. If any error arises, ignore.
     try:
         if uvdb.config.db_type == CHROMA_DATABASE:
+            # For Chroma, gather all IDs and delete them.
             all_ids = [doc.id for doc in uvdb.db._collection.get()]
             if all_ids:
                 uvdb.delete(ids=all_ids)
-        else:  # ELASTIC_DATABASE
+        else:
+            # For ES, call clear() if available
             try:
                 uvdb.clear()
             except Exception:
                 pass
     except Exception:
         pass
+
 
 @pytest.fixture(autouse=True)
 def reset_singleton():
@@ -110,7 +111,7 @@ def test_log_agent_data_persists_document_and_metadata(backend: UnifiedVectorDB)
     time.sleep(0.5)
 
     # Now query the vector DB for everything matching our metadata:
-    results = backend.query(
+    results = backend._query(
         query_text="*",
         metadata_filter={
             "agent_name": "TestAgent",
@@ -149,7 +150,7 @@ def reset_human_llmconfig_singleton():
 
 def test_get_agent_data_returns_json_documents(backend: UnifiedVectorDB):
     """
-    1. Use backend.add_texts(...) to insert 3 JSON docs (under "agentX"/"k" with user_id="u1").  
+    1. Use backend._add_texts(...) to insert 3 JSON docs (under "agentX"/"k" with user_id="u1").  
     2. Call get_agent_data(agent_name="agentX", data_key="k", user_id="u1", k=10, start_index=1, new_storage=True).  
     3. We expect only the 2nd & 3rd documents (due to start_index=1).  
     4. Confirm that the returned list of dicts matches those JSON payloads.  
@@ -173,7 +174,7 @@ def test_get_agent_data_returns_json_documents(backend: UnifiedVectorDB):
     ids = [f"doc_{i}" for i in range(3)]
 
     # Bulk‐add into the real vector DB
-    backend.add_texts(texts=texts, ids=ids, metadatas=metadatas)
+    backend._add_texts(texts=texts, ids=ids, metadatas=metadatas)
     time.sleep(0.5)
 
     # Now call get_agent_data with start_index=1, new_storage=True
@@ -220,7 +221,7 @@ def test_get_agent_data_extracts_single_value_when_new_storage_false(backend: Un
     texts = [json.dumps(d) for d in docs_to_insert]
     ids = ["one", "two"]
 
-    backend.add_texts(texts=texts, ids=ids, metadatas=metadatas)
+    backend._add_texts(texts=texts, ids=ids, metadatas=metadatas)
     time.sleep(0.5)
 
     parsed, raw = hv.get_agent_data(

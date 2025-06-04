@@ -226,8 +226,8 @@ class TestCollabGPTCreator(unittest.TestCase):
         )
 
         # Check if add_texts was called with the correct arguments
-        self.assertTrue(mock_vectordb_instance.add_texts.called)
-        call_args = mock_vectordb_instance.add_texts.call_args
+        self.assertTrue(mock_vectordb_instance._add_texts.called)
+        call_args = mock_vectordb_instance._add_texts.call_args
         self.assertEqual(len(call_args), 2)  # Two arguments: texts and metadatas
         texts = call_args[1]['texts']  # call_args is a tuple, the first element contains the arguments
         metadatas = call_args[1]['metadatas']

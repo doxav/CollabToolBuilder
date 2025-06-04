@@ -28,7 +28,7 @@ def test_log_agent_data_calls_add_texts_correctly(patch_unifiedvectordb_construc
     """
     - Ensure that log_agent_data serializes data_value → JSON string
     - Constructs metadata tags (including the provided metadata dict, plus agent_name & data_key)
-    - Calls common_vectordb.add_texts(texts=[serialized_data], metadatas=[tags]).
+    - Calls common_vectordb._add_texts(texts=[serialized_data], metadatas=[tags]).
     """
     hv = HumanLLMConfig()
     # Assign a dummy logger to avoid AttributeError
@@ -53,8 +53,8 @@ def test_log_agent_data_calls_add_texts_correctly(patch_unifiedvectordb_construc
     )
 
     # Verify add_texts was called exactly once
-    assert patch_unifiedvectordb_constructor.add_texts.call_count == 1
-    call_args = patch_unifiedvectordb_constructor.add_texts.call_args.kwargs
+    assert patch_unifiedvectordb_constructor._add_texts.call_count == 1
+    call_args = patch_unifiedvectordb_constructor._add_texts.call_args.kwargs
 
     # 'texts' should be a list of one JSON‐serialized string {"foo":"bar"}
     texts_arg = call_args["texts"]
@@ -85,7 +85,7 @@ def test_log_agent_data_calls_add_texts_correctly(patch_unifiedvectordb_construc
 def test_get_agent_data_pagination_and_parsing(patch_unifiedvectordb_constructor):
     """
     - get_agent_data builds metadata_filter from (agent_name, data_key, user_id)
-    - Calls common_vectordb.query(query_text=..., metadata_filter=..., k=<passed k>, sort_order=...)
+    - Calls common_vectordb._query(query_text=..., metadata_filter=..., k=<passed k>, sort_order=...)
     - Paginates by start_index/end_index after retrieving results
     - JSON-parses page_content when new_storage=True
     """
@@ -97,7 +97,7 @@ def test_get_agent_data_pagination_and_parsing(patch_unifiedvectordb_constructor
     fake_doc2 = MagicMock(page_content='{"k":"v2"}', metadata={"m": "y"})
 
     # Make query return [fake_doc1, fake_doc2]
-    patch_unifiedvectordb_constructor.query.return_value = [fake_doc1, fake_doc2]
+    patch_unifiedvectordb_constructor._query.return_value = [fake_doc1, fake_doc2]
 
     # Call get_agent_data with start_index=1; new_storage=True
     parsed, raw = hv.get_agent_data(
@@ -112,7 +112,7 @@ def test_get_agent_data_pagination_and_parsing(patch_unifiedvectordb_constructor
     )
 
     # It should have passed k=10 (unchanged) to query, not adjusted to 2
-    patch_unifiedvectordb_constructor.query.assert_called_once_with(
+    patch_unifiedvectordb_constructor._query.assert_called_once_with(
         query_text="foo",
         metadata_filter={"agent_name": "Agent1", "data_key": "k", "user_id": "user42"},
         sort_order=None,
@@ -125,7 +125,7 @@ def test_get_agent_data_pagination_and_parsing(patch_unifiedvectordb_constructor
     assert raw == [fake_doc1, fake_doc2]
 
     # Now test new_storage=False branch: it should extract only the "k" field
-    patch_unifiedvectordb_constructor.query.return_value = [fake_doc1]
+    patch_unifiedvectordb_constructor._query.return_value = [fake_doc1]
     parsed2, raw2 = hv.get_agent_data(
         agent_name="AgentX",
         data_key="k",
@@ -143,17 +143,17 @@ def test_get_agent_data_pagination_and_parsing(patch_unifiedvectordb_constructor
 def test_retrieve_logs_calls_query_with_correct_filter(patch_unifiedvectordb_constructor):
     """
     retrieve_logs(agent_name, function_name, max_entries) must:
-    - Call common_vectordb.query(query_text="*", metadata_filter={"function_name":..., "agent_name":...}, k=max_entries, sort_order="desc")
+    - Call common_vectordb._query(query_text="*", metadata_filter={"function_name":..., "agent_name":...}, k=max_entries, sort_order="desc")
     - Return whatever query(...) returned
     """
     hv = HumanLLMConfig()
     hv.common_vectordb = patch_unifiedvectordb_constructor
 
     fake_return = ["docA", "docB"]
-    patch_unifiedvectordb_constructor.query.return_value = fake_return
+    patch_unifiedvectordb_constructor._query.return_value = fake_return
 
     result = hv.retrieve_logs(agent_name="A1", function_name="fn1", max_entries=5)
-    patch_unifiedvectordb_constructor.query.assert_called_once_with(
+    patch_unifiedvectordb_constructor._query.assert_called_once_with(
         query_text="*",
         metadata_filter={"function_name": "fn1", "agent_name": "A1"},
         k=5,
@@ -175,8 +175,8 @@ def test_get_tasks_populates_task_history_and_returns_content(
     For both get_learnt_tasks and get_failed_tasks:
     - Must set hv.common_vectordb_config.common_vectordb_embedding_function before calling
     - initialize_class_db() sets hv.db_learnt_tasks / hv.db_failed_tasks to our MagicMock
-    - If similarity_search=False → call .query(...)
-    - If similarity_search=True  → call .similarity_search_with_score(...)
+    - If similarity_search=False → call ._query(...)
+    - If similarity_search=True  → call ._similarity_search_with_score(...)
     - Populate hv.task_history with each result.page_content
     - Return a set of page_content strings
     """
@@ -190,7 +190,7 @@ def test_get_tasks_populates_task_history_and_returns_content(
     fake2 = MagicMock(page_content="task2", metadata={})
 
     # 4a. similarity_search=False branch
-    patch_unifiedvectordb_constructor.query.return_value = [fake1, fake2]
+    patch_unifiedvectordb_constructor._query.return_value = [fake1, fake2]
 
     # Clear any existing history
     hv.task_history.clear_completed_tasks()
@@ -204,8 +204,8 @@ def test_get_tasks_populates_task_history_and_returns_content(
         sort_order="asc",
         similarity_search=False
     )
-    # As similarity_search=False, .query(...) must have been called
-    patch_unifiedvectordb_constructor.query.assert_called_with(
+    # As similarity_search=False, ._query(...) must have been called
+    patch_unifiedvectordb_constructor._query.assert_called_with(
         query_text="zzz",
         k=2,
         metadata_filter=None,
@@ -219,7 +219,7 @@ def test_get_tasks_populates_task_history_and_returns_content(
     assert history_list == ["task1", "task2"]
 
     # 4b. similarity_search=True branch
-    patch_unifiedvectordb_constructor.similarity_search_with_score.return_value = [fake1]
+    patch_unifiedvectordb_constructor._similarity_search_with_score.return_value = [fake1]
     ret_set2 = getattr(hv, method_name)(
         query_text="abc",
         k=1,
@@ -227,7 +227,7 @@ def test_get_tasks_populates_task_history_and_returns_content(
         sort_order=None,
         similarity_search=True
     )
-    patch_unifiedvectordb_constructor.similarity_search_with_score.assert_called_with(
+    patch_unifiedvectordb_constructor._similarity_search_with_score.assert_called_with(
         query="abc", k=1
     )
     # Return should be {"task1"}
@@ -241,8 +241,8 @@ def test_get_validation_results_queries_common_vectordb_with_validationagent_fil
     get_validation_results must:
     - Set hv.common_vectordb_config.common_vectordb_embedding_function
     - Call initialize_class_db() internally
-    - For similarity_search=False → call .query(query_text, k, metadata_filter={"agent_name":"ValidationAgent"}, sort_order=...)
-    - For similarity_search=True  → call .similarity_search_with_score(query=..., k=..., metadata_filter={"agent_name":"ValidationAgent"})
+    - For similarity_search=False → call ._query(query_text, k, metadata_filter={"agent_name":"ValidationAgent"}, sort_order=...)
+    - For similarity_search=True  → call ._similarity_search_with_score(query=..., k=..., metadata_filter={"agent_name":"ValidationAgent"})
     - Return a set of page_content strings
     """
     hv = HumanLLMConfig()
@@ -253,14 +253,14 @@ def test_get_validation_results_queries_common_vectordb_with_validationagent_fil
     fake = MagicMock(page_content="val123", metadata={})
 
     # similarity_search=False
-    patch_unifiedvectordb_constructor.query.return_value = [fake]
+    patch_unifiedvectordb_constructor._query.return_value = [fake]
     res = hv.get_validation_results(
         query_text="qqq",
         k=1,
         sort_order="desc",
         similarity_search=False
     )
-    patch_unifiedvectordb_constructor.query.assert_called_once_with(
+    patch_unifiedvectordb_constructor._query.assert_called_once_with(
         query_text="qqq",
         k=1,
         metadata_filter={"agent_name": "ValidationAgent"},
@@ -269,13 +269,13 @@ def test_get_validation_results_queries_common_vectordb_with_validationagent_fil
     assert res == {"val123"}
 
     # similarity_search=True
-    patch_unifiedvectordb_constructor.similarity_search_with_score.return_value = [fake]
+    patch_unifiedvectordb_constructor._similarity_search_with_score.return_value = [fake]
     res2 = hv.get_validation_results(
         query_text="xxx",
         k=2,
         similarity_search=True
     )
-    patch_unifiedvectordb_constructor.similarity_search_with_score.assert_called_with(
+    patch_unifiedvectordb_constructor._similarity_search_with_score.assert_called_with(
         query="xxx",
         k=2,
         metadata_filter={"agent_name": "ValidationAgent"}
@@ -351,14 +351,14 @@ def test_planneragent_add_tasks_calls_vectordb_add_texts(patch_unifiedvectordb_c
 
     # At this point, pa.db_learnt_tasks likely is None; calling add_learnt_task should trigger initialize_class_db
     pa.add_learnt_task(serialized_entry="entry1", tags={"tag1": "val1"})
-    patch_unifiedvectordb_constructor.add_texts.assert_any_call(
+    patch_unifiedvectordb_constructor._add_texts.assert_any_call(
         texts=["entry1"],
         metadatas=[{"tag1": "val1"}]
     )
 
     # Similarly for add_failed_task
     pa.add_failed_task(serialized_entry="entry2", tags={"tag2": "val2"})
-    patch_unifiedvectordb_constructor.add_texts.assert_any_call(
+    patch_unifiedvectordb_constructor._add_texts.assert_any_call(
         texts=["entry2"],
         metadatas=[{"tag2": "val2"}]
     )

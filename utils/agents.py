@@ -555,7 +555,7 @@ class CapitalizationAgent:
             "step_id": HumanLLMConfig().step_id,
         }
 
-        # self.db_failed_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
+        # self.db_failed_tasks._add_texts(texts=[serialized_entry], metadatas=[tags])
 
     def generate_tool_description(self, program_name, program_code):
         user_message = f"MAIN FUNCTION: `{program_name}`\n\nFULL CODE:\n{program_code}"

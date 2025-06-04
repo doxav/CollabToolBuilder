@@ -98,7 +98,7 @@ def generate_entries(n):
 
 
 # ------------------------------------------------------------------------------
-# Helper: Given raw_results from backend.query(...), return a pure List[Document].
+# Helper: Given raw_results from backend._query(...), return a pure List[Document].
 # Each element might be a Document or a (Document, score) tuple.
 # ------------------------------------------------------------------------------
 def extract_docs(raw_results):
@@ -123,7 +123,7 @@ def test_add_and_count(backend, num_entries):
     assert backend.count() == 0
 
     # Add everything at once
-    result = backend.add_texts(texts=texts, ids=ids, metadatas=metadatas)
+    result = backend._add_texts(texts=texts, ids=ids, metadatas=metadatas)
     assert result is not None
 
     # Give ES a moment to index if needed
@@ -138,10 +138,10 @@ def test_add_and_count(backend, num_entries):
 @pytest.mark.parametrize("num_entries,k", [(5, 3), (100, 60)])
 def test_similarity_search_with_score(backend, num_entries, k):
     texts, ids, metadatas = generate_entries(num_entries)
-    backend.add_texts(texts=texts, ids=ids, metadatas=metadatas)
+    backend._add_texts(texts=texts, ids=ids, metadatas=metadatas)
     time.sleep(1.0)
 
-    results = backend.similarity_search_with_score("dummy query", k=k)
+    results = backend._similarity_search_with_score("dummy query", k=k)
     assert isinstance(results, list)
 
     expected_len = min(k, num_entries)
@@ -160,10 +160,10 @@ def test_similarity_search_with_score(backend, num_entries, k):
 @pytest.mark.parametrize("num_entries,k", [(5, 2), (100, 60)])
 def test_query_without_filters(backend, num_entries, k):
     texts, ids, metadatas = generate_entries(num_entries)
-    backend.add_texts(texts=texts, ids=ids, metadatas=metadatas)
+    backend._add_texts(texts=texts, ids=ids, metadatas=metadatas)
     time.sleep(1.0)
 
-    raw = backend.query(query_text="anything", k=k)
+    raw = backend._query(query_text="anything", k=k)
     docs = extract_docs(raw)
     assert isinstance(docs, list)
     assert len(docs) == min(k, num_entries)
@@ -175,11 +175,11 @@ def test_query_without_filters(backend, num_entries, k):
 @pytest.mark.parametrize("num_entries", [10, 60])
 def test_query_with_metadata_filter(backend, num_entries):
     texts, ids, metadatas = generate_entries(num_entries)
-    backend.add_texts(texts=texts, ids=ids, metadatas=metadatas)
+    backend._add_texts(texts=texts, ids=ids, metadatas=metadatas)
     time.sleep(1.0)
 
     filter_A = {"category": "A"}
-    raw = backend.query(
+    raw = backend._query(
         query_text="irrelevant",
         k=num_entries,
         metadata_filter=filter_A,
@@ -200,12 +200,12 @@ def test_query_with_metadata_filter(backend, num_entries):
 def test_query_with_metadata_filter_or(backend):
     num_entries = 20
     texts, ids, metadatas = generate_entries(num_entries)
-    backend.add_texts(texts=texts, ids=ids, metadatas=metadatas)
+    backend._add_texts(texts=texts, ids=ids, metadatas=metadatas)
     time.sleep(1.0)
 
     if backend.config.db_type == CHROMA_DATABASE:
         # Chroma: use metadata_filter + metadata_filter_or
-        raw = backend.query(
+        raw = backend._query(
             query_text="none",
             k=num_entries,
             metadata_filter={"category": ["A", "B"]},
@@ -223,7 +223,7 @@ def test_query_with_metadata_filter_or(backend):
                 ]
             }
         }
-        raw = backend.query(
+        raw = backend._query(
             query_text="none",
             k=num_entries,
             metadata_filter=None,
@@ -251,12 +251,12 @@ def test_query_with_sort_order(backend):
     ids_rev = list(reversed(ids))
     metadatas_rev = list(reversed(metadatas))
 
-    backend.add_texts(texts=texts_rev, ids=ids_rev, metadatas=metadatas_rev)
+    backend._add_texts(texts=texts_rev, ids=ids_rev, metadatas=metadatas_rev)
     time.sleep(1.0)
 
     if backend.config.db_type == CHROMA_DATABASE:
         # Chroma does in‐memory sort after similarity_search
-        raw_asc = backend.query(
+        raw_asc = backend._query(
             query_text="x",
             k=num_entries,
             metadata_filter=None,
@@ -267,7 +267,7 @@ def test_query_with_sort_order(backend):
         times_asc = [doc.metadata["time"] for doc in docs_asc]
         assert times_asc == sorted(times_asc)
 
-        raw_desc = backend.query(
+        raw_desc = backend._query(
             query_text="x",
             k=num_entries,
             metadata_filter=None,
@@ -286,7 +286,7 @@ def test_query_with_sort_order(backend):
         # :contentReference[oaicite:2]{index=2}
         # Ascending
         try:
-            raw_es_asc = backend.query(
+            raw_es_asc = backend._query(
                 query_text="x",
                 k=num_entries,
                 metadata_filter=None,
@@ -296,13 +296,13 @@ def test_query_with_sort_order(backend):
             docs_es_asc = extract_docs(raw_es_asc)
             times_es_asc = [doc.metadata["time"] for doc in docs_es_asc]
             assert times_es_asc == sorted(times_es_asc)
-        except BadRequestError as e:
+        except Exception as e:
             errstr = str(e)
             assert "metadata.time" in errstr
 
         # Descending
         try:
-            raw_es_desc = backend.query(
+            raw_es_desc = backend._query(
                 query_text="x",
                 k=num_entries,
                 metadata_filter=None,
@@ -312,7 +312,7 @@ def test_query_with_sort_order(backend):
             docs_es_desc = extract_docs(raw_es_desc)
             times_es_desc = [doc.metadata["time"] for doc in docs_es_desc]
             assert times_es_desc == sorted(times_es_desc, reverse=True)
-        except BadRequestError as e:
+        except Exception as e:
             errstr = str(e)
             assert "metadata.time" in errstr
 
@@ -323,7 +323,7 @@ def test_query_with_sort_order(backend):
 def test_delete_and_count(backend):
     num_entries = 8
     texts, ids, metadatas = generate_entries(num_entries)
-    backend.add_texts(texts=texts, ids=ids, metadatas=metadatas)
+    backend._add_texts(texts=texts, ids=ids, metadatas=metadatas)
     time.sleep(1.0)
     assert backend.count() == num_entries
 
@@ -334,7 +334,7 @@ def test_delete_and_count(backend):
     expected_remaining = num_entries - len(to_delete)
     assert backend.count() == expected_remaining
 
-    raw = backend.query(query_text="x", k=num_entries)
+    raw = backend._query(query_text="x", k=num_entries)
     docs = extract_docs(raw)
     returned_ids = {doc.id for doc in docs}
     for did in to_delete:
@@ -347,7 +347,7 @@ def test_delete_and_count(backend):
 @pytest.mark.parametrize("num_entries", [5, 20])
 def test_clear(backend, num_entries):
     texts, ids, metadatas = generate_entries(num_entries)
-    backend.add_texts(texts=texts, ids=ids, metadatas=metadatas)
+    backend._add_texts(texts=texts, ids=ids, metadatas=metadatas)
     time.sleep(1.0)
     assert backend.count() == num_entries
 
@@ -372,11 +372,11 @@ def test_add_invalid_types_and_none_metadata(backend):
     bad_metas = [None, {"foo": None}, {}, {"bar": 123}, {"baz": "yes"}]
 
     # with pytest.raises(Exception):
-    #     backend.add_texts(texts=bad_texts, ids=bad_ids, metadatas=bad_metas)
+    #     backend._add_texts(texts=bad_texts, ids=bad_ids, metadatas=bad_metas)
     # assert backend.count() == 0
 
     # invalid/None metadata is silently ignored → no exception, but all texts get added.
-    result = backend.add_texts(texts=bad_texts, ids=bad_ids, metadatas=bad_metas)
+    result = backend._add_texts(texts=bad_texts, ids=bad_ids, metadatas=bad_metas)
     assert result is not None
     time.sleep(0.5)
     # All 5 entries (text cast to str) should now exist
@@ -394,7 +394,7 @@ def test_query_range_and_id_filter_elasticsearch_only(backend, es_available, num
         md["score"] = i * 10
 
     try:
-        backend.add_texts(texts=texts, ids=ids, metadatas=metadatas)
+        backend._add_texts(texts=texts, ids=ids, metadatas=metadatas)
         time.sleep(1.0)
         if backend.config.db_type != ELASTIC_DATABASE:
             pytest.skip("Only applies to Elasticsearch")
@@ -404,7 +404,7 @@ def test_query_range_and_id_filter_elasticsearch_only(backend, es_available, num
 
         # A) Range filter: score ∈ [30,70]
         range_f = {"score": {"gte": 30, "lte": 70}}
-        raw_range = backend.query(
+        raw_range = backend._query(
             query_text="anything",
             k=num_entries,
             metadata_filter=range_f,
@@ -418,7 +418,7 @@ def test_query_range_and_id_filter_elasticsearch_only(backend, es_available, num
         # B) ID‐only filter
         subset = ids[2:5]
         id_f = {"_id": subset}
-        raw_id = backend.query(
+        raw_id = backend._query(
             query_text="anything",
             k=num_entries,
             metadata_filter=id_f,

@@ -8,6 +8,7 @@ import uuid
 
  # Dependency to be removed later
 from langchain_community.embeddings import OpenAIEmbeddings, HuggingFaceEmbeddings  # or langchain.embeddings if that’s what you use
+from langchain.schema import Document
 #from langchain_community.vectorstores import Chroma
 
 try:

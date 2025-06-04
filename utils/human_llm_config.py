@@ -39,8 +39,8 @@ class HumanLLMConfig:
         self.db_collection_success = "successful_tasks"
         self.db_collection_failed = "failed_tasks"
 
-        self.db_learnt_tasks = None
-        self.db_failed_tasks = None
+        self.db_learnt_tasks = None # TODO: remove once migration to common_vectordb COMPLETE
+        self.db_failed_tasks = None # TODO: remove once migration to common_vectordb COMPLETE
 
         self.step_id = 0
         self.function_list = None
@@ -161,7 +161,7 @@ class HumanLLMConfig:
         """Stores agent-specific data with additional metadata.
         Elasticsearch generates an 'id' automatically and includes it in the metadata.
         """
-        self.common_vectordb.log_agent_data(
+        return self.common_vectordb.log_agent_data(
             agent_name=agent_name,
             data_key=data_key,
             data_value=data_value,
@@ -231,7 +231,7 @@ class HumanLLMConfig:
         """Retrieves agent-specific data based on the agent name, data key, and additional metadata.
         Supports pagination by specifying start and end indices.
         """
-        self.common_vectordb.get_agent_data(
+        return self.common_vectordb.get_agent_data(
             agent_name=agent_name,
             data_key=data_key,
             task_id=task_id,
@@ -687,9 +687,9 @@ class HumanLLMConfig:
         if similarity_search:
             # similarity_search_with_score does not accept data_key, so we wrap filter manually
             # The new `get_data` only supports .query(...)—so for similarity_search we do a manual call:
-            results = self.common_vectordb.similarity_search_with_score(query=query_text, k=k, metadata_filter={"data_key": "learnt_task", **(metadata_filter or {})})
+            results = self.common_vectordb._similarity_search_with_score(query=query_text, k=k, metadata_filter={"data_key": "learnt_task", **(metadata_filter or {})})
         else:
-            parsed_list, results = self.common_vectordb.get_data(
+            parsed_list, results = self.common_vectordb.get_agent_data(
                 agent_name=None,
                 data_key="learnt_task",
                 metadata_filter=metadata_filter,
@@ -726,11 +726,11 @@ class HumanLLMConfig:
         # return {result.page_content for result in results}
 
         if similarity_search:
-            results = self.common_vectordb.similarity_search_with_score(
+            results = self.common_vectordb._similarity_search_with_score(
                 query=query_text, k=k, metadata_filter={"data_key": "failed_task", **(metadata_filter or {})}
             )
         else:
-            parsed_list, results = self.common_vectordb.get_data(
+            parsed_list, results = self.common_vectordb.get_agent_data(
                 agent_name=None,
                 data_key="failed_task",
                 metadata_filter=metadata_filter,
@@ -767,12 +767,12 @@ class HumanLLMConfig:
 
         metadata_filter = {"agent_name": "ValidationAgent"}
         if similarity_search:
-            raw = self.common_vectordb.similarity_search_with_score(
+            raw = self.common_vectordb._similarity_search_with_score(
                 query=query_text, k=k, metadata_filter=metadata_filter
             )
             results = raw
         else:
-            parsed_list, results = self.common_vectordb.get_data(
+            parsed_list, results = self.common_vectordb.get_agent_data(
                 agent_name=None,
                 data_key=None,
                 metadata_filter=metadata_filter,

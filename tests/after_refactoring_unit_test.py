@@ -232,8 +232,8 @@ class TestCollabGPTCreator(unittest.TestCase):
         )
 
         # Check if add_texts was called with the correct arguments
-        self.assertTrue(mock_vectordb_instance.add_texts.called)
-        call_args = mock_vectordb_instance.add_texts.call_args
+        self.assertTrue(mock_vectordb_instance._add_texts.called)
+        call_args = mock_vectordb_instance._add_texts.call_args
         self.assertEqual(len(call_args), 2)  # Two arguments: texts and metadatas
         texts = call_args[1]['texts']  # call_args is a tuple, the first element contains the arguments
         metadatas = call_args[1]['metadatas']
@@ -255,7 +255,7 @@ class TestCollabGPTCreator(unittest.TestCase):
     def test_get_agent_data(self, mock_check_and_init_vector_db, MockUnifiedVectorDB):
         # Mock the UnifiedVectorDB instance
         mock_vectordb_instance = MockUnifiedVectorDB.return_value
-        mock_vectordb_instance.query.return_value = [MagicMock(page_content='{"test_key":"test_value"}', metadata={"metadata_key": "metadata_value"})]
+        mock_vectordb_instance._query.return_value = [MagicMock(page_content='{"test_key":"test_value"}', metadata={"metadata_key": "metadata_value"})]
 
         # Ensure the database is initialized
         HumanLLMConfig().configure_vector_store(embedding_function="text-embedding-ada-002", reset_db_indices=True)

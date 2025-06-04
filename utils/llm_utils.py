@@ -16,7 +16,6 @@ from langchain_core.messages.function import FunctionMessage
 from langchain_openai import ChatOpenAI
 from langchain_community.chat_models import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.schema import Document
 
 import tkinter as tk
 from tkinter import scrolledtext
