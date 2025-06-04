@@ -62,7 +62,7 @@ class AgentGraphNode:
         states, _ = HumanLLM.get_agent_data(
             self.name,
             'workflow_state',
-            id_task=state_id
+            task_id=state_id
         )
         return states[0] if states else None
 
@@ -596,7 +596,7 @@ if __name__ == "__main__":
                                  llm=llmORchains_list["default_llm"], embedding_model_name=embedding_function).get_environment()
         envs_tech_synthesis.append(env)
 
-    problem_subdir = "IR_CPS_TechSynthesis" if 'saved_task' not in globals() else saved_task['type_tache']
+    problem_subdir = "IR_CPS_TechSynthesis" if 'saved_task' not in globals() else saved_task['task_type']
 
     # TODO: to be set properly and added to run_planner arg test_environments={'tech_synthesis': envs_tech_synthesis, 'swe': envs_swe}
     # documents = [{

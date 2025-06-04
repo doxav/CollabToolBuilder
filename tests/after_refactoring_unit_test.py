@@ -222,11 +222,11 @@ class TestCollabGPTCreator(unittest.TestCase):
             data_key="test_key",
             data_value="test_value",
             function_name="test_function",
-            id_task=False,
+            task_id=False,
             before_after="before",
             user_id="test_user",
             step_id=1,
-            type_tache="test_tache",
+            task_type="test_tache",
             score=0.9,
             metadata={"test_meta_key": "test_meta_value"}
         )
@@ -246,7 +246,7 @@ class TestCollabGPTCreator(unittest.TestCase):
         self.assertEqual(metadata["before_after"], "before")
         self.assertEqual(metadata["user_id"], "test_user")
         self.assertEqual(metadata["step_id"], 1)
-        self.assertEqual(metadata["type_tache"], "test_tache")
+        self.assertEqual(metadata["task_type"], "test_tache")
         self.assertEqual(metadata["score"], 0.9)
         self.assertEqual(metadata["test_meta_key"], "test_meta_value")
 

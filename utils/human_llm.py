@@ -753,7 +753,7 @@ class HumanLLM:
                     'prompt': messages[0].content + messages[1].content,
                     'num_parallel_inferences': self.num_parallel_inferences,
                     'task_parameters': self.task_parameters
-                }, before_after='before', user_id=self.get_user_id(), step_id=self.config.step_id, type_tache="IR_CPS_TechSynthesis", id_task=True)
+                }, before_after='before', user_id=self.get_user_id(), step_id=self.config.step_id, task_type="IR_CPS_TechSynthesis", task_id=True)
 
         while self.skip_rounds <= 0:
             # MENU
@@ -1229,7 +1229,7 @@ class HumanLLM:
             )
 
         if confirm in ["A", "", "B"]:
-            result.extend(self.config.common_vectordb.query(
+            result.extend(self.config.common_vectordb._query(
                 query_text="*",
                 metadata_filter={
                     "function_name": function_name,
@@ -1240,7 +1240,7 @@ class HumanLLM:
             ))
 
         if confirm in ["A", "", "C"]:
-            result.extend(self.config.common_vectordb.query(
+            result.extend(self.config.common_vectordb._query(
                 query_text="*",
                 metadata_filter={
                     "function_name": function_name,
@@ -1251,7 +1251,7 @@ class HumanLLM:
             ))
 
         if confirm in ["A", "", "D"]:
-            result.extend(self.config.common_vectordb.query(
+            result.extend(self.config.common_vectordb._query(
                 query_text="*",
                 metadata_filter={
                     "function_name": function_name,
@@ -1262,7 +1262,7 @@ class HumanLLM:
             ))
 
         if confirm in ["A", "", "E"]:
-            result.extend(self.config.common_vectordb.query(
+            result.extend(self.config.common_vectordb._query(
                 query_text="*",
                 metadata_filter={
                     "function_name": function_name,
@@ -1293,7 +1293,7 @@ class HumanLLM:
             metadata_filter["function_name"] = function_name
         if agent_name:
             metadata_filter["agent_name"] = agent_name
-        result = self.config.common_vectordb.query(
+        result = self.config.common_vectordb._query(
             query_text="*",
             metadata_filter=metadata_filter,
             k=k
@@ -1358,7 +1358,7 @@ class HumanLLM:
                         'user_message': self.current_inference_context['input_contents'][1].content,
                         'num_parallel_inferences': self.num_parallel_inferences,
                         'task_parameters': self.task_parameters
-                    }, before_after='after', user_id=self.get_user_id(), step_id=self.config.step_id, type_tache="IR_CPS_TechSynthesis", id_task=True, function_name=task_name)
+                    }, before_after='after', user_id=self.get_user_id(), step_id=self.config.step_id, task_type="IR_CPS_TechSynthesis", task_id=True, function_name=task_name)
             menu = (
                 f"\033[{self.print_color}m***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\nLLM ANSWER:\n{inference_result_msg.content}\n{check_display}\n***** {self.agent_name}->{inspect.stack()[2].function} AFTER *****\033[0m{multiple_ref}\n")
 
@@ -1960,7 +1960,7 @@ class HumanLLM:
 
         self.configure_vector_store()
 
-        self.config.common_vectordb.add_texts(
+        self.config.common_vectordb._add_texts(
             texts=[serialized_entry],
             metadatas=[tags]
         )
@@ -2681,8 +2681,8 @@ class HumanLLM:
     def get_tasks(self, page_size: int = 200, nb_pages: int = 1, id_last_task: Optional[str] = None):
         return self.config.get_tasks(page_size, nb_pages, id_last_task)
     
-    def goto_task(self, id_task: str, automatic: str = None, special_criteria: dict = None, task_details: str = None):
-        return self.config.goto_task(id_task, automatic, special_criteria, task_details)
+    def goto_task(self, task_id: str, automatic: str = None, special_criteria: dict = None, task_details: str = None):
+        return self.config.goto_task(task_id, automatic, special_criteria, task_details)
     
     def parse_ai_generated_code(
         self,

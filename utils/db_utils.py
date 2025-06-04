@@ -2,7 +2,9 @@
 
 import socket
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Dict, List, Any
+import json
+import uuid
 
  # Dependency to be removed later
 from langchain_community.embeddings import OpenAIEmbeddings, HuggingFaceEmbeddings  # or langchain.embeddings if that’s what you use
@@ -237,7 +239,7 @@ class UnifiedVectorDB:
         else:
             raise ValueError(f"Unsupported DB type: {self.config.db_type}")
 
-    def add_texts(self, texts, ids=None, metadatas=None):
+    def _add_texts(self, texts, ids=None, metadatas=None):
         """Add texts to the database."""
         try:
             if isinstance(metadatas, dict):
@@ -268,14 +270,14 @@ class UnifiedVectorDB:
         elif self.config.db_type == ELASTIC_DATABASE:
             return self.db.delete(ids=ids)
 
-    def similarity_search_with_score(self, query, k=1):
+    def _similarity_search_with_score(self, query, k=1):
         """Perform a similarity search with scores."""
         if self.config.db_type == CHROMA_DATABASE:
             return self.db.similarity_search_with_score(query, k=k)
         elif self.config.db_type == ELASTIC_DATABASE:
             return self.db.similarity_search_with_score(query, k=(k if k <= 50 else 50))
 
-    def query(self, query_text="", k=1, metadata_filter=None, metadata_filter_or=False,
+    def _query(self, query_text="", k=1, metadata_filter=None, metadata_filter_or=False,
               custom_filter_chrome=None, custom_filter_es=None, sort_order=None):
         """Query the database with filters and sorting."""
         if self.config.db_type == CHROMA_DATABASE:
@@ -362,6 +364,112 @@ class UnifiedVectorDB:
             response = self.db.client.delete_by_query(index=self.config.collection_name, body={"query": {"match_all": {}}})
             self.logger.info(f"Deleted {response['deleted']} documents from index {self.config.collection_name}")
             time.sleep(2)
+
+    # ─── New method: log_agent_data ────────────────────────────────────────────────
+    def log_agent_data(
+        self,
+        agent_name: str,
+        data_key: str,
+        data_value: Any,
+        function_name: Optional[str] = None,
+        task_id: bool = False,
+        before_after: Optional[str] = None,
+        user_id: Optional[str] = None,
+        step_id: Optional[int] = None,
+        task_type: Optional[str] = None,
+        score: Optional[float] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        Store agent‐specific data as a new document in the vector DB.  Serializes data_value to JSON,
+        builds a metadata dict (including agent_name, data_key, and any provided tags), and then calls add_texts().
+        """
+        # (1) Serialize the payload
+        if isinstance(data_value, dict):
+            serialized_data = json.dumps(data_value)
+        else:
+            # wrap primitive or list under a key of data_key
+            serialized_data = json.dumps({data_key: data_value})
+
+        # (2) Optionally generate an task_id UUID
+        task_id = str(uuid.uuid4()) if task_id else None
+
+        # (3) Build metadata tags
+        tags: Dict[str, Any] = metadata.copy() if isinstance(metadata, dict) else {}
+        params = ["agent_name", "data_key", "function_name", "task_id", "before_after", "user_id", "step_id", "task_type", "score"]
+        tags.update({k: locals()[k] for k in params if (k in locals()) and (locals()[k] is not None)})
+        # Always tag with a timestamp
+        tags["date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+
+        # (4) Delegate to add_texts()
+        # Note: Chroma / Elasticsearch both accept `metadatas=[{…}]`.
+        self._add_texts(texts=[serialized_data], metadatas=[tags])
+
+
+    # ─── New method: get_agent_data ────────────────────────────────────────────────
+    def get_agent_data(
+        self,
+        agent_name: Optional[str] = None,
+        data_key: Optional[str] = None,
+        task_id: Optional[str] = None,
+        function_name: Optional[str] = None,
+        before_after: Optional[str] = None,
+        user_id: Optional[str] = None,
+        step_id: Optional[int] = None,
+        task_type: Optional[str] = None,
+        score: Optional[float] = None,
+        metadata_filter: Optional[Dict[str, Any]] = None,
+        sort_order: Optional[str] = None,
+        k: int = 5,
+        start_index: int = 0,
+        end_index: Optional[int] = None,
+        query_text: str = "*",
+        new_storage: bool = True
+    ):
+        """
+        Retrieve agent‐specific data from the vector DB.  Builds a metadata dict from all provided parameters,
+        runs a `query(...)` under the hood, then paginates and parses results (JSON‐decoding payloads).
+
+        Returns:
+            parsed_list: list of deserialized payloads (dict or primitive)  
+            raw_list:   list of full `Document`‐like objects returned by the underlying vector store
+        """
+        # (1) Build metadata dict to filter by
+        filters: Dict[str, Any] = {}
+        params = ["agent_name", "data_key", "function_name", "task_id", "before_after", "user_id", "step_id", "task_type", "score"]
+        filters.update({k: locals()[k] for k in params if (k in locals()) and (locals()[k] is not None)})
+        # Merge in any explicit metadata_filter
+        if metadata_filter:
+            filters.update(metadata_filter)
+
+        # (2) Determine how many to fetch
+        max_k = end_index if (end_index is not None) else k
+
+        # (3) Query the DB
+        results = self._query( query_text=query_text, k=max_k, metadata_filter=filters, sort_order=sort_order)
+
+        # (4) Apply pagination
+        paginated = (results[start_index:end_index] if end_index is not None else results[start_index:])
+
+        # (5) Parse/deserialize each Document.page_content
+        parsed_list: List[Any] = []
+        for item in paginated:
+            try:
+                # `item.page_content` may be a JSON string
+                temp = json.loads(item.page_content)
+            except Exception:
+                # fallback: return the raw page_content
+                temp = item.page_content
+            if new_storage:
+                parsed_list.append(temp)
+            else:
+                # If caller wants the “old-style” raw data_key value:
+                if isinstance(temp, dict) and (data_key in temp) and (len(temp) == 1):
+                    parsed_list.append(temp[data_key])
+                else:
+                    parsed_list.append(None)
+
+        return parsed_list, results
 
 #––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––#
 # Export just these names when somebody does `from db_utils import *`

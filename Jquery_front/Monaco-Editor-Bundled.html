@@ -3613,13 +3613,13 @@ function updateTaskList(id) {
         // Ajouter chaque tâche au <select>
         tasks.forEach((task) => {
           const option = document.createElement("option");
-          option.value = task.id_task; // On peut utiliser l'ID comme valeur
+          option.value = task.task_id; // On peut utiliser l'ID comme valeur
           let username = task.user_id;
           if (task.user_id === uniqueId.toString().toUpperCase()) {
             username = "You";
           }
           let details = task.task_details ? ` - ${task.task_details}` : "";
-          option.textContent = `${task.id_task} - ${task.date.substring(
+          option.textContent = `${task.task_id} - ${task.date.substring(
             0,
             16
           )} - ${task.agent_name} - ${task.function_name} - ${
@@ -3649,7 +3649,7 @@ function updateTaskList(id) {
         // Ajouter chaque tâche au <select>
         tasks.forEach((task) => {
           const option = document.createElement("option");
-          option.value = task.id_task; // On peut utiliser l'ID comme valeur
+          option.value = task.task_id; // On peut utiliser l'ID comme valeur
           let username = task.user_id;
           if (task.user_id === uniqueId.toString().toUpperCase()) {
             username = "You";

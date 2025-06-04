@@ -133,11 +133,13 @@ class HumanLLMConfig:
 
     def add_learnt_task(self, serialized_entry, tags):
         # self.task_history.add_completed_task(serialized_entry)
-        self.db_learnt_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
+        #self.db_learnt_tasks._add_texts(texts=[serialized_entry], metadatas=[tags])
+        self.common_vectordb.log_agent_data( agent_name="HumanLLMConfig", data_key="learnt_task", data_value=serialized_entry, metadata={**tags, "task_type": "learnt"})
 
     def add_failed_task(self, serialized_entry, tags):
         # self.task_history.add_failed_task(serialized_entry)
-        self.db_failed_tasks.add_texts(texts=[serialized_entry], metadatas=[tags])
+        #self.db_failed_tasks._add_texts(texts=[serialized_entry], metadatas=[tags])
+        self.common_vectordb.log_agent_data( agent_name="HumanLLMConfig", data_key="failed_task", data_value=serialized_entry, metadata={**tags, "task_type": "failed"})
 
     def get_user_id(self):
         return self.user_session.get_user_id()
@@ -148,62 +150,75 @@ class HumanLLMConfig:
         data_key,
         data_value,
         function_name=None,
-        id_task=False,
+        task_id=False,
         before_after=None,
         user_id=None,
         step_id=None,
-        type_tache=None,
+        task_type=None,
         score=None,
         metadata=None
     ):
         """Stores agent-specific data with additional metadata.
         Elasticsearch generates an 'id' automatically and includes it in the metadata.
         """
-        if isinstance(data_value, dict):
-            serialized_data = json.dumps(data_value)
-        else:
-            serialized_data = json.dumps({data_key: data_value})
+        self.common_vectordb.log_agent_data(
+            agent_name=agent_name,
+            data_key=data_key,
+            data_value=data_value,
+            function_name=function_name,
+            task_id=task_id,
+            before_after=before_after,
+            user_id=user_id,
+            step_id=step_id,
+            task_type=task_type,
+            score=score,
+            metadata=metadata
+        )
+        # if isinstance(data_value, dict):
+        #     serialized_data = json.dumps(data_value)
+        # else:
+        #     serialized_data = json.dumps({data_key: data_value})
 
-        # Generate UUID for id_task
-        id_task = str(uuid.uuid4()) if id_task else False
+        # # Generate UUID for task_id
+        # task_id = str(uuid.uuid4()) if task_id else False
 
-        tags = metadata or {}
-        tags.update({
-            "agent_name": agent_name,
-            "data_key": data_key
-        })
-        self.logger.info(f"Adding agent data: {tags}")
-        self.logger.info(f"User ID: {user_id}")
-        if user_id is None:
-            user_id = self.get_user_id()
-        if function_name:
-            tags["function_name"] = function_name
-        if id_task:
-            tags["id_task"] = id_task
-        if before_after:
-            tags["before_after"] = before_after
-        if user_id:
-            tags["user_id"] = user_id
-        if step_id:
-            tags["step_id"] = step_id
-        if type_tache:
-            tags["type_tache"] = type_tache
-        if score is not None:
-            tags["score"] = score
-        tags["date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+        # tags = metadata or {}
+        # tags.update({
+        #     "agent_name": agent_name,
+        #     "data_key": data_key
+        # })
+        # self.logger.info(f"Adding agent data: {tags}")
+        # self.logger.info(f"User ID: {user_id}")
+        # if user_id is None:
+        #     user_id = self.get_user_id()
+        # if function_name:
+        #     tags["function_name"] = function_name
+        # if task_id:
+        #     tags["task_id"] = task_id
+        # if before_after:
+        #     tags["before_after"] = before_after
+        # if user_id:
+        #     tags["user_id"] = user_id
+        # if step_id:
+        #     tags["step_id"] = step_id
+        # if task_type:
+        #     tags["task_type"] = task_type
+        # if score is not None:
+        #     tags["score"] = score
+        # tags["date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
 
-        self.common_vectordb.add_texts(texts=[serialized_data], metadatas=[tags])
+        # self.common_vectordb._add_texts(texts=[serialized_data], metadatas=[tags])
 
     def get_agent_data(
         self,
         agent_name=None,
         data_key=None,
-        id_task=None,
+        task_id=None,
         function_name=None,
         before_after=None,
         user_id=None,
         step_id=None,
-        type_tache=None,
+        task_type=None,
         score=None,
         metadata_filter=None,
         sort_order=None,
@@ -216,60 +231,78 @@ class HumanLLMConfig:
         """Retrieves agent-specific data based on the agent name, data key, and additional metadata.
         Supports pagination by specifying start and end indices.
         """
-        metadata = {}
-        if agent_name is not None:
-            metadata["agent_name"] = agent_name
-        if data_key is not None:
-            metadata["data_key"] = data_key
-        if function_name is not None:
-            metadata["function_name"] = function_name
-        if id_task is not None:
-            metadata["id_task"] = id_task
-        if before_after is not None:
-            metadata["before_after"] = before_after
-        if user_id is not None:
-            metadata["user_id"] = user_id
-        if step_id is not None:
-            metadata["step_id"] = step_id
-        if type_tache is not None:
-            metadata["type_tache"] = type_tache
-        if score is not None:
-            metadata["score"] = score
-        if metadata_filter:
-            metadata.update(metadata_filter)
-
-        # Fetch results with a large 'k' to ensure we have enough data
-        max_k = end_index if end_index is not None else k
-        results = self.common_vectordb.query(
-            query_text=query_text,
-            metadata_filter=metadata,
+        self.common_vectordb.get_agent_data(
+            agent_name=agent_name,
+            data_key=data_key,
+            task_id=task_id,
+            function_name=function_name,
+            before_after=before_after,
+            user_id=user_id,
+            step_id=step_id,
+            task_type=task_type,
+            score=score,
+            metadata_filter=metadata_filter,
             sort_order=sort_order,
-            k=max_k
+            k=k,
+            start_index=start_index,
+            end_index=end_index,
+            query_text=query_text,
+            new_storage=new_storage
         )
+        # metadata = {}
+        # if agent_name is not None:
+        #     metadata["agent_name"] = agent_name
+        # if data_key is not None:
+        #     metadata["data_key"] = data_key
+        # if function_name is not None:
+        #     metadata["function_name"] = function_name
+        # if task_id is not None:
+        #     metadata["task_id"] = task_id
+        # if before_after is not None:
+        #     metadata["before_after"] = before_after
+        # if user_id is not None:
+        #     metadata["user_id"] = user_id
+        # if step_id is not None:
+        #     metadata["step_id"] = step_id
+        # if task_type is not None:
+        #     metadata["task_type"] = task_type
+        # if score is not None:
+        #     metadata["score"] = score
+        # if metadata_filter:
+        #     metadata.update(metadata_filter)
 
-        # Apply pagination
-        paginated_results = (
-            results[start_index:end_index]
-            if end_index is not None
-            else results[start_index:]
-        )
+        # # Fetch results with a large 'k' to ensure we have enough data
+        # max_k = end_index if end_index is not None else k
+        # results = self.common_vectordb._query(
+        #     query_text=query_text,
+        #     metadata_filter=metadata,
+        #     sort_order=sort_order,
+        #     k=max_k
+        # )
 
-        ret = []
-        for item in paginated_results:
-            try:
-                temp = json.loads(item.page_content)
-            except Exception as e:
-                temp = item.page_content
-            if new_storage:
-                ret.append(temp)
-                # ret.append({data_key: temp} if (isinstance(temp, dict) and data_key in temp and len(temp) == 1) else temp) # Chroma and ES do not store json the same way, so we need to adapt
-            else:
-                val = None
-                if isinstance(temp, dict):                
-                    if data_key in temp:
-                        val = temp[data_key]
-                ret.append(val)
-        return ret, results
+        # # Apply pagination
+        # paginated_results = (
+        #     results[start_index:end_index]
+        #     if end_index is not None
+        #     else results[start_index:]
+        # )
+
+        # ret = []
+        # for item in paginated_results:
+        #     try:
+        #         temp = json.loads(item.page_content)
+        #     except Exception as e:
+        #         temp = item.page_content
+        #     if new_storage:
+        #         ret.append(temp)
+        #         # ret.append({data_key: temp} if (isinstance(temp, dict) and data_key in temp and len(temp) == 1) else temp) # Chroma and ES do not store json the same way, so we need to adapt
+        #     else:
+        #         val = None
+        #         if isinstance(temp, dict):                
+        #             if data_key in temp:
+        #                 val = temp[data_key]
+        #         ret.append(val)
+        # return ret, results
 
     def get_tasks(self, page_size: int = 200, nb_pages: int = 1, id_last_task: Optional[str] = None):
         """Retrieves saved tasks using get_agent_data with pagination.
@@ -295,7 +328,7 @@ class HumanLLMConfig:
         if id_last_task and id_last_task != "None":
             modif = False
             for i, task in enumerate(tasks):
-                if task.metadata["id_task"] == id_last_task and i + 1 < len(tasks):
+                if task.metadata["task_id"] == id_last_task and i + 1 < len(tasks):
                     tasks = tasks[i+1:]
                     modif = True
                     break
@@ -304,7 +337,7 @@ class HumanLLMConfig:
         ret = []
         for task in tasks:
             ret += [{
-                "id_task": task.metadata["id_task"],
+                "task_id": task.metadata["task_id"],
                 "agent_name": task.metadata["agent_name"],
                 "before_after": task.metadata["before_after"],
                 "date": task.metadata["date"]
@@ -319,8 +352,8 @@ class HumanLLMConfig:
                 ret[-1]['function_name'] = task.metadata['function_name']
             if "step_id" in task.metadata:
                 ret[-1]['step_id'] = task.metadata['step_id']
-            if "type_tache" in task.metadata:
-                ret[-1]['type_tache'] = task.metadata['type_tache']
+            if "task_type" in task.metadata:
+                ret[-1]['task_type'] = task.metadata['task_type']
             if "task_details" in task.metadata:
                 ret[-1]['task_details'] = task.metadata['task_details']
 
@@ -331,7 +364,7 @@ class HumanLLMConfig:
 
     def goto_task(
         self,
-        id_task: str,
+        task_id: str,
         automatic: str = None,
         special_criteria: dict = None,
         task_details: str = None
@@ -339,16 +372,16 @@ class HumanLLMConfig:
         """
         Retrieve the task from the database and start processing the task.
         Parameters:
-            id_task (str): The identifier of the task to retrieve from the database.
+            task_id (str): The identifier of the task to retrieve from the database.
             automatic (str): If True, the function will run the loop in automatic mode.
             special_criteria (dict): The special criteria to use for the task.
         """
         # Retrieve the task from the database
-        _, saved_task = self.get_agent_data(data_key="saved_task", id_task=id_task)
+        _, saved_task = self.get_agent_data(data_key="saved_task", task_id=task_id)
         task = {
             'before_after': saved_task[0].metadata['before_after'],
             'agent_name': saved_task[0].metadata['agent_name'],
-            'type_tache': saved_task[0].metadata['type_tache'],
+            'task_type': saved_task[0].metadata['task_type'],
             'content': saved_task[0].page_content,
             'date': saved_task[0].metadata['date']
         }
@@ -381,19 +414,19 @@ class HumanLLMConfig:
         if not os.path.exists('goto_output'):
             os.makedirs('goto_output')
 
-        with open(f'./goto_output/output_{id_task}_{self.get_user_id()}.log', 'w') as f:
+        with open(f'./goto_output/output_{task_id}_{self.get_user_id()}.log', 'w') as f:
             f.write("")
 
         # Execute the bash command with unbuffered output and capture its output
         subprocess.Popen(
-            ['bash', '-c', f'python3 -u learn.py --proxy --secret --pickle_name {filename} > ./goto_output/output_{id_task}_{self.get_user_id()}.log 2>&1'],
+            ['bash', '-c', f'python3 -u learn.py --proxy --secret --pickle_name {filename} > ./goto_output/output_{task_id}_{self.get_user_id()}.log 2>&1'],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True
         )
         # Initialize the link variable
         link = None
-        with open(f"./goto_output/output_{id_task}_{self.get_user_id()}.log", "r") as logfile:
+        with open(f"./goto_output/output_{task_id}_{self.get_user_id()}.log", "r") as logfile:
             # Move to end of file
             logfile.seek(0, 2)  # 2 means "from the end of the file"
 
@@ -575,7 +608,7 @@ class HumanLLMConfig:
                     similarity_search=params['similarity_search']
                 )
             else:
-                examples = self.common_vectordb.query(
+                examples = self.common_vectordb._query(
                     query_text=params['query_text'],
                     k=params['num'],
                     metadata_filter=params['metadata_filter'],
@@ -606,26 +639,26 @@ class HumanLLMConfig:
     def initialize_class_db(self, force=False):
         if self.common_vectordb_config.common_vectordb_embedding_function is None:
             raise ValueError("embeddingfunction must be set to allow HumanLLM to manage tasks and other memories")
-        if self.db_learnt_tasks is None or force:
-            self.db_learnt_tasks = UnifiedVectorDB(
-                UnifiedVectorDBConfig(
-                    collection_name=self.db_collection_success,
-                    embedding_function=self.common_vectordb_config.common_vectordb_embedding_function,
-                    persist_directory=self.common_vectordb_config.persist_directory + self.db_collection_success,
-                    reset_indices=self.common_vectordb_config.reset_indices,
-                    unique_collection_id=self.common_vectordb_config.unique_collection_id
-                )
-            )
-        if self.db_failed_tasks is None or force:
-            self.db_failed_tasks = UnifiedVectorDB(
-                UnifiedVectorDBConfig(
-                    collection_name=self.db_collection_failed,
-                    embedding_function=self.common_vectordb_config.common_vectordb_embedding_function,
-                    persist_directory=self.common_vectordb_config.persist_directory + self.db_collection_failed,
-                    reset_indices=self.common_vectordb_config.reset_indices,
-                    unique_collection_id=self.common_vectordb_config.unique_collection_id
-                )
-            )
+        # if self.db_learnt_tasks is None or force:
+        #     self.db_learnt_tasks = UnifiedVectorDB(
+        #         UnifiedVectorDBConfig(
+        #             collection_name=self.db_collection_success,
+        #             embedding_function=self.common_vectordb_config.common_vectordb_embedding_function,
+        #             persist_directory=self.common_vectordb_config.persist_directory + self.db_collection_success,
+        #             reset_indices=self.common_vectordb_config.reset_indices,
+        #             unique_collection_id=self.common_vectordb_config.unique_collection_id
+        #         )
+        #     )
+        # if self.db_failed_tasks is None or force:
+        #     self.db_failed_tasks = UnifiedVectorDB(
+        #         UnifiedVectorDBConfig(
+        #             collection_name=self.db_collection_failed,
+        #             embedding_function=self.common_vectordb_config.common_vectordb_embedding_function,
+        #             persist_directory=self.common_vectordb_config.persist_directory + self.db_collection_failed,
+        #             reset_indices=self.common_vectordb_config.reset_indices,
+        #             unique_collection_id=self.common_vectordb_config.unique_collection_id
+        #         )
+        #     )
 
     def get_learnt_tasks(
         self,
@@ -635,20 +668,39 @@ class HumanLLMConfig:
         sort_order=None,
         similarity_search=False
     ):
-        self.initialize_class_db()
+        # self.initialize_class_db()
+        # if similarity_search:
+        #     results = self.db_learnt_tasks._similarity_search_with_score(query=query_text, k=k)
+        # else:
+        #     results = self.db_learnt_tasks._query(
+        #         query_text=query_text,
+        #         k=k,
+        #         metadata_filter=metadata_filter,
+        #         sort_order=sort_order
+        #     )
+        # self.task_history.clear_completed_tasks()
+        # for result in results:
+        #     self.task_history.add_completed_task(result.page_content)
+        # return {result.page_content for result in results}
+
+        # All “learnt_task” entries live in common_vectordb under data_key="learnt_task"
         if similarity_search:
-            results = self.db_learnt_tasks.similarity_search_with_score(query=query_text, k=k)
+            # similarity_search_with_score does not accept data_key, so we wrap filter manually
+            # The new `get_data` only supports .query(...)—so for similarity_search we do a manual call:
+            results = self.common_vectordb.similarity_search_with_score(query=query_text, k=k, metadata_filter={"data_key": "learnt_task", **(metadata_filter or {})})
         else:
-            results = self.db_learnt_tasks.query(
-                query_text=query_text,
-                k=k,
+            parsed_list, results = self.common_vectordb.get_data(
+                agent_name=None,
+                data_key="learnt_task",
                 metadata_filter=metadata_filter,
-                sort_order=sort_order
+                sort_order=sort_order,
+                k=k,
+                query_text=query_text
             )
         self.task_history.clear_completed_tasks()
-        for result in results:
-            self.task_history.add_completed_task(result.page_content)
-        return {result.page_content for result in results}
+        for r in results:
+            self.task_history.add_completed_task(r.page_content)
+        return {r.page_content for r in results}
 
     def get_failed_tasks(
         self,
@@ -658,20 +710,38 @@ class HumanLLMConfig:
         sort_order=None,
         similarity_search=False
     ):
-        self.initialize_class_db()
+        # self.initialize_class_db()
+        # if similarity_search:
+        #     results = self.db_failed_tasks._similarity_search_with_score(query=query_text, k=k)
+        # else:
+        #     results = self.db_failed_tasks._query(
+        #         query_text=query_text,
+        #         k=k,
+        #         metadata_filter=metadata_filter,
+        #         sort_order=sort_order
+        #     )
+        # self.task_history.clear_failed_tasks()
+        # for result in results:
+        #     self.task_history.add_failed_task(result.page_content)
+        # return {result.page_content for result in results}
+
         if similarity_search:
-            results = self.db_failed_tasks.similarity_search_with_score(query=query_text, k=k)
+            results = self.common_vectordb.similarity_search_with_score(
+                query=query_text, k=k, metadata_filter={"data_key": "failed_task", **(metadata_filter or {})}
+            )
         else:
-            results = self.db_failed_tasks.query(
-                query_text=query_text,
-                k=k,
+            parsed_list, results = self.common_vectordb.get_data(
+                agent_name=None,
+                data_key="failed_task",
                 metadata_filter=metadata_filter,
-                sort_order=sort_order
+                sort_order=sort_order,
+                k=k,
+                query_text=query_text
             )
         self.task_history.clear_failed_tasks()
-        for result in results:
-            self.task_history.add_failed_task(result.page_content)
-        return {result.page_content for result in results}
+        for r in results:
+            self.task_history.add_failed_task(r.page_content)
+        return {r.page_content for r in results}
 
     def get_validation_results(
         self,
@@ -680,21 +750,38 @@ class HumanLLMConfig:
         sort_order=None,
         similarity_search=False
     ):
-        self.initialize_class_db()
-        metadata_filter = {'agent_name': 'ValidationAgent'}
+        # self.initialize_class_db()
+        # metadata_filter = {'agent_name': 'ValidationAgent'}
+        # if similarity_search:
+        #     results = self.common_vectordb._similarity_search_with_score(
+        #         query=query_text, k=k, metadata_filter=metadata_filter
+        #     )
+        # else:
+        #     results = self.common_vectordb._query(
+        #         query_text=query_text,
+        #         k=k,
+        #         metadata_filter=metadata_filter,
+        #         sort_order=sort_order
+        #     )
+        # return {result.page_content for result in results}
+
+        metadata_filter = {"agent_name": "ValidationAgent"}
         if similarity_search:
-            results = self.common_vectordb.similarity_search_with_score(
+            raw = self.common_vectordb.similarity_search_with_score(
                 query=query_text, k=k, metadata_filter=metadata_filter
             )
+            results = raw
         else:
-            results = self.common_vectordb.query(
-                query_text=query_text,
-                k=k,
+            parsed_list, results = self.common_vectordb.get_data(
+                agent_name=None,
+                data_key=None,
                 metadata_filter=metadata_filter,
-                sort_order=sort_order
+                sort_order=sort_order,
+                k=k,
+                query_text=query_text
             )
-        return {result.page_content for result in results}
-
+        return {r.page_content for r in results}
+    
     def format_examples(self, examples, criteria, separators):
         if not examples:
             return ""
@@ -770,7 +857,7 @@ class HumanLLMConfig:
 
     def retrieve_logs(self, agent_name, function_name, max_entries=20):
         self.configure_vector_store()
-        result = self.common_vectordb.query(
+        result = self.common_vectordb._query(
             query_text="*",
             metadata_filter={"function_name": function_name, "agent_name": agent_name},
             k=max_entries,

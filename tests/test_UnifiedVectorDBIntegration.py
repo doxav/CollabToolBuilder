@@ -43,11 +43,11 @@ def test_log_agent_data_calls_add_texts_correctly(patch_unifiedvectordb_construc
         data_key="test_key",
         data_value={"foo": "bar"},
         function_name="test_fn",
-        id_task=False,
+        task_id=False,
         before_after="before",
         user_id="user123",
         step_id=42,
-        type_tache="task_type",
+        task_type="task_type",
         score=0.75,
         metadata={"extra_meta": "extra_value"}
     )
@@ -73,7 +73,7 @@ def test_log_agent_data_calls_add_texts_correctly(patch_unifiedvectordb_construc
     assert meta["before_after"] == "before"
     assert meta["user_id"] == "user123"
     assert meta["step_id"] == 42
-    assert meta["type_tache"] == "task_type"
+    assert meta["task_type"] == "task_type"
     assert meta["score"] == 0.75
     assert meta["extra_meta"] == "extra_value"
     # A "date" timestamp must also appear

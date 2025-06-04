@@ -97,11 +97,11 @@ def test_log_agent_data_persists_document_and_metadata(backend: UnifiedVectorDB)
         data_key="test_key",
         data_value={"foo": "bar"},
         function_name="unit_test_fn",
-        id_task=False,
+        task_id=False,
         before_after="after",
         user_id="user42",
         step_id=7,
-        type_tache="unit_test_type",
+        task_type="unit_test_type",
         score=0.123,
         metadata={"extra_meta": "xyz"}
     )
@@ -135,7 +135,7 @@ def test_log_agent_data_persists_document_and_metadata(backend: UnifiedVectorDB)
     assert stored_meta["before_after"] == "after"
     assert stored_meta["user_id"] == "user42"
     assert stored_meta["step_id"] == 7
-    assert stored_meta["type_tache"] == "unit_test_type"
+    assert stored_meta["task_type"] == "unit_test_type"
     assert abs(stored_meta["score"] - 0.123) < 1e-6
     assert stored_meta["extra_meta"] == "xyz"
     assert "date" in stored_meta
@@ -304,8 +304,8 @@ def test_saved_task_log_and_retrieve(vectordb_backend: UnifiedVectorDB):
     }
     # Log under metadata {"test_meta":"X"}
     hv.log_agent_data(agent_name=agent, data_key=data_key, data_value=example_payload,
-                      function_name="fn", id_task=False, before_after="before",
-                      user_id="u1", step_id=1, type_tache="t1", score=0.5,
+                      function_name="fn", task_id=False, before_after="before",
+                      user_id="u1", step_id=1, task_type="t1", score=0.5,
                       metadata={"test_meta": "X"})
 
     time.sleep(0.5)

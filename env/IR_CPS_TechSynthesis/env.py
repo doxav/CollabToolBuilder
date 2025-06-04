@@ -990,7 +990,7 @@ class SynthesisManager:
     # search into resources stored in self.document.resources_vectordb and self.document.resources, return a list of resources
     @method_call_counter
     def semantic_search_resources(self, query_embeddings = None, query_texts = None, n_results = 10, where = None, where_document = None, include = ["metadatas", "documents", "distances"]):
-        result = self.document.resources_vectordb.similarity_search_with_score( query_embeddings, k=n_results)
+        result = self.document.resources_vectordb._similarity_search_with_score( query_embeddings, k=n_results)
 
     @method_call_counter
     def get_all_resources(self) -> List[Dict[str, Any]]:
@@ -1049,7 +1049,7 @@ class SynthesisManager:
             # Log the event
             if updated_fields:
                 # Update resources_vectordb
-                self.document.resources_vectordb.add_texts([str(document)], metadatas=[metadatas], ids=[str(existing_doc['id'])])
+                self.document.resources_vectordb._add_texts([str(document)], metadatas=[metadatas], ids=[str(existing_doc['id'])])
                 self.document.add_event('observation', {'action': 'modify_resource', 'document_name': name, 'updated_fields': updated_fields})
                 #print(f"Resource updated fields: ", updated_fields)
             #else:
@@ -1066,7 +1066,7 @@ class SynthesisManager:
             if store_linked_document_content:
                 childs_ids_list = self.get_and_store_link_content(link=link, parent_id=id, chaining=False)
                 metadatas['childs_ids_list'] = childs_ids_list
-            self.document.resources_vectordb.add_texts([str(document)], metadatas=[metadatas], ids=[str(id)])
+            self.document.resources_vectordb._add_texts([str(document)], metadatas=[metadatas], ids=[str(id)])
             self.document.add_event('observation', {'action': 'add_resource', 'document_name': name})
             #print(f"Resource added - VectorDB collection count: {self.document.resources_vectordb.count()}")
 
