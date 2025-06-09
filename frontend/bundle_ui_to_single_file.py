@@ -1,23 +1,25 @@
 import re
 
+files_location = "./" #"Jquery_front/"
+
 # Read HTML file
-with open("Jquery_front/IHMv5-Monaco.html", "r", encoding="utf-8") as file:
+with open(f"{files_location}IHMv5-Monaco.html", "r", encoding="utf-8") as file:
     html = file.read()
 
 # Inline CSS
-with open("Jquery_front/style.css", "r", encoding="utf-8") as css_file:
+with open(f"{files_location}style.css", "r", encoding="utf-8") as css_file:
     css_content = css_file.read()
 html = re.sub(r'<link rel="stylesheet" href="style.css">', f'<style>{css_content}</style>', html)
 
 # List of JavaScript files to inline
 js_files = [
-    "Jquery_front/global.js",
-    "Jquery_front/utils.js",
-    "Jquery_front/display-message-helpers.js",
-    "Jquery_front/display-message.js",
-    "Jquery_front/websocket-handler.js",
-    "Jquery_front/floating-div.js",
-    "Jquery_front/monaco-log-ui-manager.js"
+    f"{files_location}global.js",
+    f"{files_location}utils.js",
+    f"{files_location}display-message-helpers.js",
+    f"{files_location}display-message.js",
+    f"{files_location}websocket-handler.js",
+    f"{files_location}floating-div.js",
+    f"{files_location}monaco-log-ui-manager.js"
 ]
 
 # Inline JavaScript safely
@@ -35,7 +37,7 @@ for js_file in js_files:
                   flags=re.IGNORECASE)
 
 # Save the modified file
-with open("Jquery_front/Monaco-Editor-Bundled.html", "w", encoding="utf-8") as output_file:
+with open(f"{files_location}Monaco-Editor-Bundled.html", "w", encoding="utf-8") as output_file:
     output_file.write(html)
 
 print("Inlining completed. Now run html-minifier to minify the file.")
