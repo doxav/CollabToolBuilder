@@ -9,7 +9,6 @@ import concurrent.futures
 from jinja2 import Template
 from datetime import datetime
 from utils.llm_utils import (
-    FewShotsParams,
     InferenceCheck,
     InferenceTracking,
     TaskHistory,
@@ -21,7 +20,7 @@ from utils.llm_utils import (
 )
 from env.SWEBench.env import SWEBenchEnvironment
 from utils.human_llm_config import HumanLLMConfig
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 
 from langchain.llms import OpenAI
 from langchain.chains import LLMChain
@@ -33,6 +32,20 @@ from langchain_core.messages.system import SystemMessage
 from langchain_core.messages.function import FunctionMessage
 from langchain_core.runnables import RunnableSequence, ConfigurableField
 import regex as regex 
+
+from dataclasses import dataclass, field
+
+@dataclass
+class FewShotsParams:
+    """Parameters for few-shot learning examples."""
+
+    num: int = 5
+    filter: dict = field(default_factory=dict)
+    ranking_method: str = 'by_date_desc'
+    annotations: Optional[Union[str, List[str]]] = None
+    generate_summary: bool = False
+    format: Optional[str] = None
+    summary_char_limit: int = 500
 
 class HumanLLM:
     def __init__(
@@ -116,7 +129,7 @@ class HumanLLM:
         self.automation = automation
         self.outputs = None
         self.saved_task = saved_task
-        self.auto_n_rounds = auto_n_rounds
+        self.auto_n_rounds = auto_n_rounds if auto_n_rounds is not None else 0
         self.recommend_critics = recommend_critics
         self.last_user_message = None
         self.primitives_dir = None
@@ -610,42 +623,6 @@ class HumanLLM:
         # Reset times for the next action
         if reset_menu_time_after:
             self.start_time, self.menu_start_time = time.time(), time.time()
-
-    def _process_examples(self, log_entries: List, params: FewShotsParams) -> List[str]:
-        """
-        Process and format the examples based on the given parameters.
-
-        :param log_entries: List of log entries retrieved from the vector database.
-        :param params: FewShotsParams object containing processing parameters.
-        :return: List of processed and formatted examples.
-        """
-        examples = []
-        for entry in log_entries:
-            example_content = json.loads(entry.page_content)
-
-            # Filter examples based on annotations if specified
-            if params.annotations:
-                if isinstance(params.annotations, str):
-                    params.annotations = [params.annotations]
-                if 'annotation' in example_content and example_content['annotation'] in params.annotations:
-                    examples.append(example_content)
-            else:
-                examples.append(example_content)
-
-        # Format examples using the provided template if specified
-        if params.format:
-            template = Template(params.format)
-            examples = [template.render(example=ex) for ex in examples]
-        else:
-            valid_examples = []
-            for ex in examples:
-                if 'output_llm_raw' in ex:
-                    valid_examples.append(ex['output_llm_raw'][0])  # Assuming you want the first element of the list
-                else:
-                    logging.warning(f"Missing 'output_llm_raw' key in example: {ex}")
-            examples = valid_examples
-
-        return examples
 
     def generate_summary(self, examples: List[str], char_limit: int) -> str:
         """
@@ -1223,7 +1200,7 @@ class HumanLLM:
             self.user_message_few_shots = new_few_shots
             envs_status = '\n'.join([env.get_state() for env in self.envs])
 
-            return self.config.manage_few_shot_examples(self.user_message_few_shots) + (
+            return self.config.get_few_shot_examples(self.user_message_few_shots) + (
                 f"\n- Current status of examples on "
                 f"which the task will be tested on: {envs_status}\n"
             )

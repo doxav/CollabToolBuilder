@@ -497,8 +497,8 @@ class HumanLLMConfig:
 
     def extract_few_shot_tags(self, prompt):
         """
-        Removes the 'few_shots' tag from the prompt and inserts the string received from
-        get_multiple_few_shots at each location where the tag was removed.
+        Replace tags by data: replace every `few_shots: { … }` tag in the prompt, parse its JSON payload,
+        generate few-shot examples for it, and replace the entire tag with those examples
 
         Returns:
             str: The modified prompt content with few shots inserted.
@@ -529,7 +529,7 @@ class HumanLLMConfig:
                 # Combine criteria
                 combined_criteria = self.combine_criteria([data])
                 # Get the few shots string
-                few_shots_str = self.manage_few_shot_examples(combined_criteria)
+                few_shots_str = self.get_few_shot_examples(combined_criteria)
                 # Replace the tag with the few shots string
                 prompt = prompt[:start] + few_shots_str + prompt[end:]
             except json.JSONDecodeError as e:
@@ -560,7 +560,7 @@ class HumanLLMConfig:
             formatted_list.append(formatted_criteria)
         return formatted_list
 
-    def manage_few_shot_examples(self, few_shots_params) -> str:
+    def get_few_shot_examples(self, few_shots_params) -> str:
         if not few_shots_params:
             return ""
 
@@ -668,20 +668,10 @@ class HumanLLMConfig:
         sort_order=None,
         similarity_search=False
     ):
-        # self.initialize_class_db()
-        # if similarity_search:
-        #     results = self.db_learnt_tasks._similarity_search_with_score(query=query_text, k=k)
-        # else:
-        #     results = self.db_learnt_tasks._query(
-        #         query_text=query_text,
-        #         k=k,
-        #         metadata_filter=metadata_filter,
-        #         sort_order=sort_order
-        #     )
-        # self.task_history.clear_completed_tasks()
-        # for result in results:
-        #     self.task_history.add_completed_task(result.page_content)
-        # return {result.page_content for result in results}
+        # Ensure we're searching in the right collection/database
+        if not self.common_vectordb:
+            print("DEBUG: No common_vectordb available")
+            return set()
 
         # All “learnt_task” entries live in common_vectordb under data_key="learnt_task"
         if similarity_search:
