@@ -51,19 +51,6 @@ class _UnifiedVectorDB_with_get_id(_DB_Impl):
 # (3) Use the subclass as the new UnifiedVectorDB
 UnifiedVectorDB = _UnifiedVectorDB_with_get_id
 
-@dataclass
-class FewShotsParams:
-    """Parameters for few-shot learning examples."""
-
-    num: int = 5
-    filter: dict = field(default_factory=dict)
-    ranking_method: str = 'by_date_desc'
-    annotations: Optional[Union[str, List[str]]] = None
-    generate_summary: bool = False
-    format: Optional[str] = None
-    summary_char_limit: int = 500
-
-
 class ExtractMessage(Runnable):
     """Runnable to extract and concatenate message content."""
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-code_directory="/home/$USER/CollabFunctionsGPTCreator"
+code_directory="/home/$USER/CollabToolBuilder"
 NAME_EXP=$1
 PYTHON_SHORT=$2
 MODE=$3

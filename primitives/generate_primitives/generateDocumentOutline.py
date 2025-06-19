@@ -76,13 +76,13 @@ def generate_outline(bot,
 # set a an optional main section
 if __name__ == "__main__":
     import os
-    # check if CollabFunctionsGPTCreator module exist
+    # check if CollabToolBuilder module exist
     try:
         if not 'OPENAI_API_KEY' in os.environ:
             from config import OPENAI_API_KEY
             os.environ['OPENAI_API_KEY'] = OPENAI_API_KEY
     except:
-        raise Exception("Please import CollabFunctionsGPTCreator module or set OPENAI_API_KEY in the environment variables")
+        raise Exception("Please import CollabToolBuilder module or set OPENAI_API_KEY in the environment variables")
 
     from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
     from langchain_openai import ChatOpenAI

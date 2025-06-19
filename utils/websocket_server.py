@@ -337,7 +337,7 @@ class WebsocketServer:
             if self.secret:
                 remote_url += f"?secret={self.secret}"
             self.logger.info(
-                f"WebSocket Remote URL via proxy: https://doxav.github.io/CollabFunctionsGPTCreator/IHMv5-Monaco.html?wsUrl={remote_url}"
+                f"WebSocket Remote URL via proxy: https://doxav.github.io/CollabToolBuilder/IHMv5-Monaco.html?wsUrl={remote_url}"
             )
 
     async def main(self, stop_event):

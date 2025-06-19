@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=XPCollabFunctionsGPTCreator
+#SBATCH --job-name=XPCollabToolBuilder
 #SBATCH --partition=ouranos
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -16,7 +16,7 @@ start_datetime=$(date +"%Y-%m-%d %H:%M:%S")
 JOB_ID=${SLURM_JOB_ID:-"bashID_$(date +%Y%m%d_%H%M%S)"}
 SRUN_PID="not started"
 LOG_IDENTIFIER=${JOB_ID:-$start_time}
-BASE_DIR="/home/$USER/CollabFunctionsGPTCreator"
+BASE_DIR="/home/$USER/CollabToolBuilder"
 LOG_DIR="$BASE_DIR/logs"
 OUTPUT_LOG="$LOG_DIR/script_output_$LOG_IDENTIFIER.log"
 ERROR_LOG="$LOG_DIR/script_error_$LOG_IDENTIFIER.log"
