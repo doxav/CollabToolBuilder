@@ -1,4 +1,4 @@
-name: Automated Tests for CollabFunctionGPTCreator
+name: Automated Tests for CollabToolBuilder
 
 on: [push, pull_request]
 

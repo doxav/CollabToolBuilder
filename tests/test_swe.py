@@ -9,6 +9,6 @@ for data in dataset:
     env = SWEBenchEnvironment(problem)
     bot = SWEManager(target_dir="env/SWEBench/repos/scikit-learn")
 
-    find_buggy_code(bot, env, problem)
+    find_buggy_code(bot) #, env, problem)
 
     break

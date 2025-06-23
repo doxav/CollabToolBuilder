@@ -190,7 +190,20 @@ class TaskHistory:
         """Returns all failed tasks."""
         return self.failed_tasks
 
-
+def calculate_text_similarity(text1: str, text2: str) -> float:
+    """
+    Calculate similarity between two texts using difflib.
+    Returns a value between 0 and 1, where 1 is identical.
+    """
+    try:
+        import difflib
+        return difflib.SequenceMatcher(None, text1.strip(), text2.strip()).ratio()
+    except Exception:
+        # Fallback: simple length-based similarity
+        len1, len2 = len(text1), len(text2)
+        if len1 == 0 and len2 == 0:
+            return 1.0
+        return 1.0 - abs(len1 - len2) / max(len1, len2, 1)
 
 def format_prompt(messages):
     prompt_str = ""
