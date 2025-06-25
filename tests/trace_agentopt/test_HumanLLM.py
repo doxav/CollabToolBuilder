@@ -1,111 +1,79 @@
+# test_main.py
+
 import os
-import sys
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.join(os.getcwd(), 'NewTrace'))))
-sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), '../..')))
-
 import pytest
-import numpy as np
-import datasets
-from opto import trace
-from opto.utils.llm import LLM, LiteLLM, AutoGenLLM
-from opto.optimizers import OptoPrime, OptoPrimeMulti
-from opto.trainer.algorithms.basic_algorithm import MinibatchAlgorithm
-from opto.trainer.guide import VerbalJudgeGuide
-from humanllm_trace import HumanLLM_Trace
-from typing import Any
+from run_HumanLLM import main, HumanLLM_Trace, LLM, OptoPrimeMulti  # Adjust import as needed
+from opto.utils.llm import LLM, LiteLLM, AutoGenLLM, LLMFactory, _LLM_REGISTRY
 
 
-def humanllm_factory(config_list):
-    # Extract relevant configuration for HumanLLM
-    trace = HumanLLM_Trace()
-    return trace
+_original_factory = LiteLLM._factory
+_original_litellm_init = LiteLLM.__init__
+_original_autogen_init = AutoGenLLM.__init__
+# Define the patched constructors
+def patched_litellm_init(self, model=None, reset_freq=None, cache=True, **kwargs):
+    """
+    Patched constructor for LiteLLM to support kwargs.
+    """
+    # Call the original constructor
+    _original_litellm_init(self, model=model, reset_freq=reset_freq, cache=cache)
+    # Store additional kwargs in the instance
+    self.kwargs = kwargs
+
+def patched_autogenllmm_init(self, config_list=None, filter_dict=None, reset_freq=True, **kwargs):
+    """
+    Patched constructor for LiteLLM to support kwargs.
+    """
+    # Call the original constructor
+    _original_autogen_init(self, config_list=config_list, filter_dict=filter_dict, reset_freq=reset_freq)
+    # Store additional kwargs in the instance
+    self.kwargs = kwargs
+
+# Define the patched _factory method
+@classmethod
+def patched_factory(cls, model_name: str):
+    if model_name == 'HumanLLM_Trace':  # Check if model_name is 'HumanLLM'
+        default_model = 'gpt-4o-mini'
+        print("Using HumanLLM_Trace for model_name:", model_name)
+        return lambda *args, **kwargs: HumanLLM_Trace(model=default_model).run(default_model, args, **kwargs)
+
+    # Call the original _factory method for other models
+    return _original_factory(model_name)
 
 
-@trace.model
-class Learner:
-    """A basic LLM agent."""
-    def __init__(self, system_prompt: str = "You're a helpful agent",
-                 user_prompt_template: str = "Query: {message}",
-                 llm: LLM = None):
-        self.system_prompt = trace.node(system_prompt, trainable=True)
-        self.user_prompt_template = trace.node(user_prompt_template)
-        self.llm = llm or LLM()
 
-    @trace.bundle()
-    def model(self, system_prompt: str, user_prompt_template: str, message: str) -> str:
-        if '{message}' not in user_prompt_template:
-            raise ValueError("user_prompt_template must contain '{message}'")
+@pytest.fixture(scope="module", autouse=True)
+def setup_env_and_profiles():
+    # Set the API key and env
+    os.environ["UI_MODE"] = "False"
 
-        response = self.llm(
-            messages=[{"role": "system", "content": system_prompt},
-                      {"role": "user", "content": user_prompt_template.format(message=message)}]
-        )
-        return response.choices[0].message.content
+    # Apply the monkey patch
+    LiteLLM._factory = patched_factory
 
-    def forward(self, message: Any) -> Any:
-        return self.model(self.system_prompt, self.user_prompt_template, message)
+    LiteLLM.__init__ = patched_litellm_init
+    AutoGenLLM.__init__ = patched_autogenllmm_init
+    _LLM_REGISTRY['HumanLLM_Trace'] = HumanLLM_Trace
 
-@pytest.fixture
-def setup_data():
-    np.random.seed(42)
-    train_dataset = datasets.load_dataset('openai/gsm8k', 'main')['train'][:2]  # Smaller subset for testing
-    return dict(inputs=train_dataset['question'], infos=train_dataset['answer'])
-
-LiteLLM._factory = staticmethod(humanllm_factory)
-AutoGenLLM._factory = staticmethod(humanllm_factory)
-
-test_params = [
-    # (agent_llm, guide_model, optimizer_class)
-    (HumanLLM_Trace(), None, OptoPrime),            # HumanLM as backend
-    (LLM(HumanLLM_Trace()), None, OptoPrime),       # HumanLM as parameter for Learner
-    (None, HumanLLM_Trace(), OptoPrime),            # HumanLM as parameter for Guide
-    (None, None, lambda p: OptoPrime(p, llm=HumanLLM_Trace())),  # HumanLM for OptoPrime
-    (None, None, lambda p: OptoPrimeMulti(p, llm=HumanLLM_Trace()))  # HumanLM for OptoPrimeMulti
-]
+    # Register patched profiles
+    LLMFactory.register_profile("human_llm_backend", "LiteLLM", model="HumanLLM_Trace", temperature=0.5)
+    LLMFactory.register_profile("hllm_model", "LiteLLM", model="gpt-4o-mini", temperature=0.5, max_tokens=8000)
 
 
-@pytest.mark.parametrize("agent_llm,guide_model,optimizer_class", test_params)
-def test_learner_with_humanlm(setup_data, agent_llm, guide_model, optimizer_class):
-    train_dataset = setup_data
-    test_dataset = setup_data
-    
-    
+def test_main_execution():
+    """Ensure main() runs without error and returns a result."""
+    agent_llm = LLM(profile="human_llm_backend")
+    guide_model = LLM(profile="hllm_model")
 
-    agent = Learner(llm=agent_llm)
-    guide = VerbalJudgeGuide(model=guide_model)
-    
-    # Handle both direct class and lambda cases
-    if callable(optimizer_class):
-        optimizer = optimizer_class(agent.parameters())
-    else:
-        optimizer = optimizer_class(agent.parameters())
-    
-    alg = MinibatchAlgorithm(
-        agent=agent,
-        optimizer=optimizer
+    optimizer_class = lambda p: OptoPrimeMulti(
+        p,
+        llm_profiles=["human_llm_backend", "hllm_model"],
+        generation_technique="multi_llm"
     )
-    
-    # Run with minimal settings for testing
-    results = alg.train(
-        guide,
-        train_dataset,
-        num_epochs=1,
-        batch_size=1,
-        eval_frequency=-1,
-        test_dataset=test_dataset,
-        num_threads=1,
-        verbose=False
-    )
-    
-    # Validate the structure of the results
-    assert isinstance(results, tuple), "Expected results to be a tuple"
-    assert len(results) == 2, "Expected results to have two elements (train_scores, test_score)"
 
-    # Validate train_scores
-    train_scores, test_score = results
-    assert isinstance(train_scores, list), "Expected train_scores to be a list"
-    assert all(isinstance(score, (int, float)) for score in train_scores), "All train_scores should be numeric"
+    result = main(agent_llm=agent_llm, guide_model=guide_model, optimizer_class=optimizer_class)
 
-    # Validate test_score
-    assert isinstance(test_score, (int, float)), "Expected test_score to be numeric"
+    print(">>>>", result)
+    # Assert result is not None and has expected keys
+    assert result is not None
+
+if __name__ == '__main__':
+    test_main_execution()

@@ -15,26 +15,26 @@ from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.system import SystemMessage
 
 class HumanLLM_Trace(AbstractModel):
-
-    def __init__(self, model: Union[str, None] = None, reset_freq: Union[int, None] = None):
-        factory = lambda: self._factory()
+    def __init__(self, model: Union[str, None] = None, reset_freq: Union[int, None] = None, **kwargs):
+        factory = lambda: self._factory(model, **kwargs)
         super().__init__(factory, reset_freq)
         self.model_name = model
-        self.is_UI_mode = eval(os.environ.get('UI_MODE', False))
+        self.is_UI_mode = eval(os.environ.get('UI_MODE', "False"))
         config = HumanLLMConfig()
         config.use_websocket = self.is_UI_mode
         config.common_vectordb_config.embedding_function = "text-embedding-ada-002"
         config.initialize()
 
     @classmethod
-    def _factory(cls):
-        return lambda *args, **kwargs: cls().run(args, **kwargs)
+    def _factory(cls, model_name: str, **outer_kwargs):
+        # return lambda *args, **kwargs: cls().run(args, **{**cls().kwargs, **kwargs})
+        return lambda *args, **call_kwargs: cls().run(model_name, args, **{**outer_kwargs, **call_kwargs})
     
-    def run(self, args, **kwargs):
+    def run(self, model_name, args, **kwargs):
         res =  HumanLLM(
             agent_name="trace_llm",
             automation=not self.is_UI_mode,
-            llmORchains_list=HumanLLMConfig().get_llmORchains_list()
+            llmORchains_list=HumanLLMConfig().get_llmORchains_list(),
         ).invoke(
             original_input_messages=[
                 SystemMessage(content=kwargs["messages"][0]["content"]),
@@ -42,9 +42,9 @@ class HumanLLM_Trace(AbstractModel):
             ],
             prompt_directory=None,
             default_llm_function=ChatOpenAI(
-                    model="gpt-4o-mini",
+                    model=model_name or "gpt-4o-mini",
                     cache=False,
-                    temperature=0.
+                    **kwargs
                 ),
             *args,
             **kwargs

@@ -12,5 +12,5 @@ export DEFAULT_LITELLM_MODEL="gpt-4o-mini"
 export UI_MODE="True"
 
 # Step 1: Run ai_lab_repo.py
-echo "Running test_HumanLLM.py..."
-python -m pytest test_HumanLLM.py
+echo "Running run_HumanLLM.py..."
+python run_HumanLLM.py
