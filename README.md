@@ -29,14 +29,12 @@ MODIFY CONFIG.PY with the IP that will be given to be able to access the local E
 
 ## Launching the learning to develop new functions
 
-To start the collaborative development process on local IHM for new commands, execute the command:
+To start the collaborative development process on local HMI for new commands, execute the command:
 
 ```bash
 python learn.py
 ```
-You can start creating functions or pipelines by using **Jquery_front/IHM.html**
-
-![IMH](images/IHM.png)
+You can start creating tools by opening **frontend/index.html**
 
 ### Principles
 
@@ -58,7 +56,7 @@ This continuous feedback loop ensures that the model’s outputs align more clos
 
 *Human LLM Mechanism*: (TO EDIT CODE OR TEXT: a file is automatically opened in VSCode, it is by closing it that the text is validated and the process continues)
 
-![IHM explainations](images/ihm_explanation.PNG)
+![HMI explainations](images/ihm_explanation.PNG)
 
 ### Before Inference
 

@@ -73,7 +73,7 @@ class TaskIdentificationAgent:
     def identify_best_task(self):
         # Prepare data
         envs_status = "\n".join([env.get_state() for env in self.envs])
-        few_shots = HumanLLMConfig().manage_few_shot_examples(
+        few_shots = HumanLLMConfig().get_few_shot_examples(
             few_shots_params=self.params_user_message)
         # print(few_shots)
         self.human_llm_identify_best_task.user_message_few_shots = self.params_user_message

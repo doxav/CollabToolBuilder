@@ -9,7 +9,6 @@ import concurrent.futures
 from jinja2 import Template
 from datetime import datetime
 from utils.llm_utils import (
-    FewShotsParams,
     InferenceCheck,
     InferenceTracking,
     TaskHistory,
@@ -17,11 +16,13 @@ from utils.llm_utils import (
     _visual_input, save_prompt_with_tag,
     list_prompt_variants, flatten_and_pair,
     semantic_double_pass_chunking,
-    extract_json
+    extract_json,
+    calculate_text_similarity
 )
 from env.SWEBench.env import SWEBenchEnvironment
 from utils.human_llm_config import HumanLLMConfig
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
+
 
 from langchain.llms import OpenAI
 from langchain.chains import LLMChain
@@ -33,6 +34,20 @@ from langchain_core.messages.system import SystemMessage
 from langchain_core.messages.function import FunctionMessage
 from langchain_core.runnables import RunnableSequence, ConfigurableField
 import regex as regex 
+
+from dataclasses import dataclass, field
+
+@dataclass
+class FewShotsParams:
+    """Parameters for few-shot learning examples."""
+
+    num: int = 5
+    filter: dict = field(default_factory=dict)
+    ranking_method: str = 'by_date_desc'
+    annotations: Optional[Union[str, List[str]]] = None
+    generate_summary: bool = False
+    format: Optional[str] = None
+    summary_char_limit: int = 500
 
 class HumanLLM:
     def __init__(
@@ -63,7 +78,7 @@ class HumanLLM:
         problem_prompts_subdir=None,
         max_autofix=None,
         skip_log_entry_if_no_change=True,
-        fusion_mode=None, # Can be "best", "best_of_n", "concat"
+        selection_technique=None, # Can be "best", "best_of_n", "concat"
         **kwargs
     ):
         self.config = HumanLLMConfig()
@@ -116,7 +131,7 @@ class HumanLLM:
         self.automation = automation
         self.outputs = None
         self.saved_task = saved_task
-        self.auto_n_rounds = auto_n_rounds
+        self.auto_n_rounds = auto_n_rounds if auto_n_rounds is not None else 0
         self.recommend_critics = recommend_critics
         self.last_user_message = None
         self.primitives_dir = None
@@ -124,7 +139,7 @@ class HumanLLM:
         self.max_autofix = max_autofix
         self.problem_prompts_subdir = problem_prompts_subdir
         self.skip_log_entry_if_no_change = skip_log_entry_if_no_change
-        self.fusion_mode = fusion_mode
+        self.selection_technique = selection_technique
 
     def get_rag_documents(self, agent_name=None, extra_filter: Optional[Dict[str, Any]] = None, query: str = '*', **kwargs):
         """
@@ -610,42 +625,6 @@ class HumanLLM:
         # Reset times for the next action
         if reset_menu_time_after:
             self.start_time, self.menu_start_time = time.time(), time.time()
-
-    def _process_examples(self, log_entries: List, params: FewShotsParams) -> List[str]:
-        """
-        Process and format the examples based on the given parameters.
-
-        :param log_entries: List of log entries retrieved from the vector database.
-        :param params: FewShotsParams object containing processing parameters.
-        :return: List of processed and formatted examples.
-        """
-        examples = []
-        for entry in log_entries:
-            example_content = json.loads(entry.page_content)
-
-            # Filter examples based on annotations if specified
-            if params.annotations:
-                if isinstance(params.annotations, str):
-                    params.annotations = [params.annotations]
-                if 'annotation' in example_content and example_content['annotation'] in params.annotations:
-                    examples.append(example_content)
-            else:
-                examples.append(example_content)
-
-        # Format examples using the provided template if specified
-        if params.format:
-            template = Template(params.format)
-            examples = [template.render(example=ex) for ex in examples]
-        else:
-            valid_examples = []
-            for ex in examples:
-                if 'output_llm_raw' in ex:
-                    valid_examples.append(ex['output_llm_raw'][0])  # Assuming you want the first element of the list
-                else:
-                    logging.warning(f"Missing 'output_llm_raw' key in example: {ex}")
-            examples = valid_examples
-
-        return examples
 
     def generate_summary(self, examples: List[str], char_limit: int) -> str:
         """
@@ -1223,7 +1202,7 @@ class HumanLLM:
             self.user_message_few_shots = new_few_shots
             envs_status = '\n'.join([env.get_state() for env in self.envs])
 
-            return self.config.manage_few_shot_examples(self.user_message_few_shots) + (
+            return self.config.get_few_shot_examples(self.user_message_few_shots) + (
                 f"\n- Current status of examples on "
                 f"which the task will be tested on: {envs_status}\n"
             )
@@ -2022,7 +2001,7 @@ class HumanLLM:
         prompt_directory="prompts",
         generation_technique='temperature_variation',
         forced_llm_output=None,
-        fusion_mode=None,
+        selection_technique=None,
         **kwargs
     ):
         """
@@ -2042,7 +2021,13 @@ class HumanLLM:
             Wraps invocation logic for a single call. Adjusts temperature if supplied.
             Handles partial streaming via smart_print.
             """
-            if use_premium:
+            # if use_premium is a string, get func from self.llmORchains_list using key, if not exist raise erro
+            if isinstance(use_premium, str):
+                if use_premium in self.llmORchains_list:
+                    func = self.llmORchains_list[use_premium]
+                else:
+                    raise ValueError(f"Premium LLM function '{use_premium}' not found in llmORchains_list.")
+            elif use_premium:
                 func = premium_llm_function if not func_calling else self.invoke_with_function_call
             else:
                 func = default_llm_function if not func_calling else self.invoke_with_function_call
@@ -2150,8 +2135,7 @@ class HumanLLM:
                 value = func.invoke(input_msg)
                 return AIMessage(content=value.content if hasattr(value, 'content') else str(value))
 
-        def generate_single(system_prompt, user_prompt, use_premium_llm, function_calling,
-                            temperature=0.0, stream_output=False, color_id=0):
+        def generate_single(system_prompt, user_prompt, use_premium_llm, function_calling, temperature=0.0, stream_output=False, color_id=0):
             """
             Single pass call wrapper using perform_llm_call.
             Returns an AIMessage object.
@@ -2161,7 +2145,7 @@ class HumanLLM:
             return perform_llm_call( input_messages, use_premium=use_premium_llm, func_calling=function_calling, temperature=temperature, stream_output=stream_output, color_id=color_id)
 
         def generate_candidates( generation_technique, system_prompt, user_prompt, num_responses, use_premium_llm,
-            function_calling, temp_min, temp_max, stream_output):
+            function_calling, temp_min, temp_max, stream_output, experts_list=None, multi_llm=None):
             """
             Generates multiple candidates based on different strategies. 
             Returns a list of AIMessage objects.
@@ -2171,8 +2155,6 @@ class HumanLLM:
             if num_responses < 1: num_responses = 1
 
             if generation_technique == "temperature_variation":
-                # We replicate the snippet logic
-                self.synthesize_mode = True  # you can set this if you want final synthesis
                 # Build a uniform range of temperatures from temp_max down to temp_min
                 temperatures = [ abs(round(temp_max - i * (temp_max - temp_min) / max(1, num_responses - 1),2)) for i in range(num_responses) ]
                 smart_print( f"Temperatures for responses: {temperatures}", self.agent_name, "Temperature Variation", optional=True)
@@ -2184,18 +2166,57 @@ class HumanLLM:
             elif generation_technique == "self_refinement":
                 # For each new candidate, we refine the previous
                 # Typically used in smaller loops
-                for _ in range(num_responses):
+                for i in range(num_responses):
                     if not candidates:  # First candidate
                         current_prompt = system_prompt
                     else:
                         # Reflect on the last candidate
-                        current_prompt = f"{system_prompt}\nRefine the following solution to improve answer to user's prompt. SOLUTION: <<<\n{candidates[-1].content}\n>>>"
+                        current_prompt = f"{system_prompt}\nRefine the previous ANSWER to improve final answer to the user's prompt. SOLUTION: <<<\n{candidates[-1].content}\n>>>"
 
                     candidate = generate_single( current_prompt, user_prompt, use_premium_llm, function_calling, temperature=0.0,  stream_output=stream_output, color_id=0)
                     candidates.append(candidate)
 
+            elif generation_technique == "multi_experts":
+                # 1. Build an explicit list of expert personas (either passed in or generated dynamically)
+                experts = []
+                if isinstance(experts_list, list) and all(isinstance(e, str) for e in experts_list):
+                    # Use the provided list, cycling if necessary
+                    while len(experts) < num_responses:
+                        experts.append(experts_list[len(experts) % len(experts_list)])
+                else:
+                    # Ask the LLM to generate a JSON array of complementary experts
+                    expert_json = generate_single(
+                        "Generate a JSON array of complementary experts personas to optimize this PROBLEM (e.g. [\"AI Engineer\", \"Compiler Specialist\", ...]).",
+                        f"NUMBER_OF_EXPERTS: {num_responses}\nPROBLEM:\n<<<\n{system_prompt}\n>>>",
+                        use_default_llm,
+                        function_calling,
+                        temperature=0.0
+                    ).content
+                    expert_json = expert_json.strip().removeprefix("```json").removesuffix("```").strip()
+                    try:
+                        experts = json.loads(expert_json)
+                    except json.JSONDecodeError:
+                        experts = []
+                    # Fallback defaults if we didn’t get enough
+                    default_experts = ["Algorithm Expert", "Performance Optimizer", "Out of the box problem solver", "AI Engineer","Compiler Specialist"]
+                    while len(experts) < num_responses:
+                        experts.append(default_experts[len(experts) % len(default_experts)])
+
+                # 2. For each expert, generate and clean up the candidate
+                for i, expert in enumerate(experts[:num_responses]):
+                    meta_prompt = (f"You are a `{expert}`\n{system_prompt}")
+                    candidate = generate_single(meta_prompt, user_prompt, use_premium_llm, function_calling, temperature=0.0, stream_output=stream_output, color_id=i)
+                    #candidate.content = candidate.content.strip().removeprefix("<<<").removesuffix(">>>").strip()
+                    candidates.append(candidate)
+
+            elif generation_technique in ["mixture_of_agents_generation", "moa", "multi_llm"]:
+                llm_or_chain_keys = getattr(self, "multi_llm", None) or multi_llm or list(self.llmORchains_list.keys())
+                for i in range(num_responses):
+                    llm_or_chain_key = llm_or_chain_keys[i % len(llm_or_chain_keys)]
+                    candidate = generate_single(system_prompt, user_prompt, llm_or_chain_key, function_calling, temperature=temp_min, stream_output=stream_output, color_id=i)
+                    candidates.append(candidate)
+
             elif generation_technique == "iterative_alternatives":
-                self.synthesize_mode = True
                 for i in range(num_responses):
                     if not candidates:
                         current_prompt = system_prompt
@@ -2470,9 +2491,9 @@ class HumanLLM:
             if not self.auto_n_rounds:
                 self.automation = None
 
-        if fusion_mode or self.fusion_mode:
+        if selection_technique or self.selection_technique:
             # If we are in fusion mode, we need to merge the outputs
-            output_messages = self.fusion_candidates(output_messages, fusion_mode or self.fusion_mode)
+            output_messages = self.select_candidate(output_messages, selection_technique or self.selection_technique)
 
         caller_function_name = inspect.stack()[1].function
         call_duration = time.time() - call_start_time
@@ -2501,35 +2522,102 @@ class HumanLLM:
 
         return ([msg.content for msg in output_messages] if return_message_content_only else output_messages)
 
-    def fusion_candidates(self, output_messages, fusion_mode=None):
+    def select_candidate(self, output_messages, selection_technique=None):
         """
-        Merges multiple LLM outputs/candidates into a single according to fusion_mode (concat, best_of_n, last)
+        Merges multiple LLM outputs/candidates into a single according to selection_technique (concat, best_of_n, last)
         """
-        if fusion_mode is None:
-            fusion_mode = self.fusion_mode
-        if fusion_mode == "concat":
+        if selection_technique is None:
+            selection_technique = self.selection_technique
+
+        # Handle edge cases
+        if not output_messages:
+            return []
+        if len(output_messages) == 1:
+            return output_messages
+
+        if selection_technique == "concat":
             # Concatenate all outputs
             return [AIMessage(content="\n".join([msg.content for msg in output_messages]))]
-        elif fusion_mode == "last":
+
+        elif selection_technique in ["moa", "mixture_of_agents"]:
+            # NEW: Mixture of Agents selection from OptoPrimeMulti
+            try:
+                system_prompt = (
+                    "You are an expert at synthesizing multiple CANDIDATE solutions into a single OPTIMAL solution. "
+                    "Given the following CANDIDATE solutions to a PROBLEM, provide an OPTIMAL solution that mixes the best elements of each, and follows the same answer output structure.\n"
+                    f"Initial PROBLEM: <<<\n{self.llm_input_messages[0].content}\n{self.llm_input_messages[1].content}\n>>>\n\n"
+                )
+                
+                user_prompt = "\n\n".join([
+                    f"CANDIDATE solution {i + 1}:\n{output_messages[i].content}\n"
+                    for i in range(len(output_messages))
+                ]) + "\n\nOPTIMAL solution (mixing best elements):\n"
+                
+                response = self.premium_llm.invoke([
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=user_prompt)
+                ])
+                # strip <<< and >>> if present
+                cleaned_response = response.content.strip().removeprefix("<<<").removesuffix(">>>").strip()
+                return [AIMessage(content=cleaned_response)]
+            except Exception as e:
+                smart_print(f"MOA selection failed: {e}. Falling back to best_of_n.", 
+                           self.agent_name, "select_candidate", optional=True)
+                return self.select_candidate(output_messages, "best_of_n")
+                
+        elif selection_technique == "majority":
+            try:
+                import numpy as np
+                from scipy.spatial.distance import pdist, squareform
+                from sklearn.cluster import AgglomerativeClustering
+                texts = [m.content for m in output_messages]
+                # build distance matrix = 1 - similarity
+                D = squareform(pdist(texts, lambda u, v: 1 - calculate_text_similarity(u, v)))
+                # cluster by a threshold to group similar answers
+                labels = AgglomerativeClustering(
+                    n_clusters=None, distance_threshold=0.5, affinity='precomputed', linkage='average'
+                ).fit_predict(D)
+                # find largest cluster
+                from collections import Counter
+                top = Counter(labels).most_common(1)[0][0]
+                idxs = [i for i,l in enumerate(labels) if l==top]
+                subD = D[np.ix_(idxs, idxs)]
+                # medoid = index with minimum total distance
+                medoid = idxs[int(np.argmin(subD.sum(axis=1)))]
+                return [output_messages[medoid]]
+            except Exception:
+                return [output_messages[-1]]
+
+        elif selection_technique == "last":
             # Return the last output
             return [output_messages[-1]]
-        elif fusion_mode == "best_of_n":
+        elif selection_technique == "best_of_n":
             if len(output_messages) == 1:
                 return output_messages
-            system_prompt = (f"Given the following responses candidate below and the initial question below, "
-        f"provide an optimal response to the question mixing best elements of each and following the same answer output structure.\n"
-        f"Initial question: <<<\n{self.llm_input_messages[0].content}\n{self.llm_input_messages[1].content}\n>>>\n\n")
-            user_prompt = (
-                "\n\n".join([ f"Response candidate {i + 1}:\n{{{output_messages[i]}}}\n\n\n" for i in range(len(output_messages))])
-                + "\n\nOptimal Response:\n")
-        # Use the premium LLM to generate the best response
-            response = self.premium_llm.invoke([
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt)
-            ])
-            return [AIMessage(content=response.content)]            
+            try:
+                system_prompt = (
+                    f"Given the following CANDIDATE solutions and the initial PROBLEM, provide the best solution by returning its content, following the same answer output structure.\n"
+                    f"Initial PROBLEM: <<<\n{self.llm_input_messages[0].content}\n{self.llm_input_messages[1].content}\n>>>\n\n"
+                )
+                user_prompt = "\n\n".join([
+                    f"Solution CANDIDATE {i + 1}:\n{output_messages[i].content}\n"
+                    for i in range(len(output_messages))
+                ]) + "\n\nBest CANDIDATE:\n"
+                
+                response = self.premium_llm.invoke([
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=user_prompt)
+                ])
+                return [AIMessage(content=response.content)]
+            except Exception as e:
+                smart_print(f"Best_of_n selection failed: {e}. Falling back to last.", 
+                           self.agent_name, "select_candidate", optional=True)
+                return [output_messages[-1]]            
         else:
-            raise ValueError(f"Invalid fusion_mode: {fusion_mode}. Supported options: 'concat', 'best_of_n', 'last'.")
+            raise ValueError(f"Invalid selection_technique: {selection_technique}. Supported options: 'concat', 'best_of_n', 'last'.")
+            # ALTERNATIVE: Graceful fallback for unknown techniques (backward compatibility)
+            # smart_print(f"Unknown selection_technique: '{selection_technique}'. Falling back to 'last'.", self.agent_name, "select_candidate", optional=True)
+            # return [output_messages[-1]]
 
     def generate_best_improvement_suggestions(self, inference_result_content=None, output_id=None):
         """

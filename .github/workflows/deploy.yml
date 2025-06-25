@@ -41,7 +41,7 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           # Upload only the specific folder
-          path: 'Jquery_front'
+          path: 'frontend'
 
       - name: Deploy to GitHub Pages
         id: deployment

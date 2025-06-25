@@ -337,7 +337,7 @@ class WebsocketServer:
             if self.secret:
                 remote_url += f"?secret={self.secret}"
             self.logger.info(
-                f"WebSocket Remote URL via proxy: https://doxav.github.io/CollabFunctionsGPTCreator/IHMv5-Monaco.html?wsUrl={remote_url}"
+                f"WebSocket Remote URL via proxy: https://doxav.github.io/CollabToolBuilder/IHMv5-Monaco.html?wsUrl={remote_url}"
             )
 
     async def main(self, stop_event):
@@ -352,7 +352,7 @@ class WebsocketServer:
 
         # Get the absolute path of IHMv5-Monaco.html
         current_directory = os.getcwd()
-        hmi_file_path = os.path.join(current_directory, "Jquery_front", "IHMv5-Monaco.html")
+        hmi_file_path = os.path.join(current_directory, "frontend", "index.html")
         absolute_hmi_file_path = f"file://{hmi_file_path}"
         self.logger.info(f"Access to HMI via : {absolute_hmi_file_path}")
 

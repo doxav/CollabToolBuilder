@@ -298,12 +298,16 @@ class UnifiedVectorDB:
                 if sort_order in ['asc', 'desc']:
                     self.logger.warning("WARNING: sort not implemented for Chroma DB; performing in-memory sort")
             # Query the database using the filter (if any)
-            # Check db size, if 0 skip, if less than k, set k to db size
-            if self.db._collection.count() == 0:
-                self.logger.warning("WARNING: Chroma DB is empty, returning empty results")
-                return []
-            elif self.db._collection.count() < k:
-                k = self.db._collection.count()
+            # Check db size if the underlying store supports it; otherwise skip
+            try:
+                size = self.db._collection.count()
+                if size == 0:
+                    self.logger.warning("WARNING: Chroma DB is empty, returning empty results")
+                    return []
+                elif size < k:
+                    k = size
+            except Exception:
+                pass
             try:
                 results = self.db.similarity_search(query_text, k=k, filter=filter_chroma)
             except Exception as e:
@@ -397,8 +401,11 @@ class UnifiedVectorDB:
 
         # (3) Build metadata tags
         tags: Dict[str, Any] = metadata.copy() if isinstance(metadata, dict) else {}
-        params = ["agent_name", "data_key", "function_name", "task_id", "before_after", "user_id", "step_id", "task_type", "score"]
-        tags.update({k: locals()[k] for k in params if (k in locals()) and (locals()[k] is not None)})
+        params = {"agent_name": agent_name, "data_key": data_key, "function_name":function_name, "task_id": task_id, "before_after": before_after, "user_id": user_id, "step_id": step_id, "task_type": task_type, "score": score}
+        # filter out any that are None
+        for key, val in params.items():
+            if val is not None:
+                tags[key] = val
         # Always tag with a timestamp
         tags["date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
 
@@ -437,8 +444,14 @@ class UnifiedVectorDB:
         """
         # (1) Build metadata dict to filter by
         filters: Dict[str, Any] = {}
-        params = ["agent_name", "data_key", "function_name", "task_id", "before_after", "user_id", "step_id", "task_type", "score"]
-        filters.update({k: locals()[k] for k in params if (k in locals()) and (locals()[k] is not None)})
+        # params = ["agent_name", "data_key", "function_name", "task_id", "before_after", "user_id", "step_id", "task_type", "score"]
+        # filters.update({k: locals()[k] for k in params if (k in locals()) and (locals()[k] is not None)})
+        params = {"agent_name": agent_name, "data_key": data_key, "function_name":function_name, "task_id": task_id, "before_after": before_after, "user_id": user_id, "step_id": step_id, "task_type": task_type, "score": score}
+        # filter out any that are None
+        for key, val in params.items():
+            if val is not None:
+                filters[key] = val
+
         # Merge in any explicit metadata_filter
         if metadata_filter:
             filters.update(metadata_filter)
@@ -465,7 +478,7 @@ class UnifiedVectorDB:
                 parsed_list.append(temp)
             else:
                 # If caller wants the “old-style” raw data_key value:
-                if isinstance(temp, dict) and (data_key in temp) and (len(temp) == 1):
+                if isinstance(temp, dict) and (data_key in temp): #if isinstance(temp, dict) and (data_key in temp) and (len(temp) == 1):
                     parsed_list.append(temp[data_key])
                 else:
                     parsed_list.append(None)

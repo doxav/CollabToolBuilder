@@ -11,13 +11,13 @@ while true; do
   squeue -o "%.18i %.9P %.8j %.8u %.2t %.10M %.6D %R" | grep ${USER:0:6}
 
   echo -e "\n${green}==== OPTUNA SQLite last 10 studies ====${nc}"
-  sqlite3 /home/$USER/CollabFunctionsGPTCreator/optuna.db "SELECT study_id, COUNT(trial_id), MIN(datetime_start), MAX(datetime_complete) FROM trials GROUP BY study_id ORDER BY study_id DESC LIMIT 10;"
+  sqlite3 /home/$USER/CollabToolBuilder/optuna.db "SELECT study_id, COUNT(trial_id), MIN(datetime_start), MAX(datetime_complete) FROM trials GROUP BY study_id ORDER BY study_id DESC LIMIT 10;"
 
   # Find the most recent log file
-  recent_log_file=$(ls -t /home/$USER/CollabFunctionsGPTCreator/logs/script_output_*.log | head -n 1)
-  recent_err_file=$(ls -t /home/$USER/CollabFunctionsGPTCreator/logs/script_error_*.log | head -n 1)
-  recent_xperr_file=$(ls -t /home/$USER/CollabFunctionsGPTCreator/logs/*xp*_*.err | head -n 1)
-  recent_xpout_file=$(ls -t /home/$USER/CollabFunctionsGPTCreator/logs/*xp*_*.out | head -n 1)
+  recent_log_file=$(ls -t /home/$USER/CollabToolBuilder/logs/script_output_*.log | head -n 1)
+  recent_err_file=$(ls -t /home/$USER/CollabToolBuilder/logs/script_error_*.log | head -n 1)
+  recent_xperr_file=$(ls -t /home/$USER/CollabToolBuilder/logs/*xp*_*.err | head -n 1)
+  recent_xpout_file=$(ls -t /home/$USER/CollabToolBuilder/logs/*xp*_*.out | head -n 1)
 
   # Get last modification times
   recent_log_file_mtime=$(stat -c %y "$recent_log_file" | cut -d'.' -f1)
