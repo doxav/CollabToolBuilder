@@ -1,4 +1,4 @@
-#from inference_functions import generate_annotations
+#from inference_functions import generate_annotations_feedback
 from optimisation.optuna_main import launch_run, definition_few_shots, global_main, init_prompts_directory, documentation
 import os
 
@@ -8,7 +8,7 @@ from utils.human_llm import  HumanLLM
 
 from config import MODELS_CONFIG_LIST
 
-def generate_annotations(output: str, output_id : int = None):
+def generate_annotations_feedback(output: str, output_id : int = None):
     """
     Ask a LLM to generate annotations on a prompt given in parameters.
 
@@ -196,7 +196,7 @@ Your task is to extract and organize feedback tags from the **ANNOTATED ANSWER**
     with open(f"./prompts/IR_CPS_TechSynthesis/{name_xp}/apply_annotations.txt", "w") as f:
         f.write(annotations_critic_system_prompt)
 
-    with open(f"./prompts/IR_CPS_TechSynthesis/{name_xp}/generate_annotations.txt", "w") as f:
+    with open(f"./prompts/IR_CPS_TechSynthesis/{name_xp}/generate_annotations_feedback.txt", "w") as f:
         f.write(annotation_generate_prompt)
 
     # Write the generated prompt to a file that will be used by the Coder agent
@@ -220,7 +220,7 @@ Your task is to extract and organize feedback tags from the **ANNOTATED ANSWER**
             "CodingAgent#temperature_max": temperature_max,
             "CodingAgent#num_parallel_inferences": number_inferences,
             "all#problem_prompts_subdir": f"IR_CPS_TechSynthesis/{name_xp}/",
-            f"{tries_annotations}#additional_check_list": {"Generate annotations": generate_annotations},
+            f"{tries_annotations}#additional_check_list": {"Generate annotations": generate_annotations_feedback},
             "presence_penalty": presence_penalty,
             "num_previous_attempts": num_previous_attempts,
             "parameters_previous_attempts": parameters_previous_attempts,
