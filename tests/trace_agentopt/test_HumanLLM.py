@@ -60,6 +60,8 @@ def setup_env_and_profiles():
 
 def test_main_execution():
     """Ensure main() runs without error and returns a result."""
+    LLMFactory.register_profile("human_llm_backend", "LiteLLM", model='HumanLLM_Trace')
+    LLMFactory.register_profile("hllm_model", "LiteLLM", model="gpt-4.1-nano")
     agent_llm = LLM(profile="human_llm_backend")
     guide_model = LLM(profile="hllm_model")
 
