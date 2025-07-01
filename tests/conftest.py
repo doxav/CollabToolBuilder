@@ -46,7 +46,8 @@ def redirect_all_output_to_log():
     sys.stdout, sys.stderr = real_stdout, real_stderr
     log_file.close()
 
-def pytest_cmdline_preparse(config, args):
+# def pytest_cmdline_preparse(config, args):
+def pytest_load_initial_conftests(args):
     """
     If pytest is invoked with --collect-only (as VS Code does for discovery),
     strip out any -n / --dist flags so xdist isn't loaded and won't error.

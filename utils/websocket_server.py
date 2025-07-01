@@ -48,7 +48,7 @@ class WebsocketServer:
             "update_answer",
             "critic_answer",
             "get_tasks",
-            "generate_best_improvement_suggestions",
+            "generate_instructions_feedback",
             "goto_task"
         ]
         self.server_id = str(uuid.uuid4())

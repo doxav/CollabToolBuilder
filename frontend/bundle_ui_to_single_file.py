@@ -1,6 +1,6 @@
 import re
 
-files_location = "./" #"Jquery_front/"
+files_location = "./" #"frontend/"
 
 # Read HTML file
 with open(f"{files_location}IHMv5-Monaco.html", "r", encoding="utf-8") as file:

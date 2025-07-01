@@ -62,12 +62,12 @@ class TaskIdentificationAgent:
             if self.recommendations_usage:
                 self.human_llm_identify_best_task.add_manage_inference_check(
                     "Recommendations",
-                    self.human_llm_identify_best_task.generate_best_improvement_suggestions
+                    self.human_llm_identify_best_task.generate_instructions_feedback
                 )
         else:
             self.human_llm_identify_best_task.add_manage_inference_check(
                 "Recommend Critics",
-                self.human_llm_identify_best_task.generate_best_improvement_suggestions
+                self.human_llm_identify_best_task.generate_instructions_feedback
             )
 
     def identify_best_task(self):
@@ -167,12 +167,12 @@ class CodingAgent:
             if self.recommendations_usage:
                 self.human_llm_code_task.add_manage_inference_check(
                     "Recommendations",
-                    self.human_llm_code_task.generate_best_improvement_suggestions
+                    self.human_llm_code_task.generate_instructions_feedback
                 )
         else:
             self.human_llm_code_task.add_manage_inference_check(
                 "Recommend Critics",
-                self.human_llm_code_task.generate_best_improvement_suggestions
+                self.human_llm_code_task.generate_instructions_feedback
             )
         if self.additional_check_list:
             for key, value in self.additional_check_list.items():

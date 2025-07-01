@@ -116,6 +116,7 @@ class HumanLLM:
         self.comments = []
         self.skip_rounds = self.config.default_skip_rounds
         self.log_data = []
+        self.llm_input_messages = []
         self.num_parallel_inferences = num_parallel_inferences
         self.llm_max_context_size = model_max_context_size
         self.premium_llm_by_default = premium_llm_by_default
@@ -1360,11 +1361,12 @@ class HumanLLM:
             if self.automation:
                 if (hasattr(self, 'recommend_critics') and self.recommend_critics) and self.outputs[output_id - 1] is None:
                     if comments is None:
-                        comments = self.generate_best_improvement_suggestions( inference_result_msg.content, output_id=output_id)
-                    inference_result_msg.content = self.apply_critic_answer(
+                        comments = self.generate_instructions_feedback( inference_result_msg.content, output_id=output_id)
+                    inference_result_msg.content = self.apply_feedback(
                         comments["suggestions"],
                         inference_result_msg.content,
-                        text_has_annotations=False
+                        text_has_annotations=False,
+                        initial_prompt=self.llm_input_messages[0].content
                     )
                     self.outputs[output_id - 1] = inference_result_msg.content
                 action = ""
@@ -1387,10 +1389,11 @@ class HumanLLM:
                 self.modify_answer(inference_result_msg, output_id)
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
-                inference_result_msg.content = self.apply_critic_answer(
+                inference_result_msg.content = self.apply_feedback(
                     comments,
                     inference_result_msg.content,
-                    text_has_annotations=False
+                    text_has_annotations=False,
+                    initial_prompt=self.llm_input_messages[0].content
                 )
 
             elif action == "C":  # Find a better Prompt by providing critic and ideal answer
@@ -1546,12 +1549,13 @@ class HumanLLM:
                 save_prompt_with_tag(self.system_prompt, new_template, tag_option)
         return comments
 
-    def apply_critic_answer(
+    def apply_feedback(
         self,
         suggestions,
         text_content,
         text_has_annotations=True,
         annotation_format=None,
+        initial_prompt=None,
         instruction_processing_approach='ANNOTATIONS_ALL'
     ):
         """
@@ -1686,7 +1690,7 @@ class HumanLLM:
                 Your task is to improve the following text by processing the annotations and following the instructions provided.
                 Please replace the annotated parts according to the instructions and produce the final improved version of the text.
 
-                Possible actions:
+                Typical actions:
                 1. **FIX:** Make necessary corrections.
                 2. **IMPROVE:** Enhance the content.
                 3. **INSERT:** Add new content as instructed.
@@ -1718,7 +1722,7 @@ class HumanLLM:
                     'instruction': annotation['instruction']
                 } for i, annotation in enumerate(annotations)}
                 system_prompt = """
-                Your task is to generate new content for the annotated parts according to the instructions.
+                Your task is to generate an upgraded content for each annotated content following the instructions.
                 Provide your output as a JSON dictionary mapping IDs to the new content.
                 The values should be strings containing the new content, without additional keys or nesting.
                 Example Output: {"1": "new content for annotation 1", "2": "new content for annotation 2"}
@@ -1778,16 +1782,16 @@ class HumanLLM:
             prompt_sugg = ""
             if suggestions:
                 prompt_sugg = (
-                    "Your task is also to take into account the **SUGGESTIONS** and modify the answer accordingly. Also we will give you **PREVIOUS SUGGESTIONS** that were given on previous task.\n"
-                    "These previous suggestions are here to help you more understanding the suggestions and to help you to improve the answer.\n"
-                    f"\n### SUGGESTIONS: << {suggestions} >>\n"
-                    f"\n### PREVIOUS SUGGESTIONS: << {prev_sugg} >>"
+                    "Your task is also to improve answer by applying the **SUGGESTIONS** to modify the answer accordingly."
+                    f"\n### SUGGESTIONS TO BE APPLIED: << {suggestions} >>\n"
+                    "See also some **PREVIOUS SUGGESTIONS** (not to be applied) to help you better understand SUGGESTIONS TO BE APPLIED.\n" if prev_sugg != "" else ""
+                    f"\n### PREVIOUS SUGGESTIONS: << {prev_sugg} >>" if prev_sugg != "" else ""
                 )
-            system_prompt = f"""Given the INSTRUCTION provided by the user (and the **INITIAL PROMPT**), your task is to generate a very different new answer from the INITIAL ANSWER or to refine the initial answer.
+            system_prompt = f"""Given the INSTRUCTIONS provided by the user (and the **INITIAL PROMPT**), your task is to generate a much better answer than INITIAL ANSWER.
             {prompt_sugg}
-            ### INITIAL PROMPT: << {self.llm_input_messages[0].content} >>
+            ### INITIAL PROMPT: << {initial_prompt} >>
             ### INITIAL ANSWER: << {combined_text_content} >> """
-            user_prompt = f"INSTRUCTION: << {suggestions} >>"
+            user_prompt = f"INSTRUCTIONS: << {suggestions} >>"
             llm_output = self.premium_llm.invoke(
                 [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)])
             final_text = llm_output.content
@@ -2135,104 +2139,6 @@ class HumanLLM:
                 value = func.invoke(input_msg)
                 return AIMessage(content=value.content if hasattr(value, 'content') else str(value))
 
-        def generate_single(system_prompt, user_prompt, use_premium_llm, function_calling, temperature=0.0, stream_output=False, color_id=0):
-            """
-            Single pass call wrapper using perform_llm_call.
-            Returns an AIMessage object.
-            """
-            # Rebuild the message array for the LLM
-            input_messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
-            return perform_llm_call( input_messages, use_premium=use_premium_llm, func_calling=function_calling, temperature=temperature, stream_output=stream_output, color_id=color_id)
-
-        def generate_candidates( generation_technique, system_prompt, user_prompt, num_responses, use_premium_llm,
-            function_calling, temp_min, temp_max, stream_output, experts_list=None, multi_llm=None):
-            """
-            Generates multiple candidates based on different strategies. 
-            Returns a list of AIMessage objects.
-            """
-            candidates = []
-
-            if num_responses < 1: num_responses = 1
-
-            if generation_technique == "temperature_variation":
-                # Build a uniform range of temperatures from temp_max down to temp_min
-                temperatures = [ abs(round(temp_max - i * (temp_max - temp_min) / max(1, num_responses - 1),2)) for i in range(num_responses) ]
-                smart_print( f"Temperatures for responses: {temperatures}", self.agent_name, "Temperature Variation", optional=True)
-
-                for i, temp in enumerate(temperatures):
-                    candidate = generate_single( system_prompt, user_prompt, use_premium_llm, function_calling, temperature=temp, stream_output=stream_output, color_id=i)
-                    candidates.append(candidate)
-
-            elif generation_technique == "self_refinement":
-                # For each new candidate, we refine the previous
-                # Typically used in smaller loops
-                for i in range(num_responses):
-                    if not candidates:  # First candidate
-                        current_prompt = system_prompt
-                    else:
-                        # Reflect on the last candidate
-                        current_prompt = f"{system_prompt}\nRefine the previous ANSWER to improve final answer to the user's prompt. SOLUTION: <<<\n{candidates[-1].content}\n>>>"
-
-                    candidate = generate_single( current_prompt, user_prompt, use_premium_llm, function_calling, temperature=0.0,  stream_output=stream_output, color_id=0)
-                    candidates.append(candidate)
-
-            elif generation_technique == "multi_experts":
-                # 1. Build an explicit list of expert personas (either passed in or generated dynamically)
-                experts = []
-                if isinstance(experts_list, list) and all(isinstance(e, str) for e in experts_list):
-                    # Use the provided list, cycling if necessary
-                    while len(experts) < num_responses:
-                        experts.append(experts_list[len(experts) % len(experts_list)])
-                else:
-                    # Ask the LLM to generate a JSON array of complementary experts
-                    expert_json = generate_single(
-                        "Generate a JSON array of complementary experts personas to optimize this PROBLEM (e.g. [\"AI Engineer\", \"Compiler Specialist\", ...]).",
-                        f"NUMBER_OF_EXPERTS: {num_responses}\nPROBLEM:\n<<<\n{system_prompt}\n>>>",
-                        use_default_llm,
-                        function_calling,
-                        temperature=0.0
-                    ).content
-                    expert_json = expert_json.strip().removeprefix("```json").removesuffix("```").strip()
-                    try:
-                        experts = json.loads(expert_json)
-                    except json.JSONDecodeError:
-                        experts = []
-                    # Fallback defaults if we didn’t get enough
-                    default_experts = ["Algorithm Expert", "Performance Optimizer", "Out of the box problem solver", "AI Engineer","Compiler Specialist"]
-                    while len(experts) < num_responses:
-                        experts.append(default_experts[len(experts) % len(default_experts)])
-
-                # 2. For each expert, generate and clean up the candidate
-                for i, expert in enumerate(experts[:num_responses]):
-                    meta_prompt = (f"You are a `{expert}`\n{system_prompt}")
-                    candidate = generate_single(meta_prompt, user_prompt, use_premium_llm, function_calling, temperature=0.0, stream_output=stream_output, color_id=i)
-                    #candidate.content = candidate.content.strip().removeprefix("<<<").removesuffix(">>>").strip()
-                    candidates.append(candidate)
-
-            elif generation_technique in ["mixture_of_agents_generation", "moa", "multi_llm"]:
-                llm_or_chain_keys = getattr(self, "multi_llm", None) or multi_llm or list(self.llmORchains_list.keys())
-                for i in range(num_responses):
-                    llm_or_chain_key = llm_or_chain_keys[i % len(llm_or_chain_keys)]
-                    candidate = generate_single(system_prompt, user_prompt, llm_or_chain_key, function_calling, temperature=temp_min, stream_output=stream_output, color_id=i)
-                    candidates.append(candidate)
-
-            elif generation_technique == "iterative_alternatives":
-                for i in range(num_responses):
-                    if not candidates:
-                        current_prompt = system_prompt
-                    else:
-                        # Generate a new alternative based on all previous
-                        previous_solutions = "\n".join(f"SOLUTION {idx + 1}: <<<\n{cand.content}\n>>>" for idx, cand in enumerate(candidates))
-                        current_prompt = f"{system_prompt}\nGiven the following solutions, propose a new alternative optimal solution to user's prompt:\n{previous_solutions}\n"
-
-                    candidate = generate_single( current_prompt, user_prompt, use_premium_llm, function_calling, temperature=0.0, stream_output=stream_output, color_id=i)
-                    candidates.append(candidate)
-
-            else:
-                raise ValueError(f"Invalid generation_technique: {generation_technique}.  Supported options: 'temperature_variation', 'self_refinement', 'iterative_alternatives'.")
-
-            return candidates
-
         smart_print(
             f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[1].function} calling HumanLLM****\033[0m",
             self.agent_name,
@@ -2350,7 +2256,7 @@ class HumanLLM:
                         system_prompt_used = llm_input_messages[0].content
                         user_prompt_used = llm_input_messages[1].content
 
-                        llm_outputs = generate_candidates(
+                        llm_outputs = self.generate_candidates(
                             generation_technique=generation_technique,
                             system_prompt=system_prompt_used,
                             user_prompt=user_prompt_used,
@@ -2522,6 +2428,104 @@ class HumanLLM:
 
         return ([msg.content for msg in output_messages] if return_message_content_only else output_messages)
 
+    def generate_candidates(
+        self,
+        generation_technique,
+        system_prompt,
+        user_prompt,
+        num_responses,
+        use_premium_llm,
+        function_calling,
+        temp_min,
+        temp_max,
+        stream_output,
+        experts_list=None,
+        multi_llm=None
+    ):
+        """
+        Generates multiple candidates based on different strategies.
+        Returns a list of AIMessage objects.
+        """
+        # Helper function to make a single LLM call
+        def generate_single(system_prompt, user_prompt, use_premium_llm, function_calling, temperature=0.0, stream_output=False, color_id=0):
+            """Single pass call wrapper."""
+            input_messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+            
+            # Determine which LLM to use
+            if isinstance(use_premium_llm, str):
+                if use_premium_llm in self.llmORchains_list:
+                    func = self.llmORchains_list[use_premium_llm]
+                else:
+                    raise ValueError(f"LLM '{use_premium_llm}' not found in llmORchains_list.")
+            elif use_premium_llm:
+                func = self.premium_llm
+            else:
+                func = self.default_llm
+                
+            # Override temperature if provided
+            if temperature is not None:
+                func = func.with_config(configurable={"llm_temperature": temperature})
+                
+            # Invoke the LLM
+            value = func.invoke(input_messages)
+            return AIMessage(content=value.content if hasattr(value, 'content') else str(value))
+        
+        candidates = []
+        
+        if num_responses < 1:
+            num_responses = 1
+            
+        if generation_technique == "temperature_variation":
+            temperatures = [round(temp_max - i * (temp_max - temp_min) / max(1, num_responses - 1), 2) for i in range(num_responses)]
+            for i, temp in enumerate(temperatures):
+                candidate = generate_single(system_prompt, user_prompt, use_premium_llm, function_calling, temperature=temp, stream_output=stream_output, color_id=i)
+                candidates.append(candidate)
+                
+        elif generation_technique == "self_refinement":
+            for i in range(num_responses):
+                if not candidates:
+                    current_prompt = system_prompt
+                else:
+                    current_prompt = f"{system_prompt}\nRefine the previous ANSWER to improve final answer to the user's prompt. SOLUTION: <<<\n{candidates[-1].content}\n>>>"
+                candidate = generate_single(current_prompt, user_prompt, use_premium_llm, function_calling, temperature=0.0, stream_output=stream_output, color_id=0)
+                candidates.append(candidate)
+                
+        elif generation_technique == "multi_experts":
+            experts = []
+            if isinstance(experts_list, list) and all(isinstance(e, str) for e in experts_list):
+                while len(experts) < num_responses:
+                    experts.append(experts_list[len(experts) % len(experts_list)])
+            else:
+                default_experts = ["Algorithm Expert", "Performance Optimizer", "Out of the box problem solver", "AI Engineer", "Compiler Specialist"]
+                while len(experts) < num_responses:
+                    experts.append(default_experts[len(experts) % len(default_experts)])
+                    
+            for i, expert in enumerate(experts[:num_responses]):
+                meta_prompt = f"You are a `{expert}`\n{system_prompt}"
+                candidate = generate_single(meta_prompt, user_prompt, use_premium_llm, function_calling, temperature=0.0, stream_output=stream_output, color_id=i)
+                candidates.append(candidate)
+                
+        elif generation_technique in ["mixture_of_agents_generation", "moa", "multi_llm"]:
+            llm_or_chain_keys = getattr(self, "multi_llm", None) or multi_llm or list(self.llmORchains_list.keys())
+            for i in range(num_responses):
+                llm_or_chain_key = llm_or_chain_keys[i % len(llm_or_chain_keys)]
+                candidate = generate_single(system_prompt, user_prompt, llm_or_chain_key, function_calling, temperature=temp_min, stream_output=stream_output, color_id=i)
+                candidates.append(candidate)
+                
+        elif generation_technique == "iterative_alternatives":
+            for i in range(num_responses):
+                if not candidates:
+                    current_prompt = system_prompt
+                else:
+                    previous_solutions = "\n".join(f"SOLUTION {idx + 1}: <<<\n{cand.content}\n>>>" for idx, cand in enumerate(candidates))
+                    current_prompt = f"{system_prompt}\nGiven the following solutions, propose a new alternative optimal solution to user's prompt:\n{previous_solutions}\n"
+                candidate = generate_single(current_prompt, user_prompt, use_premium_llm, function_calling, temperature=0.0, stream_output=stream_output, color_id=i)
+                candidates.append(candidate)
+        else:
+            raise ValueError(f"Invalid generation_technique: {generation_technique}")
+            
+        return candidates
+
     def select_candidate(self, output_messages, selection_technique=None):
         """
         Merges multiple LLM outputs/candidates into a single according to selection_technique (concat, best_of_n, last)
@@ -2615,21 +2619,125 @@ class HumanLLM:
                 return [output_messages[-1]]            
         else:
             raise ValueError(f"Invalid selection_technique: {selection_technique}. Supported options: 'concat', 'best_of_n', 'last'.")
-            # ALTERNATIVE: Graceful fallback for unknown techniques (backward compatibility)
-            # smart_print(f"Unknown selection_technique: '{selection_technique}'. Falling back to 'last'.", self.agent_name, "select_candidate", optional=True)
-            # return [output_messages[-1]]
 
-    def generate_best_improvement_suggestions(self, inference_result_content=None, output_id=None):
+    def generate_annotations_feedback(
+        self,
+        inference_result_content: str = None,
+        output_id: int = None,
+        annotation_types: str = "FIX, DELETE, APPROVE",
+        annotation_number: int = 5,
+        generation_technique: str = "temperature_variation",
+        selection_technique: str = "best_of_n",
+        num_candidates: int = 1
+    ):
+        """
+        Generate span-based annotations for improving inference output.
+        
+        Args:
+            inference_result_content: The content to annotate
+            output_id: ID of the output being annotated
+            annotation_types: Types of annotations to generate
+            annotation_number: Number of annotations to generate
+            generation_technique: Technique for generating multiple candidates
+            selection_technique: Technique for selecting final output
+            num_candidates: Number of candidates to generate (>1 enables ensembling)
+            
+        Returns:
+            Dict containing annotations and related metadata
+        """
+        # Prepare annotation generation prompt
+        annotation_generate_prompt = f"""
+You're an AI assistant. Your task is to generate annotations on the prompt given to you. The output should be exactly the same as the input but with some annotations in it, no changes on the text itself. The annotations will have this format:
+'\\{annotation_types}{{the text to annotate}}{{the feedback for the text (what is wrong, what is right, etc.)}}'
+
+You should not change anything of the content of the given prompt, only add annotations. You have to add {annotation_number} annotations, and for each one of them don't place them randomly, but place them in a way that they are relevant to the text.
+Try to give real feedbacks for the annotations, and not just random feedbacks. Finally, don't annotate the same text twice or the full text in one; place annotations on phrases or keywords that are relevant.
+
+PROMPT:<<<{self.system_prompt}>>>
+
+ANSWER:<<<{inference_result_content}>>>
+
+Previous Annotations: {self._get_previous_annotations()}
+
+List your annotations below:
+"""
+        
+        # Generate annotations using generate_candidates (handles both single and multiple)
+        system_prompt = "You are tasked with generating annotations to improve model outputs."
+        candidates = self.generate_candidates(
+            generation_technique=generation_technique,
+            system_prompt=system_prompt,
+            user_prompt=annotation_generate_prompt,
+            num_responses=num_candidates,
+            use_premium_llm=True,
+            function_calling=False,
+            temp_min=self.temperature_min,
+            temp_max=self.temperature_max if num_candidates > 1 else self.temperature_min,
+            stream_output=False
+        )
+        
+        # Select best candidate if multiple
+        if num_candidates > 1:
+            selected = self.select_candidate(candidates, selection_technique)
+            annotations = selected[0].content if selected else ""
+        else:
+            annotations = candidates[0].content if candidates else ""
+        
+        # Clean up annotations
+        annotations = regex.sub(r'[^\P{C}\t\n\r]', '', annotations)
+        annotations = re.sub(r'\\u[0-9A-Fa-f]{4}', '', annotations)
+        
+        # Save annotations
+        self.config.log_agent_data(
+            self.agent_name,
+            "llm_annotations",
+            {
+                'annotations': annotations,
+                'annotation_prompt': annotation_generate_prompt,
+                'annotation_types': annotation_types,
+                'annotation_number': annotation_number,
+                'generation_technique': generation_technique if num_candidates > 1 else None,
+                'selection_technique': selection_technique if num_candidates > 1 else None,
+                'num_candidates': num_candidates
+            }
+        )
+        
+        return {
+            "output_id": output_id,
+            "annotations": annotations,
+            "annotation_prompt": annotation_generate_prompt,
+            "annotation_types": annotation_types,
+            "num_candidates": num_candidates
+        }
+    
+    def _get_previous_annotations(self):
+        """Helper to retrieve previous annotations."""
+        previous_annotations, _ = self.config.get_agent_data(self.agent_name, "llm_annotations")
+        prev_annotations = ""
+        if previous_annotations:
+            for ann in previous_annotations[-3:]:  # Last 3 annotations
+                prev_annotations += f"\n{ann.get('annotations', '')}"
+        return prev_annotations
+
+    def generate_instructions_feedback(
+        self,
+        inference_result_content=None,
+        output_id=None,
+        generation_technique: str = "temperature_variation",
+        selection_technique: str = "best_of_n",
+        num_candidates: int = 1):
         """
         Uses a premium LLM to generate top suggestions or critiques for improving
         the inference output, identified by output_id. If there are no check results,
         it requests general improvement suggestions based on the inference result content.
 
-        Additionally, it generates annotations in the specified format using a LLM,
-        and saves them in the database.
+        Now supports ensemble generation methods for improved feedback quality.
 
         :param output_id: The ID of the output message to critique.
         :param inference_result_content: The actual content of the inference result to be critiqued.
+        :param generation_technique: Technique for generating multiple candidates
+        :param selection_technique: Technique for selecting final output
+        :param num_candidates: Number of candidates to generate (>1 enables ensembling)
         :return: A dictionary containing improvement suggestions and annotations.
         """
 
@@ -2685,11 +2793,25 @@ class HumanLLM:
                 "List your improvement suggestions below."
             )
 
-        # Use the premium LLM to generate suggestions
-        response = self.premium_llm.invoke([
-            SystemMessage(content="You are tasked with analyzing feedback to improve model outputs."),
-            HumanMessage(content=improvement_prompt)
-        ])
+        # Use generate_candidates for both single and multiple inference
+        system_prompt = "You are tasked with analyzing feedback to improve model outputs."
+        candidates = self.generate_candidates(
+            generation_technique=generation_technique,
+            system_prompt=system_prompt,
+            user_prompt=improvement_prompt,
+            num_responses=num_candidates,
+            use_premium_llm=True,
+            function_calling=False,
+            temp_min=self.temperature_min,
+            temp_max=self.temperature_max if num_candidates > 1 else self.temperature_min,
+            stream_output=False)
+        
+        # Select best candidate if multiple
+        if num_candidates > 1:
+            selected = self.select_candidate(candidates, selection_technique)
+            response = selected[0] if selected else AIMessage(content="")
+        else:
+            response = candidates[0] if candidates else AIMessage(content="")
 
         # Clean up the response content
         # response.content = re.sub(r'[^\x20-\x7E\t\n\r]', '', response.content)
@@ -2706,46 +2828,10 @@ class HumanLLM:
         self.config.log_agent_data(self.agent_name, "llm_suggestions", {
             'llm_suggestions': response.content,
             'user_suggestions': "",
-            'improvement_prompt': improvement_prompt
-        })
-
-        # Now generate annotations using the LLM
-        # Retrieve previous annotations
-        previous_annotations, _ = self.config.get_agent_data(self.agent_name, "llm_annotations")
-        prev_annotations = ""
-        if previous_annotations:
-            for ann in previous_annotations:
-                prev_annotations += f"\n{ann.get('annotations', '')}"
-
-        # Construct the annotation prompt
-        annotation_prompt = (
-            "Based on the ANSWER below, generate a list of annotations in the following format:\n"
-            "<TAG>: <Texte annoté> <Commentaire de l'annotation>\n"
-            "Le TAG peut être l'un de ces trois : FIX, INSERT, IMPROVE.\n"
-            "Chaque annotation doit être pertinente et couvrir des parties du PROMPT.\n"
-            "Fournissez au minimum 5 annotations, mais vous pouvez en inclure davantage.\n\n"
-            f"PROMPT:<<<{self.system_prompt}>>>\n\n"
-            f"ANSWER:<<<{inference_result_content}>>>\n\n"
-            f"Previous Annotations:<<<{prev_annotations}>>>\n\n"
-            "Listez vos annotations ci-dessous."
-        )
-
-        # Use the premium LLM to generate annotations
-        annotation_response = self.premium_llm.invoke([
-            SystemMessage(content="Vous êtes chargé de générer des annotations pour améliorer la réponse."),
-            HumanMessage(content=annotation_prompt)
-        ])
-
-        # Clean up the annotation response
-        annotations = annotation_response.content.strip()
-        # annotations = re.sub(r'[^\x20-\x7E\t\n\r]', '', annotations)
-        annotations = regex.sub(r'[^\P{C}\t\n\r]', '', annotations)
-        annotations = re.sub(r'\\u[0-9A-Fa-f]{4}', '', annotations)
-
-        # Save the annotations using add_agent_data
-        self.config.log_agent_data(self.agent_name, "llm_annotations", {
-            'annotations': annotations,
-            'annotation_prompt': annotation_prompt
+            'improvement_prompt': improvement_prompt,
+            'generation_technique': generation_technique if num_candidates > 1 else None,
+            'selection_technique': selection_technique if num_candidates > 1 else None,
+            'num_candidates': num_candidates
         })
 
         # Prepare the return value
@@ -2753,8 +2839,6 @@ class HumanLLM:
             "output_id": output_id,
             "suggestions": response.content,
             "improvement_prompt": improvement_prompt,
-            "annotations": annotations,
-            "annotation_prompt": annotation_prompt
         }
 
         smart_print(

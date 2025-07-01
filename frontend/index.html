@@ -2953,7 +2953,7 @@ function handleMultipleSolutions(data) {
         let output_id = data.column_id;
         sendFunctionCall(
           data.agent_name,
-          "generate_best_improvement_suggestions",
+          "generate_instructions_feedback",
           { inference_result_content: editor_content, output_id: output_id },
           function (responseMessage) {
             console.log("responseMessage:", responseMessage);
