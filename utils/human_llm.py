@@ -8,6 +8,7 @@ import logging
 import concurrent.futures
 from jinja2 import Template
 from datetime import datetime
+from collections import defaultdict
 from utils.llm_utils import (
     InferenceCheck,
     InferenceTracking,
@@ -49,6 +50,236 @@ class FewShotsParams:
     format: Optional[str] = None
     summary_char_limit: int = 500
 
+class HelpUsageTracker:
+    """Tracks usage, costs, and quotas for different help types"""
+    def __init__(self):
+        self.usage = defaultdict(lambda: {
+            'count': 0,
+            'cost': 0.0,
+            'tokens': 0,
+            'successes': 0,
+            'failures': 0
+        })
+        self.quotas = {}
+        
+    def set_quota(self, help_type: str, quota_config: Dict):
+        """Set quota limits for a help type"""
+        self.quotas[help_type] = quota_config
+        
+    def can_use(self, help_type: str) -> bool:
+        """Check if help type is within quota"""
+        if help_type not in self.quotas:
+            return True
+        
+        quota = self.quotas[help_type]
+        usage = self.usage[help_type]
+        
+        if 'max_count' in quota and usage['count'] >= quota['max_count']:
+            return False
+        if 'max_cost' in quota and usage['cost'] >= quota['max_cost']:
+            return False
+        if 'max_tokens' in quota and usage['tokens'] >= quota['max_tokens']:
+            return False
+            
+        return True
+        
+    def record_usage(self, help_type: str, cost: float = 0, tokens: int = 0, success: bool = True):
+        """Record usage of a help type"""
+        self.usage[help_type]['count'] += 1
+        self.usage[help_type]['cost'] += cost
+        self.usage[help_type]['tokens'] += tokens
+        if success:
+            self.usage[help_type]['successes'] += 1
+        else:
+            self.usage[help_type]['failures'] += 1
+
+class DynamicConfigManager:
+    """Manages dynamic LLM configuration based on rules and triggers"""
+    def __init__(self, config: Dict, usage_tracker: HelpUsageTracker, default_config: Dict):
+        self.config = config
+        self.usage_tracker = usage_tracker
+        self.default_config = default_config
+        self.logger = logging.getLogger(__name__)
+        self.rule_evaluators = {
+            'regex': self._eval_regex_rule,
+            'confidence': self._eval_confidence_rule,
+            'similarity': self._eval_similarity_rule,
+            'frequency': self._eval_frequency_rule,
+            'divergence': self._eval_divergence_rule,
+            'complexity': self._eval_complexity_rule,
+            'history': self._eval_history_rule,
+            'composite': self._eval_composite_rule
+        }
+        self._call_history = []
+        
+    def evaluate_triggers(self, context: Dict, phase: str = 'pre_inference') -> Dict:
+        """Evaluate all triggers and return modifications to apply"""
+        modifications = {}
+        
+        for help_type, help_config in self.config.items():
+            # Check if this help type applies to current phase
+            if help_config.get('phase', 'pre_inference') != phase:
+                continue
+                
+            # Check quota
+            if not self.usage_tracker.can_use(help_type):
+                continue
+                
+            # Evaluate rules
+            rules = help_config.get('rules', {})
+            if self._evaluate_rules(rules, context):
+                # Apply modifications
+                mods = help_config.get('modifications', {})
+                modifications.update(mods)
+                
+                # Record usage (basic tracking, cost/tokens updated later)
+                self.usage_tracker.record_usage(help_type)
+                
+        # Record context for history-based rules
+        self._call_history.append({
+            'context': context,
+            'phase': phase,
+            'modifications': modifications,
+            'timestamp': datetime.now()
+        })
+        
+        # Keep history bounded
+        if len(self._call_history) > 100:
+            self._call_history.pop(0)
+            
+        return modifications
+        
+    def _evaluate_rules(self, rules: Dict, context: Dict) -> bool:
+        """Evaluate a set of rules against context"""
+        if not rules:
+            return True
+
+        for rule_type, rule_config in rules.items():
+            if rule_type in self.rule_evaluators:
+                if not self.rule_evaluators[rule_type](rule_config, context):
+                    return False
+            else:
+                self.logger.warning(f"Unknown rule type: {rule_type}")
+                return False  # Fail evaluation for unknown rule types
+                
+        return True
+        
+    def _eval_regex_rule(self, config: Dict, context: Dict) -> bool:
+        """Evaluate regex pattern matching"""
+        patterns = config.get('patterns', [])
+        target = context.get(config.get('target', 'user_message'), '')
+        
+        for pattern in patterns:
+            if re.search(pattern, str(target)):
+                return True
+        return False
+        
+    def _eval_confidence_rule(self, config: Dict, context: Dict) -> bool:
+        """Evaluate confidence threshold"""
+        threshold = config.get('threshold', 0.7)
+        confidence = context.get('confidence_score', 1.0)
+        operator = config.get('operator', '<')
+        
+        if operator == '<':
+            return confidence < threshold
+        elif operator == '>':
+            return confidence > threshold
+        else:
+            return confidence == threshold
+            
+    def _eval_similarity_rule(self, config: Dict, context: Dict) -> bool:
+        """Evaluate similarity to past prompts"""
+        threshold = config.get('threshold', 0.8)
+        current = context.get('user_message', '')
+        
+        similar_count = sum(
+            1 for h in self._call_history[-10:]
+            if calculate_text_similarity(
+                h['context'].get('user_message', ''), 
+                current
+            ) > threshold
+        )
+        
+        return similar_count >= config.get('min_similar', 3)
+        
+    def _eval_frequency_rule(self, config: Dict, context: Dict) -> bool:
+        """Evaluate frequency-based triggers"""
+        every_n = config.get('every_n', 10)
+        count = len(self._call_history) + 1
+        return count % every_n == 0
+        
+    def _eval_divergence_rule(self, config: Dict, context: Dict) -> bool:
+        """Evaluate output divergence"""
+        outputs = context.get('llm_outputs', [])
+        if len(outputs) < 2:
+            return False
+            
+        threshold = config.get('threshold', 0.5)
+        similarities = []
+        
+        for i in range(len(outputs)):
+            for j in range(i+1, len(outputs)):
+                sim = calculate_text_similarity(
+                    outputs[i].content if hasattr(outputs[i], 'content') else str(outputs[i]),
+                    outputs[j].content if hasattr(outputs[j], 'content') else str(outputs[j])
+                )
+                similarities.append(sim)
+                
+        avg_similarity = sum(similarities) / len(similarities) if similarities else 1
+        return avg_similarity < threshold
+        
+    def _eval_complexity_rule(self, config: Dict, context: Dict) -> bool:
+        """Evaluate prompt complexity"""
+        prompt = context.get('user_message', '')
+        if not prompt: return False
+
+        # Simple complexity metrics
+        word_count = len(prompt.split())
+        question_marks = prompt.count('?')
+        has_code = bool(re.search(r'```|def |class |import ', prompt))
+        complex_words = len([w for w in prompt.split() if len(w) > 6])
+        char_count = len(prompt)
+        
+        score = (word_count * 0.02 + question_marks * 0.15 + (0.3 if has_code else 0) + complex_words * 0.05 + char_count * 0.002)
+        threshold = config.get('threshold', 0.5)
+        
+        return score >= threshold
+        
+    def _eval_history_rule(self, config: Dict, context: Dict) -> bool:
+        """Evaluate based on historical performance"""
+        lookback = config.get('lookback', 10)
+        recent = self._call_history[-lookback:]
+        
+        if not recent:
+            return False
+            
+        # Calculate success rate
+        successes = sum(
+            1 for h in recent 
+            if h.get('context', {}).get('validation_result') == 'success'
+        )
+        success_rate = successes / len(recent)
+        
+        threshold = config.get('success_threshold', 0.7)
+        return success_rate < threshold
+        
+    def _eval_composite_rule(self, config: Dict, context: Dict) -> bool:
+        """Evaluate composite rules with AND/OR logic"""
+        operator = config.get('operator', 'AND')
+        sub_rules = config.get('rules', {})
+        
+        results = []
+        for k, v in sub_rules.items():
+            result = self._evaluate_rules({k: v}, context)
+            results.append(result)
+
+
+        if operator == 'AND':
+            return all(results)
+        elif operator == 'OR':
+            return any(results)
+        else:
+            return False
 class HumanLLM:
     def __init__(
         self,
@@ -74,11 +305,14 @@ class HumanLLM:
         automation=None,
         auto_n_rounds=None,
         recommend_critics=None,
+        skip_rounds=None,
         task_parameters=None,
         problem_prompts_subdir=None,
         max_autofix=None,
         skip_log_entry_if_no_change=True,
         selection_technique=None, # Can be "best", "best_of_n", "concat"
+        generation_technique='temperature_variation',
+        dynamic_llm_config=None,
         **kwargs
     ):
         self.config = HumanLLMConfig()
@@ -114,7 +348,7 @@ class HumanLLM:
         self.previous_templates = []
         self.previous_results = []
         self.comments = []
-        self.skip_rounds = self.config.default_skip_rounds
+        self.skip_rounds = skip_rounds if skip_rounds is not None else self.config.default_skip_rounds
         self.log_data = []
         self.llm_input_messages = []
         self.num_parallel_inferences = num_parallel_inferences
@@ -141,6 +375,169 @@ class HumanLLM:
         self.problem_prompts_subdir = problem_prompts_subdir
         self.skip_log_entry_if_no_change = skip_log_entry_if_no_change
         self.selection_technique = selection_technique
+        self.generation_technique = generation_technique
+
+        # Initialize dynamic configuration system
+        self.dynamic_llm_config = dynamic_llm_config or {}
+        self.usage_tracker = HelpUsageTracker()
+        
+        # Set up quotas if provided
+        for help_type, config in self.dynamic_llm_config.items():
+            if 'quota' in config:
+                self.usage_tracker.set_quota(help_type, config['quota'])
+        
+        # Default configuration that mirrors constructor arguments
+        default_cfg = {
+            'num_parallel_inferences': num_parallel_inferences,
+            'temperature_min': temperature_min,
+            'temperature_max': temperature_max,
+            'selection_technique': selection_technique,
+            'generation_technique': 'temperature_variation',
+            'use_premium_llm': premium_llm_by_default
+        }
+        
+        self.dynamic_mgr = DynamicConfigManager(self.dynamic_llm_config, self.usage_tracker, default_cfg)
+
+    def _apply_dynamic_config(self, context: Dict, phase: str):
+        """Evaluate triggers for phase and apply modifications"""
+        mods = self.dynamic_mgr.evaluate_triggers(context, phase=phase)
+        if not mods:
+            return
+            
+        self.logger.info(f"[DynamicConfig:{phase}] Applying modifications: {mods}")
+        
+        # Track original values for potential rollback
+        original_values = {}
+        
+        # 1) Direct attribute overrides
+        for attr in ('num_parallel_inferences', 'temperature_min', 'temperature_max',
+                     'selection_technique', 'generation_technique'):
+            if attr in mods:
+                # original_values[attr] = getattr(self, attr)
+                if hasattr(self, attr): original_values[attr] = getattr(self, attr)
+                setattr(self, attr, mods[attr])
+                self.logger.info(f"[DynamicConfig] {attr}: {original_values[attr]} -> {mods[attr]}")
+        
+        # 2) Model selection
+        if 'use_premium_llm' in mods:
+            context['use_premium_llm'] = mods['use_premium_llm']
+        
+        if 'model_choice' in mods:
+            context['model_choice'] = mods['model_choice']
+        
+        # 3) Human intervention activation
+        if mods.get('activate_human_intervention'):
+            original_values['skip_rounds'] = self.skip_rounds
+            self.skip_rounds = 0
+            self.logger.info("[DynamicConfig] Activated human intervention")
+        
+        # 4) Feedback generation and application (post-inference only)
+        if phase == 'post_inference' and 'llm_outputs' in context:
+            self._apply_feedback_modifications(mods, context)
+        
+        # Store modifications in context for tracking
+        context['dynamic_modifications'] = mods
+        context['original_values'] = original_values
+        
+    def _apply_modifications(self, mods: Dict, context: Dict, phase: str):
+        """Apply modifications from dynamic config evaluation"""
+        if not mods:
+            return
+            
+        self.logger.info(f"[DynamicConfig:{phase}] Applying modifications: {mods}")
+        
+        # Track original values for potential rollback
+        original_values = {}
+        
+        # 1) Direct attribute overrides
+        for attr in ('num_parallel_inferences', 'temperature_min', 'temperature_max',
+                     'selection_technique', 'generation_technique'):
+            if attr in mods:
+                # original_values[attr] = getattr(self, attr)
+                if hasattr(self, attr): original_values[attr] = getattr(self, attr)
+                setattr(self, attr, mods[attr])
+                self.logger.info(f"[DynamicConfig] {attr}: {original_values[attr]} -> {mods[attr]}")
+        
+        # 2) Model selection
+        if 'use_premium_llm' in mods:
+            context['use_premium_llm'] = mods['use_premium_llm']
+        
+        if 'model_choice' in mods:
+            context['model_choice'] = mods['model_choice']
+        
+        # 3) Human intervention activation
+        if mods.get('activate_human_intervention'):
+            original_values['skip_rounds'] = self.skip_rounds
+            self.skip_rounds = 0
+            self.logger.info("[DynamicConfig] Activated human intervention")
+        
+        # 4) Feedback generation and application (post-inference only)
+        if phase == 'post_inference' and 'llm_outputs' in context:
+            self._apply_feedback_modifications(mods, context)
+        
+        # Store modifications in context for tracking
+        context['dynamic_modifications'] = mods
+        context['original_values'] = original_values
+        
+    def _apply_feedback_modifications(self, mods: Dict, context: Dict):
+        """Apply feedback-related modifications"""
+        outputs = context.get('llm_outputs', [])
+        if not outputs:
+            return
+            
+        # Generate annotations if requested
+        if 'generate_annotations_feedback' in mods and hasattr(self, 'generate_annotations_feedback'):
+            params = mods['generate_annotations_feedback']
+            if isinstance(params, dict):
+                for i, output in enumerate(outputs):
+                    annotations = self.generate_annotations_feedback(
+                        inference_result_content=output.content,
+                        output_id=i,
+                        **params
+                    )
+                    context.setdefault('annotations', {})[i] = annotations
+        
+        # Generate instructions if requested
+        if 'generate_instructions_feedback' in mods and hasattr(self, 'generate_instructions_feedback'):
+            params = mods['generate_instructions_feedback']
+            if isinstance(params, dict):
+                for i, output in enumerate(outputs):
+                    instructions = self.generate_instructions_feedback(
+                        inference_result_content=output.content,
+                        output_id=i,
+                        **params
+                    )
+                    context.setdefault('instructions', {})[i] = instructions
+        
+        # Apply feedback if requested
+        if mods.get('apply_feedback') and hasattr(self, 'apply_feedback'):
+            apply_params = mods.get('apply_feedback_params', {})
+            
+            for i, output in enumerate(outputs):
+                # Determine what feedback to apply
+                feedback = None
+                if i in context.get('annotations', {}):
+                    feedback = context['annotations'][i]['annotations']
+                elif i in context.get('instructions', {}):
+                    feedback = context['instructions'][i]['suggestions']
+                
+                if feedback:
+                    improved = self.apply_feedback(
+                        suggestions=feedback,
+                        text_content=output.content,
+                        initial_prompt=context.get('system_prompt'),
+                        **apply_params
+                    )
+                    # Update the output
+                    output.content = improved
+                    self.logger.info(f"[DynamicConfig] Applied feedback to output {i}")
+        
+        # Re-select best output if requested
+        if 'reselect_best' in mods and mods['reselect_best']:
+            technique = mods.get('reselection_technique', self.selection_technique)
+            if hasattr(self, 'select_candidate'):
+                context['llm_outputs'] = self.select_candidate(outputs, technique)
+                self.logger.info(f"[DynamicConfig] Re-selected best output using {technique}")
 
     def get_rag_documents(self, agent_name=None, extra_filter: Optional[Dict[str, Any]] = None, query: str = '*', **kwargs):
         """
@@ -2193,6 +2590,18 @@ class HumanLLM:
         self.mode = None
         call_start_time = time.time()
 
+        # Build initial context for dynamic config
+        eval_context = {
+            'agent_name': self.agent_name,
+            'function_name': inspect.stack()[1].function,
+            'user_message': user_message or (original_input_messages[1].content if len(original_input_messages) > 1 else ''),
+            'system_prompt': system_prompt_template or self.system_prompt,
+            'phase': 'pre_inference',
+            'num_parallel_inferences': self.num_parallel_inferences,
+            'temperature_min': temperature_min or self.temperature_min,
+            'temperature_max': temperature_max or self.temperature_max
+        }
+
         while True:
             if self.skip_rounds > 0:
                 smart_print(
@@ -2204,6 +2613,11 @@ class HumanLLM:
 
             start_time = datetime.now()
 
+            # Apply pre-inference dynamic configuration
+            if hasattr(self, 'dynamic_mgr') and self.dynamic_mgr:
+                mods = self.dynamic_mgr.evaluate_triggers(eval_context, phase='pre_inference')
+                if mods:
+                    self._apply_modifications(mods, eval_context, phase='pre_inference')
             # Automation short-circuits
             if self.automation in ['before', 'after', 'skip_once']:
                 # Possibly skip or read from saved_task ...
@@ -2341,10 +2755,27 @@ class HumanLLM:
                             else:
                                 smart_print( f'**** {len(outputs)} inference results received - selecting keepers below.', self.agent_name, "MULTIPLE inferences received")
                                 llm_outputs = outputs
+
+                    # Update context for post-inference evaluation
+                    eval_context['llm_outputs'] = llm_outputs
+                    eval_context['phase'] = 'post_inference'
+                    eval_context['end_time'] = datetime.now()
+                    eval_context['inference_time'] = (eval_context['end_time'] - start_time).total_seconds()
+                    
+                    # Apply post-inference dynamic configuration
+                    if hasattr(self, 'dynamic_mgr') and self.dynamic_mgr:
+                        mods = self.dynamic_mgr.evaluate_triggers(eval_context, phase='post_inference')
+                        if mods:
+                            self._apply_modifications(mods, eval_context, phase='post_inference')
+                    
+                    # Update llm_outputs from context in case they were modified
+                    llm_outputs = eval_context.get('llm_outputs', llm_outputs)
+
                 else:
                     # Skip LLM inference
                     skip_inference_str = str(skip_inference) if not isinstance(skip_inference, str) else skip_inference
                     llm_outputs = [AIMessage(content=skip_inference_str)]
+
             end_time = datetime.now()
 
             raw_llm_outputs = (
@@ -2425,6 +2856,12 @@ class HumanLLM:
             call_duration=call_duration,
             synthesize_mode=self.synthesize_mode
         )
+
+        # Update usage tracker with actual costs/tokens if available
+        if hasattr(self, 'usage_tracker') and 'dynamic_modifications' in eval_context:
+            for help_type in eval_context['dynamic_modifications']:
+                # This would need actual cost/token calculation
+                self.usage_tracker.record_usage(help_type, cost=0, tokens=0, success=True)
 
         return ([msg.content for msg in output_messages] if return_message_content_only else output_messages)
 
