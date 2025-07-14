@@ -3,6 +3,7 @@
 import socket
 from datetime import datetime
 from typing import Any, Optional, Dict, List, Any
+from jinja2 import Template
 import json
 import uuid
 
@@ -484,6 +485,120 @@ class UnifiedVectorDB:
                     parsed_list.append(None)
 
         return parsed_list, results
+
+    # ───────────────────────── Few‑shot helpers (moved from HumanLLMConfig) ──
+
+    def populate_few_shot_tags(self, prompt: str) -> str:
+        """
+        Expand every `few_shots:{…}` tag found in *prompt* by calling
+        :py:meth:`get_few_shot_examples`.  The tag (including its JSON payload)
+        is replaced by the generated examples.
+        """
+        if not prompt:
+            return ""
+
+        pattern = r"few_shots:\s*\{"
+        for m in reversed(list(re.finditer(pattern, prompt, re.DOTALL))):
+            # Find matching closing brace (manual balance → works for nested {})
+            depth, i = 1, m.end()
+            while depth and i < len(prompt):
+                if prompt[i] == "{":
+                    depth += 1
+                elif prompt[i] == "}":
+                    depth -= 1
+                i += 1
+            try:
+                criteria_json = json.loads("{" + prompt[m.end():i - 1] + "}")
+            except json.JSONDecodeError:
+                continue  # leave tag untouched if JSON is malformed
+            replacement = self.get_few_shot_examples([criteria_json])
+            prompt = prompt[:m.start()] + replacement + prompt[i:]
+        return prompt
+
+    # ---- public: get a formatted block of examples --------------------------------
+
+    def get_few_shot_examples(self, criteria_list) -> str:
+        if not criteria_list:
+            return ""
+
+        blocks = []
+        for spec in self._normalize_criteria(criteria_list):
+            src      = spec["sources"]
+            num      = spec["num"]
+            q_text   = spec.get("query_text", "*")
+            m_filter = spec.get("metadata_filter", {})
+
+            if src == "learnt":
+                m_filter = {**m_filter, "data_key": "learnt_task"}
+            elif src == "failed":
+                m_filter = {**m_filter, "data_key": "failed_task"}
+
+            docs = self._query(query_text=q_text,
+                               k=num,
+                               metadata_filter=m_filter,
+                               sort_order=spec.get("sort_order"))
+            examples = [{"content": d.page_content, "metadata": d.metadata} for d in docs]
+            blocks.append(self.format_examples(examples, spec, spec.get("separators")))
+        return "\n".join(blocks)
+
+    # ---- helpers -----------------------------------------------------------------
+
+    def _normalize_criteria(self, lst):
+        """Ensure required keys & defaults."""
+        out = []
+        for c in lst:
+            out.append({
+                "sources":  c.get("sources", "learnt"),
+                "num":      c.get("num", 5),
+                "format":   c.get("format", "Json"),
+                "query_text":        c.get("query_text", "*"),
+                "metadata_filter":   c.get("metadata_filter", {}),
+                "sort_order":        c.get("sort_order"),
+                "similarity_search": c.get("similarity_search", False),
+                "template":          c.get("template"),
+                "separators":        c.get("separators"),
+            })
+        return out
+
+    def format_examples(self,
+                        examples,
+                        criteria,
+                        separators=None) -> str:
+        """Return examples in **Json**, **Markdown** or **Jinja2** format."""
+        if not examples:
+            return ""
+
+        fmt       = criteria.get("format", "Json").lower()
+        template  = criteria.get("template")
+        sep = separators or {
+            "global_prefix": "\n<<",
+            "global_suffix": ">>\n",
+            "item_prefix":   "\n|",
+            "item_suffix":   "|"
+        }
+
+        rendered = []
+        for ex in examples:
+            try:
+                data = json.loads(ex["content"])
+            except Exception:
+                data = {"text": ex["content"]}
+
+            if fmt == "json":
+                rendered.append(json.dumps(data, indent=2))
+            elif fmt == "markdown":
+                rendered.append(self._to_markdown(data))
+            elif fmt == "jinja2" and template:
+                rendered.append(Template(template).render(**data))
+            else:
+                rendered.append(ex["content"])
+
+        body = "".join(f"{sep['item_prefix']}{t}{sep['item_suffix']}" for t in rendered)
+        return f"{sep['global_prefix']}{body}{sep['global_suffix']}"
+
+    @staticmethod
+    def _to_markdown(obj):
+        return "\n".join(f"**{k}**: {v}" for k, v in obj.items())
 
 #––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––#
 # Export just these names when somebody does `from db_utils import *`

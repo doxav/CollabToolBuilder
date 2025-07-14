@@ -492,10 +492,11 @@ class HumanLLMConfig:
             except KeyError as e:
                 raise KeyError(f"Missing key {e} in template data for prompt '{prompt_name}'")
 
-        prompt_content = self.extract_few_shot_tags(template_content)
+        prompt_content = self.common_vectordb.populate_few_shot_tags(template_content)
+
         return prompt_content
 
-    def extract_few_shot_tags(self, prompt):
+    def populate_few_shot_tags(self, prompt):
         """
         Replace tags by data: replace every `few_shots: { … }` tag in the prompt, parse its JSON payload,
         generate few-shot examples for it, and replace the entire tag with those examples

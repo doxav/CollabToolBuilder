@@ -79,6 +79,8 @@ nest-asyncio
 datasets
 python-git
 
+tabulate
+
 gitpython
 
 
