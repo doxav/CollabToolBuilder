@@ -217,7 +217,7 @@ class TestHumanLLMDynamicConfig:
         orig_temp = llm.temperature_max
         
         # Apply dynamic config
-        llm._apply_dynamic_config(context, phase='pre_inference')
+        llm._apply_modifications(context, phase='pre_inference')
         
         # Check modifications applied
         assert llm.num_parallel_inferences == 5
@@ -250,7 +250,7 @@ class TestHumanLLMDynamicConfig:
         llm.apply_feedback = Mock(return_value="Improved content")
         
         # Apply dynamic config
-        llm._apply_dynamic_config(context, phase='post_inference')
+        llm._apply_modifications(context, phase='post_inference')
         
         # Check feedback was generated
         assert llm.generate_instructions_feedback.called
@@ -273,7 +273,7 @@ class TestHumanLLMDynamicConfig:
             'phase': 'post_inference'
         }
         
-        llm._apply_dynamic_config(context, phase='post_inference')
+        llm._apply_modifications(context, phase='post_inference')
         
         # No modifications should be applied
         assert context.get('dynamic_modifications', {}) == {}
@@ -302,7 +302,7 @@ class TestHumanLLMDynamicConfig:
         
         # Should activate human intervention
         assert llm.skip_rounds == 5
-        llm._apply_dynamic_config(context, phase='pre_inference')
+        llm._apply_modifications(context, phase='pre_inference')
         assert llm.skip_rounds == 0
         
     def test_full_workflow_integration(self):
@@ -365,7 +365,7 @@ class TestHumanLLMDynamicConfig:
            }
            
            # Apply pre-inference config
-           llm._apply_dynamic_config(pre_context, phase='pre_inference')
+           llm._apply_modifications(pre_context, phase='pre_inference')
            
            # Verify pre-inference modifications
            assert llm.num_parallel_inferences == 3
@@ -382,7 +382,7 @@ class TestHumanLLMDynamicConfig:
            }
            
            # Apply post-inference config
-           llm._apply_dynamic_config(post_context, phase='post_inference')
+           llm._apply_modifications(post_context, phase='post_inference')
            
            # Verify feedback was generated and applied
            assert llm.generate_annotations_feedback.called
@@ -411,7 +411,7 @@ class TestHumanLLMDynamicConfig:
        
        # Should handle unknown rule type gracefully
        context = {'user_message': 'Test', 'phase': 'pre_inference'}
-       llm._apply_dynamic_config(context, phase='pre_inference')
+       llm._apply_modifications(context, phase='pre_inference')
        
        # No modifications should be applied due to unknown rule
        assert llm.num_parallel_inferences == 1  # Default value
@@ -450,7 +450,7 @@ class TestHumanLLMDynamicConfig:
            })
        
        context = {'user_message': 'New query', 'phase': 'pre_inference'}
-       llm._apply_dynamic_config(context, phase='pre_inference')
+       llm._apply_modifications(context, phase='pre_inference')
        
        # Should activate premium LLM due to low success rate (2/5 = 0.4)
        assert context.get('use_premium_llm') == True
@@ -502,7 +502,7 @@ class TestHumanLLMDynamicConfig:
        }
        
        # Apply configuration
-       llm._apply_dynamic_config(context, phase='post_inference')
+       llm._apply_modifications(context, phase='post_inference')
        
        # Verify the flow
        assert llm.generate_annotations_feedback.called
@@ -550,7 +550,7 @@ class TestHumanLLMDynamicConfig:
        
        # Test with basic help - only first rule matches
        context = {'user_message': 'I need help', 'phase': 'pre_inference'}
-       llm._apply_dynamic_config(context, phase='pre_inference')
+       llm._apply_modifications(context, phase='pre_inference')
        assert llm.temperature_max == 0.5
        assert llm.num_parallel_inferences == 1  # Default
        
@@ -560,7 +560,7 @@ class TestHumanLLMDynamicConfig:
        
        # Test with advanced help - both rules match, later one wins
        context = {'user_message': 'I need complex help', 'phase': 'pre_inference'}
-       llm._apply_dynamic_config(context, phase='pre_inference')
+       llm._apply_modifications(context, phase='pre_inference')
        assert llm.temperature_max == 0.9
        assert llm.num_parallel_inferences == 5
        assert context.get('use_premium_llm') == True
@@ -642,7 +642,7 @@ class TestHumanLLMDynamicConfig:
        # Use the feature 3 times
        for i in range(3):
            context = {'user_message': 'Use premium feature', 'phase': 'pre_inference'}
-           llm._apply_dynamic_config(context, phase='pre_inference')
+           llm._apply_modifications(context, phase='pre_inference')
            
        # Check usage was tracked
        usage = llm.usage_tracker.usage['premium_feature']
@@ -650,7 +650,7 @@ class TestHumanLLMDynamicConfig:
        
        # 4th attempt should be blocked by quota
        context = {'user_message': 'Use premium feature', 'phase': 'pre_inference'}
-       llm._apply_dynamic_config(context, phase='pre_inference')
+       llm._apply_modifications(context, phase='pre_inference')
        
        # Usage count should still be 3
        assert llm.usage_tracker.usage['premium_feature']['count'] == 3
@@ -679,7 +679,7 @@ class TestHumanLLMDynamicConfig:
        context = {'user_message': 'test message'}
        
        # Pre-inference should only apply pre_only
-       llm._apply_dynamic_config(context, phase='pre_inference')
+       llm._apply_modifications(context, phase='pre_inference')
        assert llm.temperature_max == 0.9
        assert 'apply_feedback' not in context.get('dynamic_modifications', {})
        
@@ -688,7 +688,7 @@ class TestHumanLLMDynamicConfig:
        
        # Post-inference should only apply post_only
        context['llm_outputs'] = [AIMessage(content="test")]
-       llm._apply_dynamic_config(context, phase='post_inference')
+       llm._apply_modifications(context, phase='post_inference')
        assert llm.temperature_max == 0.0  # Not modified
        assert context.get('dynamic_modifications', {}).get('apply_feedback') == True
 
