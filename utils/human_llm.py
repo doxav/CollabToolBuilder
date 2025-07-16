@@ -205,7 +205,8 @@ class DynamicConfigManager:
     def _eval_frequency_rule(self, config: Dict, context: Dict) -> bool:
         """Evaluate frequency-based triggers"""
         every_n = config.get('every_n', 10)
-        count = len(self._call_history) + 1
+        # TODO: bad fix, should have a better fix
+        count = (len(self._call_history)//2) + 1
         return count % every_n == 0
         
     def _eval_divergence_rule(self, config: Dict, context: Dict) -> bool:
@@ -397,6 +398,7 @@ class HumanLLM:
         }
         
         self.dynamic_mgr = DynamicConfigManager(self.dynamic_llm_config, self.usage_tracker, default_cfg)
+        self.use_premium_llm = None  # Will be set during inference
 
     def _apply_dynamic_config(self, context: Dict, phase: str):
         """Evaluate triggers for phase and apply modifications"""
@@ -410,13 +412,20 @@ class HumanLLM:
         original_values = {}
         
         # 1) Direct attribute overrides
-        for attr in ('num_parallel_inferences', 'temperature_min', 'temperature_max',
-                     'selection_technique', 'generation_technique'):
-            if attr in mods:
-                # original_values[attr] = getattr(self, attr)
-                if hasattr(self, attr): original_values[attr] = getattr(self, attr)
+        for attr in mods:
+            if hasattr(self, attr):
+                # Store original value if not already stored
+                if attr not in original_values:
+                    original_values[attr] = getattr(self, attr)
                 setattr(self, attr, mods[attr])
                 self.logger.info(f"[DynamicConfig] {attr}: {original_values[attr]} -> {mods[attr]}")
+        # for attr in ('num_parallel_inferences', 'temperature_min', 'temperature_max',
+        #              'selection_technique', 'generation_technique'):
+        #     if attr in mods:
+        #         # original_values[attr] = getattr(self, attr)
+        #         if hasattr(self, attr): original_values[attr] = getattr(self, attr)
+        #         setattr(self, attr, mods[attr])
+        #         self.logger.info(f"[DynamicConfig] {attr}: {original_values[attr]} -> {mods[attr]}")
         
         # 2) Model selection
         if 'use_premium_llm' in mods:
@@ -450,13 +459,22 @@ class HumanLLM:
         original_values = {}
         
         # 1) Direct attribute overrides
-        for attr in ('num_parallel_inferences', 'temperature_min', 'temperature_max',
-                     'selection_technique', 'generation_technique'):
-            if attr in mods:
-                # original_values[attr] = getattr(self, attr)
-                if hasattr(self, attr): original_values[attr] = getattr(self, attr)
+        for attr in mods:
+            if hasattr(self, attr):
+                # Store original value if not already stored
+                if attr not in original_values:
+                    original_values[attr] = getattr(self, attr)
                 setattr(self, attr, mods[attr])
                 self.logger.info(f"[DynamicConfig] {attr}: {original_values[attr]} -> {mods[attr]}")
+        # for attr in ('num_parallel_inferences', 'temperature_min', 'temperature_max',
+        #              'selection_technique', 'generation_technique'):
+        #     if attr in mods:
+        #         # original_values[attr] = getattr(self, attr)
+        #         if hasattr(self, attr):
+        #             if attr not in original_values:
+        #                 original_values[attr] = getattr(self, attr)
+        #             setattr(self, attr, mods[attr])
+        #             self.logger.info(f"[DynamicConfig] {attr}: {original_values[attr]} -> {mods[attr]}")
         
         # 2) Model selection
         if 'use_premium_llm' in mods:
@@ -2532,6 +2550,9 @@ class HumanLLM:
                 return AIMessage(content=final_output)
 
             else:
+                model_name = func.model_name
+                dynamic_config = self.dynamic_llm_config
+                agent_name = self.agent_name
                 # No streaming. Normal call
                 value = func.invoke(input_msg)
                 return AIMessage(content=value.content if hasattr(value, 'content') else str(value))
@@ -2711,6 +2732,8 @@ class HumanLLM:
                                 type(self.llmORchains_list.get('3_majority_chain'))
                             ):
                                 stream_output = True
+                                
+                            use_premium_llm = self.use_premium_llm or use_premium_llm
 
                             futures = [
                                 executor.submit(
@@ -2822,6 +2845,7 @@ class HumanLLM:
                 output_messages = [AIMessage(content=input_content)]
                 break
 
+
         if self.auto_n_rounds:
             if self.auto_n_rounds > 0:
                 self.auto_n_rounds -= 1
@@ -2863,6 +2887,11 @@ class HumanLLM:
                 # This would need actual cost/token calculation
                 self.usage_tracker.record_usage(help_type, cost=0, tokens=0, success=True)
 
+        # Restore attributes overridden by dynamic config back to their original values
+        if 'original_values' in eval_context:
+            for attr, orig_val in eval_context['original_values'].items():
+                setattr(self, attr, orig_val)
+        
         return ([msg.content for msg in output_messages] if return_message_content_only else output_messages)
 
     def generate_candidates(
