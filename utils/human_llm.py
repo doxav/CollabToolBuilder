@@ -518,13 +518,15 @@ class HumanLLM:
             
             for i, output in enumerate(outputs):
                 # Determine what feedback to apply
-                feedback = None
+                feedback = False
                 suggestion = ''
                 text_content = output.content
                 if i in context.get('annotations', {}):
                     text_content = context['annotations'][i]['annotations']
+                    feedback = True
                 if i in context.get('instructions', {}):
                     suggestion = context['instructions'][i]['suggestions']
+                    feedback = True
                 
                 if feedback:
                     improved = self.apply_feedback_fn(
