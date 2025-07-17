@@ -518,27 +518,37 @@ class HumanLLM:
             
             for i, output in enumerate(outputs):
                 # Determine what feedback to apply
-                feedback = False
+                
                 suggestion = ''
                 text_content = output.content
+                has_annotations = False
+                has_instructions = False
                 if i in context.get('annotations', {}):
                     text_content = context['annotations'][i]['annotations']
-                    feedback = True
+                    has_annotations = True
                 if i in context.get('instructions', {}):
                     suggestion = context['instructions'][i]['suggestions']
-                    feedback = True
+                    has_instructions = True
                 
-                if feedback:
+                if has_annotations or has_instructions:
                     improved = self.apply_feedback_fn(
                         suggestions=suggestion,
                         text_content=text_content,
                         initial_prompt=context.get('system_prompt'),
+                        text_has_annotations=has_annotations,
                         **apply_params
                     )
                     # Update the output
                     output.content = improved
                     self.logger.info(f"[DynamicConfig] Applied feedback to output {i}")
-        
+            prev_feedbacks = self.config.get_agent_data(self.agent_name, "llm_suggestions")
+            for feedback in prev_feedbacks:
+                if isinstance(feedback, dict) and 'feedback_applied' in feedback:
+                    feedback['feedback_applied'] = True
+                if isinstance(feedback, list) :
+                    for f in feedback:
+                        if isinstance(f, dict) and 'feedback_applied' in f:
+                            f['feedback_applied'] = True
         # Re-select best output if requested
         if 'reselect_best' in mods and mods['reselect_best']:
             technique = mods.get('reselection_technique', self.selection_technique)
@@ -2102,23 +2112,22 @@ class HumanLLM:
                 user_prompt = f"{combined_text_content}"
                 llm_output = secure_invoke(self.premium_llm, 
                     [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)], temperature=self.temperature_min)
-                final_text = llm_output.content
+                combined_text_content = llm_output.content
 
             elif instruction_processing_approach == 'FULLTEXT_EACH':
-                final_text = combined_text_content
                 for annotation in annotations:
                     system_prompt = """
                 Your task is to improve the following text by processing the annotation and following the instruction.
                 Please replace the annotated part according to the instruction and produce the final improved version of the text.
                 """
                     # Replace other annotations with their content
-                    temp_text = final_text
+                    temp_text = combined_text_content
                     for other_annotation in annotations:
                         if other_annotation != annotation:
                             temp_text = temp_text.replace(other_annotation['full_match'], other_annotation['content'])
                     llm_output = secure_invoke(self.premium_llm, 
                         [SystemMessage(content=system_prompt.strip()), HumanMessage(content=temp_text)], temperature=self.temperature_min)
-                    final_text = llm_output.content
+                    combined_text_content = llm_output.content
 
             elif instruction_processing_approach == 'ANNOTATIONS_ALL':
                 annotations_data = {annotation.get('id') or str(i): {
@@ -2140,7 +2149,6 @@ class HumanLLM:
                 except json.JSONDecodeError:
                     raise ValueError(f"Invalid JSON response from LLM: {llm_response}")
 
-                final_text = combined_text_content
                 for annotation in annotations:
                     id_ = annotation.get('id') or str(annotations.index(annotation))
                     full_match = annotation['full_match']
@@ -2149,12 +2157,11 @@ class HumanLLM:
                         # Ensure new_content is a string
                         if not isinstance(new_content, str):
                             raise ValueError(f"New content for annotation ID {id_} is not a string.")
-                        final_text = final_text.replace(full_match, new_content)
+                        combined_text_content = combined_text_content.replace(full_match, new_content)
                     else:
                         raise ValueError(f"No new content found for annotation ID {id_}")
 
             elif instruction_processing_approach == 'ANNOTATIONS_EACH':
-                final_text = combined_text_content
                 for annotation in annotations:
                     system_prompt = """
                 Your task is to generate new content for the following text according to the instruction.
@@ -2164,10 +2171,10 @@ class HumanLLM:
                         [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)])
                     new_content = llm_output.content.strip()
                     full_match = annotation['full_match']
-                    final_text = final_text.replace(full_match, new_content)
+                    combined_text_content = combined_text_content.replace(full_match, new_content)
             else:
                 raise ValueError("Unsupported instruction processing approach.")
-        else:
+        if suggestions != '':
             # Existing logic for non-annotated text
             if suggestions is None:
                 suggestions = smart_input(
@@ -2178,6 +2185,8 @@ class HumanLLM:
             temp_prev_sugg, _ = self.config.get_agent_data(self.agent_name, "llm_suggestions")
             prev_sugg = ""
             for i in temp_prev_sugg:
+                if not i.get('feedback_applied', True):
+                    continue
                 llm_suggestion = i.get('llm_suggestions', '')
                 user_suggestion = i.get('user_suggestions', '')
                 diff = difflib.unified_diff(llm_suggestion.splitlines(), user_suggestion.splitlines(), lineterm='')
@@ -2198,10 +2207,11 @@ class HumanLLM:
             user_prompt = f"INSTRUCTIONS: << {suggestions} >>"
             llm_output = self.premium_llm.invoke(
                 [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)])
-            final_text = llm_output.content
+            combined_text_content = llm_output.content
+            
 
-        self.temp_inference_result_content = final_text  # Capture the result
-        return final_text
+        self.temp_inference_result_content = combined_text_content  # Capture the result
+        return combined_text_content
 
     def modify_answer(self, inference_result_msg, column_id=None):
         inference_result_msg.content = _visual_input(inference_result_msg.content)
@@ -3055,11 +3065,20 @@ class HumanLLM:
                 from sklearn.cluster import AgglomerativeClustering
                 texts = [m.content for m in output_messages]
                 # build distance matrix = 1 - similarity
-                D = squareform(pdist(texts, lambda u, v: 1 - calculate_text_similarity(u, v)))
+                n = len(texts)
+                D = np.zeros((n, n))
+                for i in range(n):
+                    for j in range(i + 1, n):
+                        sim = calculate_text_similarity(texts[i], texts[j])
+                        dist = 1 - sim
+                        D[i, j] = D[j, i] = dist
                 # cluster by a threshold to group similar answers
-                labels = AgglomerativeClustering(
-                    n_clusters=None, distance_threshold=0.5, affinity='precomputed', linkage='average'
-                ).fit_predict(D)
+                try:
+                    clu = AgglomerativeClustering( n_clusters=None, metric="precomputed", linkage="average", distance_threshold=0.5).fit(D) # new sklearn version >= 1.4
+                except TypeError:
+                    clu = AgglomerativeClustering( n_clusters=None, affinity="precomputed", linkage="average", distance_threshold=0.5).fit(D) # old sklearn version
+                
+                labels = clu.labels_
                 # find largest cluster
                 from collections import Counter
                 top = Counter(labels).most_common(1)[0][0]
@@ -3068,7 +3087,7 @@ class HumanLLM:
                 # medoid = index with minimum total distance
                 medoid = idxs[int(np.argmin(subD.sum(axis=1)))]
                 return [output_messages[medoid]]
-            except Exception:
+            except Exception as e:
                 return [output_messages[-1]]
 
         elif selection_technique == "last":
@@ -3311,7 +3330,8 @@ List your annotations below:
             'improvement_prompt': improvement_prompt,
             'generation_technique': generation_technique if num_candidates > 1 else None,
             'selection_technique': selection_technique if num_candidates > 1 else None,
-            'num_candidates': num_candidates
+            'num_candidates': num_candidates,
+            'feedback_applied': False,
         })
 
         # Prepare the return value
