@@ -46,9 +46,9 @@ class WebsocketServer:
         # List of functions that can be executed in parallel
         self.parallel_functions = [
             "update_answer",
-            "critic_answer",
+            "apply_feedback_fn",
             "get_tasks",
-            "generate_instructions_feedback",
+            "generate_instructions_feedback_fn",
             "goto_task"
         ]
         self.server_id = str(uuid.uuid4())
@@ -133,7 +133,7 @@ class WebsocketServer:
         with open(self.log_filename, "a",encoding="utf-8") as log_file:
             log_file.write(log_entry)
 
-    async def handler(self, websocket, path):
+    async def handler(self, websocket, path=None):
         """
         Handle incoming WebSocket connections and messages.
 
@@ -142,7 +142,7 @@ class WebsocketServer:
             path: The path of the WebSocket request.
         """
         # Parse query parameters
-        query_params = parse_qs(urlparse(path).query)
+        query_params = parse_qs(urlparse(path or websocket.request.path).query)
         if self.secret:
             received_secret = query_params.get("secret", [None])[0]
             if received_secret != self.secret:

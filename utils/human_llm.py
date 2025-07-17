@@ -20,7 +20,8 @@ from utils.llm_utils import (
     list_prompt_variants, flatten_and_pair,
     semantic_double_pass_chunking,
     extract_json,
-    calculate_text_similarity
+    calculate_text_similarity,
+    secure_invoke
 )
 from env.SWEBench.env import SWEBenchEnvironment
 from utils.human_llm_config import HumanLLMConfig
@@ -518,15 +519,17 @@ class HumanLLM:
             for i, output in enumerate(outputs):
                 # Determine what feedback to apply
                 feedback = None
+                suggestion = ''
+                text_content = output.content
                 if i in context.get('annotations', {}):
-                    feedback = context['annotations'][i]['annotations']
-                elif i in context.get('instructions', {}):
-                    feedback = context['instructions'][i]['suggestions']
+                    text_content = context['annotations'][i]['annotations']
+                if i in context.get('instructions', {}):
+                    suggestion = context['instructions'][i]['suggestions']
                 
                 if feedback:
                     improved = self.apply_feedback_fn(
-                        suggestions=feedback,
-                        text_content=output.content,
+                        suggestions=suggestion,
+                        text_content=text_content,
                         initial_prompt=context.get('system_prompt'),
                         **apply_params
                     )
@@ -2095,7 +2098,7 @@ class HumanLLM:
                 3. **INSERT:** Add new content as instructed.
                 """
                 user_prompt = f"{combined_text_content}"
-                llm_output = self.premium_llm.invoke(
+                llm_output = secure_invoke(self.premium_llm, 
                     [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)], temperature=self.temperature_min)
                 final_text = llm_output.content
 
@@ -2111,7 +2114,7 @@ class HumanLLM:
                     for other_annotation in annotations:
                         if other_annotation != annotation:
                             temp_text = temp_text.replace(other_annotation['full_match'], other_annotation['content'])
-                    llm_output = self.premium_llm.invoke(
+                    llm_output = secure_invoke(self.premium_llm, 
                         [SystemMessage(content=system_prompt.strip()), HumanMessage(content=temp_text)], temperature=self.temperature_min)
                     final_text = llm_output.content
 
@@ -2127,8 +2130,8 @@ class HumanLLM:
                 Example Output: {"1": "new content for annotation 1", "2": "new content for annotation 2"}
                 """
                 user_prompt = f"Annotations:\n{json.dumps(annotations_data)}"
-                llm_output = self.premium_llm.invoke(
-                    [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)], temperature=self.temperature_min)
+                llm_output = secure_invoke(self.premium_llm, 
+                        [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)], temperature=self.temperature_min)
                 llm_response = llm_output.content.strip()
                 try:
                     new_contents = json.loads(llm_response)
@@ -3122,7 +3125,7 @@ class HumanLLM:
         # Prepare annotation generation prompt
         annotation_generate_prompt = f"""
 You're an AI assistant. Your task is to generate annotations on the prompt given to you. The output should be exactly the same as the input but with some annotations in it, no changes on the text itself. The annotations will have this format:
-'\\{annotation_types}{{the text to annotate}}{{the feedback for the text (what is wrong, what is right, etc.)}}'
+'\\{annotation_types}[the feedback for the text (what is wrong, what is right, etc.)]{{the text to annotate}}'
 
 You should not change anything of the content of the given prompt, only add annotations. You have to add {annotation_number} annotations, and for each one of them don't place them randomly, but place them in a way that they are relevant to the text.
 Try to give real feedbacks for the annotations, and not just random feedbacks. Finally, don't annotate the same text twice or the full text in one; place annotations on phrases or keywords that are relevant.
@@ -3160,7 +3163,8 @@ List your annotations below:
         # Clean up annotations
         annotations = regex.sub(r'[^\P{C}\t\n\r]', '', annotations)
         annotations = re.sub(r'\\u[0-9A-Fa-f]{4}', '', annotations)
-        
+        annotations = annotations.split("ANSWER:<<<")[-1]
+        annotations = annotations.split(">>>")[0]
         # Save annotations
         self.config.log_agent_data(
             self.agent_name,

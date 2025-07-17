@@ -981,7 +981,7 @@ function handleMultipleSolutions(data) {
         // Send the function call
         sendFunctionCall(
           data.agent_name,
-          "critic_answer",
+          "apply_feedback_fn",
           requestData,
           function (responseMessage) {
             console.log("responseMessage:", responseMessage);
@@ -1047,7 +1047,7 @@ function handleMultipleSolutions(data) {
         // Send the function call
         sendFunctionCall(
           agentName,
-          "critic_answer",
+          "apply_feedback_fn",
           requestData,
           function (responseMessage) {
             console.log("responseMessage:", responseMessage);
@@ -1116,7 +1116,7 @@ function handleMultipleSolutions(data) {
         // Send the function call
         sendFunctionCall(
           data.agent_name,
-          "critic_answer",
+          "apply_feedback_fn",
           requestData,
           function (responseMessage) {
             console.log("responseMessage:", responseMessage);

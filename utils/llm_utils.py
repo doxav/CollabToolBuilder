@@ -1,5 +1,6 @@
 import re, time, json, os, glob, sys, logging
 import subprocess, asyncio, inspect
+from openai import BadRequestError
 import websockets, socket, requests
 from datetime import datetime
 from typing import List, Optional, Union, Dict, Any
@@ -976,3 +977,18 @@ def extract_json(data: any) -> dict:
 
     # If both methods fail, raise an error.
     print("No valid JSON found in the input data.")
+
+
+def secure_invoke(llm,*args,**kwargs):
+    """
+    A wrapper function to invoke an LLM with error handling.
+    """
+    try:
+        return llm.invoke(*args,**kwargs)
+    except BadRequestError as e:
+        if e.param == 'temperature':
+            logging.warning(f"{llm.model_name} LLM don't support temperature parameter, removing it and retrying.")
+            kwargs.pop('temperature', None)  # Remove temperature if it causes an error
+            return secure_invoke(llm,*args, **kwargs)
+        else:
+            raise e

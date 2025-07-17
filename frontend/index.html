@@ -409,7 +409,7 @@ let annotationswithID = ""; // Track the annotations with ID
 let unique_id_sent = false; // Track if the unique_id has been sent to the server
 let init_task_list = false; // Track if the task list has been initialized
 let clientId = ""; // Track the client ID
-let parallelFunctions = ["update_answer", "critic_answer", "get_tasks"];
+let parallelFunctions = ["update_answer", "apply_feedback_fn", "get_tasks"];
 let activeFunctionCalls = {};
 let functionCallQueue = [];
 let wsHandler = null;
@@ -1400,7 +1400,7 @@ class WebSocketHandler {
 
       const data = JSON.parse(event.data);
       console.log("Message received:", data);
-      if (data.function === "critic_answer") {
+      if (data.function === "apply_feedback_fn") {
         if (!data.message) {
           data.message = data.result;
         }
@@ -3012,7 +3012,7 @@ function handleMultipleSolutions(data) {
         // Send the function call
         sendFunctionCall(
           data.agent_name,
-          "critic_answer",
+          "apply_feedback_fn",
           requestData,
           function (responseMessage) {
             console.log("responseMessage:", responseMessage);
@@ -3078,7 +3078,7 @@ function handleMultipleSolutions(data) {
         // Send the function call
         sendFunctionCall(
           agentName,
-          "critic_answer",
+          "apply_feedback_fn",
           requestData,
           function (responseMessage) {
             console.log("responseMessage:", responseMessage);
@@ -3147,7 +3147,7 @@ function handleMultipleSolutions(data) {
         // Send the function call
         sendFunctionCall(
           data.agent_name,
-          "critic_answer",
+          "apply_feedback_fn",
           requestData,
           function (responseMessage) {
             console.log("responseMessage:", responseMessage);
