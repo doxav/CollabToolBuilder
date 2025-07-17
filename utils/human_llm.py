@@ -328,8 +328,8 @@ class HumanLLM:
         self.prompt_critic = prompt_critic
         self.system_prompt = system_prompt
         self.configure_output_schema(output_schema)
-        self.set_default_llmORchain(default_llmORchain if default_llmORchain else "default_llm")
-        self.set_premium_llmORchain(premium_llmORchain if premium_llmORchain else "premium_llm")
+        self.set_default_llmORchain(default_llmORchain if default_llmORchain else "default_llm", temperature_min)
+        self.set_premium_llmORchain(premium_llmORchain if premium_llmORchain else "premium_llm", temperature_min)
         self.CPS_env_type = CPS_env_type
 
         self.config.initialize()
@@ -441,7 +441,7 @@ class HumanLLM:
         context['dynamic_modifications'] = mods
         context['original_values'] = original_values
         
-    def _apply_modifications(self, mods: Dict, context: Dict, phase: str):
+    def _update_dynamic_config(self, mods: Dict, context: Dict, phase: str):
         """Apply modifications from dynamic config evaluation"""
         if not mods:
             return
@@ -459,15 +459,6 @@ class HumanLLM:
                     original_values[attr] = getattr(self, attr)
                 setattr(self, attr, mods[attr])
                 self.logger.info(f"[DynamicConfig] {attr}: {original_values[attr]} -> {mods[attr]}")
-        # for attr in ('num_parallel_inferences', 'temperature_min', 'temperature_max',
-        #              'selection_technique', 'generation_technique'):
-        #     if attr in mods:
-        #         # original_values[attr] = getattr(self, attr)
-        #         if hasattr(self, attr):
-        #             if attr not in original_values:
-        #                 original_values[attr] = getattr(self, attr)
-        #             setattr(self, attr, mods[attr])
-        #             self.logger.info(f"[DynamicConfig] {attr}: {original_values[attr]} -> {mods[attr]}")
         
         # 2) Model selection
         if 'use_premium_llm' in mods:
@@ -2105,7 +2096,7 @@ class HumanLLM:
                 """
                 user_prompt = f"{combined_text_content}"
                 llm_output = self.premium_llm.invoke(
-                    [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)])
+                    [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)], temperature=self.temperature_min)
                 final_text = llm_output.content
 
             elif instruction_processing_approach == 'FULLTEXT_EACH':
@@ -2121,7 +2112,7 @@ class HumanLLM:
                         if other_annotation != annotation:
                             temp_text = temp_text.replace(other_annotation['full_match'], other_annotation['content'])
                     llm_output = self.premium_llm.invoke(
-                        [SystemMessage(content=system_prompt.strip()), HumanMessage(content=temp_text)])
+                        [SystemMessage(content=system_prompt.strip()), HumanMessage(content=temp_text)], temperature=self.temperature_min)
                     final_text = llm_output.content
 
             elif instruction_processing_approach == 'ANNOTATIONS_ALL':
@@ -2137,7 +2128,7 @@ class HumanLLM:
                 """
                 user_prompt = f"Annotations:\n{json.dumps(annotations_data)}"
                 llm_output = self.premium_llm.invoke(
-                    [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)])
+                    [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)], temperature=self.temperature_min)
                 llm_response = llm_output.content.strip()
                 try:
                     new_contents = json.loads(llm_response)
@@ -2641,7 +2632,7 @@ class HumanLLM:
             if hasattr(self, 'dynamic_mgr') and self.dynamic_mgr:
                 mods = self.dynamic_mgr.evaluate_triggers(eval_context, phase='pre_inference')
                 if mods:
-                    self._apply_modifications(mods, eval_context, phase='pre_inference')
+                    self._update_dynamic_config(mods, eval_context, phase='pre_inference')
             # Automation short-circuits
             if self.automation in ['before', 'after', 'skip_once']:
                 # Possibly skip or read from saved_task ...
@@ -2790,7 +2781,7 @@ class HumanLLM:
                     if hasattr(self, 'dynamic_mgr') and self.dynamic_mgr:
                         mods = self.dynamic_mgr.evaluate_triggers(eval_context, phase='post_inference')
                         if mods:
-                            self._apply_modifications(mods, eval_context, phase='post_inference')
+                            self._update_dynamic_config(mods, eval_context, phase='post_inference')
                     
                     # Update llm_outputs from context in case they were modified
                     llm_outputs = eval_context.get('llm_outputs', llm_outputs)
@@ -3844,7 +3835,7 @@ List your annotations below:
             "user_message": user_message,
             "return_message_content_only": False,
             "stream_output": False,
-            "model_choice": self.model_choice.get('coder', 'default_llm') if isinstance(self.model_choice, dict) else self.model_choice
+            "model_choice": self.model_choice.get('coder', self.default_llm_name) if isinstance(self.model_choice, dict) else self.model_choice
         }
 
         # Ajouter temperature seulement si l'attribut temperature existe dans l'instance

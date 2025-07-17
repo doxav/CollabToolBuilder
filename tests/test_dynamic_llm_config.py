@@ -4,6 +4,8 @@ from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
 from utils.human_llm import HumanLLM, DynamicConfigManager, HelpUsageTracker
 from langchain_core.messages import AIMessage
+from langchain_openai import ChatOpenAI
+from config import MODELS_CONFIG_LIST
 
 class TestHelpUsageTracker:
     def test_quota_tracking(self):
@@ -478,21 +480,24 @@ class TestHumanLLMDynamicConfig:
                }
            }
        }
-       
+
        llm = HumanLLM(
            default_llm_choice="test",
-           llmORchains_list={'test': Mock()},
+           #llmORchains_list={'test': Mock()},
+           llmORchains_list={'test': ChatOpenAI(model_name=MODELS_CONFIG_LIST.getattr("premium_llm", "gpt-4.1-nano") if MODELS_CONFIG_LIST else "gpt-4.1-nano"), 'premium_llm': ChatOpenAI(model_name=MODELS_CONFIG_LIST.getattr("premium_llm", "gpt-4.1-nano") if MODELS_CONFIG_LIST else "gpt-4.1-nano")},
+           #llmORchains_list={'test': mock_test_llm, 'premium_llm': mock_test_llm},
+           temperature_min= 0.0,
            dynamic_llm_config=config
        )
        
        # Mock the feedback generation
-       llm.generate_annotations_feedback = Mock(return_value={
+       llm.generate_annotations_feedback_fn = Mock(return_value={
            'annotations': '\\FIX{error here}\\IMPROVE{make clearer}',
            'annotation_prompt': 'test prompt'
        })
        
        # Mock the feedback application
-       llm.apply_feedback = Mock(return_value="Fixed and improved content")
+       llm.apply_feedback_fn = Mock(return_value="Fixed and improved content")
        
        outputs = [AIMessage(content="Original content with error here and unclear parts")]
        context = {
@@ -505,13 +510,13 @@ class TestHumanLLMDynamicConfig:
        llm._apply_dynamic_config(context, phase='post_inference')
        
        # Verify the flow
-       assert llm.generate_annotations_feedback.called
-       call_args = llm.generate_annotations_feedback.call_args
+       assert llm.generate_annotations_feedback_fn.called
+       call_args = llm.generate_annotations_feedback_fn.call_args
        assert call_args[1]['annotation_types'] == 'FIX, IMPROVE'
        assert call_args[1]['num_candidates'] == 2
        
-       assert llm.apply_feedback.called
-       apply_args = llm.apply_feedback.call_args
+       assert llm.apply_feedback_fn.called
+       apply_args = llm.apply_feedback_fn.call_args
        assert apply_args[1]['annotation_format'] == 'latex-inline'
        
        # Output should be updated
