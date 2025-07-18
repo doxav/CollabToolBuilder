@@ -225,7 +225,7 @@ Based on the examples above, complete the following task:
 {task_description}
 """
     
-    processed_prompt = human_llm_config.extract_few_shot_tags(prompt_with_fewshot)
+    processed_prompt = human_llm_config.populate_few_shot_tags(prompt_with_fewshot)
     
     # Verify few-shot tag was replaced
     assert "few_shots:" not in processed_prompt
@@ -460,7 +460,7 @@ Complete this task: {task_description}"""
         
         # Verify that the few-shot examples were processed
         # The system prompt should contain the learnt tasks
-        processed_prompt = human_llm_config.extract_few_shot_tags(test_prompt)
+        processed_prompt = human_llm_config.populate_few_shot_tags(test_prompt)
         assert "learnt tasks" in processed_prompt
         assert ("calculate_sum" in processed_prompt or "find_max" in processed_prompt)
 
@@ -1228,7 +1228,7 @@ def test_few_shot_complex_parameter_combination(human_llm_config, sample_few_sho
     assert "task_a" in result  # Should include easy difficulty task
 
 # ------------------------------------------------------------------------------
-# Test Multiple Few-Shot Tags in Prompts (extract_few_shot_tags)
+# Test Multiple Few-Shot Tags in Prompts (populate_few_shot_tags)
 # ------------------------------------------------------------------------------
 @pytest.mark.parametrize("prompt_template,expected_replacements", [
     # Single few-shot tag
@@ -1266,7 +1266,7 @@ Complete the following task.''',
         1
     )
 ])
-def test_extract_few_shot_tags_multiple_combinations(human_llm_config, sample_few_shot_data, prompt_template, expected_replacements):
+def test_populate_few_shot_tags_multiple_combinations(human_llm_config, sample_few_shot_data, prompt_template, expected_replacements):
     """Test extraction and replacement of multiple few-shot tags in prompt templates"""
     
     # Populate database with both learnt and failed tasks
@@ -1283,7 +1283,7 @@ def test_extract_few_shot_tags_multiple_combinations(human_llm_config, sample_fe
     time.sleep(1)
     
     # Process the prompt template
-    processed_prompt = human_llm_config.extract_few_shot_tags(prompt_template)
+    processed_prompt = human_llm_config.populate_few_shot_tags(prompt_template)
     
     # Verify few-shot tags were replaced
     assert "few_shots:" not in processed_prompt, "Few-shot tags should be completely replaced"
@@ -1312,7 +1312,7 @@ def test_extract_few_shot_tags_multiple_combinations(human_llm_config, sample_fe
         assert processed_prompt == prompt_template
 
 
-def test_extract_few_shot_tags_nested_json_parsing(human_llm_config, sample_few_shot_data):
+def test_populate_few_shot_tags_nested_json_parsing(human_llm_config, sample_few_shot_data):
     """Test that complex nested JSON in few-shot tags is parsed correctly"""
     
     # Populate database
@@ -1346,7 +1346,7 @@ few_shots:{
 
 Complete the task.'''
     
-    processed_prompt = human_llm_config.extract_few_shot_tags(complex_prompt)
+    processed_prompt = human_llm_config.populate_few_shot_tags(complex_prompt)
     
     # Verify the complex JSON was parsed and replaced
     assert "few_shots:" not in processed_prompt
@@ -1359,7 +1359,7 @@ Complete the task.'''
     assert "learnt tasks" in processed_prompt
 
 
-def test_extract_few_shot_tags_malformed_json_handling(human_llm_config):
+def test_populate_few_shot_tags_malformed_json_handling(human_llm_config):
     """Test handling of malformed JSON in few-shot tags"""
     
     malformed_prompts = [
@@ -1375,7 +1375,7 @@ def test_extract_few_shot_tags_malformed_json_handling(human_llm_config):
     
     for malformed_prompt in malformed_prompts:
         # Should not crash, should return original prompt or handle gracefully
-        processed_prompt = human_llm_config.extract_few_shot_tags(malformed_prompt)
+        processed_prompt = human_llm_config.populate_few_shot_tags(malformed_prompt)
         
         # At minimum, should not crash and should return a string
         assert isinstance(processed_prompt, str)
@@ -1384,13 +1384,13 @@ def test_extract_few_shot_tags_malformed_json_handling(human_llm_config):
         # This is acceptable behavior - we're just testing it doesn't crash
 
 
-def test_extract_few_shot_tags_empty_database(human_llm_config):
+def test_populate_few_shot_tags_empty_database(human_llm_config):
     """Test few-shot tag extraction when database is empty"""
     
     prompt_with_tags = 'Examples: few_shots:{"sources": "learnt", "num": 5, "format": "json"}\n\nComplete task.'
     
     # Process with empty database
-    processed_prompt = human_llm_config.extract_few_shot_tags(prompt_with_tags)
+    processed_prompt = human_llm_config.populate_few_shot_tags(prompt_with_tags)
     
     # Should handle empty database gracefully
     assert "few_shots:" not in processed_prompt

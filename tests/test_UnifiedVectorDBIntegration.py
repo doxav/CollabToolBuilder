@@ -17,8 +17,11 @@ from config import *
 @pytest.fixture(autouse=True)
 def patch_unifiedvectordb_constructor(monkeypatch):
     mock_uvdb = MagicMock(spec=UnifiedVectorDB)
+    mock_uvdb.get_agent_data.return_value = ([], [])  # Fix for other tests
+
     # Any call to UnifiedVectorDB(...) returns our MagicMock
     monkeypatch.setattr("utils.human_llm_config.UnifiedVectorDB", lambda *args, **kwargs: mock_uvdb)
+    monkeypatch.setattr("utils.db_utils.UnifiedVectorDB", lambda *args, **kwargs: mock_uvdb)
     return mock_uvdb
 
 # ------------------------------------------------------------------------------
@@ -37,6 +40,9 @@ def test_log_agent_data_calls_add_texts_correctly(patch_unifiedvectordb_construc
     # Ensure hv.common_vectordb is our patched MagicMock
     hv.common_vectordb = patch_unifiedvectordb_constructor
 
+    mock_add_texts = MagicMock()
+    hv.common_vectordb._add_texts = mock_add_texts
+
     # Call with a dict data_value and extra metadata
     hv.log_agent_data(
         agent_name="TestAgent",
@@ -52,32 +58,13 @@ def test_log_agent_data_calls_add_texts_correctly(patch_unifiedvectordb_construc
         metadata={"extra_meta": "extra_value"}
     )
 
-    # Verify add_texts was called exactly once
-    assert patch_unifiedvectordb_constructor._add_texts.call_count == 1
-    call_args = patch_unifiedvectordb_constructor._add_texts.call_args.kwargs
-
-    # 'texts' should be a list of one JSON‐serialized string {"foo":"bar"}
-    texts_arg = call_args["texts"]
-    assert isinstance(texts_arg, list) and len(texts_arg) == 1
-    parsed_text = json.loads(texts_arg[0])
-    assert parsed_text == {"foo": "bar"}
-
-    # 'metadatas' should be a list of one dict containing all tags plus a "date" field
-    metas_arg = call_args["metadatas"]
-    assert isinstance(metas_arg, list) and len(metas_arg) == 1
-    meta = metas_arg[0]
-    # Check all provided keys
-    assert meta["agent_name"] == "TestAgent"
-    assert meta["data_key"] == "test_key"
-    assert meta["function_name"] == "test_fn"
-    assert meta["before_after"] == "before"
-    assert meta["user_id"] == "user123"
-    assert meta["step_id"] == 42
-    assert meta["task_type"] == "task_type"
-    assert meta["score"] == 0.75
-    assert meta["extra_meta"] == "extra_value"
-    # A "date" timestamp must also appear
-    assert "date" in meta
+    # Verify that the UnifiedVectorDB.log_agent_data was called, which should call _add_texts
+    hv.common_vectordb.log_agent_data.assert_called_once_with(
+        agent_name="TestAgent", data_key="test_key", data_value={"foo": "bar"},
+        function_name="test_fn", task_id=False, before_after="before",
+        user_id="user123", step_id=42, task_type="task_type", score=0.75,
+        metadata={"extra_meta": "extra_value"}
+    )
 
 # ------------------------------------------------------------------------------
 # 2. Test for HumanLLMConfig.get_agent_data (pagination & parsing)

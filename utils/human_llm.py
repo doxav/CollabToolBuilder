@@ -397,55 +397,7 @@ class HumanLLM:
         self.dynamic_mgr = DynamicConfigManager(self.dynamic_llm_config, self.usage_tracker, default_cfg)
         self.use_premium_llm = None  # Will be set during inference
 
-    def _apply_dynamic_config(self, context: Dict, phase: str):
-        """Evaluate triggers for phase and apply modifications"""
-        mods = self.dynamic_mgr.evaluate_triggers(context, phase=phase)
-        if not mods:
-            return
-            
-        self.logger.info(f"[DynamicConfig:{phase}] Applying modifications: {mods}")
-        
-        # Track original values for potential rollback
-        original_values = {}
-        
-        # 1) Direct attribute overrides
-        for attr in mods:
-            if hasattr(self, attr):
-                # Store original value if not already stored
-                if attr not in original_values:
-                    original_values[attr] = getattr(self, attr)
-                setattr(self, attr, mods[attr])
-                self.logger.info(f"[DynamicConfig] {attr}: {original_values[attr]} -> {mods[attr]}")
-        # for attr in ('num_parallel_inferences', 'temperature_min', 'temperature_max',
-        #              'selection_technique', 'generation_technique'):
-        #     if attr in mods:
-        #         # original_values[attr] = getattr(self, attr)
-        #         if hasattr(self, attr): original_values[attr] = getattr(self, attr)
-        #         setattr(self, attr, mods[attr])
-        #         self.logger.info(f"[DynamicConfig] {attr}: {original_values[attr]} -> {mods[attr]}")
-        
-        # 2) Model selection
-        if 'use_premium_llm' in mods:
-            context['use_premium_llm'] = mods['use_premium_llm']
-        
-        if 'model_choice' in mods:
-            context['model_choice'] = mods['model_choice']
-        
-        # 3) Human intervention activation
-        if mods.get('activate_human_intervention'):
-            original_values['skip_rounds'] = self.skip_rounds
-            self.skip_rounds = 0
-            self.logger.info("[DynamicConfig] Activated human intervention")
-        
-        # 4) Feedback generation and application (post-inference only)
-        if phase == 'post_inference' and 'llm_outputs' in context:
-            self._apply_feedback_modifications(mods, context)
-        
-        # Store modifications in context for tracking
-        context['dynamic_modifications'] = mods
-        context['original_values'] = original_values
-        
-    def _update_dynamic_config(self, mods: Dict, context: Dict, phase: str):
+    def _apply_modifications(self, mods: Dict, context: Dict, phase: str):
         """Apply modifications from dynamic config evaluation"""
         if not mods:
             return
@@ -2901,7 +2853,6 @@ class HumanLLM:
         if 'original_values' in eval_context:
             for attr, orig_val in eval_context['original_values'].items():
                 setattr(self, attr, orig_val)
-        
         return ([msg.content for msg in output_messages] if return_message_content_only else output_messages)
 
     def generate_candidates(
