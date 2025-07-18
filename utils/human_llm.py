@@ -23,7 +23,10 @@ from utils.llm_utils import (
     calculate_text_similarity,
     secure_invoke
 )
-from env.SWEBench.env import SWEBenchEnvironment
+try:
+    from env.SWEBench.env import SWEBenchEnvironment
+except Exception as e:
+    SWEBenchEnvironment = None
 from utils.human_llm_config import HumanLLMConfig
 from typing import List, Dict, Any, Optional, Union
 
@@ -3059,7 +3062,8 @@ class HumanLLM:
                 return self.select_candidate(output_messages, "best_of_n")
                 
         elif selection_technique == "majority":
-            try:
+            # try:
+            if True:
                 import numpy as np
                 from scipy.spatial.distance import pdist, squareform
                 from sklearn.cluster import AgglomerativeClustering
@@ -3087,8 +3091,8 @@ class HumanLLM:
                 # medoid = index with minimum total distance
                 medoid = idxs[int(np.argmin(subD.sum(axis=1)))]
                 return [output_messages[medoid]]
-            except Exception as e:
-                return [output_messages[-1]]
+            # except Exception as e:
+            #     return [output_messages[-1]]
 
         elif selection_technique == "last":
             # Return the last output
