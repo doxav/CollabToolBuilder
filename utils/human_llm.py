@@ -28,7 +28,7 @@ try:
 except Exception as e:
     SWEBenchEnvironment = None
 from utils.human_llm_config import HumanLLMConfig
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional, Union, Tuple, Callable
 
 
 from langchain.llms import OpenAI
@@ -99,6 +99,61 @@ class HelpUsageTracker:
         else:
             self.usage[help_type]['failures'] += 1
 
+class _TraceOptimizerAdapter:
+    """
+    Small adapter that exposes a step(context, targets, n_candidates) -> List[dict(edits...)]
+    Replace the internals or pass a real trace object via config['trace_obj'] to integrate your Trace implementation.
+    """
+    def __init__(self, name: str, config: Dict):
+        self.name = name
+        self.config = config or {}
+        self._state = {"created_at": time.time(), "calls": 0}
+        # allow a real trace object to be passed in config under key 'trace_obj'
+        self._trace_obj = self.config.get("trace_obj")
+        # per-optimizer observables/optimizables (store for introspection & use)
+        self._observables: List[Union[str, Callable, Tuple]] = list(self.config.get("observables") or [])
+        self._optimizables: List[Union[str, Callable, Tuple]] = list(self.config.get("optimizables") or [])
+
+    def step(self, context: Dict, targets: List[str], n_candidates: int = 1, constraints: Dict = None) -> List[Dict]:
+        """Return candidate patches. Each candidate is a dict {'edits': [ {'target':..., 'op':..., 'value':...}, ... ]}"""
+        self._state["calls"] += 1
+        # record an observation snapshot for debug/tracing - real Trace will do more
+        self._last_context_snapshot = {k: context.get(k) for k in (self._observables or []) if isinstance(k, str)}
+        candidates = []
+        if self._trace_obj:
+            # If you plug a real Trace object, it should expose an API we call here.
+            # We try to call a common name 'step' and expect a list-like reply; adapt as necessary.
+            raw = getattr(self._trace_obj, "step")(context=context, targets=targets, n_candidates=n_candidates, constraints=constraints)
+            if not isinstance(raw, list):
+                raw = [raw]
+            for r in raw:
+                # normalise into edits list; if r already has 'edits', keep it
+                if isinstance(r, dict) and "edits" in r:
+                    candidates.append(r)
+                else:
+                    # wrap an opaque candidate
+                    candidates.append({"edits": [{"target": t, "op": "set", "value": f"<trace:{self.name}:candidate>"} for t in (targets or [])]})
+            return candidates
+
+        # fallback heuristic: provide n_candidates simple safe edits
+        for ci in range(max(1, n_candidates)):
+            edits = []
+            for t in (targets or []):
+                if isinstance(t, str):
+                    if t.startswith("invoke.") and "temperature" in t:
+                        edits.append({"target": t, "op": "set", "value": max(0.0, min(1.0, 0.2 + 0.05 * ci))})
+                    elif t.startswith("invoke.") and "max_tokens" in t:
+                        edits.append({"target": t, "op": "set", "value": int(256 + 20 * ci)})
+                    elif t in ("user_message", "system_prompt"):
+                        edits.append({"target": t, "op": "append", "value": f"\n\n[TRACE_OPT:{self.name}:{ci}]"})
+                    else:
+                        edits.append({"target": t, "op": "set", "value": f"<trace:{self.name}:{ci}>"})
+                else:
+                    # non-string target: ignore
+                    continue
+            candidates.append({"edits": edits, "meta": {"optimizer": self.name, "candidate_idx": ci}})
+        return candidates
+
 class DynamicConfigManager:
     """Manages dynamic LLM configuration based on rules and triggers"""
     def __init__(self, config: Dict, usage_tracker: HelpUsageTracker, default_config: Dict):
@@ -116,12 +171,33 @@ class DynamicConfigManager:
             'composite': self._eval_composite_rule
         }
         self._call_history = []
+        # -----------------------
+        # Extended state for Trace, optimizables, observables and feedback
+        # -----------------------
+        # list of registered optimizable targets (strings / callables / tuples)
+        self._optimizables: List[Union[str, Callable, Tuple]] = []
+        # list of registered observables (similar format)
+        self._observables: List[Union[str, Callable, Tuple]] = []
+        # persistent trace optimizers by name
+        self._trace_optimizers: Dict[str, _TraceOptimizerAdapter] = {}
+        # in-memory records used by collect_feedback() and offline H2
+        self._records: List[Dict] = []
+        # Initialize trace optimizers if present in incoming config under 'trace_optimizers'
+        for tconf in (self.config or {}).get("trace_optimizers", []) or []:
+            try:
+                name = tconf.get("name") or f"trace_{len(self._trace_optimizers)+1}"
+                self.register_trace_optimizer(name, tconf)
+            except Exception:
+                self.logger.exception("Failed to register trace optimizer from config")
         
     def evaluate_triggers(self, context: Dict, phase: str = 'pre_inference') -> Dict:
         """Evaluate all triggers and return modifications to apply"""
         modifications = {}
         
         for help_type, help_config in self.config.items():
+            if not isinstance(help_config, dict):
+                print("Invalid config for type (expected dict):", help_type)
+                continue
             # Check if this help type applies to current phase
             if help_config.get('phase', 'pre_inference') != phase:
                 continue
@@ -135,7 +211,83 @@ class DynamicConfigManager:
             if self._evaluate_rules(rules, context):
                 # Apply modifications
                 mods = help_config.get('modifications', {})
-                modifications.update(mods)
+                # Allow old dict-based modifications for backward compatibility
+                if isinstance(mods, dict):
+                    modifications.update(mods)
+                else:
+                    # new-style: list of modification descriptors; supports {'type': 'trace', ...}
+                    for m in (mods or []):
+                        mtype = m.get("type", "simple")
+                        if mtype == "simple":
+                            # merge simple dict patch (fallback)
+                            payload = m.get("payload", {})
+                            if isinstance(payload, dict):
+                                modifications.update(payload)
+                        elif mtype == "trace":
+                            # call a persistent trace optimizer synchronously (H1 behavior)
+                            opt_name = m.get("optimizer") or self.config.get("trace_default_optimizer")
+                            if not opt_name:
+                                self.logger.debug("Trace modification requested but no optimizer name/config found; skipping")
+                                continue
+                            adapter = self._trace_optimizers.get(opt_name)
+                            if adapter is None:
+                                # create a basic adapter for this name, allow user to replace with real Trace later
+                                adapter = _TraceOptimizerAdapter(opt_name, m.get("config", {}))
+                                self._trace_optimizers[opt_name] = adapter
+
+                            # if the modification descriptor provided per-optimizer observables/optimizables,
+                            # make sure adapter holds them (allow per-optimizer override)
+                            if "observables" in (m or {}):
+                                adapter._observables = list(m.get("observables") or [])
+                            if "optimizables" in (m or {}):
+                                adapter._optimizables = list(m.get("optimizables") or [])
+
+                            targets = m.get("targets") or self._optimizables or m.get("optimizable_targets", [])
+                            n_candidates = int(m.get("n_candidates", 1))
+                            try:
+                                candidates = adapter.step(context=context, targets=list(targets), n_candidates=n_candidates, constraints=m.get("constraints"))
+                            except Exception:
+                                self.logger.exception("Trace optimizer step failed; skipping optimizer modification")
+                                candidates = []
+                            # If Trace returns candidates, pick the first by default (Trace-as-Advisor). UI/human-in-loop can override later.
+                            if candidates:
+                                first = candidates[0]
+                                # We expect candidate to be dict with 'edits': list of {target, op, value}
+                                for edit in first.get("edits", []):
+                                    tgt = edit.get("target")
+                                    op = edit.get("op", "set")
+                                    val = edit.get("value")
+                                    # For known targets like invoke.kwarg keys or system/user message, translate to modifications
+                                    if tgt and tgt.startswith("invoke."):
+                                        # modifications dict may contain an 'invoke_kwargs' sub-dict
+                                        invoke_overrides = modifications.setdefault("invoke_kwargs", {})
+                                        key = tgt.split(".", 1)[1]
+                                        if op in ("set",):
+                                            invoke_overrides[key] = val
+                                    elif tgt in ("user_message", "system_prompt"):
+                                        # place in modifications top-level
+                                        if op == "set":
+                                            modifications[tgt] = val
+                                        elif op == "append":
+                                            modifications.setdefault(tgt + "_append", []).append(val)
+                                        elif op == "prepend":
+                                            modifications.setdefault(tgt + "_prepend", []).append(val)
+                                    elif tgt and tgt.startswith("dynamic_llm_config."):
+                                        # allow edits into dynamic_llm_config subkeys
+                                        k = tgt.split(".", 1)[1]
+                                        dyn = modifications.setdefault("dynamic_llm_config_patch", {})
+                                        if op == "set":
+                                            dyn[k] = val
+                                    elif tgt and tgt.startswith("config."):
+                                        # edits into self.config paths, e.g. 'config.helpA.rules.regex.patterns'
+                                        path = tgt.split(".", 1)[1]
+                                        self._set_in_dict_by_path(self.config, path, val)
+                                    else:
+                                        # generic fallback: put into 'patches' list so callers can interpret them
+                                        modifications.setdefault("patches", []).append(edit)
+                        else:
+                            # unknown modification type: ignore but log
+                            self.logger.debug(f"Unknown modification item type: {mtype} (skipped)")
                 
                 # Record usage (basic tracking, cost/tokens updated later)
                 self.usage_tracker.record_usage(help_type)
@@ -153,7 +305,29 @@ class DynamicConfigManager:
             self._call_history.pop(0)
             
         return modifications
-        
+
+    # -------------------------
+    # small dict path helpers
+    # -------------------------
+    def _set_in_dict_by_path(self, root: Dict, path: str, value: Any):
+        """Set nested dict value by dotted path. Creates intermediate dicts as needed."""
+        parts = path.split(".")
+        cur = root
+        for p in parts[:-1]:
+            if p not in cur or not isinstance(cur[p], dict):
+                cur[p] = {}
+            cur = cur[p]
+        cur[parts[-1]] = value
+
+    def _get_from_dict_by_path(self, root: Dict, path: str) -> Any:
+        parts = path.split(".")
+        cur = root
+        for p in parts:
+            if not isinstance(cur, dict) or p not in cur:
+                return None
+            cur = cur[p]
+        return cur
+
     def _evaluate_rules(self, rules: Dict, context: Dict) -> bool:
         """Evaluate a set of rules against context"""
         if not rules:
@@ -278,6 +452,187 @@ class DynamicConfigManager:
             return any(results)
         else:
             return False
+
+    # ---------------------------
+    # Additional utility API
+    # ---------------------------
+    def set_optimizable(self, targets: List[Union[str, callable, tuple]]):
+        """Register optimizable targets (strings, callables, or ('attr', obj, 'path') tuples)."""
+        self._optimizables = list(targets or [])
+
+    def set_optimizer_optimizables(self, optimizer_name: str, targets: List[Union[str, callable, tuple]]):
+        """Set optimizables specifically for a given optimizer (by name)."""
+        adapter = self._trace_optimizers.get(optimizer_name)
+        if not adapter:
+            raise KeyError(f"No optimizer registered with name {optimizer_name!r}")
+        adapter._optimizables = list(targets or [])
+
+    def set_observables(self, targets: List[Union[str, callable, tuple]]):
+        """Register observables that Trace/optimizers may inspect."""
+        self._observables = list(targets or [])
+
+    def set_optimizer_observables(self, optimizer_name: str, targets: List[Union[str, callable, tuple]]):
+        """Set observables specifically for a given optimizer (by name)."""
+        adapter = self._trace_optimizers.get(optimizer_name)
+        if not adapter:
+            raise KeyError(f"No optimizer registered with name {optimizer_name!r}")
+        adapter._observables = list(targets or [])
+
+    def resolve_optimizable_target(self, target: Union[str, callable, tuple]) -> Tuple[Callable, Callable]:
+        """
+        Resolve an optimizable target into (getter(context), setter(context, value)).
+        Supported target forms:
+          - callable getter (setter will raise unless you supply tuple form)
+          - tuple ('attr', obj, 'a.b') -> get/set attr on object
+          - string paths like 'invoke.temperature', 'user_message', 'system_prompt', 'dynamic_llm_config.some.key'
+        """
+        if callable(target):
+            def getter(ctx):
+                return target(ctx)
+            def setter(ctx, value):
+                raise ValueError("Callable-only target is getter-only. Provide a tuple ('attr', obj, 'path') or a string path for writable targets.")
+            return getter, setter
+
+        if isinstance(target, tuple):
+            if len(target) != 3 or target[0] != 'attr':
+                raise ValueError("Tuple target must be ('attr', obj, 'path')")
+            _, obj, path = target
+            def getter(ctx):
+                cur = obj
+                for p in path.split('.'):
+                    cur = getattr(cur, p)
+                return cur
+            def setter(ctx, value):
+                cur = obj
+                parts = path.split('.')
+                for p in parts[:-1]:
+                    cur = getattr(cur, p)
+                setattr(cur, parts[-1], value)
+            return getter, setter
+
+        if isinstance(target, str):
+            # handle special known roots
+            if target == "user_message":
+                def getter(ctx):
+                    return ctx.get("user_message")
+                def setter(ctx, value):
+                    ctx["user_message"] = value
+                return getter, setter
+            if target == "system_prompt":
+                def getter(ctx):
+                    return ctx.get("system_prompt")
+                def setter(ctx, value):
+                    ctx["system_prompt"] = value
+                return getter, setter
+            if target.startswith("invoke."):
+                # e.g. "invoke.temperature" -> ctx['invoke_kwargs']['temperature']
+                parts = target.split(".", 1)[1]
+                def getter(ctx):
+                    return (ctx.get("invoke_kwargs") or {}).get(parts)
+                def setter(ctx, value):
+                    ctx.setdefault("invoke_kwargs", {})[parts] = value
+                return getter, setter
+            if target.startswith("dynamic_llm_config."):
+                key = target.split(".", 1)[1]
+                def getter(ctx):
+                    return (ctx.get("dynamic_llm_config") or {}).get(key)
+                def setter(ctx, value):
+                    ctx.setdefault("dynamic_llm_config", {})[key] = value
+                return getter, setter
+
+            # support direct rule_evaluator targets for optimizer visibility/control: 'rule_evaluator.<name>'
+            if target.startswith("rule_evaluator."):
+                name = target.split(".", 1)[1]
+                def getter(ctx):
+                    return self.rule_evaluators.get(name)
+                def setter(ctx, value):
+                    if not callable(value):
+                        raise ValueError("rule_evaluator setter expects a callable")
+                    self.rule_evaluators[name] = value
+                return getter, setter
+
+            # support config.* path to point into self.config (writable)
+            if target.startswith("config."):
+                # path inside self.config
+                path = target.split(".", 1)[1]
+                def getter(ctx):
+                    return self._get_from_dict_by_path(self.config, path)
+                def setter(ctx, value):
+                    self._set_in_dict_by_path(self.config, path, value)
+                return getter, setter
+
+            # generic dotted path: lookup in context dict, falling back to attributes
+            parts = target.split(".")
+            def getter(ctx):
+                cur = ctx
+                for p in parts:
+                    if isinstance(cur, dict):
+                        cur = cur.get(p)
+                    else:
+                        cur = getattr(cur, p, None)
+                return cur
+            def setter(ctx, value):
+                cur = ctx
+                for p in parts[:-1]:
+                    if isinstance(cur, dict):
+                        cur = cur.setdefault(p, {})
+                    else:
+                        cur = getattr(cur, p)
+                if isinstance(cur, dict):
+                    cur[parts[-1]] = value
+                else:
+                    setattr(cur, parts[-1], value)
+            return getter, setter
+
+        raise ValueError(f"Cannot resolve optimizable target: {target!r}")
+
+    def register_trace_optimizer(self, name: str, config: Dict):
+        """Register or update a persistent Trace optimizer by name. config may include 'trace_obj' to plug real Trace instance."""
+        if name in self._trace_optimizers:
+            # update config if needed
+            self._trace_optimizers[name].config.update(config or {})
+            # allow replacing trace_obj
+            if config and "trace_obj" in config:
+                self._trace_optimizers[name]._trace_obj = config["trace_obj"]
+            return name
+        adapter = _TraceOptimizerAdapter(name, config or {})
+        # if config declares observables/optimizables, ensure they're set on adapter
+        if config:
+            if "observables" in config:
+                adapter._observables = list(config.get("observables") or [])
+            if "optimizables" in config:
+                adapter._optimizables = list(config.get("optimizables") or [])
+        self._trace_optimizers[name] = adapter
+        return name
+
+    def list_trace_optimizers(self) -> List[str]:
+        return list(self._trace_optimizers.keys())
+
+    def record_outcome(self, context: Dict, modifications: Dict, outcome_metrics: Dict):
+        """Store an outcome record for offline learning (H2)."""
+        self._records.append({"ts": time.time(), "context": context, "modifications": modifications, "metrics": outcome_metrics})
+
+    def log_user_correction(self, agent_name: str, diff: str, who: str):
+        """Store a user diff/correction for priority feedback."""
+        self._records.append({"type": "user_diff", "agent": agent_name, "diff": diff, "who": who, "ts": time.time()})
+
+    def collect_feedback(self, context: Dict) -> List[Dict]:
+        """
+        Return ordered list of feedback candidates: user diffs first, then human annotations, then auto-evals.
+        If no records exist, fallback to returning the user_message as a single fallback entry.
+        """
+        user_diffs = [r for r in self._records if r.get("type") == "user_diff"]
+        human_annotations = [r for r in self._records if r.get("type") == "human_annotation"]
+        auto_evals = [r for r in self._records if r.get("type") == "auto_eval"]
+        # order recent-first inside each class
+        out = sorted(user_diffs, key=lambda x: x.get("ts", 0), reverse=True)
+        out += sorted(human_annotations, key=lambda x: x.get("ts", 0), reverse=True)
+        out += sorted(auto_evals, key=lambda x: x.get("ts", 0), reverse=True)
+        if not out:
+            um = context.get("user_message")
+            if um:
+                out = [{"type": "fallback_user_message", "content": um, "ts": time.time()}]
+        return out
 class HumanLLM:
     def __init__(
         self,
@@ -2317,6 +2672,46 @@ class HumanLLM:
             metadatas=[tags]
         )
 
+        try:
+            raw = entry.get("output_llm_raw")
+            final = entry.get("output_contents")
+
+            # normaliser (liste/str) -> str
+            def _to_str_raw(x):
+                if isinstance(x, list):
+                    return "\n\n---RAW OUTPUTS---\n\n".join([s if isinstance(s, str) else str(s) for s in x])
+                return x if isinstance(x, str) else ("" if x is None else str(x))
+            def _to_str_final(x):
+                if isinstance(x, list):
+                    def _extract(o):
+                        if isinstance(o, dict) and "content" in o: return o["content"]
+                        return getattr(o, "content", str(o))
+                    return "\n\n---FINAL OUTPUTS---\n\n".join([_extract(o) for o in x])
+                return x if isinstance(x, str) else ("" if x is None else str(x))
+
+            raw_s = _to_str_raw(raw)
+            final_s = _to_str_final(final)
+            if raw_s != final_s:
+                diff_text = "\n".join(difflib.unified_diff(
+                    raw_s.splitlines(), final_s.splitlines(),
+                    fromfile="generated", tofile="final", lineterm=""
+                ))
+
+                self.config.log_agent_data(
+                    self.agent_name,
+                    "answer_diffs",
+                    {
+                        "time": datetime.now().isoformat(),
+                        "function_name": function_name,
+                        "diff": diff_text,
+                        "output_modified": entry.get("output_modified"),
+                        "user_score": entry.get("user_score"),
+                    }
+                )
+        except Exception as e:
+            self.logger.exception(f"Failed to compute/save answer diff: {e}")
+        return True
+
     def process_output(self, llm_output, counter, llm_outputs, init_skip_rounds, task_name=None):
         """Traite un seul LLM output (séquentiellement ou en parallèle)."""
         self.logger.info(f"Processing LLM output {counter} out of {len(llm_outputs)}")
@@ -2602,7 +2997,7 @@ class HumanLLM:
             if hasattr(self, 'dynamic_mgr') and self.dynamic_mgr:
                 mods = self.dynamic_mgr.evaluate_triggers(eval_context, phase='pre_inference')
                 if mods:
-                    self._update_dynamic_config(mods, eval_context, phase='pre_inference')
+                    self._apply_modifications(mods, eval_context, phase='pre_inference')
             # Automation short-circuits
             if self.automation in ['before', 'after', 'skip_once']:
                 # Possibly skip or read from saved_task ...
@@ -2751,7 +3146,7 @@ class HumanLLM:
                     if hasattr(self, 'dynamic_mgr') and self.dynamic_mgr:
                         mods = self.dynamic_mgr.evaluate_triggers(eval_context, phase='post_inference')
                         if mods:
-                            self._update_dynamic_config(mods, eval_context, phase='post_inference')
+                            self._apply_modifications(mods, eval_context, phase='post_inference')
                     
                     # Update llm_outputs from context in case they were modified
                     llm_outputs = eval_context.get('llm_outputs', llm_outputs)
