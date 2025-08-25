@@ -46,7 +46,7 @@ class WebSocketHandler {
 
       const data = JSON.parse(event.data);
       console.log("Message received:", data);
-      if (data.function === "critic_answer") {
+      if (data.function === "apply_feedback_fn") {
         if (!data.message) {
           data.message = data.result;
         }

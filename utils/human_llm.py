@@ -9,6 +9,8 @@ import concurrent.futures
 from jinja2 import Template
 from datetime import datetime
 from collections import defaultdict
+
+from openai import BadRequestError
 from utils.llm_utils import (
     InferenceCheck,
     InferenceTracking,
@@ -18,9 +20,13 @@ from utils.llm_utils import (
     list_prompt_variants, flatten_and_pair,
     semantic_double_pass_chunking,
     extract_json,
-    calculate_text_similarity
+    calculate_text_similarity,
+    secure_invoke
 )
-from env.SWEBench.env import SWEBenchEnvironment
+try:
+    from env.SWEBench.env import SWEBenchEnvironment
+except Exception as e:
+    SWEBenchEnvironment = None
 from utils.human_llm_config import HumanLLMConfig
 from typing import List, Dict, Any, Optional, Union
 
@@ -105,7 +111,6 @@ class DynamicConfigManager:
             'confidence': self._eval_confidence_rule,
             'similarity': self._eval_similarity_rule,
             'frequency': self._eval_frequency_rule,
-            'divergence': self._eval_divergence_rule,
             'complexity': self._eval_complexity_rule,
             'history': self._eval_history_rule,
             'composite': self._eval_composite_rule
@@ -173,19 +178,6 @@ class DynamicConfigManager:
             if re.search(pattern, str(target)):
                 return True
         return False
-        
-    def _eval_confidence_rule(self, config: Dict, context: Dict) -> bool:
-        """Evaluate confidence threshold"""
-        threshold = config.get('threshold', 0.7)
-        confidence = context.get('confidence_score', 1.0)
-        operator = config.get('operator', '<')
-        
-        if operator == '<':
-            return confidence < threshold
-        elif operator == '>':
-            return confidence > threshold
-        else:
-            return confidence == threshold
             
     def _eval_similarity_rule(self, config: Dict, context: Dict) -> bool:
         """Evaluate similarity to past prompts"""
@@ -205,28 +197,34 @@ class DynamicConfigManager:
     def _eval_frequency_rule(self, config: Dict, context: Dict) -> bool:
         """Evaluate frequency-based triggers"""
         every_n = config.get('every_n', 10)
-        count = len(self._call_history) + 1
+        # TODO: bad fix, should have a better fix
+        count = (len(self._call_history)//2) + 1
         return count % every_n == 0
         
-    def _eval_divergence_rule(self, config: Dict, context: Dict) -> bool:
+    def _eval_confidence_rule(self, config: Dict, context: Dict) -> bool:
         """Evaluate output divergence"""
         outputs = context.get('llm_outputs', [])
-        if len(outputs) < 2:
-            return False
-            
-        threshold = config.get('threshold', 0.5)
-        similarities = []
-        
-        for i in range(len(outputs)):
-            for j in range(i+1, len(outputs)):
-                sim = calculate_text_similarity(
-                    outputs[i].content if hasattr(outputs[i], 'content') else str(outputs[i]),
-                    outputs[j].content if hasattr(outputs[j], 'content') else str(outputs[j])
-                )
-                similarities.append(sim)
+        method = config.get('method', 'self-consistency')
+        if method == 'self-consistency':
+            if len(outputs) < 2:
+                return False
                 
-        avg_similarity = sum(similarities) / len(similarities) if similarities else 1
-        return avg_similarity < threshold
+            threshold = config.get('threshold', 0.5)
+            similarities = []
+            
+            for i in range(len(outputs)):
+                for j in range(i+1, len(outputs)):
+                    sim = calculate_text_similarity(
+                        outputs[i].content if hasattr(outputs[i], 'content') else str(outputs[i]),
+                        outputs[j].content if hasattr(outputs[j], 'content') else str(outputs[j])
+                    )
+                    similarities.append(sim)
+                    
+            avg_similarity = sum(similarities) / len(similarities) if similarities else 1
+            return avg_similarity < threshold
+        else:
+            self.logger.warning(f"Unknown confidence method: {method}")
+            return False
         
     def _eval_complexity_rule(self, config: Dict, context: Dict) -> bool:
         """Evaluate prompt complexity"""
@@ -295,7 +293,7 @@ class HumanLLM:
         synthesize_mode=False,
         inference_checks=None,
         output_schema=None,
-        temperature_min=0.7,
+        temperature_min=None,
         temperature_max=None,
         envs=None,
         fixed_output=False,
@@ -330,12 +328,12 @@ class HumanLLM:
             raise ValueError("llmORchains_list must be provided")
         self.llmORchains_list = llmORchains_list
         self.temperature_min = temperature_min
-        self.temperature_max = temperature_max if temperature_max else (temperature_min + 0.2)
+        self.temperature_max = temperature_max if temperature_max else max(temperature_min or 1., 1.)
         self.prompt_critic = prompt_critic
         self.system_prompt = system_prompt
         self.configure_output_schema(output_schema)
-        self.set_default_llmORchain(default_llmORchain if default_llmORchain else "default_llm")
-        self.set_premium_llmORchain(premium_llmORchain if premium_llmORchain else "premium_llm")
+        self.set_default_llmORchain(default_llmORchain if default_llmORchain else "default_llm", temperature_min)
+        self.set_premium_llmORchain(premium_llmORchain if premium_llmORchain else "premium_llm", temperature_min)
         self.CPS_env_type = CPS_env_type
 
         self.config.initialize()
@@ -397,6 +395,7 @@ class HumanLLM:
         }
         
         self.dynamic_mgr = DynamicConfigManager(self.dynamic_llm_config, self.usage_tracker, default_cfg)
+        self.use_premium_llm = None  # Will be set during inference
 
     def _apply_modifications(self, mods: Dict, context: Dict, phase: str):
         """Apply modifications from dynamic config evaluation"""
@@ -409,11 +408,11 @@ class HumanLLM:
         original_values = {}
         
         # 1) Direct attribute overrides
-        for attr in ('num_parallel_inferences', 'temperature_min', 'temperature_max',
-                     'selection_technique', 'generation_technique'):
-            if attr in mods:
-                # original_values[attr] = getattr(self, attr)
-                if hasattr(self, attr): original_values[attr] = getattr(self, attr)
+        for attr in mods:
+            if hasattr(self, attr):
+                # Store original value if not already stored
+                if attr not in original_values:
+                    original_values[attr] = getattr(self, attr)
                 setattr(self, attr, mods[attr])
                 self.logger.info(f"[DynamicConfig] {attr}: {original_values[attr]} -> {mods[attr]}")
         
@@ -445,11 +444,11 @@ class HumanLLM:
             return
             
         # Generate annotations if requested
-        if 'generate_annotations_feedback' in mods and hasattr(self, 'generate_annotations_feedback'):
+        if 'generate_annotations_feedback' in mods and hasattr(self, 'generate_annotations_feedback_fn'):
             params = mods['generate_annotations_feedback']
             if isinstance(params, dict):
                 for i, output in enumerate(outputs):
-                    annotations = self.generate_annotations_feedback(
+                    annotations = self.generate_annotations_feedback_fn(
                         inference_result_content=output.content,
                         output_id=i,
                         **params
@@ -457,11 +456,11 @@ class HumanLLM:
                     context.setdefault('annotations', {})[i] = annotations
         
         # Generate instructions if requested
-        if 'generate_instructions_feedback' in mods and hasattr(self, 'generate_instructions_feedback'):
+        if 'generate_instructions_feedback' in mods and hasattr(self, 'generate_instructions_feedback_fn'):
             params = mods['generate_instructions_feedback']
             if isinstance(params, dict):
                 for i, output in enumerate(outputs):
-                    instructions = self.generate_instructions_feedback(
+                    instructions = self.generate_instructions_feedback_fn(
                         inference_result_content=output.content,
                         output_id=i,
                         **params
@@ -469,28 +468,42 @@ class HumanLLM:
                     context.setdefault('instructions', {})[i] = instructions
         
         # Apply feedback if requested
-        if mods.get('apply_feedback') and hasattr(self, 'apply_feedback'):
+        if mods.get('apply_feedback') and hasattr(self, 'apply_feedback_fn'):
             apply_params = mods.get('apply_feedback_params', {})
             
             for i, output in enumerate(outputs):
                 # Determine what feedback to apply
-                feedback = None
-                if i in context.get('annotations', {}):
-                    feedback = context['annotations'][i]['annotations']
-                elif i in context.get('instructions', {}):
-                    feedback = context['instructions'][i]['suggestions']
                 
-                if feedback:
-                    improved = self.apply_feedback(
-                        suggestions=feedback,
-                        text_content=output.content,
+                suggestion = ''
+                text_content = output.content
+                has_annotations = False
+                has_instructions = False
+                if i in context.get('annotations', {}):
+                    text_content = context['annotations'][i]['annotations']
+                    has_annotations = True
+                if i in context.get('instructions', {}):
+                    suggestion = context['instructions'][i]['suggestions']
+                    has_instructions = True
+                
+                if has_annotations or has_instructions:
+                    improved = self.apply_feedback_fn(
+                        suggestions=suggestion,
+                        text_content=text_content,
                         initial_prompt=context.get('system_prompt'),
+                        text_has_annotations=has_annotations,
                         **apply_params
                     )
                     # Update the output
                     output.content = improved
                     self.logger.info(f"[DynamicConfig] Applied feedback to output {i}")
-        
+            prev_feedbacks = self.config.get_agent_data(self.agent_name, "llm_suggestions")
+            for feedback in prev_feedbacks:
+                if isinstance(feedback, dict) and 'feedback_applied' in feedback:
+                    feedback['feedback_applied'] = True
+                if isinstance(feedback, list) :
+                    for f in feedback:
+                        if isinstance(f, dict) and 'feedback_applied' in f:
+                            f['feedback_applied'] = True
         # Re-select best output if requested
         if 'reselect_best' in mods and mods['reselect_best']:
             technique = mods.get('reselection_technique', self.selection_technique)
@@ -754,7 +767,7 @@ class HumanLLM:
     def set_common_vectordb_embedding_function(self):
         self.config.common_vectordb.config.set_common_vectordb_embedding_function()
 
-    def configure_llm(self, llm_name, is_premium=False, temperature=0.1):
+    def configure_llm(self, llm_name, is_premium=False, temperature=None):
         if llm_name in self.llmORchains_list:
             if is_premium:
                 self.premium_llm_name = llm_name
@@ -870,10 +883,10 @@ class HumanLLM:
             )
             return False
 
-    def set_default_llmORchain(self, llm_name, temperature=0.1):
+    def set_default_llmORchain(self, llm_name, temperature=None):
         return self.configure_llm(llm_name, is_premium=False, temperature=temperature)
 
-    def set_premium_llmORchain(self, llm_name, temperature=0.7):
+    def set_premium_llmORchain(self, llm_name, temperature=None):
         return self.configure_llm(llm_name, is_premium=True, temperature=temperature)
 
     def configure_output_schema(self, output_schema, package_path="."):
@@ -1717,8 +1730,8 @@ class HumanLLM:
             if self.automation:
                 if (hasattr(self, 'recommend_critics') and self.recommend_critics) and self.outputs[output_id - 1] is None:
                     if comments is None:
-                        comments = self.generate_instructions_feedback( inference_result_msg.content, output_id=output_id)
-                    inference_result_msg.content = self.apply_feedback(
+                        comments = self.generate_instructions_feedback_fn( inference_result_msg.content, output_id=output_id)
+                    inference_result_msg.content = self.apply_feedback_fn(
                         comments["suggestions"],
                         inference_result_msg.content,
                         text_has_annotations=False,
@@ -1745,7 +1758,7 @@ class HumanLLM:
                 self.modify_answer(inference_result_msg, output_id)
 
             elif action == "B":  # Critic this answer/output to get an improved answer/output
-                inference_result_msg.content = self.apply_feedback(
+                inference_result_msg.content = self.apply_feedback_fn(
                     comments,
                     inference_result_msg.content,
                     text_has_annotations=False,
@@ -1905,7 +1918,7 @@ class HumanLLM:
                 save_prompt_with_tag(self.system_prompt, new_template, tag_option)
         return comments
 
-    def apply_feedback(
+    def apply_feedback_fn(
         self,
         suggestions,
         text_content,
@@ -2052,25 +2065,24 @@ class HumanLLM:
                 3. **INSERT:** Add new content as instructed.
                 """
                 user_prompt = f"{combined_text_content}"
-                llm_output = self.premium_llm.invoke(
-                    [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)])
-                final_text = llm_output.content
+                llm_output = secure_invoke(self.premium_llm, 
+                    [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)], temperature=self.temperature_min)
+                combined_text_content = llm_output.content
 
             elif instruction_processing_approach == 'FULLTEXT_EACH':
-                final_text = combined_text_content
                 for annotation in annotations:
                     system_prompt = """
                 Your task is to improve the following text by processing the annotation and following the instruction.
                 Please replace the annotated part according to the instruction and produce the final improved version of the text.
                 """
                     # Replace other annotations with their content
-                    temp_text = final_text
+                    temp_text = combined_text_content
                     for other_annotation in annotations:
                         if other_annotation != annotation:
                             temp_text = temp_text.replace(other_annotation['full_match'], other_annotation['content'])
-                    llm_output = self.premium_llm.invoke(
-                        [SystemMessage(content=system_prompt.strip()), HumanMessage(content=temp_text)])
-                    final_text = llm_output.content
+                    llm_output = secure_invoke(self.premium_llm, 
+                        [SystemMessage(content=system_prompt.strip()), HumanMessage(content=temp_text)], temperature=self.temperature_min)
+                    combined_text_content = llm_output.content
 
             elif instruction_processing_approach == 'ANNOTATIONS_ALL':
                 annotations_data = {annotation.get('id') or str(i): {
@@ -2084,15 +2096,14 @@ class HumanLLM:
                 Example Output: {"1": "new content for annotation 1", "2": "new content for annotation 2"}
                 """
                 user_prompt = f"Annotations:\n{json.dumps(annotations_data)}"
-                llm_output = self.premium_llm.invoke(
-                    [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)])
+                llm_output = secure_invoke(self.premium_llm, 
+                        [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)], temperature=self.temperature_min)
                 llm_response = llm_output.content.strip()
                 try:
                     new_contents = json.loads(llm_response)
                 except json.JSONDecodeError:
                     raise ValueError(f"Invalid JSON response from LLM: {llm_response}")
 
-                final_text = combined_text_content
                 for annotation in annotations:
                     id_ = annotation.get('id') or str(annotations.index(annotation))
                     full_match = annotation['full_match']
@@ -2101,12 +2112,11 @@ class HumanLLM:
                         # Ensure new_content is a string
                         if not isinstance(new_content, str):
                             raise ValueError(f"New content for annotation ID {id_} is not a string.")
-                        final_text = final_text.replace(full_match, new_content)
+                        combined_text_content = combined_text_content.replace(full_match, new_content)
                     else:
                         raise ValueError(f"No new content found for annotation ID {id_}")
 
             elif instruction_processing_approach == 'ANNOTATIONS_EACH':
-                final_text = combined_text_content
                 for annotation in annotations:
                     system_prompt = """
                 Your task is to generate new content for the following text according to the instruction.
@@ -2116,10 +2126,10 @@ class HumanLLM:
                         [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)])
                     new_content = llm_output.content.strip()
                     full_match = annotation['full_match']
-                    final_text = final_text.replace(full_match, new_content)
+                    combined_text_content = combined_text_content.replace(full_match, new_content)
             else:
                 raise ValueError("Unsupported instruction processing approach.")
-        else:
+        if suggestions != '':
             # Existing logic for non-annotated text
             if suggestions is None:
                 suggestions = smart_input(
@@ -2130,6 +2140,8 @@ class HumanLLM:
             temp_prev_sugg, _ = self.config.get_agent_data(self.agent_name, "llm_suggestions")
             prev_sugg = ""
             for i in temp_prev_sugg:
+                if not i.get('feedback_applied', True):
+                    continue
                 llm_suggestion = i.get('llm_suggestions', '')
                 user_suggestion = i.get('user_suggestions', '')
                 diff = difflib.unified_diff(llm_suggestion.splitlines(), user_suggestion.splitlines(), lineterm='')
@@ -2150,10 +2162,11 @@ class HumanLLM:
             user_prompt = f"INSTRUCTIONS: << {suggestions} >>"
             llm_output = self.premium_llm.invoke(
                 [SystemMessage(content=system_prompt.strip()), HumanMessage(content=user_prompt)])
-            final_text = llm_output.content
+            combined_text_content = llm_output.content
+            
 
-        self.temp_inference_result_content = final_text  # Capture the result
-        return final_text
+        self.temp_inference_result_content = combined_text_content  # Capture the result
+        return combined_text_content
 
     def modify_answer(self, inference_result_msg, column_id=None):
         inference_result_msg.content = _visual_input(inference_result_msg.content)
@@ -2397,7 +2410,7 @@ class HumanLLM:
                 func = func.with_config(configurable={"llm_temperature": temperature})
                 print(f"Temperature set to {temperature}")
             else:
-                print("No temperature value, not set")
+                print(f"No temperature value, not set for model {func.model_name}")
 
             if stream_output:
                 # Choose color for streaming text if multiple inferences
@@ -2491,8 +2504,21 @@ class HumanLLM:
                 return AIMessage(content=final_output)
 
             else:
+                model_name = func.model_name
+                dynamic_config = self.dynamic_llm_config
+                agent_name = self.agent_name
                 # No streaming. Normal call
-                value = func.invoke(input_msg)
+                try:
+                    value = func.invoke(input_msg)
+                except BadRequestError as e:
+                    if  e.param == "temperature":
+                        self.logger.error(f"Error invoking LLM with temperature {temperature}: - ERROR:{e}")
+                        # Fallback to no temperature
+                        func = func.with_config(configurable={"llm_temperature": None})
+                        value = func.invoke(input_msg)
+                    else:
+                        self.logger.error(f"Error invoking LLM: - ERROR:{e}")
+                        raise e
                 return AIMessage(content=value.content if hasattr(value, 'content') else str(value))
 
         smart_print(
@@ -2576,7 +2602,7 @@ class HumanLLM:
             if hasattr(self, 'dynamic_mgr') and self.dynamic_mgr:
                 mods = self.dynamic_mgr.evaluate_triggers(eval_context, phase='pre_inference')
                 if mods:
-                    self._apply_modifications(mods, eval_context, phase='pre_inference')
+                    self._update_dynamic_config(mods, eval_context, phase='pre_inference')
             # Automation short-circuits
             if self.automation in ['before', 'after', 'skip_once']:
                 # Possibly skip or read from saved_task ...
@@ -2634,7 +2660,7 @@ class HumanLLM:
                             system_prompt=system_prompt_used,
                             user_prompt=user_prompt_used,
                             num_responses=self.num_parallel_inferences,
-                            use_premium_llm=use_premium_llm,
+                            use_premium_llm=self.use_premium_llm or use_premium_llm,
                             function_calling=function_calling,
                             temp_min=temperature_min,
                             temp_max=temperature_max,
@@ -2670,16 +2696,16 @@ class HumanLLM:
                                 type(self.llmORchains_list.get('3_majority_chain'))
                             ):
                                 stream_output = True
-
+                                
                             futures = [
                                 executor.submit(
                                     perform_llm_call,
                                     llm_input_messages,
-                                    use_premium_llm,
+                                    self.use_premium_llm or use_premium_llm,
                                     function_calling,
                                     (   (temperature_min + i * (temperature_max - temperature_min) / (self.num_parallel_inferences - 1))
                                         if (temperature_min is not None and self.num_parallel_inferences > 1 and temperature_min >= 0.)
-                                        else 0),
+                                        else None),
                                     stream_output,
                                     i
                                 )
@@ -2725,7 +2751,7 @@ class HumanLLM:
                     if hasattr(self, 'dynamic_mgr') and self.dynamic_mgr:
                         mods = self.dynamic_mgr.evaluate_triggers(eval_context, phase='post_inference')
                         if mods:
-                            self._apply_modifications(mods, eval_context, phase='post_inference')
+                            self._update_dynamic_config(mods, eval_context, phase='post_inference')
                     
                     # Update llm_outputs from context in case they were modified
                     llm_outputs = eval_context.get('llm_outputs', llm_outputs)
@@ -2781,6 +2807,7 @@ class HumanLLM:
                 output_messages = [AIMessage(content=input_content)]
                 break
 
+
         if self.auto_n_rounds:
             if self.auto_n_rounds > 0:
                 self.auto_n_rounds -= 1
@@ -2826,7 +2853,6 @@ class HumanLLM:
         if 'original_values' in eval_context:
             for attr, orig_val in eval_context['original_values'].items():
                 setattr(self, attr, orig_val)
-
         return ([msg.content for msg in output_messages] if return_message_content_only else output_messages)
 
     def generate_candidates(
@@ -2848,7 +2874,7 @@ class HumanLLM:
         Returns a list of AIMessage objects.
         """
         # Helper function to make a single LLM call
-        def generate_single(system_prompt, user_prompt, use_premium_llm, function_calling, temperature=0.0, stream_output=False, color_id=0):
+        def generate_single(system_prompt, user_prompt, use_premium_llm, function_calling, temperature=None, stream_output=False, color_id=0):
             """Single pass call wrapper."""
             input_messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
             
@@ -2868,7 +2894,21 @@ class HumanLLM:
                 func = func.with_config(configurable={"llm_temperature": temperature})
                 
             # Invoke the LLM
-            value = func.invoke(input_messages)
+            # try, if error due to temperature not supported by model, re-run without temperature
+            try:
+                model_name = func.model_name
+                dynamic_config = self.dynamic_llm_config
+                agent_name = self.agent_name
+                value = func.invoke(input_messages)
+            except BadRequestError as e:
+                if  e.param == "temperature":
+                    self.logger.error(f"Error invoking LLM with temperature {temperature}: - ERROR:{e}")
+                    # Fallback to no temperature
+                    func = func.with_config(configurable={"llm_temperature": None})
+                    value = func.invoke(input_messages)
+                else:
+                    self.logger.error(f"Error invoking LLM: - ERROR:{e}")
+                    raise e
             return AIMessage(content=value.content if hasattr(value, 'content') else str(value))
         
         candidates = []
@@ -2877,6 +2917,8 @@ class HumanLLM:
             num_responses = 1
             
         if generation_technique == "temperature_variation":
+            if temp_min is None: temp_min = 0.
+            if temp_max is None: temp_max = 1.0
             temperatures = [round(temp_max - i * (temp_max - temp_min) / max(1, num_responses - 1), 2) for i in range(num_responses)]
             for i, temp in enumerate(temperatures):
                 candidate = generate_single(system_prompt, user_prompt, use_premium_llm, function_calling, temperature=temp, stream_output=stream_output, color_id=i)
@@ -2971,17 +3013,27 @@ class HumanLLM:
                 return self.select_candidate(output_messages, "best_of_n")
                 
         elif selection_technique == "majority":
-            try:
+            # try:
+            if True:
                 import numpy as np
                 from scipy.spatial.distance import pdist, squareform
                 from sklearn.cluster import AgglomerativeClustering
                 texts = [m.content for m in output_messages]
                 # build distance matrix = 1 - similarity
-                D = squareform(pdist(texts, lambda u, v: 1 - calculate_text_similarity(u, v)))
+                n = len(texts)
+                D = np.zeros((n, n))
+                for i in range(n):
+                    for j in range(i + 1, n):
+                        sim = calculate_text_similarity(texts[i], texts[j])
+                        dist = 1 - sim
+                        D[i, j] = D[j, i] = dist
                 # cluster by a threshold to group similar answers
-                labels = AgglomerativeClustering(
-                    n_clusters=None, distance_threshold=0.5, affinity='precomputed', linkage='average'
-                ).fit_predict(D)
+                try:
+                    clu = AgglomerativeClustering( n_clusters=None, metric="precomputed", linkage="average", distance_threshold=0.5).fit(D) # new sklearn version >= 1.4
+                except TypeError:
+                    clu = AgglomerativeClustering( n_clusters=None, affinity="precomputed", linkage="average", distance_threshold=0.5).fit(D) # old sklearn version
+                
+                labels = clu.labels_
                 # find largest cluster
                 from collections import Counter
                 top = Counter(labels).most_common(1)[0][0]
@@ -2990,8 +3042,8 @@ class HumanLLM:
                 # medoid = index with minimum total distance
                 medoid = idxs[int(np.argmin(subD.sum(axis=1)))]
                 return [output_messages[medoid]]
-            except Exception:
-                return [output_messages[-1]]
+            # except Exception as e:
+            #     return [output_messages[-1]]
 
         elif selection_technique == "last":
             # Return the last output
@@ -3021,7 +3073,7 @@ class HumanLLM:
         else:
             raise ValueError(f"Invalid selection_technique: {selection_technique}. Supported options: 'concat', 'best_of_n', 'last'.")
 
-    def generate_annotations_feedback(
+    def generate_annotations_feedback_fn(
         self,
         inference_result_content: str = None,
         output_id: int = None,
@@ -3049,7 +3101,7 @@ class HumanLLM:
         # Prepare annotation generation prompt
         annotation_generate_prompt = f"""
 You're an AI assistant. Your task is to generate annotations on the prompt given to you. The output should be exactly the same as the input but with some annotations in it, no changes on the text itself. The annotations will have this format:
-'\\{annotation_types}{{the text to annotate}}{{the feedback for the text (what is wrong, what is right, etc.)}}'
+'\\{annotation_types}[the feedback for the text (what is wrong, what is right, etc.)]{{the text to annotate}}'
 
 You should not change anything of the content of the given prompt, only add annotations. You have to add {annotation_number} annotations, and for each one of them don't place them randomly, but place them in a way that they are relevant to the text.
 Try to give real feedbacks for the annotations, and not just random feedbacks. Finally, don't annotate the same text twice or the full text in one; place annotations on phrases or keywords that are relevant.
@@ -3087,7 +3139,8 @@ List your annotations below:
         # Clean up annotations
         annotations = regex.sub(r'[^\P{C}\t\n\r]', '', annotations)
         annotations = re.sub(r'\\u[0-9A-Fa-f]{4}', '', annotations)
-        
+        annotations = annotations.split("ANSWER:<<<")[-1]
+        annotations = annotations.split(">>>")[0]
         # Save annotations
         self.config.log_agent_data(
             self.agent_name,
@@ -3120,7 +3173,7 @@ List your annotations below:
                 prev_annotations += f"\n{ann.get('annotations', '')}"
         return prev_annotations
 
-    def generate_instructions_feedback(
+    def generate_instructions_feedback_fn(
         self,
         inference_result_content=None,
         output_id=None,
@@ -3232,7 +3285,8 @@ List your annotations below:
             'improvement_prompt': improvement_prompt,
             'generation_technique': generation_technique if num_candidates > 1 else None,
             'selection_technique': selection_technique if num_candidates > 1 else None,
-            'num_candidates': num_candidates
+            'num_candidates': num_candidates,
+            'feedback_applied': False,
         })
 
         # Prepare the return value
@@ -3762,7 +3816,7 @@ List your annotations below:
             "user_message": user_message,
             "return_message_content_only": False,
             "stream_output": False,
-            "model_choice": self.model_choice.get('coder', 'default_llm') if isinstance(self.model_choice, dict) else self.model_choice
+            "model_choice": self.model_choice.get('coder', self.default_llm_name) if isinstance(self.model_choice, dict) else self.model_choice
         }
 
         # Ajouter temperature seulement si l'attribut temperature existe dans l'instance

@@ -1,5 +1,6 @@
 import re, time, json, os, glob, sys, logging
 import subprocess, asyncio, inspect
+from openai import BadRequestError
 import websockets, socket, requests
 from datetime import datetime
 from typing import List, Optional, Union, Dict, Any
@@ -26,6 +27,10 @@ import config
 from requests.auth import HTTPBasicAuth
 
 import regex as regex 
+
+import difflib
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 from utils.db_utils import (UnifiedVectorDB as _DB_Impl, UnifiedVectorDBConfig as _DBConfig_Impl, ElasticSearchDB_Config as _ESConfig_Impl, CHROMA_DATABASE, ELASTIC_DATABASE)
 
@@ -190,14 +195,17 @@ class TaskHistory:
         """Returns all failed tasks."""
         return self.failed_tasks
 
-def calculate_text_similarity(text1: str, text2: str) -> float:
+def calculate_text_similarity(text1: str, text2: str, method="difflib") -> float:
     """
     Calculate similarity between two texts using difflib.
     Returns a value between 0 and 1, where 1 is identical.
     """
     try:
-        import difflib
-        return difflib.SequenceMatcher(None, text1.strip(), text2.strip()).ratio()
+        if method == "tdfidf":
+            vec = TfidfVectorizer().fit_transform([text1, text2])
+            return cosine_similarity(vec[0:1], vec[1:2])[0][0]
+        else: # "difflib"
+            return difflib.SequenceMatcher(None, text1.strip(), text2.strip()).ratio()
     except Exception:
         # Fallback: simple length-based similarity
         len1, len2 = len(text1), len(text2)
@@ -976,3 +984,18 @@ def extract_json(data: any) -> dict:
 
     # If both methods fail, raise an error.
     print("No valid JSON found in the input data.")
+
+
+def secure_invoke(llm,*args,**kwargs):
+    """
+    A wrapper function to invoke an LLM with error handling.
+    """
+    try:
+        return llm.invoke(*args,**kwargs)
+    except BadRequestError as e:
+        if e.param == 'temperature':
+            logging.warning(f"{llm.model_name} LLM don't support temperature parameter, removing it and retrying.")
+            kwargs.pop('temperature', None)  # Remove temperature if it causes an error
+            return secure_invoke(llm,*args, **kwargs)
+        else:
+            raise e

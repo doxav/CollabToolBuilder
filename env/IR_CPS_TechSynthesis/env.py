@@ -2305,7 +2305,7 @@ class SynthesisManager:
 
             for i, line in enumerate(lines[start_idx:], start_idx):
                 # Detect References section
-                if re.match(r"^#{1,6}\s*References?\s*$", line, re.IGNORECASE):
+                if re.match(r"^#{1,6}\s*(references|external links|bibliography)\s*$", line, re.IGNORECASE):
                     ref_section_found = True
                     continue
 
@@ -2313,19 +2313,19 @@ class SynthesisManager:
                 if (
                     ref_section_found
                     and re.match(r"^#{1,6}\s", line)
-                    and not re.match(r"^#{1,6}\s*References?\s*$", line, re.IGNORECASE)
+                    and not re.match(r"^#{1,6}\s*(references|external links|bibliography)\s*$", line, re.IGNORECASE)
                 ):
                     break
 
                 if ref_section_found and line.strip():
                     # Parse reference entries with multiple possible formats
                     patterns = [
-                        # Pattern 1: 1. **[^](#cite_ref-1)** ["Title"](url). *Source*.
-                        r'^\d+\.\s*\*\*\[\^.*?\]\(#cite_ref-(\d+)\)\*\*\s*\["?([^"]*)"?\]\(([^)]+)\)\.?\s*\*?([^*]*)\*?',
-                        # Pattern 2: [^](#cite_ref-1) ["Title"](url). *Source*.
-                        r'^\*\*\[\^.*?\]\(#cite_ref-(\d+)\)\*\*\s*\["?([^"]*)"?\]\(([^)]+)\)\.?\s*\*?([^*]*)\*?',
-                        # Pattern 3: Simple numbered reference
-                        r"^\d+\.\s*\[([^\]]+)\]\(([^)]+)\)\.?\s*(.*)$",
+                        r'^(\d+)\..+\["(.*)"\][^\(]*\(([^\)]*)\)\.[^\*]*\*+([^*]*)\*\.',
+                        r'^(\d+)\..+\["(.*)"\][^\(]*\(([^\)]*)\)\.',
+                        r'^(\d+)\..+\["(.*)"\](.+)$',
+                        r'^(\d+)\.\s+\[(.*?)\]\((.*?)\)\s*-\s*(.+)$',
+                        r'^\[(\d+)\]\s+\[(.*?)\]\((.*?)\)*$',
+                        r'^\[(\d+)\]\s+\[(.*?)\]\((.*?)\)\s*$'
                     ]
 
                     for pattern in patterns:
@@ -2342,13 +2342,13 @@ class SynthesisManager:
                                     "full_text": line,
                                 }
                             elif len(match.groups()) == 3:  # Simple reference
-                                title, url, source = match.groups()
+                                ref_id, title, url_source = match.groups()
                                 ref_id = str(len(references) + 1)
                                 references[ref_id] = {
                                     "id": ref_id,
                                     "title": title.strip(),
-                                    "url": url.strip(),
-                                    "source": source.strip(),
+                                    "url": (url_source.strip() if "http" in url_source else ""),
+                                    "source": (url_source.strip() if "http" not in url_source else ""),
                                     "line_number": i,
                                     "full_text": line,
                                 }
@@ -2362,11 +2362,12 @@ class SynthesisManager:
 
             # Multiple citation patterns
             citation_patterns = [
-                r"\[\[.*?\]\]\(#cite[_-]note[_-](\d+)\)",  # [[..]](#cite_note-88)
+                # r"\[\[(\d+)\]\]\(#cite[^\d]+\d+\)",  # [[..]](#cite_note-88)
                 r"\[\[(\d+)\]\]",  # [[88]]
-                r"\(#cite[_-]ref[_-](\d+)\)",  # (#cite_ref-88)
-                r"\(#cite[_-]note[_-](\d+)\)",  # (#cite_note-88)
-                r"\[\^\]\(#cite_ref-(\d+)\)",  # [^](#cite_ref-88)
+                # r"\(#cite[^\d]+(\d+)\)",  # (#cite_ref-88)
+                # r"\[\^\]\(#cite[^\d]+(\d+)\)",  # [^](#cite_ref-88)
+                r"\.\[(\d+)\]",  # .[88]
+                r"\]\[(\d+)\]",  # ][88]
             ]
 
             for pattern in citation_patterns:
@@ -2385,17 +2386,11 @@ class SynthesisManager:
                 self.document.resources.append(
                     {
                         "id": rid,
-                        "metadatas": {
-                            "reference_id": ref_id,
-                            "type": "citation",
-                            "line_number": ref_data.get("line_number"),
-                        },
-                        "document": {
-                            "name": ref_data["title"],
-                            "link": ref_data["url"],
-                            "content": f"{ref_data['title']} - {ref_data['source']}",
-                        },
-                        "description": f"{ref_data['title']} - {ref_data['source']}",
+                        "key": ref_id,
+                        "name": ref_data["title"],
+                        "link": ref_data["url"],
+                        "content": "",
+                        "description": f"{ref_data['title']} - {ref_data['source']}"
                     }
                 )
             return res_map[ref_id]
@@ -2429,19 +2424,6 @@ class SynthesisManager:
         self.document.resources.clear()
         res_map = {}
 
-        # def add_res(url, text):
-        #     if url not in res_map:
-        #         rid = str(uuid4())
-        #         res_map[url] = rid
-        #         self.document.resources.append(
-        #             {
-        #                 "id": rid,
-        #                 "metadatas": {},
-        #                 "document": {"name": text, "link": url, "content": text},
-        #             }
-        #         )
-        #     return res_map[url]
-
         # --- Title ---
         title = title or fm.get("title", "")
         if not title:
@@ -2469,25 +2451,16 @@ class SynthesisManager:
         for i, ln in enumerate(lines[idx:], start=idx):
             m = re.match(r"^(#{2,6})\s*(.+)$", ln)
             if m:
-                # Skip if References or External Links section
-                if skip_sections and m.group(2).strip().lower() in skip_sections:
-                    continue
                 sec_heads.append((i, len(m.group(1)), m.group(2).strip()))
         # --- Extract sections ---
         for s_idx, (start, level, sec_title) in enumerate(sec_heads):
+            if sec_title.lower() in skip_sections:
+                continue
             end = sec_heads[s_idx + 1][0] if s_idx + 1 < len(sec_heads) else len(lines)
             content = " ".join(
                 ln.strip() for ln in lines[start + 1 : end] if ln.strip()
             )
             used = []
-            # inline links
-            # for text, url in re.findall(r"\[([^]]+)\]\(([^)]+)\)", content):
-            #     used.append(add_res(url, text))
-            # # reference links
-            # for text, key in re.findall(r"\[([^]]+)\]\[([^]]+)\]", content):
-            #     url = ref_defs.get(key)
-            #     if url:
-            #         used.append(add_res(url, text))
             # Extract and process citations
             citations = extract_citations_from_content(content, references)
             for cite_id in citations:
@@ -2506,19 +2479,30 @@ class SynthesisManager:
             )
             self.add_section(sec)
         # --- Prune unused resources ---
-        used_ids = {
-            r_id
-            for sec in self.document.document_content.sections_list
-            for r_id in sec.resources
-        }
-        self.document.resources = [
-            r for r in self.document.resources if r["id"] in used_ids
-        ]
+        used_ids = {r_id for sec in self.document.document_content.sections_list for r_id in sec.resources}
+        self.document.resources = [r for r in self.document.resources if r["id"] in used_ids]
+
         self.plan_embedding_update_required = True
+        
+        # dump document to temp file the document state
         if debug:
-            print(
-                f"Parsed title={title!r}, context={context!r}, sections={len(self.document.document_content.sections_list)}, resources={len(self.document.resources)}"
-            )
+            print(f"Parsed title={title!r}, context={context!r}, sections={len(self.document.document_content.sections_list)}, resources={len(self.document.resources)}")
+            self.document.update_plan_embedding()
+            tmp = self.document
+            # create a uuid with YmdHMS format
+            uid = datetime.now().strftime("%Y%m%d%H%M%S")
+            temp_state_file = f"/tmp/{uid}_document_state.json"
+            with open(temp_state_file, "w", encoding="utf-8") as f: f.write(f"{self.document.get_state()}")
+            print(f"Document state saved to {temp_state_file}")
+            # dump markdown to temp file
+            temp_markdown_file = f"/tmp/{uid}_markdown.md"
+            with open(temp_markdown_file, "w", encoding="utf-8") as f: f.write(markdown_string)
+            # copy solution to temp file
+            temp_solution_file = f"/tmp/{uid}_solution.json"
+            if self.target_file_path and os.path.exists(self.target_file_path):
+                import shutil
+                shutil.copy(self.target_file_path, temp_solution_file)
+            print(f"Files saved: {temp_state_file}, {temp_markdown_file}, {temp_solution_file}")
 
 
 class LLMResponse:
@@ -2603,6 +2587,9 @@ class VoyagerEnvIR_CPS_TechSynthesis(Environment):
             target_plan_embedding_label="plan_embedding_" + embed_id,
             target_resource_embedding_label="resource_embedding_" + embed_id,
         )
+    
+
+        
         return {
             "plan/titles similarity (top:1, worst:0)": distance[
                 "plan_titles_embedding_similarity"
