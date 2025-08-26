@@ -6,8 +6,9 @@
 import pytest
 from types import SimpleNamespace
 from typing import List, Dict
+import unittest
 
-from utils.human_llm import DynamicConfigManager, _TraceOptimizerAdapter
+from utils.human_llm import DynamicConfigManager, _TraceOptimizerAdapter, HelpUsageTracker, HumanLLM
 
 # ---------------------
 # Minimal usage tracker
@@ -247,3 +248,57 @@ def test_n_candidates_first_selected(manager):
     }
     mods = manager.evaluate_triggers({"user_message":"x"}, phase="pre_inference")
     assert (mods.get("invoke_kwargs") or {}).get("num_parallel_inferences") == 5
+
+
+class DummyTrace:
+    """Minimal Trace-like optimizer returning one candidate with temperature + user_message edit."""
+    def step(self, context, targets, n_candidates=1, constraints=None):
+        return [{"edits": [
+            {"target": "invoke.temperature", "op": "set", "value": 0.13},
+            {"target": "user_message", "op": "append", "value": "\n\n[H1-DUMMY]"}
+        ]}]
+
+
+class TestTraceDynamicConfig(unittest.TestCase):
+    def _mgr(self, plug_trace=False):
+        cfg = {
+            "trace_optimizers": [{"name": "opt", **({"trace_obj": DummyTrace()} if plug_trace else {})}],
+            "trace_default_optimizer": "opt",
+            "h1_block": {
+                "phase": "pre_inference",
+                "rules": {},  # always true
+                "modifications": [
+                    {"type": "trace", "optimizer": "opt",
+                     "targets": ["invoke.temperature", "user_message"], "n_candidates": 1}
+                ]
+            }
+        }
+        return DynamicConfigManager(cfg, HelpUsageTracker(), default_config={})
+
+    def test_h1_temperature_mapping(self):
+        mgr = self._mgr(plug_trace=True)
+        ctx = {"user_message": "Hi", "invoke_kwargs": {}}
+        mods = mgr.evaluate_triggers(ctx, phase="pre_inference")
+        # Apply with a lightweight HumanLLM shell (bypass heavy __init__)
+        h = HumanLLM.__new__(HumanLLM)
+        import logging; h.logger = logging.getLogger(__name__)
+        h.dynamic_mgr = mgr
+        h.temperature_min, h.temperature_max = 0.0, 1.0
+        h.num_parallel_inferences = 1
+        # use the method defined on the class you pasted
+        HumanLLM._apply_modifications(h, mods, ctx, phase="pre_inference")
+        self.assertEqual(h.temperature_min, 0.13)
+        self.assertEqual(h.temperature_max, 0.13)
+        self.assertIn("[H1-DUMMY]", ctx["user_message"])
+
+    def test_h2_feedback_and_offline_opt(self):
+        mgr = self._mgr()
+        # record a couple outcomes
+        mgr.record_outcome({"case": 1}, {"invoke_kwargs": {"temperature": 0.2}}, {"quality": 0.7})
+        mgr.log_user_correction("HumanLLM", "-foo\n+bar", "user")
+        fb = mgr.collect_feedback({"user_message": "Fallback"})
+        self.assertTrue(len(fb) >= 1)
+        self.assertEqual(fb[0].get("type"), "user_diff")
+        # offline optimize with fallback adapter (no trace_obj)
+        summary = mgr.offline_optimize(targets=["config.some.path"])
+        self.assertIn("applied", summary)

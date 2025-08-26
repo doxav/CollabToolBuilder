@@ -113,12 +113,17 @@ class _TraceOptimizerAdapter:
         # per-optimizer observables/optimizables (store for introspection & use)
         self._observables: List[Union[str, Callable, Tuple]] = list(self.config.get("observables") or [])
         self._optimizables: List[Union[str, Callable, Tuple]] = list(self.config.get("optimizables") or [])
+        # flags to protect explicit overrides set via manager setters
+        self._observables_overridden: bool = False
+        self._optimizables_overridden: bool = False
 
     def step(self, context: Dict, targets: List[str], n_candidates: int = 1, constraints: Dict = None) -> List[Dict]:
         """Return candidate patches. Each candidate is a dict {'edits': [ {'target':..., 'op':..., 'value':...}, ... ]}"""
         self._state["calls"] += 1
-        # record an observation snapshot for debug/tracing - real Trace will do more
-        self._last_context_snapshot = {k: context.get(k) for k in (self._observables or []) if isinstance(k, str)}
+        # record an observation snapshot for debug/tracing - use per-optimizer observables
+        observables_to_use = self._observables or []
+        self._last_context_snapshot = {k: context.get(k) for k in observables_to_use if isinstance(k, str)}
+
         candidates = []
         if self._trace_obj:
             # If you plug a real Trace object, it should expose an API we call here.
@@ -195,8 +200,11 @@ class DynamicConfigManager:
         modifications = {}
         
         for help_type, help_config in self.config.items():
+            # Skip meta sections that are not help blocks
+            if help_type in ('trace_optimizers', 'trace_default_optimizer'):
+                continue
             if not isinstance(help_config, dict):
-                print("Invalid config for type (expected dict):", help_type)
+                self.logger.warning("Invalid dynamic config for type (expected dict): %r", help_type)
                 continue
             # Check if this help type applies to current phase
             if help_config.get('phase', 'pre_inference') != phase:
@@ -234,12 +242,10 @@ class DynamicConfigManager:
                                 # create a basic adapter for this name, allow user to replace with real Trace later
                                 adapter = _TraceOptimizerAdapter(opt_name, m.get("config", {}))
                                 self._trace_optimizers[opt_name] = adapter
-
-                            # if the modification descriptor provided per-optimizer observables/optimizables,
-                            # make sure adapter holds them (allow per-optimizer override)
-                            if "observables" in (m or {}):
+                            # Only apply per-modification lists if they were not explicitly overridden via setters
+                            if "observables" in (m or {}) and not getattr(adapter, "_observables_overridden", False):
                                 adapter._observables = list(m.get("observables") or [])
-                            if "optimizables" in (m or {}):
+                            if "optimizables" in (m or {}) and not getattr(adapter, "_optimizables_overridden", False):
                                 adapter._optimizables = list(m.get("optimizables") or [])
 
                             targets = m.get("targets") or self._optimizables or m.get("optimizable_targets", [])
@@ -278,6 +284,13 @@ class DynamicConfigManager:
                                         dyn = modifications.setdefault("dynamic_llm_config_patch", {})
                                         if op == "set":
                                             dyn[k] = val
+                                    elif tgt and tgt.startswith("rule_evaluator."):
+                                        # allow Trace to replace a rule evaluator on the manager
+                                        name = tgt.split(".", 1)[1]
+                                        if callable(val):
+                                            self.rule_evaluators[name] = val
+                                        else:
+                                            self.logger.warning("Trace edit for %s ignored: non-callable value", tgt)
                                     elif tgt and tgt.startswith("config."):
                                         # edits into self.config paths, e.g. 'config.helpA.rules.regex.patterns'
                                         path = tgt.split(".", 1)[1]
@@ -466,6 +479,7 @@ class DynamicConfigManager:
         if not adapter:
             raise KeyError(f"No optimizer registered with name {optimizer_name!r}")
         adapter._optimizables = list(targets or [])
+        adapter._optimizables_overridden = True
 
     def set_observables(self, targets: List[Union[str, callable, tuple]]):
         """Register observables that Trace/optimizers may inspect."""
@@ -477,6 +491,7 @@ class DynamicConfigManager:
         if not adapter:
             raise KeyError(f"No optimizer registered with name {optimizer_name!r}")
         adapter._observables = list(targets or [])
+        adapter._observables_overridden = True
 
     def resolve_optimizable_target(self, target: Union[str, callable, tuple]) -> Tuple[Callable, Callable]:
         """
@@ -633,6 +648,53 @@ class DynamicConfigManager:
             if um:
                 out = [{"type": "fallback_user_message", "content": um, "ts": time.time()}]
         return out
+
+    def offline_optimize(
+        self,
+        optimizer_name: Optional[str] = None,
+        targets: Optional[List[str]] = None,
+        n_candidates: int = 1,
+        constraints: Optional[Dict] = None
+    ) -> Dict:
+        """
+        H2 (off-policy): call a Trace optimizer on recorded outcomes to propose persistent edits.
+        Applies first candidate:
+          - 'config.*'                 -> self.config (persistent)
+          - 'dynamic_llm_config.*'     -> self.config['dynamic_llm_defaults'][key]
+        Returns summary with 'applied' and 'applied_edits'.
+        """
+        if not self._records:
+            return {"applied": False, "reason": "no_records"}
+        stats = {"n_records": len(self._records), "recent_ts": max(r.get("ts", 0) for r in self._records)}
+        ctx = {"records": self._records, "stats": stats}
+
+        name = optimizer_name or self.config.get("trace_default_optimizer") or "offline"
+        adapter = self._trace_optimizers.get(name)
+        if adapter is None:
+            adapter = _TraceOptimizerAdapter(name, {})
+            self._trace_optimizers[name] = adapter
+
+        trgts = list(targets or self._optimizables or [])
+        try:
+            cands = adapter.step(context=ctx, targets=trgts, n_candidates=int(n_candidates), constraints=constraints)
+        except Exception:
+            self.logger.exception("offline_optimize: Trace adapter failed.")
+            cands = []
+        if not cands:
+            return {"applied": False, "reason": "no_candidates", "stats": stats}
+
+        first = cands[0]
+        applied = []
+        for edit in first.get("edits", []):
+            tgt, op, val = edit.get("target"), edit.get("op", "set"), edit.get("value")
+            if not tgt or op != "set":
+                continue
+            if tgt.startswith("config."):
+                self._set_in_dict_by_path(self.config, tgt.split(".", 1)[1], val); applied.append(edit)
+            elif tgt.startswith("dynamic_llm_config."):
+                key = tgt.split(".", 1)[1]
+                self.config.setdefault("dynamic_llm_defaults", {})[key] = val; applied.append(edit)
+        return {"applied": bool(applied), "applied_edits": applied, "stats": stats}
 class HumanLLM:
     def __init__(
         self,
@@ -711,7 +773,7 @@ class HumanLLM:
 
         self.inference_tracking = InferenceTracking()
         if inference_checks:
-            self.inference_tracking.inference_checks
+            self.inference_tracking.inference_checks = inference_checks
 
         self.user_message = ""
         self.envs = envs
@@ -770,7 +832,51 @@ class HumanLLM:
                     original_values[attr] = getattr(self, attr)
                 setattr(self, attr, mods[attr])
                 self.logger.info(f"[DynamicConfig] {attr}: {original_values[attr]} -> {mods[attr]}")
-        
+
+        # 1.b) Structured invocation overrides emitted by DynamicConfigManager
+        #      - invoke_kwargs: per-call knobs Trace can change (H1)
+        #      - dynamic_llm_config_patch: patch the runtime config (H2 or H1)
+        ivk = mods.get("invoke_kwargs") or {}
+        if ivk:
+            # reflect in context for transparency
+            context.setdefault("invoke_kwargs", {}).update(ivk)
+            # common H1 knob from Trace: temperature
+            if "temperature" in ivk:
+                try:
+                    t = float(ivk["temperature"])
+                    self.temperature_min = t
+                    self.temperature_max = t
+                except Exception:
+                    self.logger.debug("Ignored non-float temperature in invoke_kwargs: %r", ivk.get("temperature"))
+            if "num_parallel_inferences" in ivk:
+                self.num_parallel_inferences = int(ivk["num_parallel_inferences"])
+            if "temperature_max" in ivk:
+                self.temperature_max = float(ivk["temperature_max"])
+            if "generation_technique" in ivk:
+                self.generation_technique = str(ivk["generation_technique"])
+
+        dlc = mods.get("dynamic_llm_config_patch") or {}
+        if dlc:
+            self.dynamic_llm_config.update(dlc)
+
+        if "system_prompt" in mods:
+            self.system_prompt = mods["system_prompt"]
+        pre = mods.get("system_prompt_prepend");  app = mods.get("system_prompt_append")
+        if pre: self.system_prompt = "".join(pre) + (self.system_prompt or "")
+        if app: self.system_prompt = (self.system_prompt or "") + "".join(app)
+
+        # for user_message, update both the context (so invoke() picks it up) and the cached self.user_message
+        if "user_message" in mods:
+            context["user_message"] = mods["user_message"]
+            self.user_message = mods["user_message"]
+        upre = mods.get("user_message_prepend");  uapp = mods.get("user_message_append")
+        if upre:
+            new_um = "".join(upre) + (context.get("user_message") or self.user_message or "")
+            context["user_message"] = self.user_message = new_um
+        if uapp:
+            new_um = (context.get("user_message") or self.user_message or "") + "".join(uapp)
+            context["user_message"] = self.user_message = new_um
+
         # 2) Model selection
         if 'use_premium_llm' in mods:
             context['use_premium_llm'] = mods['use_premium_llm']
@@ -1617,8 +1723,8 @@ class HumanLLM:
 
     def toggle_inference_checks(self):
         menu = "Current inference checks:\n"
-        for check_name in self.inference_checks:
-            menu += f"- {check_name} {'(Deactivated)' if check_name in self.excluded_inference_checks else ''}\n"
+        for check_name in self.inference_tracking.inference_checks:
+            menu += f"- {check_name} {'(Deactivated)' if check_name in self.inference_tracking.excluded_inference_checks else ''}\n"
         menu += "\n[A] Activate inference check\n"
         menu += "[E] Deactivate inference check\n"
         answer = smart_input(menu, self.agent_name, "ACTIVATE/DEACTIVATE INFERENCE CHECKS")
@@ -2708,6 +2814,15 @@ class HumanLLM:
                         "user_score": entry.get("user_score"),
                     }
                 )
+                # H2: forward human/agent diffs as priority feedback
+                try:
+                    if getattr(self, 'dynamic_mgr', None):
+                        who = "user" if entry.get("output_modified") else "agent"
+                        # Skip empty diffs
+                        if diff_text.strip():
+                            self.dynamic_mgr.log_user_correction(self.agent_name, diff_text, who)
+                except Exception:
+                    self.logger.debug("Could not forward diff to dynamic_mgr", exc_info=True)
         except Exception as e:
             self.logger.exception(f"Failed to compute/save answer diff: {e}")
         return True
@@ -2998,6 +3113,10 @@ class HumanLLM:
                 mods = self.dynamic_mgr.evaluate_triggers(eval_context, phase='pre_inference')
                 if mods:
                     self._apply_modifications(mods, eval_context, phase='pre_inference')
+                    # Reflect potential message edits from dynamic mods into local variables
+                    user_message = eval_context.get('user_message', user_message)
+                    if eval_context.get('system_prompt'):
+                        self.system_prompt = eval_context['system_prompt']
             # Automation short-circuits
             if self.automation in ['before', 'after', 'skip_once']:
                 # Possibly skip or read from saved_task ...
@@ -3237,6 +3356,19 @@ class HumanLLM:
             call_duration=call_duration,
             synthesize_mode=self.synthesize_mode
         )
+
+        # H2: persist per-run outcome for offline learning
+        try:
+            if getattr(self, 'dynamic_mgr', None):
+                outcome_metrics = {
+                    "scores": score,
+                    "inference_time": (end_time - start_time).total_seconds() if 'end_time' in locals() else None
+                }
+                self.dynamic_mgr.record_outcome(
+                    eval_context, eval_context.get('dynamic_modifications', {}), outcome_metrics
+                )
+        except Exception:
+            self.logger.debug("Could not record outcome to dynamic_mgr", exc_info=True)
 
         # Update usage tracker with actual costs/tokens if available
         if hasattr(self, 'usage_tracker') and 'dynamic_modifications' in eval_context:
@@ -4307,9 +4439,35 @@ List your annotations below:
                     if agent_name != class_name and agent_name not in ['all', '']: continue
                 if hasattr(agent, key):
                     setattr(agent, key, value)
-
                 elif key in available_locals:
                     new_params[key] = value
                     print(f"Special criteria applicable to {agent}'s local variables: {key} = {value}")
+
         print(new_params)
         return new_params  # Return only new params
+
+    # -----------------------------
+    # H2 convenience (explicit call)
+    # -----------------------------
+    def offline_optimize(
+        self,
+        optimizer_name: Optional[str] = None,
+        targets: Optional[List[str]] = None,
+        n_candidates: int = 1,
+        constraints: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Run an OFFLINE (H2) optimization pass via the DynamicConfigManager, if available.
+        This does NOT run automatically; call it explicitly (e.g., after a batch of runs).
+
+        Returns a summary dict from the manager, typically including:
+            { "applied": bool, "applied_edits": [...], ... }
+        """
+        if not getattr(self, "dynamic_mgr", None):
+            raise RuntimeError("DynamicConfigManager is not initialized on this HumanLLM instance.")
+        if not hasattr(self.dynamic_mgr, "offline_optimize"):
+            raise NotImplementedError(
+                "DynamicConfigManager.offline_optimize(...) is not available. "
+                "Update DynamicConfigManager to a version that supports H2."
+            )
+        return self.dynamic_mgr.offline_optimize(optimizer_name, targets, n_candidates, constraints)
