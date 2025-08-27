@@ -208,15 +208,16 @@ class DynamicConfigManager:
         if method == 'self-consistency':
             if len(outputs) < 2:
                 return False
-                
-            threshold = config.get('threshold', 0.5)
+            consistency_method = config.get('consistency_method', 'difflib')
+            threshold = config.get('threshold', 0.4)
             similarities = []
             
             for i in range(len(outputs)):
                 for j in range(i+1, len(outputs)):
                     sim = calculate_text_similarity(
                         outputs[i].content if hasattr(outputs[i], 'content') else str(outputs[i]),
-                        outputs[j].content if hasattr(outputs[j], 'content') else str(outputs[j])
+                        outputs[j].content if hasattr(outputs[j], 'content') else str(outputs[j]),
+                        method=consistency_method
                     )
                     similarities.append(sim)
                     
