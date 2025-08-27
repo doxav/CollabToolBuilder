@@ -3161,11 +3161,14 @@ class HumanLLM:
         elif original_input_messages is None or len(original_input_messages) == 0:
             # Standard usage if no special automation
             self.logger.info(f"****user_message {self.agent_name} : {user_message}****")
-            #original_input_messages = [SystemMessage( content=self.config.load_prompt_template( prompt_name=self.system_prompt, directory=prompt_directory)), HumanMessage(content=user_message)]
-            # Try to load template; if file is missing, use string content directly
-            try: sys_content = self.config.load_prompt_template(prompt_name=self.system_prompt, directory=prompt_directory)
-            except FileNotFoundError: sys_content = self.system_prompt or ""
-            original_input_messages = [SystemMessage(content=sys_content), HumanMessage(content=user_message)]
+            original_input_messages = [
+                SystemMessage(
+                    content=self.config.load_prompt_template(
+                        prompt_name=self.system_prompt, directory=prompt_directory
+                    )
+                ),
+                HumanMessage(content=user_message)
+            ]
 
 
         input_contents_str0 = str(original_input_messages[0].content)
