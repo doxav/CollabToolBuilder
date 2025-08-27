@@ -3163,9 +3163,7 @@ class HumanLLM:
             self.logger.info(f"****user_message {self.agent_name} : {user_message}****")
             original_input_messages = [
                 SystemMessage(
-                    content=self.config.load_prompt_template(
-                        prompt_name=self.system_prompt, directory=prompt_directory
-                    )
+                    content=self.config.load_prompt_template(prompt_name=self.system_prompt, directory=prompt_directory)
                 ),
                 HumanMessage(content=user_message)
             ]
