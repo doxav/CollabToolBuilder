@@ -9,7 +9,9 @@ import concurrent.futures
 from jinja2 import Template
 from datetime import datetime
 from collections import defaultdict
+import copy
 
+from matplotlib import rc
 from openai import BadRequestError
 from utils.llm_utils import (
     InferenceCheck,
@@ -116,6 +118,25 @@ class _TraceOptimizerAdapter:
         # flags to protect explicit overrides set via manager setters
         self._observables_overridden: bool = False
         self._optimizables_overridden: bool = False
+        # ---- NEW: objective + parameter registry (Trace-style hints) ----
+        # parameters: { name: {"value": any, "trainable": bool, "description": str, "bounds": (lo, hi), ...} }
+        self._objective: Optional[str] = self.config.get("objective")
+        self._parameters: Dict[str, Dict[str, Any]] = dict(self.config.get("parameters") or {})
+
+    # ---- NEW: lightweight API to manage objective/parameters ----
+    def set_objective(self, objective: Optional[str]):
+        self._objective = objective
+
+    def update_parameter(self, name: str, **kwargs):
+        slot = self._parameters.setdefault(name, {})
+        slot.update({k: v for k, v in kwargs.items() if v is not None})
+
+    def set_parameters(self, params: Dict[str, Dict[str, Any]]):
+        self._parameters = dict(params or {})
+
+    def get_trace_spec(self) -> Dict[str, Any]:
+        # Return a single-step snapshot for the optimizer (immutable for this call).
+        return {"objective": self._objective, "parameters": copy.deepcopy(self._parameters)}
 
     def step(self, context: Dict, targets: List[str], n_candidates: int = 1, constraints: Dict = None) -> List[Dict]:
         """Return candidate patches. Each candidate is a dict {'edits': [ {'target':..., 'op':..., 'value':...}, ... ]}"""
@@ -199,7 +220,7 @@ class DynamicConfigManager:
         """Evaluate all triggers and return modifications to apply"""
         modifications = {}
         
-        for help_type, help_config in self.config.items():
+        for help_type, help_config in list(self.config.items()):
             # Skip meta sections that are not help blocks
             if help_type in ('trace_optimizers', 'trace_default_optimizer'):
                 continue
@@ -252,6 +273,11 @@ class DynamicConfigManager:
                             n_candidates = int(m.get("n_candidates", 1))
                             try:
                                 candidates = adapter.step(context=context, targets=list(targets), n_candidates=n_candidates, constraints=m.get("constraints"))
+                                # ---- NEW: pass a 'trace_spec' (objective + parameters) to the optimizer ----
+                                ctx_for_trace = dict(context)
+                                ctx_for_trace["trace_spec"] = adapter.get_trace_spec()
+                                candidates = adapter.step(context=ctx_for_trace, targets=list(targets), n_candidates=n_candidates, constraints=m.get("constraints"))
+
                             except Exception:
                                 self.logger.exception("Trace optimizer step failed; skipping optimizer modification")
                                 candidates = []
@@ -284,6 +310,30 @@ class DynamicConfigManager:
                                         dyn = modifications.setdefault("dynamic_llm_config_patch", {})
                                         if op == "set":
                                             dyn[k] = val
+                                    elif tgt == "activate_human_intervention":
+                                        modifications["activate_human_intervention"] = bool(val)
+                                    # ---- Allow optimizers to edit their own trace spec ----
+                                    elif tgt and tgt == "trace.objective":
+                                        try:
+                                            adapter.set_objective(val)
+                                        except Exception:
+                                            self.logger.exception("Failed setting trace.objective")
+                                    elif tgt and tgt.startswith("trace.param."):
+                                        try:
+                                            # trace.param.<name> or trace.param.<name>.<field>
+                                            rest = tgt.split("trace.param.", 1)[1]
+                                            parts = rest.split(".")
+                                            pname = parts[0]
+                                            if len(parts) == 1:
+                                                adapter.update_parameter(pname, value=val)
+                                            elif len(parts) == 2:
+                                                field = parts[1]
+                                                adapter.update_parameter(pname, **{field: val})
+                                            else:
+                                                # flatten deeper paths into a dict
+                                                adapter.update_parameter(pname, **{".".join(parts[1:]): val})
+                                        except Exception:
+                                            self.logger.exception("Failed applying trace.param edit: %s", tgt)
                                     elif tgt and tgt.startswith("rule_evaluator."):
                                         # allow Trace to replace a rule evaluator on the manager
                                         name = tgt.split(".", 1)[1]
@@ -298,6 +348,11 @@ class DynamicConfigManager:
                                     else:
                                         # generic fallback: put into 'patches' list so callers can interpret them
                                         modifications.setdefault("patches", []).append(edit)
+                                # honor meta.requires_human if present
+                                if isinstance(first, dict) and isinstance(first.get("meta"), dict):
+                                    if first["meta"].get("requires_human"):
+                                        modifications["activate_human_intervention"] = True
+
                         else:
                             # unknown modification type: ignore but log
                             self.logger.debug(f"Unknown modification item type: {mtype} (skipped)")
@@ -493,6 +548,25 @@ class DynamicConfigManager:
         adapter._observables = list(targets or [])
         adapter._observables_overridden = True
 
+    # ---- NEW: helpers to configure objective/parameters programmatically ----
+    def set_optimizer_objective(self, optimizer_name: str, objective: Optional[str]):
+        adapter = self._trace_optimizers.get(optimizer_name)
+        if not adapter:
+            raise KeyError(f"No optimizer registered with name {optimizer_name!r}")
+        adapter.set_objective(objective)
+
+    def update_optimizer_parameter(self, optimizer_name: str, name: str, **kwargs):
+        adapter = self._trace_optimizers.get(optimizer_name)
+        if not adapter:
+            raise KeyError(f"No optimizer registered with name {optimizer_name!r}")
+        adapter.update_parameter(name, **kwargs)
+
+    def set_optimizer_parameters(self, optimizer_name: str, params: Dict[str, Dict[str, Any]]):
+        adapter = self._trace_optimizers.get(optimizer_name)
+        if not adapter:
+            raise KeyError(f"No optimizer registered with name {optimizer_name!r}")
+        adapter.set_parameters(params)
+
     def resolve_optimizable_target(self, target: Union[str, callable, tuple]) -> Tuple[Callable, Callable]:
         """
         Resolve an optimizable target into (getter(context), setter(context, value)).
@@ -666,7 +740,25 @@ class DynamicConfigManager:
         if not self._records:
             return {"applied": False, "reason": "no_records"}
         stats = {"n_records": len(self._records), "recent_ts": max(r.get("ts", 0) for r in self._records)}
-        ctx = {"records": self._records, "stats": stats}
+        # Prepare context for offline optimizer — compact, robust normalization:
+        # ensure each record has: context -> trace -> backward -> nodes (list).
+        def _normalize_record(rec: Dict) -> Dict:
+            rc = dict(rec)  # shallow copy; we don't mutate the original record
+            ctx = rc.get("context")
+            if not isinstance(ctx, dict):
+                ctx = rc["context"] = {}
+            trace = ctx.get("trace")
+            if not isinstance(trace, dict):
+                trace = ctx["trace"] = {}
+            backward = trace.get("backward")
+            if not isinstance(backward, dict):
+                backward = trace["backward"] = {}
+            nodes = backward.get("nodes")
+            backward["nodes"] = list(nodes) if isinstance(nodes, (list, tuple, set)) else []
+            return rc
+
+        norm_records = [_normalize_record(r) for r in self._records]
+        ctx = {"records": norm_records, "stats": stats}
 
         name = optimizer_name or self.config.get("trace_default_optimizer") or "offline"
         adapter = self._trace_optimizers.get(name)
@@ -676,7 +768,10 @@ class DynamicConfigManager:
 
         trgts = list(targets or self._optimizables or [])
         try:
+            # Provide the optimizer a stable spec (variables/objective) even when no graph exists
+            ctx["trace_spec"] = adapter.get_trace_spec()
             cands = adapter.step(context=ctx, targets=trgts, n_candidates=int(n_candidates), constraints=constraints)
+
         except Exception:
             self.logger.exception("offline_optimize: Trace adapter failed.")
             cands = []
@@ -3038,6 +3133,7 @@ class HumanLLM:
             optional=True
         )
 
+        system_prompt_template = kwargs.pop("system_prompt_override", system_prompt_template)
         if system_prompt_template:
             self.system_prompt = system_prompt_template
 
@@ -3064,14 +3160,12 @@ class HumanLLM:
         elif original_input_messages is None or len(original_input_messages) == 0:
             # Standard usage if no special automation
             self.logger.info(f"****user_message {self.agent_name} : {user_message}****")
-            original_input_messages = [
-                SystemMessage(
-                    content=self.config.load_prompt_template(
-                        prompt_name=self.system_prompt, directory=prompt_directory
-                    )
-                ),
-                HumanMessage(content=user_message)
-            ]
+            #original_input_messages = [SystemMessage( content=self.config.load_prompt_template( prompt_name=self.system_prompt, directory=prompt_directory)), HumanMessage(content=user_message)]
+            # Try to load template; if file is missing, use string content directly
+            try: sys_content = self.config.load_prompt_template(prompt_name=self.system_prompt, directory=prompt_directory)
+            except FileNotFoundError: sys_content = self.system_prompt or ""
+            original_input_messages = [SystemMessage(content=sys_content), HumanMessage(content=user_message)]
+
 
         input_contents_str0 = str(original_input_messages[0].content)
         input_contents_str1 = str(original_input_messages[1].content)
