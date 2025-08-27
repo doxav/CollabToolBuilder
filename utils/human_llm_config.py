@@ -487,8 +487,8 @@ class HumanLLMConfig:
                         template_content = template_content.format(**template_data)
 
             except FileNotFoundError:
-                raise FileNotFoundError(
-                    f"The prompt file '{prompt_name}.txt' was not found in the directory '{directory}'")
+                self.logger.error(f"WARNING: The prompt file '{prompt_name}.txt' was not found in the directory '{directory}', considering prompt_name as a prompt string <<<{prompt_name}>>>")
+                template_content = prompt_name
             except KeyError as e:
                 raise KeyError(f"Missing key {e} in template data for prompt '{prompt_name}'")
 

@@ -414,7 +414,7 @@ def _human_for_tests(dynamic_llm_config=None):
     dcfg = dynamic_llm_config or {}
     dummy = DummyLLM()
     return HumanLLM(
-        system_prompt="SYS",
+        system_prompt="You are a helpful AI assistant.",  # Use actual prompt content instead of filename
         llmORchains_list={"default_llm": dummy, "premium_llm": dummy},
         num_parallel_inferences=1,
         selection_technique="best",
