@@ -10,7 +10,7 @@ import datasets
 from opto import trace
 from opto.utils.llm import LLM, LiteLLM, AutoGenLLM, LLMFactory, _LLM_REGISTRY
 from opto.optimizers import OptoPrime, OptoPrimeMulti
-from opto.trainer.algorithms.basic_algorithms import MinibatchAlgorithm
+from opto.trainer.algorithms.basic_algorithm import MinibatchAlgorithm
 from opto.trainer.guide import VerbalJudgeGuide
 from humanllm_trace import HumanLLM_Trace
 from typing import Any
