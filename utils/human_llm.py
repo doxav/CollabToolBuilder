@@ -159,9 +159,12 @@ class _TraceOptimizerAdapter:
                 else:
                     # wrap an opaque candidate
                     candidates.append({"edits": [{"target": t, "op": "set", "value": f"<trace:{self.name}:candidate>"} for t in (targets or [])]})
+            with open("optimizer_trace_log.jsonl", "a", encoding="utf-8") as f:
+                for c in candidates:
+                    f.write(json.dumps({"optimizer": self.name, "edits": c["edits"], "meta": c["meta"], "log": {"agent_name": self.agent_name , "timestamp": datetime.now().isoformat() }}) + "\n")
             return candidates
 
-        # fallback heuristic: provide n_candidates simple safe edits
+        # fallback heuristic: provide n_candidates simple safe edits (H1 & H2-common fields)
         for ci in range(max(1, n_candidates)):
             edits = []
             for t in (targets or []):
@@ -172,13 +175,36 @@ class _TraceOptimizerAdapter:
                         edits.append({"target": t, "op": "set", "value": int(256 + 20 * ci)})
                     elif t in ("user_message", "system_prompt"):
                         edits.append({"target": t, "op": "append", "value": f"\n\n[TRACE_OPT:{self.name}:{ci}]"})
+                    # --- H2-friendly knobs when targets refer to dynamic_llm_config dotted paths ---
+                    elif t.startswith("dynamic_llm_config.") and t.endswith(".rules.confidence.threshold"):
+                        # propose reasonable confidence thresholds
+                        base = float((self._parameters or {}).get("threshold_base", 0.35))
+                        step = float((self._parameters or {}).get("threshold_step", 0.05))
+                        val  = max(0.10, min(0.90, base + step * ci))
+                        edits.append({"target": t, "op": "set", "value": val})
+                    elif t.startswith("dynamic_llm_config.") and t.endswith(".modifications.num_parallel_inferences"):
+                        nmin = int((self._parameters or {}).get("npi_min", 1))
+                        nmax = int((self._parameters or {}).get("npi_max", 3))
+                        val  = min(nmax, max(nmin, nmin + ci))
+                        edits.append({"target": t, "op": "set", "value": val})
+                    elif t.startswith("dynamic_llm_config.") and t.endswith(".quota.max_count"):
+                        base = int((self._parameters or {}).get("max_count_base", 1))
+                        step = int((self._parameters or {}).get("max_count_step", 1))
+                        val  = max(0, base + ci * step)
+                        edits.append({"target": t, "op": "set", "value": val})
+                    elif t.startswith("invoke.") and "num_parallel_inferences" in t:
+                        # keep plurality between 1-3 by default
+                        edits.append({"target": t, "op": "set", "value": min(3, max(1, 1 + ci))})
                     else:
                         edits.append({"target": t, "op": "set", "value": f"<trace:{self.name}:{ci}>"})
                 else:
                     # non-string target: ignore
                     continue
             candidates.append({"edits": edits, "meta": {"optimizer": self.name, "candidate_idx": ci}})
-        return candidates
+            with open("optimizer_trace_log.jsonl", "a", encoding="utf-8") as f:
+                for c in candidates:
+                    f.write(json.dumps({"optimizer": self.name, "edits": c["edits"], "meta": c["meta"], "log": {"agent_name": self.agent_name , "timestamp": datetime.now().isoformat() }}) + "\n")
+            return candidates
 
 class DynamicConfigManager:
     """Manages dynamic LLM configuration based on rules and triggers"""
@@ -3211,10 +3237,26 @@ class HumanLLM:
                 mods = self.dynamic_mgr.evaluate_triggers(eval_context, phase='pre_inference')
                 if mods:
                     self._apply_modifications(mods, eval_context, phase='pre_inference')
+        
+
                     # Reflect potential message edits from dynamic mods into local variables
                     user_message = eval_context.get('user_message', user_message)
                     if eval_context.get('system_prompt'):
                         self.system_prompt = eval_context['system_prompt']
+            # === H2: record minimal outcome metrics for offline optimization ===
+            try:
+                if getattr(self, "dynamic_mgr", None):
+                    self.dynamic_mgr.record_outcome(
+                        context=eval_context,
+                        modifications=eval_context.get("dynamic_modifications") or {},
+                        outcome_metrics={"inference_time": eval_context.get("inference_time"),
+                                            "n_outputs": len(llm_outputs) if llm_outputs else 0,
+                                            "phase": "post_inference"}
+                    )
+            except Exception:
+                self.logger.debug("record_outcome failed", exc_info=True)
+                
+                
             # Automation short-circuits
             if self.automation in ['before', 'after', 'skip_once']:
                 # Possibly skip or read from saved_task ...
