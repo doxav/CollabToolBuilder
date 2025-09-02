@@ -332,6 +332,24 @@ class _TraceOptimizerAdapter:
             pass
         return edits
 
+    # -- Trace convenience wrappers ------------------------------------
+    def zero_feedback(self):
+        """Mirror Trace API: reset accumulated feedback on parameters."""
+        self._ensure_trace_obj()
+        if getattr(self._trace_obj, "zero_feedback", None):
+            self._trace_obj.zero_feedback()
+
+    def backward(self, node_or_param, feedback: str, **kwargs):
+        """Mirror Trace API: propagate feedback from a node/parameter."""
+        self._ensure_trace_obj()
+        if getattr(self._trace_obj, "backward", None):
+            return self._trace_obj.backward(node_or_param, feedback, **kwargs)
+
+    def parameters(self):
+        """Expose underlying ParameterNode list (if available)."""
+        self._ensure_trace_obj()
+        return list(getattr(self._trace_obj, "parameters", []) or [])
+
     def step(self, context: Dict, targets: List[str], n_candidates: int = 1, constraints: Dict = None) -> List[Dict]:
         """Return candidate patches. Each candidate is a dict {'edits': [ {'target':..., 'op':..., 'value':...}, ... ]}"""
         self._state["calls"] += 1
@@ -350,9 +368,10 @@ class _TraceOptimizerAdapter:
                 raw = getattr(self._trace_obj, "step")(context=context, targets=targets, n_candidates=n_candidates, constraints=constraints)
             else:
                 # Branch 2: it's a Trace Optimizer (see opto.optimizers.optimizer.Optimizer)
-                # We attempt a single 'bypassing' step and convert its update_dict into edits.
+                # Standard Trace loop: we assume backward() has been done upstream when needed.
+                # Apply the update (bypassing=False) and convert to edits.
                 try:
-                    update_dict = getattr(self._trace_obj, "step")(bypassing=True)
+                    update_dict = getattr(self._trace_obj, "step")(bypassing=False)
                     raw = [{"edits": self._trace_to_edits(update_dict)}]
                 except Exception:
                     raw = []
@@ -367,7 +386,7 @@ class _TraceOptimizerAdapter:
                     candidates.append({"edits": [{"target": t, "op": "set", "value": f"<trace:{self.name}:candidate>"} for t in (targets or [])]})
             with open("optimizer_trace_log.jsonl", "a", encoding="utf-8") as f:
                 for c in candidates:
-                    f.write(json.dumps({"optimizer": self.name, "edits": c["edits"], "meta": c["meta"], "log": {"timestamp": datetime.now().isoformat() }}) + "\n")
+                    f.write(json.dumps({"optimizer": self.name, "edits": c.get("edits", []), "meta": c.get("meta", {}), "log": {"timestamp": datetime.now().isoformat()}}) + "\n")
             return candidates
 
         raise NotImplementedError("No valid trace optimizer found")
@@ -472,6 +491,17 @@ class DynamicConfigManager:
                                 # pass a 'trace_spec' (objective + parameters) to the optimizer
                                 ctx_for_trace = dict(context)
                                 ctx_for_trace["trace_spec"] = adapter.get_trace_spec()
+                                # --- NEW: standard Trace loop (online) when we're at the right phase
+                                fb_cfg = m.get("feedback") or {"use": "collect_feedback", "at": "post_inference"}
+                                if phase == fb_cfg.get("at", "post_inference"):
+                                    try:
+                                        adapter.zero_feedback()
+                                        fb_text = self._render_feedback_text(context, fb_cfg)
+                                        for p in adapter.parameters():
+                                            if getattr(p, "trainable", False):
+                                                adapter.backward(p, fb_text)
+                                    except Exception:
+                                        self.logger.exception("Trace backward failed (H1)")
                                 candidates = adapter.step(context=ctx_for_trace, targets=targets, n_candidates=n_candidates, constraints=m.get("constraints"))
 
                             except Exception as e:
@@ -569,6 +599,36 @@ class DynamicConfigManager:
             self._call_history.pop(0)
             
         return modifications
+
+    # ---- helper to prepare feedback text ---------------------------------
+    def _render_feedback_text(self, context: Dict, fb_cfg: Dict) -> str:
+        """
+        Build a textual feedback signal for Trace from available sources.
+        Supported fb_cfg:
+           {"use": "collect_feedback", "at": "post_inference"} (default)
+           {"use": "context_key", "key": "trace.feedback_path", "at": "..."}
+           {"use": "literal", "text": "..."}
+        """
+        mode = (fb_cfg or {}).get("use", "collect_feedback")
+        if mode == "literal":
+            return str(fb_cfg.get("text", "")).strip() or "No feedback"
+        if mode == "context_key":
+            key = fb_cfg.get("key", "")
+            # dotted path lookup
+            cur = context
+            for part in key.split("."):
+                if not part:
+                    continue
+                cur = (cur or {}).get(part) if isinstance(cur, dict) else getattr(cur, part, None)
+            return str(cur or "No feedback")
+        # default: collect & merge manager’s feedback records
+        items = self.collect_feedback(context)
+        lines = []
+        for it in items:
+            if "content" in it: lines.append(str(it["content"]))
+            elif "diff" in it:  lines.append(str(it["diff"]))
+            elif "metrics" in it: lines.append(str(it["metrics"]))
+        return "\n\n".join(l for l in lines if l).strip() or "No feedback"
 
     # -------------------------
     # small dict path helpers
@@ -934,6 +994,15 @@ class DynamicConfigManager:
         try:
             # Provide the optimizer a stable spec (variables/objective) even when no graph exists
             ctx["trace_spec"] = adapter.get_trace_spec()
+            # --- NEW: standard Trace offline loop (H2) using aggregated feedback ---
+            adapter.zero_feedback()
+            fb_text = self._render_feedback_text(ctx, {"use": "collect_feedback"})  # reuse ordering of records
+            for p in adapter.parameters():
+                if getattr(p, "trainable", False):
+                    try:
+                        adapter.backward(p, fb_text)
+                    except Exception:
+                        self.logger.exception("Trace backward failed (H2)")
             cands = adapter.step(context=ctx, targets=trgts, n_candidates=int(n_candidates), constraints=constraints)
 
         except Exception:
