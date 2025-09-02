@@ -1,6 +1,7 @@
 import os
 import tempfile
 from asyncio import subprocess
+from threading import local
 import re, uuid, json, difflib
 import time, inspect, ast
 import socket
@@ -10,7 +11,7 @@ from jinja2 import Template
 from datetime import datetime
 from collections import defaultdict
 import copy
-
+import importlib
 from matplotlib import rc
 from openai import BadRequestError
 from utils.llm_utils import (
@@ -105,6 +106,11 @@ class _TraceOptimizerAdapter:
     """
     Small adapter that exposes a step(context, targets, n_candidates) -> List[dict(edits...)]
     Replace the internals or pass a real trace object via config['trace_obj'] to integrate your Trace implementation.
+    If no trace_obj is provided, we can lazily build one from:
+      - config['optimizer_kind'] in {'OPRO','OptoPrime','OptoPrimeV2','OptoPrimeMulti'} or
+      - config['import_path'] (e.g., 'opto.optimizers.optoprime.OptoPrimeV2')
+    plus optional config['optimizer_kwargs'].
+    The adapter maintains a small Trace-style parameter registry (name -> {value, trainable, description, ...}).
     """
     def __init__(self, name: str, config: Dict):
         self.name = name
@@ -112,44 +118,263 @@ class _TraceOptimizerAdapter:
         self._state = {"created_at": time.time(), "calls": 0}
         # allow a real trace object to be passed in config under key 'trace_obj'
         self._trace_obj = self.config.get("trace_obj")
-        # per-optimizer observables/optimizables (store for introspection & use)
-        self._observables: List[Union[str, Callable, Tuple]] = list(self.config.get("observables") or [])
-        self._optimizables: List[Union[str, Callable, Tuple]] = list(self.config.get("optimizables") or [])
-        # flags to protect explicit overrides set via manager setters
-        self._observables_overridden: bool = False
-        self._optimizables_overridden: bool = False
-        # ---- NEW: objective + parameter registry (Trace-style hints) ----
-        # parameters: { name: {"value": any, "trainable": bool, "description": str, "bounds": (lo, hi), ...} }
+        # unified Trace-style registry (single "parameters" list in config)
         self._objective: Optional[str] = self.config.get("objective")
-        self._parameters: Dict[str, Dict[str, Any]] = dict(self.config.get("parameters") or {})
+        self._init_parameters_from_config(self.config.get("parameters"))
+        # factory hints (optional)
+        self._optimizer_kind: Optional[str] = self.config.get("optimizer_kind", "optoprimev2").lower().strip()
+
+        self._import_path: Optional[str] = self.config.get("import_path")
+        self._optimizer_kwargs: Dict[str, Any] = dict(self.config.get("optimizer_kwargs") or {})
+        
+    def _init_parameters_from_config(self, items: Any):
+        """
+        Initialize the parameter registry from the new Trace-style "parameters" list.
+        Each entry can be a string (name) or a dict with keys:
+          - parameter (str, required)
+          - value, trainable, description, projections, info (optional)
+        """
+        self._parameters = {}
+        if not items:
+            return
+        if isinstance(items, list):
+            for entry in items:
+                if isinstance(entry, str):
+                    self._parameters[entry] = {"parameter": entry}
+                elif isinstance(entry, dict):
+                    name = entry.get("name") or entry.get("parameter")
+                    if not name:
+                        continue
+                    meta = {k: entry[k] for k in ("value", "trainable", "description", "projections", "info","parameter") if k in entry}
+                    self._parameters[name] = meta
+        elif isinstance(items, dict):
+            # (No backward support required; keep minimal tolerance for accidental dicts)
+            self._parameters = dict(items)
 
     # ---- NEW: lightweight API to manage objective/parameters ----
     def set_objective(self, objective: Optional[str]):
         self._objective = objective
 
-    def update_parameter(self, name: str, **kwargs):
-        slot = self._parameters.setdefault(name, {})
-        slot.update({k: v for k, v in kwargs.items() if v is not None})
-
-    def set_parameters(self, params: Dict[str, Dict[str, Any]]):
-        self._parameters = dict(params or {})
 
     def get_trace_spec(self) -> Dict[str, Any]:
         # Return a single-step snapshot for the optimizer (immutable for this call).
         return {"objective": self._objective, "parameters": copy.deepcopy(self._parameters)}
+    # ---- Parameter coercion helpers (accept JSON-friendly formats) ----
+    def _coerce_param_entry(self, name: str, entry: Any) -> Dict[str, Any]:
+        """
+        Normalize a parameter entry into a dict meta:
+          - scalar -> {'value': scalar}
+          - [lo, hi] (numeric) -> {'bounds': (lo, hi)}
+          - {'range':[lo,hi]} or {'min':lo,'max':hi} -> {'bounds'lo,hi)} + pass-through other keys
+          - already dict -> pass-through (but normalize 'range'/'min'/'max' to 'bounds' if present)
+        We do NOT auto-rename keys like 'temperature_range' -> 'temperature'; the name is kept as-is.
+        """
+        meta: Dict[str, Any] = {}
+        # Plain dict -> copy and normalize keys
+        if isinstance(entry, dict):
+            meta.update(entry)
+            # normalize range/min/max into bounds
+            if "range" in meta and isinstance(meta["range"], (list, tuple)) and len(meta["range"]) == 2:
+                lo, hi = meta["range"]
+                if isinstance(lo, (int, float)) and isinstance(hi, (int, float)):
+                    meta.setdefault("bounds", (lo, hi))
+            if "min" in meta and "max" in meta and all(isinstance(meta[k], (int, float)) for k in ("min", "max")):
+                meta.setdefault("bounds", (meta["min"], meta["max"]))
+            return meta
+        # 2-length numeric list/tuple -> bounds
+        if isinstance(entry, (list, tuple)) and len(entry) == 2 and all(isinstance(x, (int, float)) for x in entry):
+            return {"bounds": (entry[0], entry[1])}
+        # scalar -> value
+        if isinstance(entry, (int, float, str, bool)):
+            return {"value": entry}
+        # unknown -> keep as-is in 'value' to not lose information
+        return {"value": entry}
+
+    def set_parameters(self, params: Dict[str, Any]):
+        """Register/update multiple parameters from JSON-friendly formats."""
+        # Accept dict (internal) or list (Trace-format). Manager calls this.
+        if isinstance(params, list):
+            self._init_parameters_from_config(params)
+        else:
+            self._parameters = dict(params or {})
+
+    def redefine_trainables(self, targets: List[Union[str, Dict[str, Any]]]):
+        """
+        Redefine the *set* of trainable parameters using a targets list from a
+        'type':'trace' modification. Items may be:
+          - "param.path" (string)
+          - {"parameters": "param.path", "info": {...}}  (merge/override info)
+          - {"parameter": "param.path", "info": {...}}   (accepted too)
+        If a target parameter does not exist yet, create it with trainable=True.
+        All parameters *not* in targets become trainable=False.
+        """
+        names: List[str] = []
+        for t in (targets or []):
+            if isinstance(t, str):
+                names.append(t)
+                self._parameters.setdefault(t, {})
+                self._parameters[t]["trainable"] = True
+            elif isinstance(t, dict):
+                p = t.get("parameters") or t.get("parameter") or t.get("name")
+                if not p:
+                    continue
+                names.append(p)
+                meta = self._parameters.setdefault(p, {})
+                meta["trainable"] = True
+                if isinstance(t.get("info"), dict):
+                    meta.setdefault("info", {}).update(t["info"])
+        # All others become non-trainable
+        for k in list(self._parameters.keys()):
+            if k not in names:
+                self._parameters[k].pop("trainable", None)
+                self._parameters[k]["trainable"] = False
+
+    def update_parameter(self, name: str, **kwargs):
+        """
+        Update a single parameter; accepts JSON-friendly shapes:
+          update_parameter('alpha', value=0.3, trainable=True) OR
+          update_parameter('temperature_range', range=[0.2,0.8])
+        """
+        slot = self._parameters.setdefault(name, {})
+        # If user provided a dict-like 'value' or 'range' directly in kwargs, coerce the whole shape
+        if set(kwargs.keys()) & {"value", "range", "min", "max", "bounds", "trainable", "description"}:
+            # Merge then normalize (so range/min/max → bounds)
+            slot.update(kwargs)
+            slot.update(self._coerce_param_entry(name, slot))
+        else:
+            slot.update({k: v for k, v in kwargs.items() if v is not None})
+
+   # ---- Lazy creation of a real Trace optimizer if requested ----
+    def _ensure_trace_obj(self):
+        """
+            If no trace_obj was provided at construction, try to build one lazily.
+            Supported:
+            - optimizer_kind in {'OPRO','OptoPrime','OptoPrimeV2','OptoPrimeMulti'}
+            - import_path like 'opto.optimizers.optoprime.OptoPrimeV2'
+            We will construct ParameterNode objects from the adapter's parameter registry
+            when the 'opto' package is available. If creation fails, we leave _trace_obj as None.
+            """
+        if self._trace_obj is not None:
+            return
+        cls = None
+        try:
+            if self._optimizer_kind:
+                from opto import optimizers
+                # Prefer official import paths (exported from opto.optimizers.__init__)
+                #mod = importlib.import_module("opto.optimizers")
+                kind = self._optimizer_kind.lower()
+                if kind == "opro": cls = optimizers.OPRO # getattr(mod, "OPRO")
+                elif kind == "optoprime": cls = optimizers.OptoPrime # getattr(mod, "OptoPrime")
+                elif kind == "optoprimev2": cls = optimizers.OptoPrimeV2 # getattr(mod, "OptoPrimeV2")
+                elif kind == "optoprimemulti": cls = optimizers.OptoPrimeMulti # getattr(mod, "OptoPrimeMulti")
+            elif self._import_path:
+                # import by path, e.g. 'opto.optimizers.optoprime.OptoPrimeV2'
+                mod_name, _, class_name = self._import_path.rpartition(".")
+                mod = importlib.import_module(mod_name)
+                cls = getattr(mod, class_name)
+        except Exception as e:
+            # could not import – leave fallback heuristic
+            return
+        if cls is None:
+            return
+
+        # Build ParameterNodes from registry if possible
+        try:
+            from opto import trace
+            ParameterNode =  trace.nodes.ParameterNode
+            params: List[Any] = []
+            for pname, meta in (self._parameters or {}).items():
+                # Handle different parameter specification formats
+                if isinstance(meta, ParameterNode):
+                    # Direct ParameterNode from Trace usage
+                    params.append(meta)
+                elif isinstance(meta, dict):
+                    # Dictionary specification (JSON config, test usage)
+                    m = dict(meta)
+                    val = m.get("value", None)
+                    trainable = bool(m.get("trainable", False))
+                    description = m.get("description")
+                    
+                    # Handle info/bounds for projections
+                    info = m.get("info")
+                    projections = m.get("projections", None)
+                    
+                    params.append(
+                        ParameterNode(
+                            val, name=pname, trainable=trainable, description=description, projections=projections, info=info
+                        )
+                     )
+                else:
+                    # Fallback: treat as value directly
+                    params.append(ParameterNode(meta, name=pname, trainable=False))
+            # Instantiate optimizer. We do NOT pass an LLM unless user supplied one; let Trace use its defaults.
+            kwargs = dict(self._optimizer_kwargs or {})
+            self._trace_obj = cls(parameters=params, **kwargs)
+        except Exception as e:
+            # If anything fails, keep fallback behavior
+            self._trace_obj = None
+
+    def _trace_to_edits(self, update_dict) -> List[Dict]:
+        """
+        Convert a Trace update_dict {ParameterNode: Any} to our 'edits' list
+        using 'trace.param.<py_name>.value' targets.
+        """
+        edits = []
+        try:
+            # ParameterNode has 'py_name' (see opto.trace.nodes.ParameterNode)
+            for pnode, new_val in (update_dict or {}).items():
+                try:
+                    name = getattr(pnode, "py_name", None) or str(pnode)
+                except Exception:
+                    name = str(pnode)
+                edits.append({"target": f"trace.param.{name}.value", "op": "set", "value": new_val})
+        except Exception:
+            pass
+        return edits
+
+    # -- Trace convenience wrappers ------------------------------------
+    def zero_feedback(self):
+        """Mirror Trace API: reset accumulated feedback on parameters."""
+        self._ensure_trace_obj()
+        if getattr(self._trace_obj, "zero_feedback", None):
+            self._trace_obj.zero_feedback()
+
+    def backward(self, node_or_param, feedback: str, **kwargs):
+        """Mirror Trace API: propagate feedback from a node/parameter."""
+        self._ensure_trace_obj()
+        if getattr(self._trace_obj, "backward", None):
+            return self._trace_obj.backward(node_or_param, feedback, **kwargs)
+
+    def parameters(self):
+        """Expose underlying ParameterNode list (if available)."""
+        self._ensure_trace_obj()
+        return list(getattr(self._trace_obj, "parameters", []) or [])
 
     def step(self, context: Dict, targets: List[str], n_candidates: int = 1, constraints: Dict = None) -> List[Dict]:
         """Return candidate patches. Each candidate is a dict {'edits': [ {'target':..., 'op':..., 'value':...}, ... ]}"""
         self._state["calls"] += 1
         # record an observation snapshot for debug/tracing - use per-optimizer observables
-        observables_to_use = self._observables or []
-        self._last_context_snapshot = {k: context.get(k) for k in observables_to_use if isinstance(k, str)}
 
         candidates = []
+        # (1) If we have a real trace optimizer object -> delegate or bridge to edits
+        if self._trace_obj is None:
+            # Try building one lazily if the user configured an optimizer_kind / import_path
+            self._ensure_trace_obj()
         if self._trace_obj:
             # If you plug a real Trace object, it should expose an API we call here.
             # We try to call a common name 'step' and expect a list-like reply; adapt as necessary.
-            raw = getattr(self._trace_obj, "step")(context=context, targets=targets, n_candidates=n_candidates, constraints=constraints)
+            # Branch 1: object exposes our adapter protocol (step returns edits)
+            if hasattr(self._trace_obj, "step") and "context" in getattr(self._trace_obj.step, "__code__", type("X",(object,),{})()).co_varnames:
+                raw = getattr(self._trace_obj, "step")(context=context, targets=targets, n_candidates=n_candidates, constraints=constraints)
+            else:
+                # Branch 2: it's a Trace Optimizer (see opto.optimizers.optimizer.Optimizer)
+                # Standard Trace loop: we assume backward() has been done upstream when needed.
+                # Apply the update (bypassing=False) and convert to edits.
+                try:
+                    update_dict = getattr(self._trace_obj, "step")(bypassing=False)
+                    raw = [{"edits": self._trace_to_edits(update_dict)}]
+                except Exception:
+                    raw = []
             if not isinstance(raw, list):
                 raw = [raw]
             for r in raw:
@@ -159,26 +384,12 @@ class _TraceOptimizerAdapter:
                 else:
                     # wrap an opaque candidate
                     candidates.append({"edits": [{"target": t, "op": "set", "value": f"<trace:{self.name}:candidate>"} for t in (targets or [])]})
+            with open("optimizer_trace_log.jsonl", "a", encoding="utf-8") as f:
+                for c in candidates:
+                    f.write(json.dumps({"optimizer": self.name, "edits": c.get("edits", []), "meta": c.get("meta", {}), "log": {"timestamp": datetime.now().isoformat()}}) + "\n")
             return candidates
 
-        # fallback heuristic: provide n_candidates simple safe edits
-        for ci in range(max(1, n_candidates)):
-            edits = []
-            for t in (targets or []):
-                if isinstance(t, str):
-                    if t.startswith("invoke.") and "temperature" in t:
-                        edits.append({"target": t, "op": "set", "value": max(0.0, min(1.0, 0.2 + 0.05 * ci))})
-                    elif t.startswith("invoke.") and "max_tokens" in t:
-                        edits.append({"target": t, "op": "set", "value": int(256 + 20 * ci)})
-                    elif t in ("user_message", "system_prompt"):
-                        edits.append({"target": t, "op": "append", "value": f"\n\n[TRACE_OPT:{self.name}:{ci}]"})
-                    else:
-                        edits.append({"target": t, "op": "set", "value": f"<trace:{self.name}:{ci}>"})
-                else:
-                    # non-string target: ignore
-                    continue
-            candidates.append({"edits": edits, "meta": {"optimizer": self.name, "candidate_idx": ci}})
-        return candidates
+        raise NotImplementedError("No valid trace optimizer found")
 
 class DynamicConfigManager:
     """Manages dynamic LLM configuration based on rules and triggers"""
@@ -198,13 +409,8 @@ class DynamicConfigManager:
         }
         self._call_history = []
         # -----------------------
-        # Extended state for Trace, optimizables, observables and feedback
+        # # Extended state for Trace and feedback
         # -----------------------
-        # list of registered optimizable targets (strings / callables / tuples)
-        self._optimizables: List[Union[str, Callable, Tuple]] = []
-        # list of registered observables (similar format)
-        self._observables: List[Union[str, Callable, Tuple]] = []
-        # persistent trace optimizers by name
         self._trace_optimizers: Dict[str, _TraceOptimizerAdapter] = {}
         # in-memory records used by collect_feedback() and offline H2
         self._records: List[Dict] = []
@@ -215,7 +421,6 @@ class DynamicConfigManager:
                 self.register_trace_optimizer(name, tconf)
             except Exception:
                 self.logger.exception("Failed to register trace optimizer from config")
-        
     def evaluate_triggers(self, context: Dict, phase: str = 'pre_inference') -> Dict:
         """Evaluate all triggers and return modifications to apply"""
         modifications = {}
@@ -263,22 +468,43 @@ class DynamicConfigManager:
                                 # create a basic adapter for this name, allow user to replace with real Trace later
                                 adapter = _TraceOptimizerAdapter(opt_name, m.get("config", {}))
                                 self._trace_optimizers[opt_name] = adapter
-                            # Only apply per-modification lists if they were not explicitly overridden via setters
-                            if "observables" in (m or {}) and not getattr(adapter, "_observables_overridden", False):
-                                adapter._observables = list(m.get("observables") or [])
-                            if "optimizables" in (m or {}) and not getattr(adapter, "_optimizables_overridden", False):
-                                adapter._optimizables = list(m.get("optimizables") or [])
+                            # Optional: redefine the trainable parameter set from 'targets'
+                            targets_spec = m.get("targets") or []
+                            if targets_spec:
+                                try:
+                                    adapter.redefine_trainables(targets_spec)
+                                except Exception:
+                                    self.logger.exception("Failed to redefine trainables from 'targets'")
+                            # Extract plain target names to forward to the optimizer
+                            targets: List[str] = []
+                            for t in (targets_spec or []):
+                                if isinstance(t, str):
+                                    targets.append(t)
+                                elif isinstance(t, dict):
+                                    nm = t.get("parameters") or t.get("parameter") or t.get("name")
+                                    if nm:
+                                        targets.append(nm)
 
-                            targets = m.get("targets") or self._optimizables or m.get("optimizable_targets", [])
+                            
                             n_candidates = int(m.get("n_candidates", 1))
                             try:
-                                candidates = adapter.step(context=context, targets=list(targets), n_candidates=n_candidates, constraints=m.get("constraints"))
-                                # ---- NEW: pass a 'trace_spec' (objective + parameters) to the optimizer ----
+                                # pass a 'trace_spec' (objective + parameters) to the optimizer
                                 ctx_for_trace = dict(context)
                                 ctx_for_trace["trace_spec"] = adapter.get_trace_spec()
-                                candidates = adapter.step(context=ctx_for_trace, targets=list(targets), n_candidates=n_candidates, constraints=m.get("constraints"))
+                                # --- NEW: standard Trace loop (online) when we're at the right phase
+                                fb_cfg = m.get("feedback") or {"use": "collect_feedback", "at": "post_inference"}
+                                if phase == fb_cfg.get("at", "post_inference"):
+                                    try:
+                                        adapter.zero_feedback()
+                                        fb_text = self._render_feedback_text(context, fb_cfg)
+                                        for p in adapter.parameters():
+                                            if getattr(p, "trainable", False):
+                                                adapter.backward(p, fb_text)
+                                    except Exception:
+                                        self.logger.exception("Trace backward failed (H1)")
+                                candidates = adapter.step(context=ctx_for_trace, targets=targets, n_candidates=n_candidates, constraints=m.get("constraints"))
 
-                            except Exception:
+                            except Exception as e:
                                 self.logger.exception("Trace optimizer step failed; skipping optimizer modification")
                                 candidates = []
                             # If Trace returns candidates, pick the first by default (Trace-as-Advisor). UI/human-in-loop can override later.
@@ -373,6 +599,36 @@ class DynamicConfigManager:
             self._call_history.pop(0)
             
         return modifications
+
+    # ---- helper to prepare feedback text ---------------------------------
+    def _render_feedback_text(self, context: Dict, fb_cfg: Dict) -> str:
+        """
+        Build a textual feedback signal for Trace from available sources.
+        Supported fb_cfg:
+           {"use": "collect_feedback", "at": "post_inference"} (default)
+           {"use": "context_key", "key": "trace.feedback_path", "at": "..."}
+           {"use": "literal", "text": "..."}
+        """
+        mode = (fb_cfg or {}).get("use", "collect_feedback")
+        if mode == "literal":
+            return str(fb_cfg.get("text", "")).strip() or "No feedback"
+        if mode == "context_key":
+            key = fb_cfg.get("key", "")
+            # dotted path lookup
+            cur = context
+            for part in key.split("."):
+                if not part:
+                    continue
+                cur = (cur or {}).get(part) if isinstance(cur, dict) else getattr(cur, part, None)
+            return str(cur or "No feedback")
+        # default: collect & merge manager’s feedback records
+        items = self.collect_feedback(context)
+        lines = []
+        for it in items:
+            if "content" in it: lines.append(str(it["content"]))
+            elif "diff" in it:  lines.append(str(it["diff"]))
+            elif "metrics" in it: lines.append(str(it["metrics"]))
+        return "\n\n".join(l for l in lines if l).strip() or "No feedback"
 
     # -------------------------
     # small dict path helpers
@@ -522,32 +778,6 @@ class DynamicConfigManager:
         else:
             return False
 
-    # ---------------------------
-    # Additional utility API
-    # ---------------------------
-    def set_optimizable(self, targets: List[Union[str, callable, tuple]]):
-        """Register optimizable targets (strings, callables, or ('attr', obj, 'path') tuples)."""
-        self._optimizables = list(targets or [])
-
-    def set_optimizer_optimizables(self, optimizer_name: str, targets: List[Union[str, callable, tuple]]):
-        """Set optimizables specifically for a given optimizer (by name)."""
-        adapter = self._trace_optimizers.get(optimizer_name)
-        if not adapter:
-            raise KeyError(f"No optimizer registered with name {optimizer_name!r}")
-        adapter._optimizables = list(targets or [])
-        adapter._optimizables_overridden = True
-
-    def set_observables(self, targets: List[Union[str, callable, tuple]]):
-        """Register observables that Trace/optimizers may inspect."""
-        self._observables = list(targets or [])
-
-    def set_optimizer_observables(self, optimizer_name: str, targets: List[Union[str, callable, tuple]]):
-        """Set observables specifically for a given optimizer (by name)."""
-        adapter = self._trace_optimizers.get(optimizer_name)
-        if not adapter:
-            raise KeyError(f"No optimizer registered with name {optimizer_name!r}")
-        adapter._observables = list(targets or [])
-        adapter._observables_overridden = True
 
     # ---- NEW: helpers to configure objective/parameters programmatically ----
     def set_optimizer_objective(self, optimizer_name: str, objective: Optional[str]):
@@ -562,7 +792,7 @@ class DynamicConfigManager:
             raise KeyError(f"No optimizer registered with name {optimizer_name!r}")
         adapter.update_parameter(name, **kwargs)
 
-    def set_optimizer_parameters(self, optimizer_name: str, params: Dict[str, Dict[str, Any]]):
+    def set_optimizer_parameters(self, optimizer_name: str, params: Union[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]):
         adapter = self._trace_optimizers.get(optimizer_name)
         if not adapter:
             raise KeyError(f"No optimizer registered with name {optimizer_name!r}")
@@ -685,14 +915,7 @@ class DynamicConfigManager:
             if config and "trace_obj" in config:
                 self._trace_optimizers[name]._trace_obj = config["trace_obj"]
             return name
-        adapter = _TraceOptimizerAdapter(name, config or {})
-        # if config declares observables/optimizables, ensure they're set on adapter
-        if config:
-            if "observables" in config:
-                adapter._observables = list(config.get("observables") or [])
-            if "optimizables" in config:
-                adapter._optimizables = list(config.get("optimizables") or [])
-        self._trace_optimizers[name] = adapter
+        self._trace_optimizers[name] = _TraceOptimizerAdapter(name, config or {})
         return name
 
     def list_trace_optimizers(self) -> List[str]:
@@ -767,10 +990,19 @@ class DynamicConfigManager:
             adapter = _TraceOptimizerAdapter(name, {})
             self._trace_optimizers[name] = adapter
 
-        trgts = list(targets or self._optimizables or [])
+        trgts = list(targets or [])
         try:
             # Provide the optimizer a stable spec (variables/objective) even when no graph exists
             ctx["trace_spec"] = adapter.get_trace_spec()
+            # --- NEW: standard Trace offline loop (H2) using aggregated feedback ---
+            adapter.zero_feedback()
+            fb_text = self._render_feedback_text(ctx, {"use": "collect_feedback"})  # reuse ordering of records
+            for p in adapter.parameters():
+                if getattr(p, "trainable", False):
+                    try:
+                        adapter.backward(p, fb_text)
+                    except Exception:
+                        self.logger.exception("Trace backward failed (H2)")
             cands = adapter.step(context=ctx, targets=trgts, n_candidates=int(n_candidates), constraints=constraints)
 
         except Exception:
@@ -2991,6 +3223,7 @@ class HumanLLM:
           - 'iterative_alternatives'
           or fallback to the original concurrency-based parallel calls (default).
         """
+        current_kwargs = locals()
         if temperature_min is None: temperature_min = self.temperature_min
         if temperature_max is None: temperature_max = self.temperature_max
 
@@ -3180,7 +3413,7 @@ class HumanLLM:
         self.unidentified_option_counts = {'TOTAL': 0, 'SELECTION': 0}
         self.mode = None
         call_start_time = time.time()
-
+        
         # Build initial context for dynamic config
         eval_context = {
             'agent_name': self.agent_name,
@@ -3190,7 +3423,8 @@ class HumanLLM:
             'phase': 'pre_inference',
             'num_parallel_inferences': self.num_parallel_inferences,
             'temperature_min': temperature_min or self.temperature_min,
-            'temperature_max': temperature_max or self.temperature_max
+            'temperature_max': temperature_max or self.temperature_max,
+            'kwargs' : current_kwargs
         }
 
         while True:
@@ -3209,10 +3443,26 @@ class HumanLLM:
                 mods = self.dynamic_mgr.evaluate_triggers(eval_context, phase='pre_inference')
                 if mods:
                     self._apply_modifications(mods, eval_context, phase='pre_inference')
+        
+
                     # Reflect potential message edits from dynamic mods into local variables
                     user_message = eval_context.get('user_message', user_message)
                     if eval_context.get('system_prompt'):
                         self.system_prompt = eval_context['system_prompt']
+            # === H2: record minimal outcome metrics for offline optimization ===
+            try:
+                if getattr(self, "dynamic_mgr", None):
+                    self.dynamic_mgr.record_outcome(
+                        context=eval_context,
+                        modifications=eval_context.get("dynamic_modifications") or {},
+                        outcome_metrics={"inference_time": eval_context.get("inference_time"),
+                                            "n_outputs": len(llm_outputs) if llm_outputs else 0,
+                                            "phase": "post_inference"}
+                    )
+            except Exception:
+                self.logger.debug("record_outcome failed", exc_info=True)
+                
+                
             # Automation short-circuits
             if self.automation in ['before', 'after', 'skip_once']:
                 # Possibly skip or read from saved_task ...

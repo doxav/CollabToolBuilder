@@ -70,8 +70,8 @@ class H1TraceLike(_TraceOptimizerAdapter):
             return super().step(context=context, targets=targets, n_candidates=n_candidates, constraints=constraints)
 
         self._state["calls"] += 1
-        # Capture declared observables (only simple keys here)
-        self._last_context_snapshot = {k: context.get(k) for k in (self._observables or []) if isinstance(k, str)}
+
+
         # A single candidate with edits over multiple surfaces:
         edits = [
             # Upcoming execution knobs
@@ -98,7 +98,6 @@ class H2TraceLike(_TraceOptimizerAdapter):
     """
     def step(self, context: Dict, targets: List[str], n_candidates: int = 1, constraints=None) -> List[Dict]:
         self._state["calls"] += 1
-        self._last_context_snapshot = {k: context.get(k) for k in (self._observables or []) if isinstance(k, str)}
         edits = [
             {"target": "invoke.num_parallel_inferences", "op": "set", "value": 2},
             {"target": "config.help_offline.rules.history.lookback", "op": "set", "value": 5},
@@ -120,9 +119,8 @@ def manager():
             "rules": {},  # Always fire for tests
             "modifications": [
                 # H1 advisor: call our trace-like optimizer
-                {"type": "trace", "optimizer": "h1", "targets": [], "n_candidates": 1,
-                 "observables": ["system_prompt", "user_message", "trace.node.external_sensor"],
-                 "optimizables": ["invoke.num_parallel_inferences", "dynamic_llm_config.generation_techniques"]}
+                {"type": "trace", "optimizer": "h1", "targets": [], "n_candidates": 1}
+
             ],
         },
         "help_offline": {
@@ -130,16 +128,15 @@ def manager():
             "rules": {},  # Always fire for tests
             "modifications": [
                 # H2 job: called after inference (or via explicit post phase)
-                {"type": "trace", "optimizer": "h2", "targets": [], "n_candidates": 1,
-                 "observables": ["trace.node.run_metric", "user_message"],
-                 "optimizables": ["invoke.num_parallel_inferences"]}
+                {"type": "trace", "optimizer": "h2", "targets": [], "n_candidates": 1}
+
             ],
         },
     }
     m = DynamicConfigManager(cfg, DummyUsageTracker(), default_config={})
     # Register persistent adapters under the names referenced above
-    m._trace_optimizers["h1"] = H1TraceLike("h1", {"observables": ["system_prompt", "user_message", "trace.node.external_sensor"]})
-    m._trace_optimizers["h2"] = H2TraceLike("h2", {"observables": ["trace.node.run_metric", "user_message"]})
+    m._trace_optimizers["h1"] = H1TraceLike("h1", {})
+    m._trace_optimizers["h2"] = H2TraceLike("h2", {})
     return m
 
 
@@ -174,11 +171,7 @@ def test_h1_online_end_to_end(manager):
     conf_eval = manager.rule_evaluators.get("confidence")
     assert callable(conf_eval) and conf_eval({}, {}) is True
 
-    # 5) Observables snapshot contains declared vars (including external trace node)
-    h1_adapter = manager._trace_optimizers["h1"]
-    snap = getattr(h1_adapter, "_last_context_snapshot", {})
-    assert snap.get("system_prompt") == "SYSTEM: base"
-    assert "trace.node.external_sensor" in snap and isinstance(snap["trace.node.external_sensor"], dict)
+
 
 
 # -------------------------
@@ -233,29 +226,6 @@ def test_evaluator_swap_affects_rule_decisions(manager):
     assert "invoke_kwargs" in mods
 
 
-# ---------------------------------------------------
-# Per-optimizer observables/optimizables configuration
-# ---------------------------------------------------
-def test_per_optimizer_observables_and_optimizables(manager):
-    # Update h1 adapter’s per-optimizer sets
-    manager.set_optimizer_observables("h1", ["system_prompt", "trace.node.external_sensor"])
-    manager.set_optimizer_optimizables("h1", ["invoke.num_parallel_inferences", "invoke.temperature_max"])
-
-    # Re-run H1; ensure snapshot respects the new list and invoke knobs still apply
-    ctx = {
-        "user_message": "observe limited set",
-        "system_prompt": "SYS",
-        "trace.node.external_sensor": {"level": 9}
-    }
-    mods = manager.evaluate_triggers(ctx, phase="pre_inference")
-
-    # knobs present
-    ivk = mods.get("invoke_kwargs") or {}
-    assert ivk.get("num_parallel_inferences") == 3 and ivk.get("temperature_max") == 0.85
-
-    # snapshot matches new observables
-    snap = getattr(manager._trace_optimizers["h1"], "_last_context_snapshot", {})
-    assert set(snap.keys()) == {"system_prompt", "trace.node.external_sensor"}
 
 def test_legacy_modifications_dict_path(manager):
     manager.config["help_legacy"] = {
@@ -310,7 +280,7 @@ class TestTraceDynamicConfig(unittest.TestCase):
 
     def test_h1_temperature_mapping(self):
         mgr = self._mgr(plug_trace=True)
-        ctx = {"user_message": "Hi", "invoke_kwargs": {}}
+        ctx = {"user_message": "Hi", "invoke_kwargs": {"temperature": 0.13}}
         mods = mgr.evaluate_triggers(ctx, phase="pre_inference")
         # Apply with a lightweight HumanLLM shell (bypass heavy __init__)
         h = HumanLLM.__new__(HumanLLM)
@@ -556,9 +526,11 @@ def test_trace_objective_and_parameter_roundtrip():
         "trace_optimizers": [{
             "name": "opt1",
             "objective": "maximize score",
-            "parameters": {
-                "alpha": {"value": 0.2, "trainable": True, "description": "init"},
-            },
+            "parameters": [
+                {"parameter": "alpha", "value": 0.2, "trainable": True, "description": "init"},
+                # also allow non-trainable parameters used as context (e.g., prompts)
+                {"parameter": "system_prompt", "description": "System prompt"},
+            ],
             "trace_obj": trace,
         }],
         "hook": {
@@ -656,3 +628,75 @@ def test_manager_helpers_update_objective_and_parameters():
     assert spec["parameters"]["beta"]["value"] == 0.8
     assert spec["parameters"]["beta"]["trainable"] is True
     assert spec["parameters"]["beta"]["description"] == "exploration factor"
+    
+def test_targets_redefines_trainables_and_merges_info():
+    """'targets' should redefine the trainable set and allow per-call info overrides."""
+    class EchoTargets(_TraceOptimizerAdapter):
+        def step(self, context, targets, n_candidates=1, constraints=None):
+            # assert that we only see the two extracted names
+            assert targets == ["invoke.num_parallel_inferences"]
+            return [{"edits": [{"target": "invoke.num_parallel_inferences", "op": "set", "value": 4}]}]
+    mgr = _make_mgr({
+        "trace_optimizers": [{
+            "name": "inference_tuner",
+            "parameters": [
+                {"parameter": "invoke.num_parallel_inferences", "trainable": False, "info": {"bounds": [1, 3]}},
+                {"parameter": "invoke.temperature", "trainable": True}
+            ],
+        }],
+        "hook": {
+            "phase": "pre_inference",
+            "rules": {},
+            "modifications": [{
+                "type": "trace",
+                "optimizer": "inference_tuner",
+                "targets": [{"parameters": "invoke.num_parallel_inferences", "info": {"bounds": [2, 4]}}],
+            }]
+        }
+    })
+    tuner = EchoTargets("inference_tuner", mgr.config["trace_optimizers"][0])
+    mgr._trace_optimizers["inference_tuner"] = tuner
+    mods = mgr.evaluate_triggers({"user_message": "x"}, phase="pre_inference")
+    assert (mods.get("invoke_kwargs") or {}).get("num_parallel_inferences") == 4
+    
+# ---------------------------------------------------
+# Per-optimizer parameters & targets configuration
+# (kept old name for continuity with previous suite)
+# ---------------------------------------------------
+def test_per_optimizer_observables_and_optimizables(manager):
+    """
+    Adapted:
+      - configure per-optimizer *parameters* (not observables/optimizables),
+      - then use a 'trace' modification 'targets' to redefine trainables and merge 'info'.
+    """
+    # Seed h1 with two parameters: one non-trainable (with bounds), one trainable
+    manager.set_optimizer_parameters("h1", [
+        {"parameter": "invoke.num_parallel_inferences", "trainable": False, "info": {"bounds": [1, 3]}},
+        {"parameter": "invoke.temperature_max", "trainable": True},
+    ])
+    # For this test, we want the pre_inference trace call to *target only* num_parallel_inferences
+    hook = manager.config.get("help_online") or manager.config.get("annotations_help_trace_PRE") or {}
+    assert hook, "pre_inference hook not found"
+    mod0 = hook["modifications"][0]
+    mod0["targets"] = [{"parameters": "invoke.num_parallel_inferences", "info": {"bounds": [2, 4]}}]
+
+    # Run
+    ctx = {"user_message": "observe limited set", "system_prompt": "SYS"}
+    mods = manager.evaluate_triggers(ctx, phase="pre_inference")
+
+    # The H1TraceLike stub sets both knobs; we verify candidate effects still apply
+    ivk = mods.get("invoke_kwargs") or {}
+    assert ivk.get("num_parallel_inferences") == 3
+    assert ivk.get("temperature_max") == 0.85
+
+    # Validate that 'targets' redefined trainables and merged info on the adapter
+    h1 = manager._trace_optimizers["h1"]
+    spec = h1.get_trace_spec()
+    params = spec["parameters"]
+    # num_parallel_inferences: now trainable, with widened bounds [2,4]
+    assert params["invoke.num_parallel_inferences"]["trainable"] is True
+    bounds = params["invoke.num_parallel_inferences"].get("info", {}).get("bounds")
+    # tolerate tuple/list representation
+    assert tuple(bounds) == (2, 4)
+    # temperature_max: should become non-trainable (not in 'targets')
+    assert params["invoke.temperature_max"]["trainable"] is False
