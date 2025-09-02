@@ -33,3 +33,5 @@ storm/
 goto_output/
 AI-Scientist-v2/
 NewTrace/
+
+human_llm_vectordb
