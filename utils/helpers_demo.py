@@ -14,7 +14,7 @@ from langchain_community.document_loaders import WikipediaLoader
 
 from pydantic import BaseModel, Field
 
-llm_custom = ChatOpenAI(model=MODELS_CONFIG_LIST["code_gpt"] if MODELS_CONFIG_LIST else "gpt-4o-mini-2024-07-18", temperature=.0)
+llm_custom = ChatOpenAI(model=MODELS_CONFIG_LIST["code_gpt"] if MODELS_CONFIG_LIST else "gpt-4.1-nano", temperature=.0)
 
 class SearchQuery(BaseModel):
     """

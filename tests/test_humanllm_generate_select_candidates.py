@@ -123,13 +123,13 @@ def human_llm_instance(vectordb_backend):
     # Setup LLM chains (using lightweight models for testing)
     llm_chains = {
         "default_llm": ChatOpenAI(
-            model="gpt-4o-mini-2024-07-18",
+            model="gpt-4.1-nano",
             temperature=0.0,
             max_tokens=4096,
             cache=False
         ),
         "premium_llm": ChatOpenAI(
-            model="gpt-4o-mini-2024-07-18", 
+            model="gpt-4.1-nano", 
             temperature=0.0,
             max_tokens=4096,
             cache=False

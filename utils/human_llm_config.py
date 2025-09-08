@@ -105,7 +105,7 @@ class HumanLLMConfig:
             # Default, if not precised, we take GPT from OpenAI.
             return {
                 "default_llm": ChatOpenAI(
-                    model_name="gpt-4o-mini-2024-07-18",
+                    model_name="gpt-4.1-nano",
                     cache=False,
                     temperature=0.
                 ),
@@ -115,18 +115,18 @@ class HumanLLMConfig:
                     temperature=0.
                 ),
                 # "coder_llm": ChatOpenAI(
-                #     model_name="gpt-4o-mini-2024-07-18",
+                #     model_name="gpt-4.1-nano",
                 #     cache=False,
                 #     temperature=0.
                 # ),
                 "3_majority_chain": create_Nmajority_chain(
-                    map_model_name="gpt-4o-mini-2024-07-18",
-                    reduce_model_name="gpt-4o-mini-2024-07-18",
+                    map_model_name="gpt-4.1-nano",
+                    reduce_model_name="gpt-4.1-nano",
                     num_models=3
                 ),
                 "10_majority_chain": create_Nmajority_chain(
-                    map_model_name="gpt-4o-mini-2024-07-18",
-                    reduce_model_name="gpt-4o-mini-2024-07-18",
+                    map_model_name="gpt-4.1-nano",
+                    reduce_model_name="gpt-4.1-nano",
                     num_models=10
                 )
             }

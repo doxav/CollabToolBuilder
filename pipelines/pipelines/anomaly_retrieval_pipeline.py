@@ -124,7 +124,7 @@ class Pipeline:
 
         response = openai.chat.completions.create(
            
-            model="gpt-4o-mini-2024-07-18",
+            model="gpt-4.1-nano",
             messages=[
                 {"role": "system", "content": "You are an expert at providing solutions for software anomalies."},
                 {"role": "user", "content": prompt}

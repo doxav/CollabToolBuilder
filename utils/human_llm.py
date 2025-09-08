@@ -1072,7 +1072,7 @@ class HumanLLM:
         if llmORchains_list is None:
             raise ValueError("llmORchains_list must be provided")
         self.llmORchains_list = llmORchains_list
-        self.temperature_min = temperature_min
+        self.temperature_min = temperature_min or 0.
         self.temperature_max = temperature_max if temperature_max else max(temperature_min or 1., 1.)
         self.prompt_critic = prompt_critic
         self.system_prompt = system_prompt
@@ -3245,6 +3245,7 @@ class HumanLLM:
                 func = default_llm_function if not func_calling else self.invoke_with_function_call
 
             # Override temperature if provided
+            if "gpt-5" in func.model_name: temperature = 1.
             if temperature or temperature == 0:
                 func = func.with_config(configurable={"llm_temperature": temperature})
                 print(f"Temperature set to {temperature}")
@@ -3423,7 +3424,7 @@ class HumanLLM:
             'system_prompt': system_prompt_template or self.system_prompt,
             'phase': 'pre_inference',
             'num_parallel_inferences': self.num_parallel_inferences,
-            'temperature_min': temperature_min or self.temperature_min,
+            'temperature_min': temperature_min or self.temperature_min or 0.,
             'temperature_max': temperature_max or self.temperature_max,
             'kwargs' : current_kwargs
         }
@@ -3566,7 +3567,7 @@ class HumanLLM:
                                     function_calling,
                                     (   (temperature_min + i * (temperature_max - temperature_min) / (self.num_parallel_inferences - 1))
                                         if (temperature_min is not None and self.num_parallel_inferences > 1 and temperature_min >= 0.)
-                                        else None),
+                                        else temperature_min),
                                     stream_output,
                                     i
                                 )
