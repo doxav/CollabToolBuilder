@@ -140,12 +140,13 @@ class _TraceOptimizerAdapter:
         if isinstance(items, list):
             for entry in items:
                 if isinstance(entry, str):
-                    self._parameters[entry] = {"parameter": entry}
+                    self._parameters[entry] = {"parameter": entry, "trainable": True}
                 elif isinstance(entry, dict):
                     name = entry.get("name") or entry.get("parameter")
                     if not name:
                         continue
                     meta = {k: entry[k] for k in ("value", "trainable", "description", "projections", "info","parameter") if k in entry}
+                    if not meta.get("trainable"): meta["trainable"] = True
                     self._parameters[name] = meta
         elif isinstance(items, dict):
             # (No backward support required; keep minimal tolerance for accidental dicts)
@@ -474,7 +475,18 @@ class DynamicConfigManager:
                                     adapter.redefine_trainables(targets_spec)
                                 except Exception:
                                     self.logger.exception("Failed to redefine trainables from 'targets'")
-                            # Extract plain target names to forward to the optimizer
+                            else:
+                                # If no targets provided, fallback to the optimizer's default trainables.
+                                try:
+                                    spec = adapter.get_trace_spec()  # {'parameters': {...}}
+                                    pmeta = (spec or {}).get("parameters", {}) or {}
+                                    has_trainables = any(bool((pmeta[k] or {}).get("trainable")) for k in pmeta.keys())
+                                    if not has_trainables and pmeta:
+                                        # Promote all declared params to trainable as the default set
+                                        adapter.redefine_trainables(list(pmeta.keys()))
+                                except Exception:
+                                    self.logger.exception("Failed applying default-trainables fallback")
+                            # Extract plain target names to forward to the optimizer (for wrapper-only)
                             targets: List[str] = []
                             for t in (targets_spec or []):
                                 if isinstance(t, str):
