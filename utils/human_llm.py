@@ -146,7 +146,7 @@ class _TraceOptimizerAdapter:
                     if not name:
                         continue
                     meta = {k: entry[k] for k in ("value", "trainable", "description", "projections", "info","parameter") if k in entry}
-                    if not meta.get("trainable"): meta["trainable"] = True
+                    if "trainable" not in meta: meta["trainable"] = True
                     self._parameters[name] = meta
         elif isinstance(items, dict):
             # (No backward support required; keep minimal tolerance for accidental dicts)
