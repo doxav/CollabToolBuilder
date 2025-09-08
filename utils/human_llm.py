@@ -245,7 +245,7 @@ class _TraceOptimizerAdapter:
             slot.update({k: v for k, v in kwargs.items() if v is not None})
 
    # ---- Lazy creation of a real Trace optimizer if requested ----
-    def _ensure_trace_obj(self):
+    def _ensure_trace_obj(self, current_kwargs: Dict[str, Any]):
         """
             If no trace_obj was provided at construction, try to build one lazily.
             Supported:
@@ -281,6 +281,7 @@ class _TraceOptimizerAdapter:
         # Build ParameterNodes from registry if possible
         try:
             from opto import trace
+            from opto.utils.llm import LLM
             ParameterNode =  trace.nodes.ParameterNode
             params: List[Any] = []
             for pname, meta in (self._parameters or {}).items():
@@ -289,16 +290,15 @@ class _TraceOptimizerAdapter:
                     # Direct ParameterNode from Trace usage
                     params.append(meta)
                 elif isinstance(meta, dict):
-                    # Dictionary specification (JSON config, test usage)
+                    pname = pname.split(".")[-1]  # use last part as py_name
                     m = dict(meta)
-                    val = m.get("value", None)
+                    val = m.get("value", current_kwargs.get(pname, None))
                     trainable = bool(m.get("trainable", False))
                     description = m.get("description")
                     
                     # Handle info/bounds for projections
                     info = m.get("info")
                     projections = m.get("projections", None)
-                    
                     params.append(
                         ParameterNode(
                             val, name=pname, trainable=trainable, description=description, projections=projections, info=info
@@ -309,7 +309,7 @@ class _TraceOptimizerAdapter:
                     params.append(ParameterNode(meta, name=pname, trainable=False))
             # Instantiate optimizer. We do NOT pass an LLM unless user supplied one; let Trace use its defaults.
             kwargs = dict(self._optimizer_kwargs or {})
-            self._trace_obj = cls(parameters=params, **kwargs)
+            self._trace_obj = cls(parameters=params, objective=self._objective, **kwargs)
         except Exception as e:
             # If anything fails, keep fallback behavior
             self._trace_obj = None
@@ -333,21 +333,21 @@ class _TraceOptimizerAdapter:
         return edits
 
     # -- Trace convenience wrappers ------------------------------------
-    def zero_feedback(self):
+    def zero_feedback(self,current_kwargs: Dict[str, Any] = None):
         """Mirror Trace API: reset accumulated feedback on parameters."""
-        self._ensure_trace_obj()
+        self._ensure_trace_obj(current_kwargs=current_kwargs)
         if getattr(self._trace_obj, "zero_feedback", None):
             self._trace_obj.zero_feedback()
 
-    def backward(self, node_or_param, feedback: str, **kwargs):
+    def backward(self, node_or_param, feedback: str, current_kwargs: Dict[str, Any] = None, **kwargs):
         """Mirror Trace API: propagate feedback from a node/parameter."""
-        self._ensure_trace_obj()
+        self._ensure_trace_obj(current_kwargs=current_kwargs)
         if getattr(self._trace_obj, "backward", None):
             return self._trace_obj.backward(node_or_param, feedback, **kwargs)
 
-    def parameters(self):
+    def parameters(self,current_kwargs: Dict[str, Any] = None) -> List[Any]:
         """Expose underlying ParameterNode list (if available)."""
-        self._ensure_trace_obj()
+        self._ensure_trace_obj(current_kwargs=current_kwargs)
         return list(getattr(self._trace_obj, "parameters", []) or [])
 
     def step(self, context: Dict, targets: List[str], n_candidates: int = 1, constraints: Dict = None) -> List[Dict]:
@@ -356,10 +356,9 @@ class _TraceOptimizerAdapter:
         # record an observation snapshot for debug/tracing - use per-optimizer observables
 
         candidates = []
-        # (1) If we have a real trace optimizer object -> delegate or bridge to edits
-        if self._trace_obj is None:
-            # Try building one lazily if the user configured an optimizer_kind / import_path
-            self._ensure_trace_obj()
+
+        self._ensure_trace_obj(current_kwargs=context.get("kwargs", {}))
+        self._trace_obj
         if self._trace_obj:
             # If you plug a real Trace object, it should expose an API we call here.
             # We try to call a common name 'step' and expect a list-like reply; adapt as necessary.
@@ -373,7 +372,7 @@ class _TraceOptimizerAdapter:
                 try:
                     update_dict = getattr(self._trace_obj, "step")(bypassing=False)
                     raw = [{"edits": self._trace_to_edits(update_dict)}]
-                except Exception:
+                except Exception as e:
                     raw = []
             if not isinstance(raw, list):
                 raw = [raw]
@@ -493,13 +492,14 @@ class DynamicConfigManager:
                                 ctx_for_trace["trace_spec"] = adapter.get_trace_spec()
                                 # --- NEW: standard Trace loop (online) when we're at the right phase
                                 fb_cfg = m.get("feedback") or {"use": "collect_feedback", "at": "post_inference"}
-                                if phase == fb_cfg.get("at", "post_inference"):
+                                # if phase == fb_cfg.get("at", "post_inference"):
+                                if True:
                                     try:
-                                        adapter.zero_feedback()
+                                        adapter.zero_feedback(current_kwargs=context.get("kwargs", {}))
                                         fb_text = self._render_feedback_text(context, fb_cfg)
                                         for p in adapter.parameters():
                                             if getattr(p, "trainable", False):
-                                                adapter.backward(p, fb_text)
+                                                adapter.backward(p, fb_text, current_kwargs=context.get("kwargs", {}))
                                     except Exception:
                                         self.logger.exception("Trace backward failed (H1)")
                                 candidates = adapter.step(context=ctx_for_trace, targets=targets, n_candidates=n_candidates, constraints=m.get("constraints"))
@@ -3415,6 +3415,7 @@ class HumanLLM:
         call_start_time = time.time()
         
         # Build initial context for dynamic config
+        current_kwargs["num_parallel_inferences"] = self.num_parallel_inferences
         eval_context = {
             'agent_name': self.agent_name,
             'function_name': inspect.stack()[1].function,
