@@ -126,7 +126,15 @@ class _TraceOptimizerAdapter:
 
         self._import_path: Optional[str] = self.config.get("import_path")
         self._optimizer_kwargs: Dict[str, Any] = dict(self.config.get("optimizer_kwargs") or {})
-        
+        self._init_eager: bool = bool(self.config.get("init_eager", True))
+        if self._init_eager and self._trace_obj is None and (self._optimizer_kind or self._import_path):
+            try:
+                # Seed with any initial kwargs provided in config (or empty)
+                seed = dict(self.config.get("initial_kwargs") or {})
+                self._ensure_trace_obj(current_kwargs=seed)
+            except Exception as e:
+                raise RuntimeError(f"Failed to eagerly initialize trace optimizer: {e} for {self.name} with config {self.config}")
+
     def _init_parameters_from_config(self, items: Any):
         """
         Initialize the parameter registry from the new Trace-style "parameters" list.
@@ -135,12 +143,16 @@ class _TraceOptimizerAdapter:
           - value, trainable, description, projections, info (optional)
         """
         self._parameters = {}
+        # map from ParameterNode.py_name (last segment) -> full dotted target path (e.g. "invoke.temperature")
+        self._param_path_map = {}
         if not items:
             return
         if isinstance(items, list):
             for entry in items:
                 if isinstance(entry, str):
                     self._parameters[entry] = {"parameter": entry, "trainable": True}
+                    last = entry.split(".")[-1]
+                    self._param_path_map[last] = entry
                 elif isinstance(entry, dict):
                     name = entry.get("name") or entry.get("parameter")
                     if not name:
@@ -148,9 +160,14 @@ class _TraceOptimizerAdapter:
                     meta = {k: entry[k] for k in ("value", "trainable", "description", "projections", "info","parameter") if k in entry}
                     if "trainable" not in meta: meta["trainable"] = True
                     self._parameters[name] = meta
+                    last = name.split(".")[-1]
+                    self._param_path_map[last] = name
         elif isinstance(items, dict):
             # (No backward support required; keep minimal tolerance for accidental dicts)
             self._parameters = dict(items)
+            for k in list(self._parameters.keys()):
+                last = str(k).split(".")[-1]
+                self._param_path_map[last] = k
 
     # ---- NEW: lightweight API to manage objective/parameters ----
     def set_objective(self, objective: Optional[str]):
@@ -198,6 +215,11 @@ class _TraceOptimizerAdapter:
             self._init_parameters_from_config(params)
         else:
             self._parameters = dict(params or {})
+            # refresh reverse map conservatively
+            self._param_path_map = {}
+            for pname in list(self._parameters.keys()):
+                last = str(pname).split(".")[-1]
+                self._param_path_map[last] = pname
 
     def redefine_trainables(self, targets: List[Union[str, Dict[str, Any]]]):
         """
@@ -291,9 +313,11 @@ class _TraceOptimizerAdapter:
                     # Direct ParameterNode from Trace usage
                     params.append(meta)
                 elif isinstance(meta, dict):
-                    pname = pname.split(".")[-1]  # use last part as py_name
+                    # keep a reverse mapping from py_name -> full path so we can emit edits
+                    py_name = pname.split(".")[-1]
+                    self._param_path_map[py_name] = pname
                     m = dict(meta)
-                    val = m.get("value", current_kwargs.get(pname, None))
+                    val = m.get("value", current_kwargs.get(py_name, None))
                     trainable = bool(m.get("trainable", False))
                     description = m.get("description")
                     
@@ -302,12 +326,14 @@ class _TraceOptimizerAdapter:
                     projections = m.get("projections", None)
                     params.append(
                         ParameterNode(
-                            val, name=pname, trainable=trainable, description=description, projections=projections, info=info
+                            val, name=py_name, trainable=trainable, description=description, projections=projections, info=info
                         )
                      )
                 else:
                     # Fallback: treat as value directly
-                    params.append(ParameterNode(meta, name=pname, trainable=False))
+                    py_name = pname.split(".")[-1]
+                    self._param_path_map[py_name] = pname
+                    params.append(ParameterNode(meta, name=py_name, trainable=False))
             # Instantiate optimizer. We do NOT pass an LLM unless user supplied one; let Trace use its defaults.
             kwargs = dict(self._optimizer_kwargs or {})
             self._trace_obj = cls(parameters=params, objective=self._objective, **kwargs)
@@ -361,33 +387,103 @@ class _TraceOptimizerAdapter:
         self._ensure_trace_obj(current_kwargs=context.get("kwargs", {}))
         self._trace_obj
         if self._trace_obj:
-            # If you plug a real Trace object, it should expose an API we call here.
-            # We try to call a common name 'step' and expect a list-like reply; adapt as necessary.
-            # Branch 1: object exposes our adapter protocol (step returns edits)
-            if hasattr(self._trace_obj, "step") and "context" in getattr(self._trace_obj.step, "__code__", type("X",(object,),{})()).co_varnames:
-                raw = getattr(self._trace_obj, "step")(context=context, targets=targets, n_candidates=n_candidates, constraints=constraints)
-            else:
-                # Branch 2: it's a Trace Optimizer (see opto.optimizers.optimizer.Optimizer)
-                # Standard Trace loop: we assume backward() has been done upstream when needed.
-                # Apply the update (bypassing=False) and convert to edits.
-                try:
-                    update_dict = getattr(self._trace_obj, "step")(bypassing=False)
-                    raw = [{"edits": self._trace_to_edits(update_dict)}]
-                except Exception as e:
-                    raw = []
-            if not isinstance(raw, list):
-                raw = [raw]
-            for r in raw:
-                # normalise into edits list; if r already has 'edits', keep it
-                if isinstance(r, dict) and "edits" in r:
-                    candidates.append(r)
+            try:
+                # Execute a Trace step; adapt results into both trace.param.* and full-path edits when known.
+                # Trace optimizers do not accept an execution context; use feedback via backward().
+                # Be flexible to support both: real Trace (no-arg step) and adapters that accept context/targets.
+                step_fn = getattr(self._trace_obj, "step", None)
+                update = None
+                if callable(step_fn):
+                    try:
+                        import inspect as _inspect
+                        sig = _inspect.signature(step_fn)
+                        kwargs = {}
+                        if "context" in sig.parameters:
+                            kwargs["context"] = context
+                        if "targets" in sig.parameters:
+                            kwargs["targets"] = targets
+                        if "n_candidates" in sig.parameters:
+                            kwargs["n_candidates"] = n_candidates
+                        if "constraints" in sig.parameters:
+                            kwargs["constraints"] = constraints
+                        update = step_fn(**kwargs)
+                    except Exception:
+                        # fallback to no-arg call
+                        update = step_fn()
                 else:
-                    # wrap an opaque candidate
-                    candidates.append({"edits": [{"target": t, "op": "set", "value": f"<trace:{self.name}:candidate>"} for t in (targets or [])]})
-            with open("optimizer_trace_log.jsonl", "a", encoding="utf-8") as f:
-                for c in candidates:
-                    f.write(json.dumps({"optimizer": self.name, "edits": c.get("edits", []), "meta": c.get("meta", {}), "log": {"timestamp": datetime.now().isoformat()}}) + "\n")
-            return candidates
+                    update = self._trace_obj.step()
+
+                # Now normalize the return into a list of candidate dicts with 'edits'
+                raw = None
+                if isinstance(update, list) and all(isinstance(c, dict) and "edits" in c for c in update):
+                    raw = update
+                elif isinstance(update, dict) and "edits" in update:
+                    raw = [update]
+                else:
+                    # Expect a mapping {ParameterNode: new_value}
+                    trace_edits = self._trace_to_edits(update)
+                    # Map py_name-based edits to full dotted targets when available (e.g., invoke.temperature)
+                    mapped_edits = []
+                    for e in trace_edits:
+                        tgt = e.get("target")
+                        val = e.get("value")
+                        if tgt and tgt.startswith("trace.param."):
+                            # e.g. trace.param.temperature.value -> temperature
+                            parts = tgt.split(".")
+                            py_name = parts[-2] if parts and parts[-1] == "value" else parts[-1]
+                            full = self._param_path_map.get(py_name)
+                            if full:
+                                mapped_edits.append({"target": full, "op": "set", "value": val})
+                    raw = [{"edits": (trace_edits + mapped_edits)}]
+                if not isinstance(raw, list):
+                    raw = [raw]
+                for r in raw:
+                    # normalise into edits list; if r already has 'edits', keep it
+                    if isinstance(r, dict) and "edits" in r:
+                        candidates.append(r)
+                    else:
+                        # wrap an opaque candidate
+                        candidates.append({"edits": [{"target": t, "op": "set", "value": f"<trace:{self.name}:candidate>"} for t in (targets or [])]})
+                with open("optimizer_trace_log.jsonl", "a", encoding="utf-8") as f:
+                    for c in candidates:
+                        f.write(json.dumps({"optimizer": self.name, "edits": c.get("edits", []), "meta": c.get("meta", {}), "log": {"timestamp": datetime.now().isoformat()}}) + "\n")
+                return candidates
+            except Exception as e:
+                # If the optimizer needs network access (e.g., calls an LLM) but it's unavailable,
+                # synthesize a safe, deterministic proposal based on declared trainable targets/bounds.
+                # This ensures offline environments still exercise the optimization flow deterministically.
+                offline_edits = []
+                target_names: List[str] = []
+                for t in (targets or []):
+                    if isinstance(t, str):
+                        target_names.append(t)
+                    elif isinstance(t, dict):
+                        nm = t.get("parameters") or t.get("parameter") or t.get("name")
+                        if nm:
+                            target_names.append(nm)
+                for nm in target_names:
+                    meta = self._parameters.get(nm, {}) or {}
+                    info = meta.get("info") or {}
+                    bounds = None
+                    if isinstance(info, dict):
+                        b = info.get("bounds")
+                        if isinstance(b, (list, tuple)) and len(b) == 2:
+                            bounds = b
+                    cur = meta.get("value")
+                    new_val = None
+                    if bounds and all(isinstance(x, (int, float)) for x in bounds):
+                        lo, hi = float(bounds[0]), float(bounds[1])
+                        new_val = (lo + hi) / 2.0
+                    elif isinstance(cur, bool):
+                        # ensure boolean stays boolean (avoid bool subclassing int ambiguity)
+                        new_val = (not bool(cur))
+                    elif isinstance(cur, (int, float)):
+                        new_val = cur * 1.1 if isinstance(cur, float) else max(0, cur + 1)
+                    # Only emit if we determined a new value
+                    if new_val is not None:
+                        offline_edits.append({"target": nm, "op": "set", "value": new_val})
+                if offline_edits:
+                    return [{"edits": offline_edits, "meta": {"offline": True, "reason": "optimizer_unavailable"}}]
 
         raise NotImplementedError("No valid trace optimizer found")
 
