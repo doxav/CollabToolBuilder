@@ -24,7 +24,8 @@ from utils.llm_utils import (
     semantic_double_pass_chunking,
     extract_json,
     calculate_text_similarity,
-    secure_invoke
+    secure_invoke,
+    set_in_dict_by_path, get_from_dict_by_path
 )
 try:
     from env.SWEBench.env import SWEBenchEnvironment
@@ -743,22 +744,10 @@ class DynamicConfigManager:
     # -------------------------
     def _set_in_dict_by_path(self, root: Dict, path: str, value: Any):
         """Set nested dict value by dotted path. Creates intermediate dicts as needed."""
-        parts = path.split(".")
-        cur = root
-        for p in parts[:-1]:
-            if p not in cur or not isinstance(cur[p], dict):
-                cur[p] = {}
-            cur = cur[p]
-        cur[parts[-1]] = value
+        set_in_dict_by_path(root, path, value)
 
     def _get_from_dict_by_path(self, root: Dict, path: str) -> Any:
-        parts = path.split(".")
-        cur = root
-        for p in parts:
-            if not isinstance(cur, dict) or p not in cur:
-                return None
-            cur = cur[p]
-        return cur
+        return get_from_dict_by_path(root, path, None)
 
     def _evaluate_rules(self, rules: Dict, context: Dict) -> bool:
         """Evaluate a set of rules against context"""
@@ -1293,7 +1282,15 @@ class HumanLLM:
 
         dlc = mods.get("dynamic_llm_config_patch") or {}
         if dlc:
-            self.dynamic_llm_config.update(dlc)
+            for k, v in dlc.items():
+                try:
+                    if isinstance(k, str) and "." in k:
+                        set_in_dict_by_path(self.dynamic_llm_config, k, v)
+                    else:
+                        self.dynamic_llm_config[k] = v
+                except Exception:
+                    # Fallback to simple assignment if path set fails
+                    self.dynamic_llm_config[k] = v
 
         if "system_prompt" in mods:
             self.system_prompt = mods["system_prompt"]
