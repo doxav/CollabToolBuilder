@@ -768,6 +768,26 @@ def import_functions_from_directory(regex=".*", functions_path="functions"):
                 functions[file.replace(".py", "")] = code
     return functions
 
+def set_in_dict_by_path(root: Dict, path: str, value: Any) -> None:
+    parts = path.split(".") if path else []
+    cur = root
+    for p in parts[:-1]:
+        if not isinstance(cur.get(p), dict):
+            cur[p] = {}
+        cur = cur[p]
+    if parts:
+        cur[parts[-1]] = value
+
+
+def get_from_dict_by_path(root: Dict, path: str, default: Any = None) -> Any:
+    parts = path.split(".") if path else []
+    cur: Any = root
+    for p in parts:
+        if not isinstance(cur, dict) or p not in cur:
+            return default
+        cur = cur[p]
+    return cur
+
 def get_user_continue_input():
     answer = smart_input(
         'Do you want to:\n'
