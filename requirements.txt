@@ -3,7 +3,7 @@ torchao
 
 # OpenAI and tokenization
 openai>=1.68.0
-tiktoken~=0.7.0
+tiktoken
 
 # Core utilities
 requests
@@ -62,11 +62,6 @@ IPython
 ipykernel
 jupyter_client
 nbformat 
-
-# LLaMA index and embeddings
-#llama-index==0.11.12
-#llama-index-llms-ollama==0.3.2
-#llama-index-embeddings-ollama==0.3.1
 
 #config
 Jinja2 
