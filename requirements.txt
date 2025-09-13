@@ -84,7 +84,7 @@ tabulate
 gitpython
 
 # install OpenTrace from the experimental branch
-git+https://github.com/AgentOpt/OpenTrace.git@experimental#egg=trace-opt
+trace-opt @ git+https://github.com/AgentOpt/OpenTrace.git@experimental
 
 langchain~=0.3.3
 langchain-community~=0.3.2
