@@ -10,7 +10,11 @@ import datasets
 from opto import trace
 from opto.utils.llm import LLM, LiteLLM, AutoGenLLM, LLMFactory, _LLM_REGISTRY
 from opto.optimizers import OptoPrime, OptoPrimeMulti
-from opto.trainer.algorithms.basic_algorithm import MinibatchAlgorithm
+# Some opto versions expose 'basic_algorithms' (plural) instead of 'basic_algorithm' (singular)
+try:
+    from opto.trainer.algorithms.basic_algorithm import MinibatchAlgorithm  # older layout
+except ModuleNotFoundError:
+    from opto.trainer.algorithms.basic_algorithms import MinibatchAlgorithm  # current layout
 from opto.trainer.guide import VerbalJudgeGuide
 from humanllm_trace import HumanLLM_Trace
 from typing import Any

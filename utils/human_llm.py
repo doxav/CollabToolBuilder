@@ -1239,6 +1239,222 @@ class HumanLLM:
         self.dynamic_mgr = DynamicConfigManager(self.dynamic_llm_config, self.usage_tracker, default_cfg)
         self.use_premium_llm = None  # Will be set during inference
 
+        # ---- Tool/function calling support (default off for full backward compatibility) ----
+        # Prefer explicit opt-in to preserve existing behavior across all call sites
+        self.use_tools_api = False               # default: stick to legacy path
+        self.tool_registry = {}                  # name -> callable
+        self._tool_schemas = {}                  # optional: name -> JSON schema for args
+        # Keep legacy attribute if it exists; otherwise None to avoid changing behavior
+        self.function_list = getattr(self, "function_list", None)
+
+    def register_tools(self, mapping: dict):
+        """Register tools in a local registry: {name: callable}."""
+        self.tool_registry.update(mapping or {})
+
+    def _safe_json_loads(self, s: str):
+        import json as _json
+        try:
+            return _json.loads(s) if s else {}
+        except Exception:
+            return {}
+
+    def _execute_tool(self, name: str, args: dict):
+        """Lookup a tool by name (registry first, then module globals) and execute it.
+        Accepts either keyword args or a single dict payload for backward compatibility.
+        """
+        fn = self.tool_registry.get(name) or globals().get(name)
+        if fn is None:
+            # Fallback to manual intervention path used elsewhere in the project
+            from utils.llm_utils import smart_input  # local import to avoid cycles at module import time
+            return smart_input(
+                f"Unknown function '{name}'. Please paste the result:",
+                "invoke_tool_loop"
+            )
+        try:
+            return fn(**(args or {}))
+        except TypeError:
+            # Accept single dict payload when signatures expect one positional
+            return fn(args or {})
+
+    def _tool_loop(self, func, messages, tools=None, tool_choice="auto",
+                   functions=None, function_call="auto", max_calls=5, use_tools_api=False):
+        """Process multi-step tool/function-calling until model returns content or the loop caps out.
+
+        Supports both new OpenAI/LangChain tools (tools/tool_calls) and legacy OpenAI functions
+        (functions/function_call in additional_kwargs). Falls back gracefully when kwargs are rejected
+        by non-tool-aware chains.
+        """
+        # Optional LC message types
+        try:
+            from langchain_core.messages import FunctionMessage, ToolMessage  # type: ignore
+        except Exception:
+            try:
+                from langchain.schema import FunctionMessage  # type: ignore
+                ToolMessage = None  # type: ignore
+            except Exception:
+                FunctionMessage = None  # type: ignore
+                ToolMessage = None  # type: ignore
+
+        # Prefer explicit tools/functions if provided; else legacy self.function_list; else a demo fallback
+        advertised = tools or functions or self.function_list
+        if not advertised:
+            advertised = [{
+                "name": "search_for_external_knowledge",  # fixed default
+                "description": "Search when the model lacks information.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "description": {"type": "string"},
+                        "url": {"type": "string", "description": "https://www.google.com/search?q=..."}
+                    },
+                    "required": ["description", "url"]
+                }
+            }]
+
+        # Hard safety cap to avoid runaway loops even if callers misconfigure
+        hard_cap = 50
+        max_calls = min(max_calls or 5, hard_cap)
+        calls = 0
+        allow_tool_choice = True
+        last_output = None
+        while calls < max_calls:
+            calls += 1
+            # Try tools path first when requested and supported
+            try:
+                if use_tools_api and hasattr(func, "bind_tools"):
+                    bound = func.bind_tools(advertised)
+                    invoke_kwargs = {}
+                    # Forward explicit tool_choice only on first assistant turn
+                    if allow_tool_choice and tool_choice and tool_choice != "auto":
+                        invoke_kwargs["tool_choice"] = tool_choice
+                    output = bound.invoke(messages, **invoke_kwargs)
+                    allow_tool_choice = False
+                else:
+                    # Legacy path: pass functions + function_call through
+                    output = func.invoke(messages, functions=advertised, function_call=function_call)
+            except TypeError:
+                # Some chains/models don't accept these kwargs; fallback to plain invoke
+                output = func.invoke(messages)
+
+            last_output = output
+
+            # New-style tool calls
+            # Strictly prefer native tool_calls attribute for tools-API path.
+            # Do NOT rely on additional_kwargs['tool_calls'] to avoid false positives that
+            # can lead to invalid 'tool' role sequencing with OpenAI chat API.
+            tool_calls = getattr(output, "tool_calls", None)
+            if tool_calls:
+                # Append assistant message that contains the tool_calls before tool results
+                try:
+                    messages.append(output)
+                except Exception:
+                    pass
+                for tc in tool_calls:
+                    # Support both LC/OpenAI dict shapes:
+                    # - {"function": {"name": str, "arguments": json_str}, "id": str}
+                    # - {"name": str, "args": dict, "id": str}
+                    name = None
+                    args = {}
+                    args_json = "{}"
+
+                    if isinstance(tc, dict):
+                        func_block = tc.get("function") or {}
+                        if func_block:
+                            name = func_block.get("name")
+                            args_json = func_block.get("arguments") or "{}"
+                            args = self._safe_json_loads(args_json)
+                        else:
+                            name = tc.get("name")
+                            if isinstance(tc.get("args"), dict):
+                                args = tc.get("args") or {}
+                                # keep a JSON string for FunctionMessage fallback
+                                try:
+                                    import json as _json
+                                    args_json = _json.dumps(args)
+                                except Exception:
+                                    args_json = "{}"
+                            else:
+                                # tolerate 'arguments' or stringly 'args'
+                                raw = tc.get("arguments") or tc.get("args") or "{}"
+                                if isinstance(raw, str):
+                                    args_json = raw
+                                    args = self._safe_json_loads(raw)
+                                elif isinstance(raw, dict):
+                                    args = raw
+                                    try:
+                                        import json as _json
+                                        args_json = _json.dumps(args)
+                                    except Exception:
+                                        args_json = "{}"
+
+                    # Log tool call attempt
+                    try:
+                        from utils.llm_utils import smart_print as _sp
+                    except Exception:
+                        _sp = None
+                    if _sp:
+                        _sp(f"\033[92mTOOL CALLED\033[0m name={name} args={args}", self.agent_name, "TOOL CALL")
+
+                    try:
+                        result = self._execute_tool(name, args)
+                        if _sp:
+                            _sp(f"\033[92mTOOL REPLIED\033[0m name={name} result={result}", self.agent_name, "TOOL REPLY")
+                    except Exception as e:
+                        if _sp:
+                            _sp(f"\033[91mTOOL FAILED\033[0m name={name} error={e}", self.agent_name, "TOOL ERROR")
+                        raise
+
+                    call_id = tc.get("id") if isinstance(tc, dict) else None
+                    if ToolMessage and call_id:
+                        messages.append(ToolMessage(content=str(result), name=name, tool_call_id=call_id))
+                    elif FunctionMessage:
+                        messages.append(FunctionMessage(content=str(result), name=name, arguments=args_json))
+                    else:
+                        messages.append({"type": "tool_result", "name": name, "content": str(result)})
+
+                continue
+
+            # Legacy function_call path
+            addkw = getattr(output, "additional_kwargs", {}) or {}
+            fc = addkw.get("function_call")
+            if fc:
+                # Append assistant message that contains the function_call before function results
+                try:
+                    messages.append(output)
+                except Exception:
+                    pass
+                name = fc.get("name") or ""
+                args_json = fc.get("arguments") or "{}"
+                args = self._safe_json_loads(args_json)
+                # Log tool call attempt (legacy path)
+                try:
+                    from utils.llm_utils import smart_print as _sp
+                except Exception:
+                    _sp = None
+                if _sp:
+                    _sp(f"\033[92mTOOL CALLED\033[0m name={name} args={args}", self.agent_name, "TOOL CALL")
+                try:
+                    result = self._execute_tool(name, args)
+                    if _sp:
+                        _sp(f"\033[92mTOOL REPLIED\033[0m name={name} result={result}", self.agent_name, "TOOL REPLY")
+                except Exception as e:
+                    if _sp:
+                        _sp(f"\033[91mTOOL FAILED\033[0m name={name} error={e}", self.agent_name, "TOOL ERROR")
+                    raise
+
+                if FunctionMessage:
+                    messages.append(FunctionMessage(content=str(result), name=name, arguments=args_json))
+                else:
+                    messages.append({"type": "function_result", "name": name, "content": str(result)})
+                continue
+
+            # Otherwise if content is present, we are done
+            if getattr(output, "content", None) is not None:
+                return output
+
+        # Maxed out; return last output we observed
+        return last_output
+
     def _apply_modifications(self, mods: Dict, context: Dict, phase: str):
         """Apply modifications from dynamic config evaluation"""
         if not mods:
@@ -3085,50 +3301,15 @@ class HumanLLM:
         function_list=None,
         max_calls=5
     ):
-        # test if HumanLLM.function_list exists
-        if function_list is None:
-            if self.function_list is None:
-                function_list = [{
-                    "name": "search_for_external_knwoledge",
-                    "description": "Call this function to search for external knowledge when the model's confidence is low or its information might be too outdated",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "description": {"type": "string",
-                                            "description": "precise description of the information to be provided"},
-                            "url": {"type": "string",
-                                    "description": "Google search url link find this information (ie. it should start by https://www.google.com/search?q= )"},
-                        },
-                        "required": ["description", "url"],
-                    }
-                }]
-            else:
-                function_list = self.function_list
-
-        calls = 0
-        while True and calls < max_calls:
-            output = llm_function(messages=messages, functions=function_list, function_call="auto")
-            calls += 1
-            if output.content is not None and len(output.content) > 0 and output.content != "''":
-                break
-            # test if 1 more function_call is requested
-            elif output.additional_kwargs is not None:
-                additional_kwargs = output.additional_kwargs
-                function_call_info = additional_kwargs.get('function_call', {})
-                function_name = function_call_info.get('name', '')
-                function_args_str = function_call_info.get('arguments', '')
-                function_args = json.loads(function_args_str)
-                if function_name in globals():
-                    # Call the function with the provided arguments
-                    result = globals()[function_name](**function_args)
-                else:
-                    result = smart_input(
-                        f"Uknown function: {function_name} -- please provide result manually:\n",
-                        "invoke_with_function_call"
-                    )
-                messages.append(FunctionMessage(content=result, name=function_name, arguments=function_args_str))
-
-        return output
+        # Back-compat shim: route into the unified invoke() in tool mode
+        return self.invoke(
+            original_input_messages=messages,
+            default_llm_function=llm_function,
+            function_calling=True,
+            tools=function_list,
+            tool_choice=function_call or "auto",
+            max_tool_calls=max_calls
+        )
 
     def _log_entry(
         self,
@@ -3318,6 +3499,13 @@ class HumanLLM:
         generation_technique='temperature_variation',
         forced_llm_output=None,
         selection_technique=None,
+        # Tool/function calling (default off)
+        tools: Optional[list] = None,
+        tool_choice: Union[str, dict] = "auto",
+        functions: Optional[list] = None,
+        function_call: Union[str, dict] = "auto",
+        max_tool_calls: int = 5,
+        use_tools_api: Optional[bool] = None,
         **kwargs
     ):
         """
@@ -3345,9 +3533,9 @@ class HumanLLM:
                 else:
                     raise ValueError(f"Premium LLM function '{use_premium}' not found in llmORchains_list.")
             elif use_premium:
-                func = premium_llm_function if not func_calling else self.invoke_with_function_call
+                func = premium_llm_function
             else:
-                func = default_llm_function if not func_calling else self.invoke_with_function_call
+                func = default_llm_function
 
             # Override temperature if provided
             if "gpt-5" in func.model_name: temperature = 1.
@@ -3356,6 +3544,23 @@ class HumanLLM:
                 print(f"Temperature set to {temperature}")
             else:
                 print(f"No temperature value, not set for model {func.model_name}")
+
+            # Tool/function calling path only in non-streaming mode
+            use_tools_flag = bool(func_calling or tools or functions or getattr(self, "function_list", None))
+            effective_use_tools_api = self.use_tools_api if use_tools_api is None else use_tools_api
+            if not stream_output and use_tools_flag:
+                output = self._tool_loop(
+                    func=func,
+                    messages=input_msg,
+                    tools=tools or (self.function_list if effective_use_tools_api else None),
+                    tool_choice=tool_choice or "auto",
+                    functions=functions or (None if effective_use_tools_api else self.function_list),
+                    function_call=function_call or "auto",
+                    max_calls=max_tool_calls,
+                    use_tools_api=effective_use_tools_api
+                )
+                from langchain_core.messages.ai import AIMessage as _AIMsg
+                return _AIMsg(content=getattr(output, "content", str(output)))
 
             if stream_output:
                 # Choose color for streaming text if multiple inferences
