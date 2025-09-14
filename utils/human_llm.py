@@ -498,6 +498,8 @@ class DynamicConfigManager:
         self.rule_evaluators = {
             'regex': self._eval_regex_rule,
             'confidence': self._eval_confidence_rule,
+            # Back-compat alias: historical tests refer to 'divergence' meaning multi-output disagreement
+            'divergence': self._eval_divergence_rule,
             'similarity': self._eval_similarity_rule,
             'frequency': self._eval_frequency_rule,
             'complexity': self._eval_complexity_rule,
@@ -792,8 +794,8 @@ class DynamicConfigManager:
     def _eval_frequency_rule(self, config: Dict, context: Dict) -> bool:
         """Evaluate frequency-based triggers"""
         every_n = config.get('every_n', 10)
-        # TODO: bad fix, should have a better fix
-        count = (len(self._call_history)//2) + 1
+        # Current call number = number of calls in history + 1 (for current call)
+        count = len(self._call_history) + 1
         return count % every_n == 0
         
     def _eval_confidence_rule(self, config: Dict, context: Dict) -> bool:
@@ -821,6 +823,10 @@ class DynamicConfigManager:
         else:
             self.logger.warning(f"Unknown confidence method: {method}")
             return False
+    
+    def _eval_divergence_rule(self, config: Dict, context: Dict) -> bool:
+        """Evaluate output divergence - alias for confidence rule for backward compatibility"""
+        return self._eval_confidence_rule(config, context)
         
     def _eval_complexity_rule(self, config: Dict, context: Dict) -> bool:
         """Evaluate prompt complexity"""
@@ -1238,6 +1244,9 @@ class HumanLLM:
         
         self.dynamic_mgr = DynamicConfigManager(self.dynamic_llm_config, self.usage_tracker, default_cfg)
         self.use_premium_llm = None  # Will be set during inference
+        
+        # Register inference checks from dynamic config
+        self._register_dynamic_inference_checks()
 
         # ---- Tool/function calling support (default off for full backward compatibility) ----
         # Prefer explicit opt-in to preserve existing behavior across all call sites
@@ -1539,7 +1548,28 @@ class HumanLLM:
             self.skip_rounds = 0
             self.logger.info("[DynamicConfig] Activated human intervention")
         
-        # 4) Feedback generation and application (post-inference only)
+        # 4) Inference checks enable/disable
+        enable_checks = mods.get('enable_checks', [])
+        disable_checks = mods.get('disable_checks', [])
+        
+        if enable_checks:
+            if not isinstance(enable_checks, list):
+                enable_checks = [enable_checks]
+            for check_name in enable_checks:
+                if check_name in self.inference_tracking.excluded_inference_checks:
+                    self.inference_tracking.excluded_inference_checks.remove(check_name)
+                    self.logger.info(f"[DynamicConfig] Enabled inference check: {check_name}")
+        
+        if disable_checks:
+            if not isinstance(disable_checks, list):
+                disable_checks = [disable_checks]
+            for check_name in disable_checks:
+                if check_name in self.inference_tracking.inference_checks:
+                    if check_name not in self.inference_tracking.excluded_inference_checks:
+                        self.inference_tracking.excluded_inference_checks.append(check_name)
+                        self.logger.info(f"[DynamicConfig] Disabled inference check: {check_name}")
+        
+        # 5) Feedback generation and application (post-inference only)
         if phase == 'post_inference' and 'llm_outputs' in context:
             self._apply_feedback_modifications(mods, context)
         
@@ -1552,6 +1582,10 @@ class HumanLLM:
         outputs = context.get('llm_outputs', [])
         if not outputs:
             return
+            
+        # Run inference checks if requested
+        if mods.get('run_inference_checks') or mods.get('post_checks'):
+            self._run_post_inference_checks(mods, context)
             
         # Generate annotations if requested
         if 'generate_annotations_feedback' in mods and hasattr(self, 'generate_annotations_feedback_fn'):
@@ -1620,6 +1654,53 @@ class HumanLLM:
             if hasattr(self, 'select_candidate'):
                 context['llm_outputs'] = self.select_candidate(outputs, technique)
                 self.logger.info(f"[DynamicConfig] Re-selected best output using {technique}")
+                
+    def _run_post_inference_checks(self, mods: Dict, context: Dict):
+        """Run inference checks post-inference and store results"""
+        outputs = context.get('llm_outputs', [])
+        if not outputs:
+            return
+            
+        # Initialize storage if needed
+        if not hasattr(self.inference_tracking, 'last_inference_check_results'):
+            self.inference_tracking.last_inference_check_results = {}
+            
+        # Determine which checks to run
+        if mods.get('post_checks'):
+            # Run specific checks only
+            selected_checks = mods['post_checks']
+            if not isinstance(selected_checks, list):
+                selected_checks = [selected_checks]
+        else:
+            # Run all enabled checks
+            selected_checks = None
+            
+        # Run checks for each output
+        for i, output in enumerate(outputs):
+            if selected_checks is not None:
+                # Run only selected checks
+                results = {}
+                for check_name in selected_checks:
+                    if check_name in self.inference_tracking.inference_checks:
+                        if check_name not in self.inference_tracking.excluded_inference_checks:
+                            check = self.inference_tracking.inference_checks[check_name]
+                            try:
+                                result = check.run_check(i, output.content)
+                                results[check_name] = result
+                            except Exception as e:
+                                self.logger.warning(f"Check '{check_name}' failed: {e}")
+                                results[check_name] = {"error": str(e)}
+            else:
+                # Run all enabled checks using existing method
+                results = self.run_manage_inference_checks(i, output.content)
+                
+            # Store results
+            self.inference_tracking.last_inference_check_results[i] = results
+            
+            # Also store in context for immediate access
+            context.setdefault('inference_checks', {})[i] = results
+            
+        self.logger.info(f"[DynamicConfig] Ran inference checks on {len(outputs)} outputs")
 
     def get_rag_documents(self, agent_name=None, extra_filter: Optional[Dict[str, Any]] = None, query: str = '*', **kwargs):
         """
@@ -2137,7 +2218,8 @@ class HumanLLM:
             while name[0] == " ":
                 name = name[1:]
             if name in self.inference_tracking.inference_checks:
-                self.inference_tracking.excluded_inference_checks.append(name)
+                if name not in self.inference_tracking.excluded_inference_checks:
+                    self.inference_tracking.excluded_inference_checks.append(name)
 
     def include_manage_inference_check(self, check_name: list):
         for name in check_name:
@@ -2156,6 +2238,92 @@ class HumanLLM:
         if 0 <= output_id < len(self.inference_tracking.last_inference_check_results):
             self.inference_tracking.last_inference_check_results[output_id] = results  # Update the specific index
         return results
+
+    def _register_dynamic_inference_checks(self):
+        """Register inference checks from dynamic_llm_config.inference_checks"""
+        inference_checks_config = self.dynamic_llm_config.get("inference_checks", [])
+        if not isinstance(inference_checks_config, list):
+            self.logger.warning("inference_checks config must be a list")
+            return
+        
+        # Functional pipeline: validate → resolve → enhance → register
+        check_specs = [
+            self._create_check_spec(config) 
+            for config in inference_checks_config 
+            if self._is_valid_check_config(config)
+        ]
+        
+        # Filter out failed resolutions, sort by order, and register
+        valid_specs = [spec for spec in check_specs if spec]
+        valid_specs.sort(key=lambda x: x[2])  # Sort by order
+        
+        for name, check_function, order, enabled in valid_specs:
+            self.add_manage_inference_check(name, check_function)
+            if not enabled:
+                self.inference_tracking.excluded_inference_checks.append(name)
+        
+        if valid_specs:
+            self.logger.info(f"Registered {len(valid_specs)} dynamic inference checks")
+    
+    def _is_valid_check_config(self, config):
+        """Validate check config has required fields"""
+        if not isinstance(config, dict) or not config.get("name"):
+            self.logger.warning(f"Invalid check config: {config}")
+            return False
+        if not (config.get("callable") or config.get("method")):
+            self.logger.warning(f"Check '{config['name']}' has no 'callable' or 'method' specified")
+            return False
+        return True
+    
+    def _create_check_spec(self, config):
+        """Create a complete check specification from config"""
+        name = config["name"]
+        check_function = self._resolve_check_function(config)
+        
+        if not check_function:
+            return None
+            
+        # Apply kwargs wrapper if needed
+        if config.get("kwargs"):
+            from functools import partial
+            check_function = partial(check_function, **config["kwargs"])
+            
+        return (name, check_function, config.get("order", 999), config.get("enabled", True))
+    
+    def _resolve_check_function(self, config):
+        """Resolve callable/method config to actual function using unified approach"""
+        # Try callable first, then method
+        resolver_map = {
+            "callable": lambda s: self._import_or_getattr(s, config["name"]),
+            "method": lambda s: getattr(self, s, None)
+        }
+        
+        for key, resolver in resolver_map.items():
+            if config.get(key):
+                try:
+                    func = resolver(config[key])
+                    if callable(func):
+                        return func
+                    elif func is None and key == "method":
+                        self.logger.warning(f"Method '{config[key]}' not found on {self.__class__.__name__}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to resolve {key} '{config[key]}': {e}")
+        return None
+    
+    def _import_or_getattr(self, callable_str, name):
+        """Import module function or get attribute"""
+        if ":" in callable_str:
+            # Module:function format
+            module_path, func_name = callable_str.rsplit(":", 1)
+            import importlib
+            module = importlib.import_module(module_path)
+            return getattr(module, func_name)
+        else:
+            # Try as attribute of self
+            func = getattr(self, callable_str, None)
+            if func is None:
+                self.logger.warning(f"Attribute '{callable_str}' not found on {self.__class__.__name__}")
+            return func
 
     def get_class_name(self):
         # Returns the name of the class that called the current function
