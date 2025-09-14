@@ -1,0 +1,70 @@
+{
+  "agent_list": ["discourse_manage_lm"],
+  "method_config_distribution": "all",
+  "dynamic_config": [
+    {
+      "trace_optimizers": [
+        {
+          "name": "inference_tuner",
+          "parameters": [
+            {"parameter": "invoke.temperature", "info": {"bounds": [0.2, 0.8]}, "description": "LLM temperature", "trainable": true},
+            {"parameter": "invoke.max_tokens", "info": {"bounds": [256, 1024]}, "description": "Max tokens for response", "trainable": true},
+            {"parameter": "invoke.num_parallel_inferences", "info": {"bounds": [1, 3]}, "description": "Parallel candidates", "trainable": true}
+          ],
+          "objective": "maximize quality under latency budget",
+          "feedback": {"use": "collect_feedback", "at": "post_inference"}
+        },
+        {
+          "name": "offline",
+          "parameters": [
+            "invoke.max_tokens",
+            {"parameter": "dynamic_llm_config.annotations_help_trace_POST.rules.confidence.threshold", "value": 0.4, "info": {"bounds": [0, 1]}},
+            {"parameter": "dynamic_llm_config.annotations_help_trace_PRE.modifications.num_parallel_inferences", "value": 2, "info": {"bounds": [1, 3]}}
+          ],
+          "objective": "reduce drift and cost at equal actions"
+        }
+      ],
+      "trace_default_optimizer": "inference_tuner",
+
+      "annotations_help_trace_PRE": {
+        "phase": "pre_inference",
+        "quota": {"max_count": 30},
+        "modifications": [
+          {
+            "type": "trace",
+            "optimizer": "inference_tuner",
+            "targets": [
+              {"parameters": "invoke.num_parallel_inferences", "info": {"bounds": [2, 3]}}
+            ],
+            "n_candidates": 1
+          }
+        ]
+      },
+
+      "annotations_help_trace_POST": {
+        "phase": "post_inference",
+        "quota": {"max_count": 5},
+        "rules": {
+          "confidence": {
+            "method": "self-consistency",
+            "consistency_method": "difflib",
+            "threshold": 0.4
+          }
+        },
+        "modifications": [
+          {
+            "type": "trace",
+            "optimizer": "inference_tuner",
+            "targets": ["invoke.temperature", "invoke.max_tokens"],
+            "feedback": {"use": "collect_feedback", "at": "post_inference"},
+            "n_candidates": 1
+          }
+        ]
+      },
+
+      "offline_bootstrap_PRE": {"phase": "pre_inference", "quota": {"max_count": 0}},
+      "offline_update_POST": {"phase": "post_inference", "quota": {"max_count": 0}}
+    }
+  ]
+}
+

@@ -1,0 +1,10 @@
+[
+    {
+        "topic": "Taylor Hawkins",
+        "dataset_for_metrics": "Wikipedia"
+    },
+    {
+        "topic": "A_survey_on_algebraic_dilatations_with_embeddings",
+        "dataset_for_metrics": "DEA"
+    }
+]
