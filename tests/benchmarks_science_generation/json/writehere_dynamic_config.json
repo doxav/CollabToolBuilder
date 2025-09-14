@@ -1,0 +1,130 @@
+{
+    "agent_list": ["WriteHERE"],
+    "method_config_distribution":"all",
+    "dynamic_config":[
+        {
+            "instruction_help_majority_PRE": {
+                "phase": "pre_inference",
+                "quota": {
+                    "max_count": 30
+                },
+                "modifications": {
+                    "num_parallel_inferences":2
+                }
+            },
+            "instruction_help_majority_POST": {
+                "phase": "post_inference",
+                "quota": {
+                    "max_count": 3
+                },
+                "rules": {
+                    "confidence": {
+                        "threshold": 0.4,
+                        "operator": "<"
+                    }
+                },
+                "modifications": {
+                    "generate_instructions_feedback": {
+                        "num_candidates": 3,
+                        "selection_technique": "majority"
+                    },
+                    "apply_feedback": true
+                }
+            }
+        },
+            {
+            "annotations_help_majority_PRE": {
+                "phase": "pre_inference",
+                "quota": {
+                "max_count": 30
+                },
+                "modifications": {
+                    "num_parallel_inferences":2
+                }
+            },
+            "annotations_help_majority_POST": {
+                "phase": "post_inference",
+                "quota": {
+                    "max_count": 3
+                },
+                "rules": {
+                    "confidence": {
+                        "threshold": 0.4,
+                        "operator": "<"
+                    }
+                },
+                "modifications": {
+                    "generate_annotations_feedback": {
+                        "num_candidates": 3,
+                        "selection_technique": "majority",
+                        "annotation_types": "FIX",
+                        "annotation_number": 5     
+                    },
+                    "apply_feedback": true
+                }
+            }
+        },
+        {
+            "annotation_help_PRE": {
+                "phase": "pre_inference",
+                "quota": {
+                "max_count": 30
+                },
+                "modifications": {
+                    "num_parallel_inferences":2
+                }
+            },
+            "annotation_help_POST": {
+                "phase": "post_inference",
+                "quota": {
+                "max_count": 3
+                },
+                "rules": {
+                    "confidence": {
+                        "threshold": 0.4,
+                        "operator": "<"
+                    }
+                },
+                "modifications": {
+                    "generate_annotations_feedback": {
+                        "annotation_types": "FIX",
+                        "annotation_number": 5
+                    },
+                    "apply_feedback": true
+                }
+            }
+        },
+        {
+        "premium_freq2": {
+            "phase": "pre_inference",
+            "quota": {
+            "max_count": 3
+            },
+            "rules": {
+            "frequency": {
+                "every_n": 1
+            }
+            },
+            "modifications": {
+            "use_premium_llm": true
+            }
+        }
+        },
+        {
+        "premium_freq4": {
+            "phase": "pre_inference",
+            "quota": {
+            "max_count": 3
+            },
+            "rules": {
+            "frequency": {
+                "every_n": 4
+            }
+            },
+            "modifications": {
+            "use_premium_llm": true
+            }
+        }
+        }
+]
+}

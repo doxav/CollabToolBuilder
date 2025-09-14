@@ -174,40 +174,6 @@ class HumanLLMConfig:
             score=score,
             metadata=metadata
         )
-        # if isinstance(data_value, dict):
-        #     serialized_data = json.dumps(data_value)
-        # else:
-        #     serialized_data = json.dumps({data_key: data_value})
-
-        # # Generate UUID for task_id
-        # task_id = str(uuid.uuid4()) if task_id else False
-
-        # tags = metadata or {}
-        # tags.update({
-        #     "agent_name": agent_name,
-        #     "data_key": data_key
-        # })
-        # self.logger.info(f"Adding agent data: {tags}")
-        # self.logger.info(f"User ID: {user_id}")
-        # if user_id is None:
-        #     user_id = self.get_user_id()
-        # if function_name:
-        #     tags["function_name"] = function_name
-        # if task_id:
-        #     tags["task_id"] = task_id
-        # if before_after:
-        #     tags["before_after"] = before_after
-        # if user_id:
-        #     tags["user_id"] = user_id
-        # if step_id:
-        #     tags["step_id"] = step_id
-        # if task_type:
-        #     tags["task_type"] = task_type
-        # if score is not None:
-        #     tags["score"] = score
-        # tags["date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-
-        # self.common_vectordb._add_texts(texts=[serialized_data], metadatas=[tags])
 
     def get_agent_data(
         self,
