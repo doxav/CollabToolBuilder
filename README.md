@@ -2,11 +2,12 @@
 
 ## Table of Contents
 
-1. [Scientific Foundation & Motivation](#scientific-foundation--motivation)
+1. [Why ?](#why)
 2. [System Architecture & Theory](#system-architecture--theory)
 3. [Quick Start Guide](#quick-start-guide)
 4. [Progressive Tutorial: From Basic to Advanced](#progressive-tutorial-from-basic-to-advanced)
 5. [CollabToolBuilder: Advanced Function Development](#collabtoolbuilder-advanced-function-development)
+11. [Tools How‑To (Code Examples)](docs/README_tools.md)
 6. [Scientific Applications & Use Cases](#scientific-applications--use-cases)
 7. [Interactive Interface Documentation](#interactive-interface-documentation)
 8. [Performance Analysis & Optimization](#performance-analysis--optimization)
@@ -15,9 +16,9 @@
 
 ---
 
-## Scientific Foundation & Motivation
+## Why ?
 
-### The Human-AI Collaboration Paradigm
+### The Human-AI Collaboration
 
 Most AI systems operate in isolation, producing outputs without incorporating human expertise during the inference process. This approach misses critical opportunities for:
 
@@ -71,6 +72,8 @@ CollabToolBuilder is an application of HumanLLM that uses **four coordinated Hum
 - **CollabToolBuilder CAN CREATE TOOLS** that are then made available to HumanLLM agents
 - **This represents the "tool factory" pattern** for expanding AI capabilities
 
+For a practical, code-first guide to building tools with CollabToolBuilder and using them via HumanLLM (legacy functions and newer tools API), see: [docs/README_tools.md](docs/README_tools.md)
+
 ```bash
 # Launch CollabToolBuilder in UI mode (separate from HumanLLM core)
 python learn.py
@@ -109,29 +112,21 @@ Human feedback is integrated through:
 - **Post-inference review**: Users can critique and improve outputs
 - **Dynamic parameter adjustment**: Real-time configuration changes
 
-#### 3. Optional RAG Integration
+#### 3. Optional basic RAG Integration
 
 HumanLLM provides optional Retrieval-Augmented Generation capabilities:
 
 ```python
 # Add external documents to the knowledge base
-assistant.add_rag_document(
-    file_path="documentation.pdf",
-    agent_name="research_assistant"
-)
+assistant.add_rag_document( file_path="documentation.pdf", agent_name="research_assistant")
 
 # Use RAG-enhanced prompts with {rag_context} placeholder
-rag_prompt = assistant.load_prompt_with_rag(
-    prompt_name="research_template",
-    template_data={"topic": "machine learning"}
-)
+rag_prompt = assistant.load_prompt_with_rag( prompt_name="research_template", template_data={"topic": "machine learning"})
+
 # The {rag_context} placeholder is automatically replaced with relevant document content
 
 # Retrieve RAG documents programmatically
-rag_docs, metadata = assistant.get_rag_documents(
-    agent_name="research_assistant",
-    query="specific topic"
-)
+rag_docs, metadata = assistant.get_rag_documents( agent_name="research_assistant", query="specific topic")
 ```
 
 **RAG Features:**
@@ -223,9 +218,7 @@ from langchain_openai import ChatOpenAI
 # Basic assistant with human oversight
 basic_assistant = HumanLLM(
     system_prompt="You are a helpful assistant specialized in explaining concepts clearly.",
-    llmORchains_list={
-        "main": ChatOpenAI(model="gpt-3.5-turbo", temperature=0.7)
-    },
+    llmORchains_list={ "main": ChatOpenAI(model="gpt-3.5-turbo", temperature=0.7) },
     skip_rounds=3  # Human intervention every 3 interactions
 )
 
