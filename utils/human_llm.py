@@ -3674,6 +3674,7 @@ class HumanLLM:
         function_call: Union[str, dict] = "auto",
         max_tool_calls: int = 5,
         use_tools_api: Optional[bool] = None,
+        compose_mode: str = "auto",
         **kwargs
     ):
         """
@@ -3880,6 +3881,16 @@ class HumanLLM:
                 HumanMessage(content=user_message)
             ]
 
+
+        # === NEW: Option A – default dynamic composition on both system and user ===
+        try:
+            sys_txt = str(original_input_messages[0].content or "")
+            usr_txt = str(original_input_messages[1].content or "")
+            sys_txt2, usr_txt2 = self._compose_dynamic_prompt(sys_txt, usr_txt, compose_mode)
+            original_input_messages[0].content = sys_txt2
+            original_input_messages[1].content = usr_txt2
+        except Exception:
+            self.logger.debug("compose_dynamic_prompt failed; continuing with original prompts", exc_info=True)
 
         input_contents_str0 = str(original_input_messages[0].content)
         input_contents_str1 = str(original_input_messages[1].content)
@@ -4425,6 +4436,184 @@ class HumanLLM:
                 return [output_messages[-1]]            
         else:
             raise ValueError(f"Invalid selection_technique: {selection_technique}. Supported options: 'concat', 'best_of_n', 'last'.")
+
+    # =========================
+    # Default Dynamic Composition (Option A)
+    # =========================
+    def _format_llm_feedback(self, suggestions_list, annotations_list) -> str:
+        """
+        Build a compact, structured feedback block the LLM can leverage.
+        Only uses generic signals (no code-specific history).
+        """
+        lines = []
+        if suggestions_list:
+            lines.append("#### LLM Suggestions (latest first)")
+            for i, s in enumerate(reversed((suggestions_list or [])[-3:]), 1):
+                txt = (s.get("llm_suggestions", "") or "").strip() if isinstance(s, dict) else str(s or "").strip()
+                if txt:
+                    bullets = "\n".join([f"- {ln.strip()}" for ln in txt.splitlines() if ln.strip()])
+                    lines.append(f"{i}.\n{bullets}")
+        if annotations_list:
+            lines.append("#### LLM Annotations (latest first)")
+            for i, a in enumerate(reversed((annotations_list or [])[-3:]), 1):
+                ann = (a.get("annotations", "") or "").strip() if isinstance(a, dict) else str(a or "").strip()
+                if ann:
+                    bullets = "\n".join([f"- {ln.strip()}" for ln in ann.splitlines() if ln.strip()])
+                    lines.append(f"{i}.\n{bullets}")
+        if not lines:
+            return ""
+        header = (
+            "### FEEDBACK SIGNALS\n"
+            "Use these signals to (1) correct recurring errors, (2) respect constraints, "
+            "(3) clarify intent, and (4) prefer factual correctness over creativity.\n"
+        )
+        return header + "\n".join(lines)
+
+    def _collect_compose_values(self) -> Dict[str, str]:
+        """
+        Gather values for placeholder filling.
+        - Keeps agent-agnostic defaults (env states, validation, generic LLM feedback).
+        - Code-specific history is provided but only injected if explicitly referenced by placeholders.
+        """
+        cfg = self.config
+        vals: Dict[str, str] = {}
+
+        # env states (generic, safe)
+        try:
+            if getattr(self, "envs", None):
+                vals["env_states"] = "\n".join(
+                    e.get_state() for e in self.envs if hasattr(e, "get_state")
+                )
+            else:
+                vals["env_states"] = ""
+        except Exception:
+            vals["env_states"] = ""
+
+        # validation summaries (generic, safe)
+        try:
+            vals["validation_response_um"] = "\n".join(cfg.get_validation_results()) or ""
+        except Exception:
+            vals["validation_response_um"] = ""
+
+        # few-shots for {few_shots} placeholder (distinct from file tags)
+        try:
+            if getattr(self, "user_message_few_shots", None):
+                # Normalize FewShotsParams/dataclass to list-of-dicts expected by get_few_shot_examples
+                fs_param = self.user_message_few_shots
+                normalized = None
+                try:
+                    from dataclasses import asdict, is_dataclass
+                    if is_dataclass(fs_param):
+                        d = asdict(fs_param)
+                        normalized = [{
+                            "sources": d.get("sources", "learnt"),
+                            "num": d.get("num", 5),
+                            "query_text": d.get("query_text", "*"),
+                            "metadata_filter": d.get("filter", {}) or {},
+                            "sort_order": d.get("ranking_method"),
+                            "similarity_search": d.get("similarity_search", False),
+                            "format": d.get("format") or "Json",
+                            "template": d.get("template")
+                        }]
+                except Exception:
+                    normalized = None
+                few_params = normalized if normalized is not None else (fs_param if isinstance(fs_param, (list, tuple)) else [fs_param])
+                vals["few_shots"] = cfg.get_few_shot_examples(few_params)
+            else:
+                vals["few_shots"] = ""
+        except Exception:
+            vals["few_shots"] = ""
+
+        # generic feedback (suggestions / annotations)
+        try:
+            sugg, _ = cfg.get_agent_data(self.agent_name, "llm_suggestions")
+        except Exception:
+            sugg = []
+        try:
+            ann, _ = cfg.get_agent_data(self.agent_name, "llm_annotations")
+        except Exception:
+            ann = []
+        def _join_field(items, key):
+            outs = []
+            for x in (items or [])[-2:]:
+                if isinstance(x, dict):
+                    outs.append(x.get(key, "") or "")
+                else:
+                    outs.append(str(x or ""))
+            return "\n".join(outs)
+        vals["llm_suggestions"]  = _join_field(sugg, "llm_suggestions")
+        vals["llm_annotations"]  = _join_field(ann, "annotations")
+        vals["llm_feedback_block"] = self._format_llm_feedback(sugg, ann)
+
+        # code-specific (only used if placeholders are present in the prompt)
+        vals["previous_attempts"] = ""
+        try:
+            prev_err, _ = cfg.get_agent_data(self.agent_name, "previous_errors")
+            prev_sco, _ = cfg.get_agent_data(self.agent_name, "previous_scores")
+            prev_cod, _ = cfg.get_agent_data(self.agent_name, "previous_codes")
+            if prev_err and prev_sco and prev_cod:
+                for errs, scos, cods in zip(prev_err, prev_sco, prev_cod):
+                    if isinstance(errs, str):
+                        errs = [errs] * len(scos)
+                    for e, s, c in zip(errs, scos, cods):
+                        vals["previous_attempts"] += f"\n<<ATTEMPT FEEDBACK: {e}\nSCORE: {s}\nCODE: {c}>>\n"
+        except Exception:
+            pass
+
+        vals["error_patches_str"] = ""
+        try:
+            patches, _ = cfg.get_agent_data(self.agent_name, "error_patches")
+            if patches:
+                for p in patches:
+                    try:
+                        msg, diff = p if isinstance(p, (list, tuple)) and len(p) == 2 else (p.get("msg"), p.get("diff"))
+                    except Exception:
+                        msg, diff = None, None
+                    if msg or diff:
+                        vals["error_patches_str"] += f"\n<<ERROR MESSAGE: {msg}\nFIX APPLIED (diff):\n{diff}>>\n"
+        except Exception:
+            pass
+        return vals
+
+    def _fill_placeholders(self, text: str, values: Dict[str, str]) -> Tuple[str, bool]:
+        """Replace only tokens that exist; report if any were used."""
+        used = False
+        if not text:
+            return text, used
+        for k, v in values.items():
+            token = "{" + k + "}"
+            if token in text:
+                text = text.replace(token, v or "")
+                used = True
+        return text, used
+
+    def _append_auto_context(self, user_text: str, vals: Dict[str, str]) -> str:
+        """
+        AUTO mode fallback: If no placeholders/tags were used, append a compact CONTEXT block
+        with (a) few-shots (if configured), (b) env states, and (c) formatted generic feedback.
+        """
+        blocks = []
+        if vals.get("few_shots"):
+            blocks.append("### FEW-SHOT EXAMPLES\n" + vals["few_shots"])
+        if vals.get("env_states"):
+            blocks.append("### ENVIRONMENT STATE\n" + vals["env_states"])
+        if vals.get("llm_feedback_block"):
+            blocks.append(vals["llm_feedback_block"])
+        if not blocks:
+            return user_text
+        ctx = "\n<<CONTEXT\n" + "\n\n".join(blocks) + "\n>>"
+        return (user_text or "") + ctx
+
+    def _compose_dynamic_prompt(self, sys_txt: str, usr_txt: str, compose_mode: str) -> Tuple[str, str]:
+        """
+        Orchestrates placeholder fill and (optionally) the AUTO fallback append.
+        """
+        vals = self._collect_compose_values()
+        sys_txt2, sys_used = self._fill_placeholders(sys_txt, vals)
+        usr_txt2, usr_used = self._fill_placeholders(usr_txt, vals)
+        if (compose_mode or "auto").lower() == "auto" and not (sys_used or usr_used):
+            usr_txt2 = self._append_auto_context(usr_txt2, vals)
+        return sys_txt2, usr_txt2
 
     def generate_annotations_feedback_fn(
         self,
