@@ -271,76 +271,109 @@ class _TraceOptimizerAdapter:
    # ---- Lazy creation of a real Trace optimizer if requested ----
     def _ensure_trace_obj(self, current_kwargs: Dict[str, Any]):
         """
-            If no trace_obj was provided at construction, try to build one lazily.
-            Supported:
-            - optimizer_kind in {'OPRO','OptoPrime','OptoPrimeV2','OptoPrimeMulti'}
-            - import_path like 'opto.optimizers.optoprime.OptoPrimeV2'
-            We will construct ParameterNode objects from the adapter's parameter registry
-            when the 'opto' package is available. If creation fails, we leave _trace_obj as None.
-            """
+        Create trace optimizer with LLM resolution support.
+        Supports:
+        - "human"/"human_llm" -> human_llm_backend profile  
+        - "profile:name" -> specified profile
+        - optimizer_kind in {'OPRO','OptoPrime','OptoPrimeV2','OptoPrimeMulti'}
+        """
         if self._trace_obj is not None:
             return
+            
         cls = None
         try:
             if self._optimizer_kind:
                 from opto import optimizers
-                # Prefer official import paths (exported from opto.optimizers.__init__)
-                #mod = importlib.import_module("opto.optimizers")
                 kind = self._optimizer_kind.lower()
-                if kind == "opro": cls = optimizers.OPRO # getattr(mod, "OPRO")
-                elif kind == "optoprime": cls = optimizers.OptoPrime # getattr(mod, "OptoPrime")
-                elif kind == "optoprimev2": cls = optimizers.OptoPrimeV2 # getattr(mod, "OptoPrimeV2")
-                elif kind == "optoprimemulti": cls = optimizers.OptoPrimeMulti # getattr(mod, "OptoPrimeMulti")
+                if kind == "opro": 
+                    cls = optimizers.OPRO
+                elif kind == "optoprime": 
+                    cls = optimizers.OptoPrime
+                elif kind == "optoprimev2": 
+                    cls = optimizers.OptoPrimeV2
+                elif kind == "optoprimemulti": 
+                    cls = optimizers.OptoPrimeMulti
             elif self._import_path:
-                # import by path, e.g. 'opto.optimizers.optoprime.OptoPrimeV2'
                 mod_name, _, class_name = self._import_path.rpartition(".")
                 mod = importlib.import_module(mod_name)
                 cls = getattr(mod, class_name)
         except Exception as e:
-            # could not import – leave fallback heuristic
             return
+            
         if cls is None:
             return
 
-        # Build ParameterNodes from registry if possible
+        # Build ParameterNodes and create optimizer with LLM resolution
         try:
             from opto import trace
-            from opto.utils.llm import LLM
-            ParameterNode =  trace.nodes.ParameterNode
-            params: List[Any] = []
+            from opto.utils.llm import LLM, AbstractModel
+            
+            ParameterNode = trace.nodes.ParameterNode
+            params = []
+            
             for pname, meta in (self._parameters or {}).items():
-                # Handle different parameter specification formats
                 if isinstance(meta, ParameterNode):
-                    # Direct ParameterNode from Trace usage
                     params.append(meta)
                 elif isinstance(meta, dict):
-                    # keep a reverse mapping from py_name -> full path so we can emit edits
                     py_name = pname.split(".")[-1]
                     self._param_path_map[py_name] = pname
                     m = dict(meta)
                     val = m.get("value", current_kwargs.get(py_name, None))
                     trainable = bool(m.get("trainable", False))
                     description = m.get("description")
-                    
-                    # Handle info/bounds for projections
                     info = m.get("info")
                     projections = m.get("projections", None)
                     params.append(
                         ParameterNode(
-                            val, name=py_name, trainable=trainable, description=description, projections=projections, info=info
+                            val, name=py_name, trainable=trainable, 
+                            description=description, projections=projections, info=info
                         )
-                     )
+                    )
                 else:
-                    # Fallback: treat as value directly
                     py_name = pname.split(".")[-1]
                     self._param_path_map[py_name] = pname
                     params.append(ParameterNode(meta, name=py_name, trainable=False))
-            # Instantiate optimizer. We do NOT pass an LLM unless user supplied one; let Trace use its defaults.
+
+            # LLM Resolution - simplified for essential functionality
             kwargs = dict(self._optimizer_kwargs or {})
+            
+            def resolve_llm(spec):
+                """Resolve LLM spec: 'human' and 'profile:name' formats"""
+                if isinstance(spec, AbstractModel):
+                    return spec
+                if isinstance(spec, str):
+                    s = spec.strip().lower()
+                    if s in ("human", "human_llm"):
+                        return LLM(profile="human_llm_backend")
+                    if s.startswith("profile:"):
+                        profile_name = spec.split(":", 1)[1].strip()
+                        return LLM(profile=profile_name)
+                    try:
+                        return LLM(profile=spec.strip())
+                    except Exception:
+                        return spec
+                return spec
+            
+            # Apply LLM resolution with config precedence
+            config_llm = self.config.get("llm")
+            kwargs_llm = kwargs.get("llm")
+            
+            if config_llm is not None:
+                kwargs["llm"] = resolve_llm(config_llm)
+            elif kwargs_llm is not None:
+                kwargs["llm"] = resolve_llm(kwargs_llm)
+            
+            # Handle llm_profiles for OptoPrimeMulti
+            if "llm_profiles" in self.config and "llm_profiles" not in kwargs:
+                kwargs["llm_profiles"] = list(self.config["llm_profiles"])
+            
+            # Create optimizer
             self._trace_obj = cls(parameters=params, objective=self._objective, **kwargs)
+            
         except Exception as e:
-            # If anything fails, keep fallback behavior
             self._trace_obj = None
+
+
 
     def _trace_to_edits(self, update_dict) -> List[Dict]:
         """
