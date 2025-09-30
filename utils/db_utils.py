@@ -45,6 +45,13 @@ def _default_unique_collection_id() -> str:
     hostname = socket.gethostname()
     timestamp = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
     return f"{hostname}_{timestamp}"
+
+class DummyEmbeddingNonZero:
+    """Constant, non-zero embeddings; keeps DB happy but removes semantic ranking."""
+    def __init__(self, dim: int = 16): self.dim = dim
+    def embed_query(self, text: str): return [1.0] * self.dim
+    def embed_documents(self, texts): return [[1.0] * self.dim for _ in texts]
+
 class UnifiedVectorDBConfig:
     """Configuration for the vector database."""
     common_vectordb_embedding_function = None
@@ -58,7 +65,7 @@ class UnifiedVectorDBConfig:
         unique_collection_id: Optional[str] = None
     ):
         """Initialize VectorDBConfig."""
-        self.embedding_function = embedding_function
+        self.embedding_function = embedding_function or DummyEmbeddingNonZero(dim=1)
         self.collection_name = collection_name.lower()
         self.persist_directory = persist_directory
         self.reset_indices = reset_indices
