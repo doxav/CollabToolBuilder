@@ -523,10 +523,11 @@ class _TraceOptimizerAdapter:
 
 class DynamicConfigManager:
     """Manages dynamic LLM configuration based on rules and triggers"""
-    def __init__(self, config: Dict, usage_tracker: HelpUsageTracker, default_config: Dict):
+    def __init__(self, config: Dict, usage_tracker: HelpUsageTracker, default_config: Dict, human_llm_config=None):
         self.config = config
         self.usage_tracker = usage_tracker
         self.default_config = default_config
+        self.human_llm_config = human_llm_config  # For few-shot processing
         self.logger = logging.getLogger(__name__)
         self.rule_evaluators = {
             'regex': self._eval_regex_rule,
@@ -634,8 +635,13 @@ class DynamicConfigManager:
                                 # pass a 'trace_spec' (objective + parameters) to the optimizer
                                 ctx_for_trace = dict(context)
                                 ctx_for_trace["trace_spec"] = adapter.get_trace_spec()
-                                # --- NEW: standard Trace loop (online) when we're at the right phase
-                                fb_cfg = m.get("feedback") or {"use": "collect_feedback", "at": "post_inference"}
+                                # --- Build feedback config by merging optimizer config with modification config
+                                # Priority: modification config > optimizer config > default
+                                optimizer_fb_cfg = adapter.config.get("feedback", {})
+                                modification_fb_cfg = m.get("feedback", {})
+                                fb_cfg = {"use": "collect_feedback", "at": "post_inference"}
+                                fb_cfg.update(optimizer_fb_cfg)  # Apply optimizer-level config
+                                fb_cfg.update(modification_fb_cfg)  # Apply modification-level config (highest priority)
                                 # if phase == fb_cfg.get("at", "post_inference"):
                                 if True:
                                     try:
@@ -752,14 +758,15 @@ class DynamicConfigManager:
           • {"use":"custom_fn","fn":"module:callable","args":{...}}
         Fallback: preserve legacy behavior if no `use` is provided.
         """
+        print(f"Rendering feedback text with config: {fb_cfg}\nContext: {context}###")
         fb = fb_cfg or {}
         use = fb.get("use")
         if use == "collect_feedback":
             prompt = fb.get("prompt")
             if prompt:
                 # Replace with populated few‑shots; independent of any optimizer
-                if hasattr(self.config, 'common_vectordb') and hasattr(self.config.common_vectordb, 'populate_few_shot_tags'):
-                    return self.config.common_vectordb.populate_few_shot_tags(prompt)
+                if (self.human_llm_config and hasattr(self.human_llm_config, 'common_vectordb') and self.human_llm_config.common_vectordb and hasattr(self.human_llm_config.common_vectordb, 'populate_few_shot_tags')):
+                    return self.human_llm_config.common_vectordb.populate_few_shot_tags(prompt)
                 else:
                     # Fallback if method doesn't exist - return prompt as is
                     return prompt
@@ -1153,7 +1160,11 @@ class DynamicConfigManager:
             ctx["trace_spec"] = adapter.get_trace_spec()
             # --- NEW: standard Trace offline loop (H2) using aggregated feedback ---
             adapter.zero_feedback()
-            fb_text = self._render_feedback_text(ctx, {"use": "collect_feedback"})  # reuse ordering of records
+            # Use optimizer's feedback config if available, otherwise default
+            optimizer_fb_cfg = adapter.config.get("feedback", {})
+            fb_cfg = {"use": "collect_feedback"}
+            fb_cfg.update(optimizer_fb_cfg)
+            fb_text = self._render_feedback_text(ctx, fb_cfg)  # reuse ordering of records
             for p in adapter.parameters():
                 if getattr(p, "trainable", False):
                     try:
@@ -1296,7 +1307,7 @@ class HumanLLM:
             'use_premium_llm': premium_llm_by_default
         }
         
-        self.dynamic_mgr = DynamicConfigManager(self.dynamic_llm_config, self.usage_tracker, default_cfg)
+        self.dynamic_mgr = DynamicConfigManager(self.dynamic_llm_config, self.usage_tracker, default_cfg, self.config)
         self.use_premium_llm = None  # Will be set during inference
         
         # Register inference checks from dynamic config
