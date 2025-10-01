@@ -745,34 +745,55 @@ class DynamicConfigManager:
         return modifications
 
     # ---- helper to prepare feedback text ---------------------------------
-    def _render_feedback_text(self, context: Dict, fb_cfg: Dict) -> str:
+    def _render_feedback_text(self, context: Dict, fb_cfg: Optional[Dict] = None) -> str:
         """
-        Build a textual feedback signal for Trace from available sources.
-        Supported fb_cfg:
-           {"use": "collect_feedback", "at": "post_inference"} (default)
-           {"use": "context_key", "key": "trace.feedback_path", "at": "..."}
-           {"use": "literal", "text": "..."}
+        Two simple modes kept:
+          • {"use":"collect_feedback","prompt":"... (may include few_shots tags) ..."}
+          • {"use":"custom_fn","fn":"module:callable","args":{...}}
+        Fallback: preserve legacy behavior if no `use` is provided.
         """
-        mode = (fb_cfg or {}).get("use", "collect_feedback")
-        if mode == "literal":
-            return str(fb_cfg.get("text", "")).strip() or "No feedback"
-        if mode == "context_key":
-            key = fb_cfg.get("key", "")
-            # dotted path lookup
-            cur = context
-            for part in key.split("."):
-                if not part:
-                    continue
-                cur = (cur or {}).get(part) if isinstance(cur, dict) else getattr(cur, part, None)
-            return str(cur or "No feedback")
+        fb = fb_cfg or {}
+        use = fb.get("use")
+        if use == "collect_feedback":
+            prompt = fb.get("prompt")
+            if prompt:
+                # Replace with populated few‑shots; independent of any optimizer
+                if hasattr(self.config, 'common_vectordb') and hasattr(self.config.common_vectordb, 'populate_few_shot_tags'):
+                    return self.config.common_vectordb.populate_few_shot_tags(prompt)
+                else:
+                    # Fallback if method doesn't exist - return prompt as is
+                    return prompt
+            # If no prompt given, fall back to existing collected records
+            items = self.collect_feedback(context)
+            return "\n\n".join(str(it.get(k,"")) for it in items for k in ("content","diff","metrics") if it.get(k)).strip() or "No feedback"
+        if use == "custom_fn":
+            fn_spec = fb.get("fn")
+            args = fb.get("args", {})
+            # simple ${context.xxx} substitution
+            def _subst(v):
+                if isinstance(v, str) and v.startswith("${") and v.endswith("}"):
+                    key_path = v[2:-1]  # Remove ${ and }
+                    if key_path.startswith("context"):
+                        if key_path == "context":
+                            return context
+                        elif key_path.startswith("context."):
+                            cur = context
+                            for part in key_path[8:].split("."):  # Skip "context."
+                                cur = (cur or {}).get(part) if isinstance(cur, dict) else getattr(cur, part, None)
+                            return cur
+                elif isinstance(v, dict):
+                    return {k: _subst(val) for k, val in v.items()}
+                elif isinstance(v, list):
+                    return [_subst(item) for item in v]
+                return v
+            call_kwargs = {k: _subst(v) for k, v in (args or {}).items()}
+            # import module:function
+            import importlib
+            module, func = fn_spec.split(":", 1)
+            return str(getattr(importlib.import_module(module), func)(**call_kwargs))
         # default: collect & merge manager’s feedback records
         items = self.collect_feedback(context)
-        lines = []
-        for it in items:
-            if "content" in it: lines.append(str(it["content"]))
-            elif "diff" in it:  lines.append(str(it["diff"]))
-            elif "metrics" in it: lines.append(str(it["metrics"]))
-        return "\n\n".join(l for l in lines if l).strip() or "No feedback"
+        return "\n\n".join(str(it.get(k,"")) for it in items for k in ("content","diff","metrics") if it.get(k)).strip() or "No feedback"
 
     # -------------------------
     # small dict path helpers
