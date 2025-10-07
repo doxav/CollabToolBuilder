@@ -103,6 +103,84 @@ class HelpUsageTracker:
         else:
             self.usage[help_type]['failures'] += 1
 
+# ============================================================================
+# UTILITY: Ensure Node Wrapper for Trace Optimization
+# ============================================================================
+
+def ensure_node(x: Any) -> Any:
+    """
+    Ensure value is a Trace node. If not, wrap it.
+    
+    This handles cases where we receive non-node values and need to
+    convert them to nodes for Trace dependency tracking.
+    
+    Args:
+        x: Value to check/wrap
+        
+    Returns:
+        x if already a node (has .backward or is ParameterNode/MessageNode),
+        otherwise wraps it with trace_node(x)
+    """
+    try:
+        from opto.trace import node as trace_node
+        from opto.trace.nodes import ParameterNode, MessageNode
+        
+        # Check if already a node
+        if hasattr(x, "backward") or isinstance(x, (ParameterNode, MessageNode)):
+            return x
+        
+        # Wrap in node
+        return trace_node(x)
+    except Exception as e:
+        # If opto not available, return as-is
+        return x
+
+
+# ============================================================================
+# TRACED FUNCTION: Generic Process Wrapper
+# ============================================================================
+
+def traced_process_execution(process_input: Any, process_fn: callable, **param_nodes):
+    """
+    Generic traced wrapper for ANY process execution.
+    
+    This is the KEY to making trace optimization work correctly:
+    1. Takes the ACTUAL input to the process (messages, data, etc.)
+    2. Takes the ACTUAL function to execute (perform_llm_call, etc.)
+    3. Takes ParameterNode objects (not .data values!)
+    4. Trace automatically tracks dependencies
+    5. Returns output that depends on parameters
+    
+    Args:
+        process_input: The actual input to the process (could be messages, data, etc.)
+        process_fn: The actual function to execute
+        **param_nodes: Active ParameterNode objects
+        
+    Returns:
+        Output node that depends on parameters
+    """
+    try:
+        from opto.trace import bundle
+        
+        @bundle()
+        def _traced_wrapper(input_data, **params):
+            # Ensure input is a node
+            input_data = ensure_node(input_data)
+            
+            # Execute the actual process with parameters
+            output = process_fn(input_data, **params)
+            
+            # Ensure output is a node
+            output = ensure_node(output)
+            
+            return output
+        
+        return _traced_wrapper(process_input, **param_nodes)
+    except ImportError:
+        # If opto not available, execute directly
+        return process_fn(process_input, **param_nodes)
+
+
 class _TraceOptimizerAdapter:
     """
     Small adapter that exposes a step(context, targets, n_candidates) -> List[dict(edits...)]
@@ -120,7 +198,7 @@ class _TraceOptimizerAdapter:
         # allow a real trace object to be passed in config under key 'trace_obj'
         self._trace_obj = self.config.get("trace_obj")
         # unified Trace-style registry (single "parameters" list in config)
-        self._objective: Optional[str] = self.config.get("objective")
+        self._objective: Optional[str] = self.config.get("objective", "Improve the system's performance based on feedback.")
         self._init_parameters_from_config(self.config.get("parameters"))
         # factory hints (optional)
         self._optimizer_kind: Optional[str] = self.config.get("optimizer_kind", "optoprimev2").lower().strip()
@@ -523,10 +601,11 @@ class _TraceOptimizerAdapter:
 
 class DynamicConfigManager:
     """Manages dynamic LLM configuration based on rules and triggers"""
-    def __init__(self, config: Dict, usage_tracker: HelpUsageTracker, default_config: Dict):
+    def __init__(self, config: Dict, usage_tracker: HelpUsageTracker, default_config: Dict, human_llm_config=None):
         self.config = config
         self.usage_tracker = usage_tracker
         self.default_config = default_config
+        self.human_llm_config = human_llm_config  # For few-shot processing
         self.logger = logging.getLogger(__name__)
         self.rule_evaluators = {
             'regex': self._eval_regex_rule,
@@ -634,16 +713,21 @@ class DynamicConfigManager:
                                 # pass a 'trace_spec' (objective + parameters) to the optimizer
                                 ctx_for_trace = dict(context)
                                 ctx_for_trace["trace_spec"] = adapter.get_trace_spec()
-                                # --- NEW: standard Trace loop (online) when we're at the right phase
-                                fb_cfg = m.get("feedback") or {"use": "collect_feedback", "at": "post_inference"}
+                                # --- Build feedback config by merging optimizer config with modification config
+                                # Priority: modification config > optimizer config > default
+                                optimizer_fb_cfg = adapter.config.get("feedback", {})
+                                modification_fb_cfg = m.get("feedback", {})
+                                fb_cfg = {"use": "collect_feedback", "at": "post_inference"}
+                                fb_cfg.update(optimizer_fb_cfg)  # Apply optimizer-level config
+                                fb_cfg.update(modification_fb_cfg)  # Apply modification-level config (highest priority)
                                 # if phase == fb_cfg.get("at", "post_inference"):
                                 if True:
                                     try:
                                         adapter.zero_feedback(current_kwargs=context.get("kwargs", {}))
                                         fb_text = self._render_feedback_text(context, fb_cfg)
-                                        for p in adapter.parameters():
-                                            if getattr(p, "trainable", False):
-                                                adapter.backward(p, fb_text, current_kwargs=context.get("kwargs", {}))
+                                        # Check if we have a traced output node in context or adapter
+                                        output_node = context.get("trace_output_node") or getattr(adapter, "last_output") or ensure_node("<no_output>")
+                                        adapter.backward(output_node, fb_text, current_kwargs=context.get("kwargs", {}))
                                     except Exception:
                                         self.logger.exception("Trace backward failed (H1)")
                                 candidates = adapter.step(context=ctx_for_trace, targets=targets, n_candidates=n_candidates, constraints=m.get("constraints"))
@@ -758,8 +842,8 @@ class DynamicConfigManager:
             prompt = fb.get("prompt")
             if prompt:
                 # Replace with populated few‑shots; independent of any optimizer
-                if hasattr(self.config, 'common_vectordb') and hasattr(self.config.common_vectordb, 'populate_few_shot_tags'):
-                    return self.config.common_vectordb.populate_few_shot_tags(prompt)
+                if (self.human_llm_config and hasattr(self.human_llm_config, 'common_vectordb') and self.human_llm_config.common_vectordb and hasattr(self.human_llm_config.common_vectordb, 'populate_few_shot_tags')):
+                    return self.human_llm_config.common_vectordb.populate_few_shot_tags(prompt)
                 else:
                     # Fallback if method doesn't exist - return prompt as is
                     return prompt
@@ -1098,10 +1182,6 @@ class DynamicConfigManager:
         out = sorted(user_diffs, key=lambda x: x.get("ts", 0), reverse=True)
         out += sorted(human_annotations, key=lambda x: x.get("ts", 0), reverse=True)
         out += sorted(auto_evals, key=lambda x: x.get("ts", 0), reverse=True)
-        if not out:
-            um = context.get("user_message")
-            if um:
-                out = [{"type": "fallback_user_message", "content": um, "ts": time.time()}]
         return out
 
     def offline_optimize(
@@ -1153,13 +1233,21 @@ class DynamicConfigManager:
             ctx["trace_spec"] = adapter.get_trace_spec()
             # --- NEW: standard Trace offline loop (H2) using aggregated feedback ---
             adapter.zero_feedback()
-            fb_text = self._render_feedback_text(ctx, {"use": "collect_feedback"})  # reuse ordering of records
-            for p in adapter.parameters():
-                if getattr(p, "trainable", False):
-                    try:
-                        adapter.backward(p, fb_text)
-                    except Exception:
-                        self.logger.exception("Trace backward failed (H2)")
+            # Use optimizer's feedback config if available, otherwise default
+            optimizer_fb_cfg = adapter.config.get("feedback", {})
+            fb_cfg = {"use": "collect_feedback"}
+            fb_cfg.update(optimizer_fb_cfg)
+            fb_text = self._render_feedback_text(ctx, fb_cfg)  # reuse ordering of records
+            # For offline optimization (H2), check if we have an output node from recorded context
+            output_node = None
+            for rec in norm_records:
+                rec_output = rec.get("context", {}).get("trace_output_node")
+                if rec_output:
+                    output_node = rec_output
+                    adapter.backward(output_node, fb_text)
+            # Correct Trace API: backward(output_node, feedback) propagates through dependencies
+            if output_node is None:
+                adapter.backward(ensure_node("<no_output>"), fb_text)
             cands = adapter.step(context=ctx, targets=trgts, n_candidates=int(n_candidates), constraints=constraints)
 
         except Exception:
@@ -1296,7 +1384,7 @@ class HumanLLM:
             'use_premium_llm': premium_llm_by_default
         }
         
-        self.dynamic_mgr = DynamicConfigManager(self.dynamic_llm_config, self.usage_tracker, default_cfg)
+        self.dynamic_mgr = DynamicConfigManager(self.dynamic_llm_config, self.usage_tracker, default_cfg, self.config)
         self.use_premium_llm = None  # Will be set during inference
         
         # Register inference checks from dynamic config
@@ -5344,10 +5432,7 @@ List your annotations below:
             { "applied": bool, "applied_edits": [...], ... }
         """
         if not getattr(self, "dynamic_mgr", None):
-            raise RuntimeError("DynamicConfigManager is not initialized on this HumanLLM instance.")
+            return {"applied": False, "reason": "no_dynamic_mgr", "message": "DynamicConfigManager is not initialized on this HumanLLM instance."}
         if not hasattr(self.dynamic_mgr, "offline_optimize"):
-            raise NotImplementedError(
-                "DynamicConfigManager.offline_optimize(...) is not available. "
-                "Update DynamicConfigManager to a version that supports H2."
-            )
+            return {"applied": False, "reason": "not_implemented", "message": "DynamicConfigManager.offline_optimize(...) is not available. Update DynamicConfigManager to a version that supports H2."}
         return self.dynamic_mgr.offline_optimize(optimizer_name, targets, n_candidates, constraints)
