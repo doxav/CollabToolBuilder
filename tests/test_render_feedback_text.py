@@ -24,8 +24,7 @@ class TestRenderFeedbackText:
     def dynamic_manager(self, mock_config, usage_tracker):
         """Create DynamicConfigManager with mocked dependencies"""
         default_config = {'test': 'default'}
-        manager = DynamicConfigManager({}, usage_tracker, default_config)
-        manager.config = mock_config
+        manager = DynamicConfigManager({}, usage_tracker, default_config, human_llm_config=mock_config)
         return manager
 
     def test_collect_feedback_with_prompt(self, dynamic_manager, mock_config):
@@ -410,8 +409,7 @@ class TestRenderFeedbackTextIntegration:
         """Create DynamicConfigManager with real HumanLLMConfig"""
         usage_tracker = HelpUsageTracker()
         default_config = {'test': 'default'}
-        manager = DynamicConfigManager({}, usage_tracker, default_config)
-        manager.config = real_config
+        manager = DynamicConfigManager({}, usage_tracker, default_config, human_llm_config=real_config)
         return manager
 
     def test_real_few_shot_population_basic(self, dynamic_manager_with_real_config, real_config):
