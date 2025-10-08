@@ -53,6 +53,19 @@ class HumanLLMConfig:
         self.special_criteria = None
         self.automation = None
 
+        # ---- OTEL / Trace knobs (minimal, robust) ----
+        self.trace_enable_otel: bool = False
+        self.otel_service_name: str = "humanllm"
+        # Filter at collection/build time (optimizer side)
+        self.otel_include: list[str] = []  # e.g. ["gen_ai.", "inputs.", "param."]
+        self.otel_exclude: list[str] = []  # e.g. ["inputs.system"]
+        # Truncate large text at emission to avoid exporter crashes
+        self.otel_text_max_bytes: int = 3072
+        # Only fill missing parent links by temporal order (safe default)
+        self.use_temporal_hierarchy_if_missing: bool = True
+        # If True, after each call we may do collect+backward (no apply)
+        self.trace_auto_backward_per_call: bool = False
+
         self.initialized = False
 
     def initialize(self):

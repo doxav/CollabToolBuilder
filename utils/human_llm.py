@@ -34,6 +34,9 @@ except Exception as e:
 from utils.human_llm_config import HumanLLMConfig
 from typing import List, Dict, Any, Optional, Union, Tuple, Callable
 
+# OTEL tracing support
+from opentelemetry import trace as _oteltrace
+from utils.otel_helpers import get_tracer, safe_set, set_inputs, current_thread_id
 
 from langchain.llms import OpenAI
 from langchain.chains import LLMChain
@@ -806,6 +809,19 @@ class DynamicConfigManager:
                                 if isinstance(first, dict) and isinstance(first.get("meta"), dict):
                                     if first["meta"].get("requires_human"):
                                         modifications["activate_human_intervention"] = True
+                                
+                                # Log modifications to OTEL span for observability
+                                if self.config.get("trace_enable_otel") and first.get("edits"):
+                                    span = _oteltrace.get_current_span()
+                                    if span and span.is_recording():
+                                        safe_set(span, "modification.source", "trace_optimizer")
+                                        safe_set(span, "modification.count", len(first.get("edits", [])))
+                                        for i, edit in enumerate(first.get("edits", [])[:5]):  # Log first 5 edits
+                                            tgt = edit.get("target", "")
+                                            val = edit.get("value")
+                                            safe_set(span, f"modification.{i}.target", str(tgt), max_bytes=self.config.get("otel_text_max_bytes", 1000))
+                                            if val is not None:
+                                                safe_set(span, f"modification.{i}.value", str(val)[:200], max_bytes=self.config.get("otel_text_max_bytes", 1000))
 
                         else:
                             # unknown modification type: ignore but log
@@ -1632,6 +1648,17 @@ class HumanLLM:
         if ivk:
             # reflect in context for transparency
             context.setdefault("invoke_kwargs", {}).update(ivk)
+            
+            # Log parameter changes to OTEL span for observability
+            if self.config.trace_enable_otel:
+                span = _oteltrace.get_current_span()
+                if span and span.is_recording():
+                    for param_name, new_value in ivk.items():
+                        # Log the parameter change
+                        safe_set(span, f"modification.invoke.{param_name}", str(new_value)[:200], max_bytes=self.config.otel_text_max_bytes)
+                        # Mark as a traced parameter modification
+                        safe_set(span, f"modification.invoke.{param_name}.source", "trace_optimizer", max_bytes=self.config.otel_text_max_bytes)
+            
             # common H1 knob from Trace: temperature
             if "temperature" in ivk:
                 try:
@@ -3664,6 +3691,29 @@ class HumanLLM:
             "pipeline_mode": pipeline_mode,
             "user_score": user_score
         }
+        
+        # Emit OTEL feedback span (distinct from llm.call)
+        if self.config.trace_enable_otel:
+            tracer = get_tracer(self.config.otel_service_name)
+            run_id = f"{self.agent_name}:{self.config.step_id}"
+            with tracer.start_as_current_span("feedback") as fb:
+                safe_set(fb, "agent.name", self.agent_name, self.config.otel_text_max_bytes)
+                safe_set(fb, "run.id", run_id, self.config.otel_text_max_bytes)
+                safe_set(fb, "thread.id", current_thread_id(), self.config.otel_text_max_bytes)
+                # Link to llm.call span via inputs.target
+                if getattr(self, "_last_llm_call_span_id", None):
+                    set_inputs(fb, self.config.otel_text_max_bytes, target=f"span:{self._last_llm_call_span_id}")
+                else:
+                    # Fallback: link by literal message.id
+                    set_inputs(fb, self.config.otel_text_max_bytes, target="lit:message.id")
+                # Carry the feedback string (score/comments)
+                if score is not None:
+                    safe_set(fb, "feedback.score", str(score), self.config.otel_text_max_bytes)
+                if output_comments:
+                    safe_set(fb, "feedback.text", str(output_comments[0] if len(output_comments)>0 else ""), self.config.otel_text_max_bytes)
+                # Keep some lengths
+                safe_set(fb, "output.len", str(len(output_contents or "")), self.config.otel_text_max_bytes)
+        
         # Serialize the entry as a JSON string
         serialized_entry = json.dumps(entry, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
 
@@ -3964,9 +4014,35 @@ class HumanLLM:
                 return AIMessage(content=final_output)
 
             else:
-                model_name = func.model_name
+                model_name = getattr(func, "model_name", None)
                 dynamic_config = self.dynamic_llm_config
                 agent_name = self.agent_name
+                tracer = get_tracer(self.config.otel_service_name) if self.config.trace_enable_otel else None
+                run_id = f"{self.agent_name}:{self.config.step_id}"
+                call_span = None
+                top_p = None  # Extract if available from func config
+                
+                # ---- LLM CALL span (non-streaming path) ----
+                if tracer:
+                    call_ctx = tracer.start_as_current_span("llm.call")
+                    call_span = call_ctx.__enter__()
+                    call_span = _oteltrace.get_current_span()
+                    # Required attributes to ease OTEL→Trace graph:
+                    safe_set(call_span, "agent.name", agent_name, self.config.otel_text_max_bytes)
+                    safe_set(call_span, "run.id", run_id, self.config.otel_text_max_bytes)
+                    safe_set(call_span, "thread.id", current_thread_id(), self.config.otel_text_max_bytes)
+                    safe_set(call_span, "gen_ai.model", model_name or "", self.config.otel_text_max_bytes)
+                    safe_set(call_span, "gen_ai.operation", "chat.completions", self.config.otel_text_max_bytes)
+                    # inputs.*
+                    sys_text = str(input_msg[0].content) if len(input_msg) > 0 else ""
+                    usr_text = str(input_msg[1].content) if len(input_msg) > 1 else ""
+                    set_inputs(call_span, self.config.otel_text_max_bytes,
+                               system=sys_text, user=usr_text,
+                               temperature=temperature, top_p=top_p)
+                    # discoverable parameters (mark trainable where applicable)
+                    safe_set(call_span, "param.temperature", str(temperature), self.config.otel_text_max_bytes)
+                    safe_set(call_span, "param.temperature.trainable", "true", self.config.otel_text_max_bytes)
+                
                 # No streaming. Normal call
                 try:
                     value = func.invoke(input_msg)
@@ -3978,8 +4054,22 @@ class HumanLLM:
                         value = func.invoke(input_msg)
                     else:
                         self.logger.error(f"Error invoking LLM: - ERROR:{e}")
+                        if call_span:
+                            safe_set(call_span, "exception.type", type(e).__name__, self.config.otel_text_max_bytes)
+                            safe_set(call_span, "exception.msg", str(e), self.config.otel_text_max_bytes)
+                            call_span.end()
                         raise e
-                return AIMessage(content=value.content if hasattr(value, 'content') else str(value))
+                
+                out_msg = AIMessage(content=value.content if hasattr(value, 'content') else str(value))
+                if call_span:
+                    safe_set(call_span, "message.id", getattr(out_msg, "id", "") or str(id(out_msg)), self.config.otel_text_max_bytes)
+                    safe_set(call_span, "output.len", str(len(out_msg.content or "")), self.config.otel_text_max_bytes)
+                    safe_set(call_span, "gen_ai.output", out_msg.content or "", self.config.otel_text_max_bytes)
+                    # Store span ID for feedback link
+                    self._last_llm_call_span_id = format(call_span.get_span_context().span_id, "016x")
+                    call_ctx.__exit__(None, None, None)
+                
+                return out_msg
 
         smart_print(
             f"\033[{self.print_color}m****{self.agent_name}>{inspect.stack()[1].function} calling HumanLLM****\033[0m",
