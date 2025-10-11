@@ -57,7 +57,7 @@ def run_4agents_learning_loop(
     max_execution_time=900,
     special_criteria=None,
     temperature_max=1,
-    agcoach_num_parallel_inferences=1,
+    agcoach_num_parallel_inferences=2,
     fixed_coach=False,
     return_array=False,
     agcoding_num_parallel_inferences=1,
@@ -989,8 +989,8 @@ if __name__ == "__main__":
         agcoding_skip_rounds=0,  # Auto-test: 4
         agvalidation_skip_rounds=0,  # Auto-test: 4
         agcapitalize_skip_rounds=0,
-        agcoding_num_parallel_inferences=1,
-        agcoach_num_parallel_inferences=1,
+        agcoding_num_parallel_inferences=2,
+        agcoach_num_parallel_inferences=2,
         # functions_to_import=".*",
         functions_to_import=None,
         primitives_dir="primitives/generate_primitives",

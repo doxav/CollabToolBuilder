@@ -1,6 +1,6 @@
 import os
 import tempfile
-from asyncio import subprocess
+import subprocess
 from threading import local
 import re, uuid, json, difflib
 import time, inspect, ast
@@ -50,6 +50,12 @@ from langchain_core.runnables import RunnableSequence, ConfigurableField
 import regex as regex 
 
 from dataclasses import dataclass, field
+
+logging.basicConfig(
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 @dataclass
 class FewShotsParams:
@@ -209,6 +215,7 @@ class _TraceOptimizerAdapter:
         self._import_path: Optional[str] = self.config.get("import_path")
         self._optimizer_kwargs: Dict[str, Any] = dict(self.config.get("optimizer_kwargs") or {})
         self._init_eager: bool = bool(self.config.get("init_eager", True))
+        self.last_output = None
         if self._init_eager and self._trace_obj is None and (self._optimizer_kind or self._import_path):
             try:
                 # Seed with any initial kwargs provided in config (or empty)
@@ -358,7 +365,10 @@ class _TraceOptimizerAdapter:
         - "profile:name" -> specified profile
         - optimizer_kind in {'OPRO','OptoPrime','OptoPrimeV2','OptoPrimeMulti'}
         """
+        if logger.isEnabledFor(logging.DEBUG): logger.debug(f"[ENSURE_TRACE_DEBUG] _ensure_trace_obj called for optimizer '{self.name}'\t_trace_obj is None: {self._trace_obj is None}\t_optimizer_kind: {self._optimizer_kind}\t_import_path: {self._import_path}")
+        
         if self._trace_obj is not None:
+            if logger.isEnabledFor(logging.DEBUG): logger.debug(f"[ENSURE_TRACE_DEBUG]   _trace_obj already exists, returning")
             return
             
         cls = None
@@ -374,17 +384,25 @@ class _TraceOptimizerAdapter:
                     cls = optimizers.OptoPrimeV2
                 elif kind == "optoprimemulti": 
                     cls = optimizers.OptoPrimeMulti
+                elif kind == "textgrad":
+                    cls = optimizers.TextGrad
             elif self._import_path:
                 mod_name, _, class_name = self._import_path.rpartition(".")
                 mod = importlib.import_module(mod_name)
                 cls = getattr(mod, class_name)
         except Exception as e:
+            logger.debug(f"[TRACE_OPTIMIZER_DEBUG] Failed to resolve optimizer class for '{self.name}': {e}")
+            import traceback
+            traceback.print_exc()
             return
             
         if cls is None:
+            logger.debug(f"[TRACE_OPTIMIZER_DEBUG] No optimizer class resolved for '{self.name}' (kind='{self._optimizer_kind}')")
             return
 
         # Build ParameterNodes and create optimizer with LLM resolution
+        if logger.isEnabledFor(logging.DEBUG): logger.debug(f"[ENSURE_TRACE_DEBUG] Optimizer class resolved: {cls}\tBuilding ParameterNodes from: {list(self._parameters.keys())}")
+        
         try:
             from opto import trace
             from opto.utils.llm import LLM, AbstractModel
@@ -419,7 +437,7 @@ class _TraceOptimizerAdapter:
             kwargs = dict(self._optimizer_kwargs or {})
             
             def resolve_llm(spec):
-                """Resolve LLM spec: 'human' and 'profile:name' formats"""
+                """Resolve LLM spec: 'human', 'profile:name' formats, or direct model names"""
                 if isinstance(spec, AbstractModel):
                     return spec
                 if isinstance(spec, str):
@@ -429,10 +447,16 @@ class _TraceOptimizerAdapter:
                     if s.startswith("profile:"):
                         profile_name = spec.split(":", 1)[1].strip()
                         return LLM(profile=profile_name)
+                    # Try as profile first
                     try:
                         return LLM(profile=spec.strip())
                     except Exception:
-                        return spec
+                        # Fallback: treat as direct model name (e.g., "gpt-4o-mini")
+                        try:
+                            return LLM(model=spec.strip())
+                        except Exception as e2:
+                            logger.error(f"[TRACE_OPTIMIZER_ERROR] Failed to resolve LLM spec '{spec}' as profile or model: {e2}")
+                            return spec
                 return spec
             
             # Apply LLM resolution with config precedence
@@ -450,10 +474,17 @@ class _TraceOptimizerAdapter:
             
             # Create optimizer
             self._trace_obj = cls(parameters=params, objective=self._objective, **kwargs)
-            
+            logger.debug(f"[TRACE_OPTIMIZER_DEBUG] Successfully created {cls.__name__} optimizer for '{self.name}' with {len(params)} parameters")
+
+            if logger.isEnabledFor(logging.DEBUG): logger.debug(f"[ENSURE_TRACE_DEBUG] ✓ Optimizer created successfully!\tself._trace_obj type: {type(self._trace_obj)}\tself._trace_obj is not None: {self._trace_obj is not None}")
+
         except Exception as e:
+            logger.debug(f"[TRACE_OPTIMIZER_DEBUG] Failed to create optimizer instance for '{self.name}': {e}")
+            import traceback
+            traceback.print_exc()
             self._trace_obj = None
 
+            if logger.isEnabledFor(logging.DEBUG): logger.debug(f"[ENSURE_TRACE_DEBUG] ✗ Optimizer creation FAILED!\tException: {e}")
 
 
     def _trace_to_edits(self, update_dict) -> List[Dict]:
@@ -494,19 +525,24 @@ class _TraceOptimizerAdapter:
 
     def step(self, context: Dict, targets: List[str], n_candidates: int = 1, constraints: Dict = None) -> List[Dict]:
         """Return candidate patches. Each candidate is a dict {'edits': [ {'target':..., 'op':..., 'value':...}, ... ]}"""
+        logger.debug(f"[STEP_DEBUG] step() called for optimizer '{self.name}'\ttargets: {targets}\tn_candidates: {n_candidates}")
+        
         self._state["calls"] += 1
         # record an observation snapshot for debug/tracing - use per-optimizer observables
-
         candidates = []
 
         self._ensure_trace_obj(current_kwargs=context.get("kwargs", {}))
-        self._trace_obj
+
+        logger.debug(f"[STEP_DEBUG]   After _ensure_trace_obj:\tself._trace_obj is None: {self._trace_obj is None}\tself._trace_obj type: {type(self._trace_obj) if self._trace_obj else 'N/A'}")
         if self._trace_obj:
+            logger.debug(f"[STEP_DEBUG]   Optimizer exists, attempting to call step()...")
             try:
                 # Execute a Trace step; adapt results into both trace.param.* and full-path edits when known.
                 # Trace optimizers do not accept an execution context; use feedback via backward().
                 # Be flexible to support both: real Trace (no-arg step) and adapters that accept context/targets.
                 step_fn = getattr(self._trace_obj, "step", None)
+                logger.debug(f"[STEP_DEBUG]   step_fn type: {type(step_fn)}\tstep_fn value: {step_fn}\tstep_fn callable: {callable(step_fn)}\tself._trace_obj.__class__: {self._trace_obj.__class__}\thasattr(self._trace_obj, 'step'): {hasattr(self._trace_obj, 'step')}")
+
                 update = None
                 if callable(step_fn):
                     try:
@@ -521,14 +557,34 @@ class _TraceOptimizerAdapter:
                             kwargs["n_candidates"] = n_candidates
                         if "constraints" in sig.parameters:
                             kwargs["constraints"] = constraints
+                        logger.debug(f"[STEP_DEBUG]   Calling step_fn with kwargs: {list(kwargs.keys())}")
                         update = step_fn(**kwargs)
-                    except Exception:
+
+                        logger.debug(f"[STEP_DEBUG]   step_fn returned: type={type(update)}, value={update}")
+
+                    except Exception as ex:
+                        if logger.isEnabledFor(logging.DEBUG):
+                            import traceback
+                            logger.debug(f"[STEP_DEBUG]   Exception calling step_fn with kwargs: {ex}\tException type: {type(ex)}\n[STEP_DEBUG]   Traceback:")
+                            traceback.print_exc()
+                            logger.debug(f"[STEP_DEBUG]   Falling back to no-arg call")
                         # fallback to no-arg call
-                        update = step_fn()
+                        try:
+                            update = step_fn()
+                            logger.debug(f"[STEP_DEBUG]   No-arg step_fn returned: type={type(update)}, value={update}")
+                        except Exception as ex2:
+                            if logger.isEnabledFor(logging.DEBUG):
+                                logger.debug(f"[STEP_DEBUG]   No-arg call also failed: {ex2}")
+                                import traceback
+                                traceback.print_exc()
+                            raise
                 else:
                     update = self._trace_obj.step()
+                    logger.debug(f"[STEP_DEBUG]   Direct step() returned: type={type(update)}, value={update}")
 
                 # Now normalize the return into a list of candidate dicts with 'edits'
+                logger.debug(f"[STEP_DEBUG]   Normalizing update to candidate list...")
+
                 raw = None
                 if isinstance(update, list) and all(isinstance(c, dict) and "edits" in c for c in update):
                     raw = update
@@ -639,26 +695,55 @@ class DynamicConfigManager:
         """Evaluate all triggers and return modifications to apply"""
         modifications = {}
         
+        call_count = len(self._call_history) + 1
+        if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] evaluate_triggers called - phase={phase}, call_count={call_count}, config_keys={list(self.config.keys())}")
+        
         for help_type, help_config in list(self.config.items()):
             # Skip meta sections that are not help blocks
             if help_type in ('trace_optimizers', 'trace_default_optimizer'):
+                if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] Skipping meta section: {help_type}")
                 continue
             if not isinstance(help_config, dict):
                 self.logger.warning("Invalid dynamic config for type (expected dict): %r", help_type)
                 continue
+            
+            # DEBUG: Log help type processing
+            if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] Processing help_type={help_type}, config_phase={help_config.get('phase', 'pre_inference')}, current_phase={phase}")
+
             # Check if this help type applies to current phase
-            if help_config.get('phase', 'pre_inference') != phase:
+            config_phase = help_config.get('phase', 'pre_inference')
+            if config_phase != phase:
+                if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] Phase mismatch for {help_type}: config={config_phase}, current={phase} - SKIPPING")
                 continue
-                
-            # Check quota
-            if not self.usage_tracker.can_use(help_type):
+            
+            self.logger.debug(f"[TRIGGER_DEBUG] ✓ Phase MATCH for {help_type}! Checking quota...")
+            
+            # DEBUG: Check quota
+            can_use = self.usage_tracker.can_use(help_type)
+            if logger.isEnabledFor(logging.DEBUG):
+                usage_info = self.usage_tracker.usage.get(help_type, {})
+                quota_info = self.usage_tracker.quotas.get(help_type, {})
+                self.logger.debug(f"[TRIGGER_DEBUG] Quota check for {help_type}: can_use={can_use}, usage={usage_info}, quota={quota_info}")
+
+            if not can_use:
+                self.logger.info(f"[TRIGGER_INFO] Quota exhausted for {help_type} - SKIPPING")
                 continue
-                
+            self.logger.debug(f"[TRIGGER_DEBUG] ✓ Quota OK! Evaluating rules...")
+            
             # Evaluate rules
             rules = help_config.get('rules', {})
-            if self._evaluate_rules(rules, context):
+            if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] Evaluating rules for {help_type}: {list(rules.keys())}")
+            
+            rules_passed = self._evaluate_rules(rules, context)
+            if logger.isEnabledFor(logging.DEBUG): 
+                self.logger.debug(f"[TRIGGER_DEBUG] Rules evaluation result for {help_type}: {rules_passed}")
+                self.logger.debug(f"[TRIGGER_DEBUG] Rules result: {rules_passed}")
+                
+            if rules_passed:
                 # Apply modifications
                 mods = help_config.get('modifications', {})
+                if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] ✓ Rules passed! Processing modifications for {help_type}: type={type(mods)}, count={len(mods) if isinstance(mods, list) else 'N/A'}")
+                
                 # Allow old dict-based modifications for backward compatibility
                 if isinstance(mods, dict):
                     modifications.update(mods)
@@ -666,6 +751,8 @@ class DynamicConfigManager:
                     # new-style: list of modification descriptors; supports {'type': 'trace', ...}
                     for m in (mods or []):
                         mtype = m.get("type", "simple")
+                        if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] Processing modification: type={mtype}, optimizer={m.get('optimizer')}")
+                        
                         if mtype == "simple":
                             # merge simple dict patch (fallback)
                             payload = m.get("payload", {})
@@ -674,16 +761,27 @@ class DynamicConfigManager:
                         elif mtype == "trace":
                             # call a persistent trace optimizer synchronously (H1 behavior)
                             opt_name = m.get("optimizer") or self.config.get("trace_default_optimizer")
+                            if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] Trace modification - optimizer_name={opt_name}, default={self.config.get('trace_default_optimizer')}")
+                            
                             if not opt_name:
                                 self.logger.debug("Trace modification requested but no optimizer name/config found; skipping")
+                                self.logger.warning(f"[TRIGGER_WARNING] NO OPTIMIZER NAME - SKIPPING trace modification")
                                 continue
+                            
                             adapter = self._trace_optimizers.get(opt_name)
+                            if logger.isEnabledFor(logging.DEBUG): 
+                                self.logger.debug(f"[TRIGGER_DEBUG] Adapter lookup: found={adapter is not None}, existing_optimizers={list(self._trace_optimizers.keys())}\tAdapter lookup for '{opt_name}':\tFound: {adapter is not None}\tAdapter ID: {id(adapter) if adapter else 'N/A'}\tExisting optimizers: {list(self._trace_optimizers.keys())}")
+                            
                             if adapter is None:
                                 # create a basic adapter for this name, allow user to replace with real Trace later
+                                if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] Creating new adapter for {opt_name}")
                                 adapter = _TraceOptimizerAdapter(opt_name, m.get("config", {}))
                                 self._trace_optimizers[opt_name] = adapter
+                            
                             # Optional: redefine the trainable parameter set from 'targets'
                             targets_spec = m.get("targets") or []
+                            if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] Targets spec: {targets_spec}")
+                
                             if targets_spec:
                                 try:
                                     adapter.redefine_trainables(targets_spec)
@@ -712,6 +810,8 @@ class DynamicConfigManager:
 
                             
                             n_candidates = int(m.get("n_candidates", 1))
+                            if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] About to call optimizer step: n_candidates={n_candidates}, targets={targets}")
+                            
                             try:
                                 # pass a 'trace_spec' (objective + parameters) to the optimizer
                                 ctx_for_trace = dict(context)
@@ -723,29 +823,45 @@ class DynamicConfigManager:
                                 fb_cfg = {"use": "collect_feedback", "at": "post_inference"}
                                 fb_cfg.update(optimizer_fb_cfg)  # Apply optimizer-level config
                                 fb_cfg.update(modification_fb_cfg)  # Apply modification-level config (highest priority)
+                                if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] Feedback config: {fb_cfg}, phase={phase}")
+                                
                                 # if phase == fb_cfg.get("at", "post_inference"):
                                 if True:
                                     try:
+                                        if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] Calling adapter.backward()")
                                         adapter.zero_feedback(current_kwargs=context.get("kwargs", {}))
                                         fb_text = self._render_feedback_text(context, fb_cfg)
                                         # Check if we have a traced output node in context or adapter
                                         output_node = context.get("trace_output_node") or getattr(adapter, "last_output") or ensure_node("<no_output>")
                                         adapter.backward(output_node, fb_text, current_kwargs=context.get("kwargs", {}))
+                                        if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] adapter.backward() completed successfully")
                                     except Exception:
-                                        self.logger.exception("Trace backward failed (H1)")
+                                        self.logger.error(f"[TRIGGER_ERROR] Trace backward failed (H1): adapter.backward() FAILED with exception")
+
+                                if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] Calling adapter.step() with targets={targets}")
                                 candidates = adapter.step(context=ctx_for_trace, targets=targets, n_candidates=n_candidates, constraints=m.get("constraints"))
+                                if logger.isEnabledFor(logging.DEBUG):
+                                    self.logger.debug(f"[TRIGGER_DEBUG] adapter.step() returned {len(candidates)} candidates")
+                                    if candidates: self.logger.debug(f"[TRIGGER_DEBUG] First candidate: {candidates[0]}")
 
                             except Exception as e:
-                                self.logger.exception("Trace optimizer step failed; skipping optimizer modification")
+                                self.logger.error(f"[TRIGGER_ERROR] Optimizer step FAILED: {e} / Trace optimizer step failed; skipping optimizer modification")
                                 candidates = []
                             # If Trace returns candidates, pick the first by default (Trace-as-Advisor). UI/human-in-loop can override later.
+                            if logger.isEnabledFor(logging.DEBUG):
+                                self.logger.debug(f"[TRIGGER_DEBUG] Candidates returned: {len(candidates) if candidates else 0}")
+                                if candidates and len(candidates) > 0:
+                                    self.logger.debug(f"[TRIGGER_DEBUG] First candidate keys: {list(candidates[0].keys())}\tedits: {candidates[0].get('edits', [])}")
+                            
                             if candidates:
+                                if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] Processing {len(candidates)} candidates...")
                                 first = candidates[0]
                                 # We expect candidate to be dict with 'edits': list of {target, op, value}
                                 for edit in first.get("edits", []):
                                     tgt = edit.get("target")
                                     op = edit.get("op", "set")
                                     val = edit.get("value")
+                                    if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] Processing edit: target={tgt}, op={op}, value_preview={str(val)[:100]}")
                                     # For known targets like invoke.kwarg keys or system/user message, translate to modifications
                                     if tgt and tgt.startswith("invoke."):
                                         # modifications dict may contain an 'invoke_kwargs' sub-dict
@@ -753,10 +869,12 @@ class DynamicConfigManager:
                                         key = tgt.split(".", 1)[1]
                                         if op in ("set",):
                                             invoke_overrides[key] = val
+                                            if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] Added invoke_kwargs[{key}] = {val}")
                                     elif tgt in ("user_message", "system_prompt"):
                                         # place in modifications top-level
                                         if op == "set":
                                             modifications[tgt] = val
+                                            if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[TRIGGER_DEBUG] Added modifications[{tgt}] = {str(val)[:100]}")
                                         elif op == "append":
                                             modifications.setdefault(tgt + "_append", []).append(val)
                                         elif op == "prepend":
@@ -854,6 +972,10 @@ class DynamicConfigManager:
         """
         fb = fb_cfg or {}
         use = fb.get("use")
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"\n{'='*80}"+f"\n[FEEDBACK RENDER DEBUG] _render_feedback_text() called\n[FEEDBACK RENDER DEBUG] use mode: {use}\n[FEEDBACK RENDER DEBUG] fb_cfg keys: {list(fb.keys())}")
+            
         if use == "collect_feedback":
             prompt = fb.get("prompt")
             if prompt:
@@ -865,7 +987,35 @@ class DynamicConfigManager:
                     return prompt
             # If no prompt given, fall back to existing collected records
             items = self.collect_feedback(context)
-            return "\n\n".join(str(it.get(k,"")) for it in items for k in ("content","diff","metrics") if it.get(k)).strip() or "No feedback"
+            historical_feedback = "\n\n".join(str(it.get(k,"")) for it in items for k in ("content","diff","metrics") if it.get(k)).strip()
+            
+            # Include current inference metrics from context (if available)
+            current_metrics = []
+            include_metrics = fb.get("include_metrics", False)
+            if include_metrics or not historical_feedback:  # Always include if no historical data
+                if "quality_score" in context:
+                    current_metrics.append(f"Current quality_score: {context['quality_score']}")
+                if "inference_time" in context:
+                    current_metrics.append(f"Current inference_time: {context['inference_time']}s")
+                if "cost" in context:
+                    current_metrics.append(f"Current cost: ${context['cost']}")
+                if "latency" in context:
+                    current_metrics.append(f"Current latency: {context['latency']}s")
+                    
+            current_feedback = "\n".join(current_metrics) if current_metrics else ""
+            
+            # Combine historical + current
+            if historical_feedback and current_feedback:
+                feedback_text = f"{historical_feedback}\n\n--- Current Inference ---\n{current_feedback}"
+            elif current_feedback:
+                feedback_text = current_feedback
+            else:
+                feedback_text = historical_feedback or "No feedback"
+            
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"[FEEDBACK RENDER DEBUG] Historical feedback length: {len(historical_feedback)}\n[FEEDBACK RENDER DEBUG] Current metrics count: {len(current_metrics)}\n[FEEDBACK RENDER DEBUG] Combined feedback_text length: {len(feedback_text)}\n[FEEDBACK RENDER DEBUG] Feedback preview (first 300 chars): {feedback_text[:300]}"+f"{'='*80}\n")
+                
+            return feedback_text
         if use == "custom_fn":
             fn_spec = fb.get("fn")
             args = fb.get("args", {})
@@ -893,7 +1043,12 @@ class DynamicConfigManager:
             return str(getattr(importlib.import_module(module), func)(**call_kwargs))
         # default: collect & merge manager’s feedback records
         items = self.collect_feedback(context)
-        return "\n\n".join(str(it.get(k,"")) for it in items for k in ("content","diff","metrics") if it.get(k)).strip() or "No feedback"
+        feedback_text = "\n\n".join(str(it.get(k,"")) for it in items for k in ("content","diff","metrics") if it.get(k)).strip() or "No feedback"
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"[FEEDBACK RENDER DEBUG] Default path - Generated feedback_text length: {len(feedback_text)}\n[FEEDBACK RENDER DEBUG] Feedback preview (first 300 chars): {feedback_text[:300]}"+f"{'='*80}\n")
+            
+        return feedback_text
 
     # -------------------------
     # small dict path helpers
@@ -950,7 +1105,13 @@ class DynamicConfigManager:
         every_n = config.get('every_n', 10)
         # Current call number = number of calls in history + 1 (for current call)
         count = len(self._call_history) + 1
-        return count % every_n == 0
+        result = count % every_n == 0
+        
+        # DEBUG: Log frequency rule evaluation
+        if logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"[TRIGGER_DEBUG] _eval_frequency_rule: every_n={every_n}, call_history_len={len(self._call_history)}, count={count}, result={result} ({count} % {every_n} = {count % every_n})")
+        
+        return result
         
     def _eval_confidence_rule(self, config: Dict, context: Dict) -> bool:
         """Evaluate output divergence"""
@@ -1178,9 +1339,11 @@ class DynamicConfigManager:
     def list_trace_optimizers(self) -> List[str]:
         return list(self._trace_optimizers.keys())
 
-    def record_outcome(self, context: Dict, modifications: Dict, outcome_metrics: Dict):
+    def record_outcome(self, context: Dict, modifications: Dict, outcome_metrics: Dict, feedback_type: str = "auto_eval", content: Optional[str] = None):
         """Store an outcome record for offline learning (H2)."""
-        self._records.append({"ts": time.time(), "context": context, "modifications": modifications, "metrics": outcome_metrics})
+        state = {"ts": time.time(), "type": feedback_type, "context": context, "modifications": modifications, "metrics": outcome_metrics}
+        if content: state["content"] = content
+        self._records.append(state)
 
     def log_user_correction(self, agent_name: str, diff: str, who: str):
         """Store a user diff/correction for priority feedback."""
@@ -1191,13 +1354,25 @@ class DynamicConfigManager:
         Return ordered list of feedback candidates: user diffs first, then human annotations, then auto-evals.
         If no records exist, fallback to returning the user_message as a single fallback entry.
         """
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"\n{'='*80}"+"\n[FEEDBACK DEBUG] collect_feedback() called\n[FEEDBACK DEBUG] Total records in self._records: {len(self._records)}")
+            if self._records: logger.debug(f"[FEEDBACK DEBUG] Record types: {[r.get('type', 'unknown') for r in self._records]}")
+            
         user_diffs = [r for r in self._records if r.get("type") == "user_diff"]
         human_annotations = [r for r in self._records if r.get("type") == "human_annotation"]
         auto_evals = [r for r in self._records if r.get("type") == "auto_eval"]
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"[FEEDBACK DEBUG] user_diffs: {len(user_diffs)}, human_annotations: {len(human_annotations)}, auto_evals: {len(auto_evals)}")
+            
         # order recent-first inside each class
         out = sorted(user_diffs, key=lambda x: x.get("ts", 0), reverse=True)
         out += sorted(human_annotations, key=lambda x: x.get("ts", 0), reverse=True)
         out += sorted(auto_evals, key=lambda x: x.get("ts", 0), reverse=True)
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"[FEEDBACK DEBUG] Returning {len(out)} feedback records"+f"{'='*80}\n")
+            
         return out
 
     def offline_optimize(
@@ -1941,7 +2116,7 @@ class HumanLLM:
         - Optionally, for PDFs, converts to Markdown first using Marker via Docker (if use_marker=True).
         - Prevents re-adding an already indexed document unless `overwrite=True`.
         """
-        print(f"Loading RAG document: {file_path}")
+        logger.info(f"Loading RAG document: {file_path}")
     
         if folder_path:
             file_path = os.path.join(folder_path, file_path)
@@ -1956,7 +2131,7 @@ class HumanLLM:
             query_text="*"
         )
         if any(existing_docs) and not overwrite:
-            print(f"The document '{file_name}' already exists. Use overwrite=True to force re-indexing.")
+            logger.debug(f"The document '{file_name}' already exists. Use overwrite=True to force re-indexing.")
             return
 
         ext = os.path.splitext(file_path)[1].lower()
@@ -1965,7 +2140,7 @@ class HumanLLM:
         # Convert PDF to Markdown using Marker via Docker if enabled
         if ext == '.pdf' and use_marker:
             try:
-                print("Converting PDF -> Markdown using Marker Docker ...")
+                logger.info("Converting PDF -> Markdown using Marker Docker ...")
                 # Use a temporary directory to mount the file
                 tmp_dir = tempfile.mkdtemp()
                 temp_pdf_path = os.path.join(tmp_dir, file_name)
@@ -1982,12 +2157,12 @@ class HumanLLM:
                     file_path = new_file_path
                     ext = ".md"
                     extra_metadata["converted_with_marker"] = True
-                    print(f"Conversion successful, new file: {file_path}")
+                    logger.info(f"Conversion successful, new file: {file_path}")
                 else:
-                    print("Error: Converted Markdown file not found.")
+                    logger.error("Error: Converted Markdown file not found.")
             except Exception as e:
-                print(f"Error during PDF -> Markdown conversion: {e}")
-    
+                logger.error(f"Error during PDF -> Markdown conversion: {e}")
+
         # Extract metadata from PDFs if not converted via Marker
         if ext == '.pdf' and not use_marker:
             try:
@@ -1999,7 +2174,7 @@ class HumanLLM:
                         cleaned_meta = self.clean_metadata(dict(pdf_meta))
                         extra_metadata.update(cleaned_meta)
             except Exception as e:
-                print(f"Error extracting PDF metadata: {e}")
+                logger.error(f"Error extracting PDF metadata: {e}")
 
         # Select the appropriate LangChain loader
         if ext == '.pdf':
@@ -2040,23 +2215,23 @@ class HumanLLM:
                     extracted_title = parsed.get("title", "").strip()
                     extracted_authors = str(parsed.get("authors", "")).strip()
                     extra_metadata.update({ "extracted_title": extracted_title, "extracted_authors": extracted_authors})
-                    print("LLM extraction successful:", extracted_title, extracted_authors)
+                    logger.info("LLM extraction successful:", extracted_title, extracted_authors)
                 except Exception as parse_ex:
-                    print(f"Error parsing LLM response for title/authors: {parse_ex}")
+                    logger.error(f"Error parsing LLM response for title/authors: {parse_ex}")
             except Exception as e:
-                print(f"Error extracting title/authors using LLM: {e}")
+                logger.error(f"Error extracting title/authors using LLM: {e}")
 
         # Apply chunking if options are provided
         if chunking_options:
             chunked_docs = []
             if use_semantic_chunking:
-                print("Using semantic double-pass merging chunking...")
+                logger.debug("Using semantic double-pass merging chunking...")
                 for doc in docs:
                     chunks = semantic_double_pass_chunking(doc.page_content, **chunking_options)
                     for chunk in chunks:
                         chunked_docs.append(type(doc)(page_content=chunk, metadata=doc.metadata))
             else:
-                print("Using default chunking (RecursiveCharacterTextSplitter)...")
+                logger.debug("Using default chunking (RecursiveCharacterTextSplitter)...")
                 from langchain.text_splitter import RecursiveCharacterTextSplitter
                 splitter = RecursiveCharacterTextSplitter(**chunking_options)
                 for doc in docs:
@@ -2175,7 +2350,7 @@ class HumanLLM:
                             ).with_config(configurable={
                                 "llm_temperature": temperature})  # Replace with desired default temperature
                         except ValueError as e:
-                            print(f"Step {step} does not support temperature configuration: {e}", self.agent_name)
+                            logger.error(f"Step {step} does not support temperature configuration: {e}", self.agent_name)
                         modified_steps.append(step)
                     else:
                         modified_steps.append(step)
@@ -2502,7 +2677,8 @@ class HumanLLM:
 
     def check_token_limit(self, content):
         import tiktoken
-        encoding = tiktoken.encoding_for_model("gpt-4o-mini")  # TODO: replace by appropriate call to self.xxxxxx
+        try: encoding = tiktoken.encoding_for_model("gpt-4o-mini")
+        except Exception: encoding = tiktoken.get_encoding("cl100k_base")
         token_length = len(encoding.encode(content))
 
         if token_length > self.llm_max_context_size:
@@ -3011,7 +3187,7 @@ class HumanLLM:
             if self.user_message_few_shots:
                 _visual_input(self.user_message_few_shots)
             else:
-                print("No few_shots available.")
+                smart_print("No few_shots available.")
             return
 
         if confirm == "I":
@@ -3080,7 +3256,7 @@ class HumanLLM:
             )
             _visual_input(visual_result, filetype="json")
         else:
-            print("No results found for the selected option.")
+            smart_print("No results found for the selected option.")
 
     def get_previous_results(self, function_name=None, agent_name=None, k=100):
         self.configure_vector_store()
@@ -3123,7 +3299,7 @@ class HumanLLM:
         self.mode = 'after'
         comments, score = None, None
         nl = "\n"
-        print(f"***{self.agent_name}, AFTER INFERENCE***")
+        smart_print(f"***{self.agent_name}, AFTER INFERENCE***")
         if inference_result_msg is None:
             # enable to request inference_result_msg.content to be None
             inference_result_msg = type('InferenceResult', (object,), {'content': None})
@@ -3138,13 +3314,13 @@ class HumanLLM:
             check_results = self.run_manage_inference_checks(output_id - 1, inference_result_msg.content)
             check_display = ""
             # Display inference check results
-            for check_name, result in check_results.items():
+            for check_name, result in (check_results or {}).items():
                 check_display += f"{nl}CHECK {check_name} result: " + str(result).replace("\\n", "\n")
 
-            if not task_name:
+            if not task_name and isinstance(getattr(inference_result_msg, "content", None), str):
                 pattern = r'def\s+(\w+)\('
                 match = re.search(pattern, inference_result_msg.content, flags=re.MULTILINE)
-                task_name = match.group(1) if match else print("No function definitions found.")
+                task_name = match.group(1) if match else smart_print("No function definitions found.")
 
             if not self.skip_log_entry_if_no_change:
                 self.config.log_agent_data( self.agent_name,
@@ -3171,7 +3347,6 @@ class HumanLLM:
             smart_print(menu, self.agent_name, "AFTER inference action MENU" + (
                 f" {output_id}/{outputs_count}" if (output_id and outputs_count and (outputs_count > 1)) else ""),
                         self.agent_name, column_id=output_id - 1, column_max=outputs_count)
-            print(f"***{self.agent_name}, AFTER INFERENCE, after self.smart_print menu***")
             self.menu_start_time = time.time()
 
             if self.automation:
@@ -3273,7 +3448,7 @@ class HumanLLM:
             # if score is not between 0 and 1, then set to None and print error
             if score < 0 or score > 1:
                 score = None
-                print(f"\033[31mInvalid score: {score}\033[0m")
+                smart_print(f"\033[31mInvalid score: {score}\033[0m", self.agent_name)
             else:
                 break
         comments = smart_input("Comment on the result: ", self.agent_name)
@@ -3901,9 +4076,9 @@ class HumanLLM:
             if "gpt-5" in func.model_name: temperature = 1.
             if temperature or temperature == 0:
                 func = func.with_config(configurable={"llm_temperature": temperature})
-                print(f"Temperature set to {temperature}")
+                self.logger.info(f"Temperature set to {temperature}")
             else:
-                print(f"No temperature value, not set for model {func.model_name}")
+                self.logger.info(f"No temperature value, not set for model {func.model_name}")
 
             # Tool/function calling path only in non-streaming mode
             use_tools_flag = bool(func_calling or tools or functions or getattr(self, "function_list", None))
@@ -4320,10 +4495,16 @@ class HumanLLM:
                     eval_context['inference_time'] = (eval_context['end_time'] - start_time).total_seconds()
                     
                     # Apply post-inference dynamic configuration
+                    if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"\n[POST_PHASE_DEBUG] About to check dynamic_mgr...\thasattr(self, 'dynamic_mgr'): {hasattr(self, 'dynamic_mgr')}\tself.dynamic_mgr: {getattr(self, 'dynamic_mgr', 'NOT_FOUND')}")
+                    
                     if hasattr(self, 'dynamic_mgr') and self.dynamic_mgr:
+                        if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[POST_PHASE_DEBUG] Calling evaluate_triggers with phase='post_inference'")
                         mods = self.dynamic_mgr.evaluate_triggers(eval_context, phase='post_inference')
+                        if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[POST_PHASE_DEBUG] evaluate_triggers returned: {mods}")
                         if mods:
                             self._apply_modifications(mods, eval_context, phase='post_inference')
+                    else:
+                        if logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"[POST_PHASE_DEBUG] SKIPPED - dynamic_mgr not available!")
                     
                     # Update llm_outputs from context in case they were modified
                     llm_outputs = eval_context.get('llm_outputs', llm_outputs)
@@ -4593,13 +4774,11 @@ class HumanLLM:
                 cleaned_response = response.content.strip().removeprefix("<<<").removesuffix(">>>").strip()
                 return [AIMessage(content=cleaned_response)]
             except Exception as e:
-                smart_print(f"MOA selection failed: {e}. Falling back to best_of_n.", 
-                           self.agent_name, "select_candidate", optional=True)
+                smart_print(f"MOA selection failed: {e}. Falling back to best_of_n.", self.agent_name, "select_candidate", optional=True)
                 return self.select_candidate(output_messages, "best_of_n")
                 
         elif selection_technique == "majority":
-            # try:
-            if True:
+            try:
                 import numpy as np
                 from scipy.spatial.distance import pdist, squareform
                 from sklearn.cluster import AgglomerativeClustering
@@ -4627,8 +4806,8 @@ class HumanLLM:
                 # medoid = index with minimum total distance
                 medoid = idxs[int(np.argmin(subD.sum(axis=1)))]
                 return [output_messages[medoid]]
-            # except Exception as e:
-            #     return [output_messages[-1]]
+            except Exception as e:
+                return [output_messages[-1]]
 
         elif selection_technique == "last":
             # Return the last output
@@ -4652,8 +4831,7 @@ class HumanLLM:
                 ])
                 return [AIMessage(content=response.content)]
             except Exception as e:
-                smart_print(f"Best_of_n selection failed: {e}. Falling back to last.", 
-                           self.agent_name, "select_candidate", optional=True)
+                smart_print(f"Best_of_n selection failed: {e}. Falling back to last.", self.agent_name, "select_candidate", optional=True)
                 return [output_messages[-1]]            
         else:
             raise ValueError(f"Invalid selection_technique: {selection_technique}. Supported options: 'concat', 'best_of_n', 'last'.")
@@ -5469,7 +5647,7 @@ List your annotations below:
         str_score += f" / CODE: [{json.dumps(score)}]"
         return str_score
     
-    def apply_special_criteria(agent, special_criteria, available_locals=None):
+    def apply_special_criteria(self, agent, special_criteria, available_locals=None):
         """
         Apply special criteria to the attributes and parameters of an agent.
 
@@ -5499,9 +5677,9 @@ List your annotations below:
                     setattr(agent, key, value)
                 elif key in available_locals:
                     new_params[key] = value
-                    print(f"Special criteria applicable to {agent}'s local variables: {key} = {value}")
+                    self.logger.info(f"Special criteria applicable to {agent}'s local variables: {key} = {value}")
 
-        print(new_params)
+        self.logger.info(f"New parameters for {agent}: {new_params}")
         return new_params  # Return only new params
 
     # -----------------------------
