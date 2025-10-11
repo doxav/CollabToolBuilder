@@ -350,6 +350,577 @@ def mock_feedback_function(**kwargs):
 
 
 # ------------------------------------------------------------------------------
+# Feedback Quality and Availability Tests
+# ------------------------------------------------------------------------------
+
+class TestFeedbackAvailabilityScenarios:
+    """Test suite to diagnose when feedback is available, poor, or missing"""
+    
+    @pytest.fixture
+    def usage_tracker(self):
+        """Create a HelpUsageTracker instance"""
+        return HelpUsageTracker()
+    
+    @pytest.fixture
+    def dynamic_manager(self, usage_tracker):
+        """Create DynamicConfigManager with empty records"""
+        manager = DynamicConfigManager({}, usage_tracker, {})
+        manager._records = []  # Ensure clean state
+        return manager
+    
+    def test_no_records_no_context_metrics(self, dynamic_manager):
+        """Scenario 1: First call - no records, no context metrics"""
+        context = {"user_message": "test"}
+        fb_cfg = {"use": "collect_feedback"}
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        assert result == "No feedback"
+    
+    def test_no_records_with_context_metrics(self, dynamic_manager):
+        """Scenario 2: First call - no records, but timing metrics in context"""
+        context = {
+            "user_message": "test",
+            "inference_time": 1.707936,
+            "quality_score": 0.85
+        }
+        fb_cfg = {"use": "collect_feedback"}
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        # Should fall back to current metrics when no historical data
+        assert "Current inference_time: 1.707936s" in result
+        assert "Current quality_score: 0.85" in result
+    
+    def test_records_without_type_field_bug(self, dynamic_manager):
+        """Scenario 3: Records exist but missing 'type' field (the bug!)"""
+        # Simulate what record_outcome() does (missing type field)
+        dynamic_manager._records = [
+            {
+                "ts": 1234567890,
+                # NO "type" field!
+                "context": {"user_message": "test"},
+                "modifications": {},
+                "metrics": {"accuracy": 0.8, "distance": 100}
+            }
+        ]
+        
+        context = {"user_message": "test"}
+        fb_cfg = {"use": "collect_feedback"}
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        # BUG: Records filtered out because type != "auto_eval"
+        assert result == "No feedback" or "Current inference_time" in result
+    
+    def test_records_with_type_field_fixed(self, dynamic_manager):
+        """Scenario 4: Records with correct 'type' field (the fix!)"""
+        # Proper record with type field
+        dynamic_manager._records = [
+            {
+                "ts": 1234567890,
+                "type": "auto_eval",  # ← THE FIX
+                "context": {"user_message": "test"},
+                "modifications": {},
+                "metrics": {"accuracy": 0.8, "distance": 100}
+            }
+        ]
+        
+        context = {"user_message": "test"}
+        fb_cfg = {"use": "collect_feedback"}
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        # Should now include metrics!
+        assert "accuracy" in result or "0.8" in result or "distance" in result
+    
+    def test_user_diff_feedback(self, dynamic_manager):
+        """Scenario 5: User corrections via log_user_correction"""
+        dynamic_manager._records = [
+            {
+                "type": "user_diff",
+                "agent": "test_agent",
+                "diff": "Changed output from X to Y because it was wrong",
+                "who": "user123",
+                "ts": 1234567890
+            }
+        ]
+        
+        context = {"user_message": "test"}
+        fb_cfg = {"use": "collect_feedback"}
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        assert "Changed output from X to Y" in result or "diff" in result
+    
+    def test_human_annotation_feedback(self, dynamic_manager):
+        """Scenario 6: Human annotations"""
+        dynamic_manager._records = [
+            {
+                "type": "human_annotation",
+                "content": "This answer is incorrect - missing key detail",
+                "ts": 1234567890
+            }
+        ]
+        
+        context = {"user_message": "test"}
+        fb_cfg = {"use": "collect_feedback"}
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        assert "incorrect" in result or "missing key detail" in result
+    
+    def test_mixed_feedback_sources(self, dynamic_manager):
+        """Scenario 7: Multiple feedback types together"""
+        dynamic_manager._records = [
+            {
+                "type": "user_diff",
+                "diff": "User correction: should be 42",
+                "ts": 1234567891
+            },
+            {
+                "type": "auto_eval",
+                "metrics": {"accuracy": 0.5},
+                "ts": 1234567890
+            },
+            {
+                "type": "human_annotation",
+                "content": "Needs improvement",
+                "ts": 1234567892
+            }
+        ]
+        
+        context = {"user_message": "test"}
+        fb_cfg = {"use": "collect_feedback"}
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        # Should include all types
+        assert len(result) > 50  # Meaningful feedback
+        # Order: user_diffs first, then annotations, then auto_evals
+        assert "User correction" in result or "diff" in result
+    
+    def test_poor_feedback_timing_only(self, dynamic_manager):
+        """Scenario 8: Only timing info available (poor feedback)"""
+        context = {
+            "user_message": "Calculate: 120924 × 9321",
+            "inference_time": 1.5
+        }
+        fb_cfg = {"use": "collect_feedback"}
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        # Poor feedback - optimizer can't learn from timing alone
+        assert "inference_time" in result
+        assert "accuracy" not in result
+        assert "correct" not in result
+    
+    def test_rich_feedback_with_task_metrics(self, dynamic_manager):
+        """Scenario 9: Rich feedback with task-specific metrics"""
+        dynamic_manager._records = [
+            {
+                "type": "auto_eval",
+                "context": {
+                    "user_message": "Calculate: 120924 × 9321",
+                    "expected": 1127253804,
+                    "got": "I don't know"
+                },
+                "metrics": {
+                    "accuracy": 0.0,
+                    "correctness": False,
+                    "distance": 1127253804,
+                    "verdict": "INCORRECT - need better prompt"
+                },
+                "ts": 1234567890
+            }
+        ]
+        
+        context = {"user_message": "test"}
+        fb_cfg = {"use": "collect_feedback"}
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        # Rich feedback - optimizer can learn!
+        assert "accuracy" in result or "0.0" in result
+        assert "INCORRECT" in result or "verdict" in result
+    
+    def test_feedback_config_include_metrics_flag(self, dynamic_manager):
+        """Scenario 10: Explicit include_metrics flag"""
+        context = {
+            "user_message": "test",
+            "inference_time": 2.0,
+            "cost": 0.001
+        }
+        
+        # Without flag (default: only if no historical)
+        fb_cfg_no_flag = {"use": "collect_feedback"}
+        result_no_flag = dynamic_manager._render_feedback_text(context, fb_cfg_no_flag)
+        
+        # With flag (always include)
+        fb_cfg_with_flag = {"use": "collect_feedback", "include_metrics": True}
+        result_with_flag = dynamic_manager._render_feedback_text(context, fb_cfg_with_flag)
+        
+        # Both should include metrics since no historical data
+        assert "inference_time" in result_no_flag
+        assert "inference_time" in result_with_flag
+    
+    def test_feedback_config_with_custom_prompt(self, dynamic_manager):
+        """Scenario 11: Custom prompt overrides record collection"""
+        dynamic_manager._records = [
+            {
+                "type": "auto_eval",
+                "metrics": {"accuracy": 0.9},
+                "ts": 1234567890
+            }
+        ]
+        
+        context = {"user_message": "test"}
+        fb_cfg = {
+            "use": "collect_feedback",
+            "prompt": "Ignore records, use this fixed prompt instead"
+        }
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        # Custom prompt overrides everything
+        assert "fixed prompt" in result
+        assert "accuracy" not in result  # Records ignored
+    
+    def test_custom_fn_for_task_specific_evaluation(self, dynamic_manager):
+        """Scenario 12: Custom function for immediate evaluation"""
+        
+        def evaluate_multiplication(user_msg, response, **kwargs):
+            import re
+            # Parse task
+            match = re.search(r"(\d+)\s*×\s*(\d+)", user_msg)
+            if not match:
+                return "Cannot parse task"
+            
+            a, b = int(match.group(1)), int(match.group(2))
+            expected = a * b
+            
+            # Parse response
+            try:
+                result = int(re.search(r'\d+', response).group())
+                correct = (result == expected)
+                return f"Task: {a}×{b}={expected}\nGot: {result}\nCorrect: {correct}"
+            except:
+                return f"Task: {a}×{b}={expected}\nGot: {response}\nCorrect: False"
+        
+        # Register function
+        import sys
+        sys.modules[__name__].evaluate_multiplication = evaluate_multiplication
+        
+        context = {
+            "user_message": "Calculate: 120924 × 9321",
+            "response": "1127253804"
+        }
+        
+        fb_cfg = {
+            "use": "custom_fn",
+            "fn": f"{__name__}:evaluate_multiplication",
+            "args": {
+                "user_msg": "${context.user_message}",
+                "response": "${context.response}"
+            }
+        }
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        # Should evaluate immediately
+        assert "120924" in result
+        assert "9321" in result
+        assert "Correct:" in result
+
+
+class TestFeedbackQualityAssessment:
+    """Tests to categorize feedback quality"""
+    
+    @pytest.fixture
+    def usage_tracker(self):
+        return HelpUsageTracker()
+    
+    @pytest.fixture
+    def dynamic_manager(self, usage_tracker):
+        manager = DynamicConfigManager({}, usage_tracker, {})
+        manager._records = []
+        return manager
+    
+    def test_assess_no_feedback(self, dynamic_manager):
+        """Quality: NONE - no feedback available"""
+        context = {"user_message": "test"}
+        fb_cfg = {"use": "collect_feedback"}
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        assert result == "No feedback"
+        # Quality: NONE - optimizer has nothing to work with
+    
+    def test_assess_poor_feedback(self, dynamic_manager):
+        """Quality: POOR - only timing/cost, no task performance"""
+        context = {
+            "inference_time": 1.5,
+            "cost": 0.001
+        }
+        fb_cfg = {"use": "collect_feedback"}
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        # Has content but not actionable for task improvement
+        assert "inference_time" in result or "cost" in result
+        assert "accuracy" not in result
+        assert "correct" not in result
+        # Quality: POOR - can optimize cost/speed but not task quality
+    
+    def test_assess_moderate_feedback(self, dynamic_manager):
+        """Quality: MODERATE - has metrics but limited context"""
+        dynamic_manager._records = [
+            {
+                "type": "auto_eval",
+                "metrics": {"accuracy": 0.3},
+                "ts": 1234567890
+            }
+        ]
+        
+        context = {"user_message": "test"}
+        fb_cfg = {"use": "collect_feedback"}
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        # Has performance metric but missing context
+        assert "accuracy" in result or "0.3" in result
+        # Quality: MODERATE - knows performance but not why it's poor
+    
+    def test_assess_good_feedback(self, dynamic_manager):
+        """Quality: GOOD - has metrics with detailed info"""
+        dynamic_manager._records = [
+            {
+                "type": "auto_eval",
+                "content": "Task: Calculate 5 × 3\nExpected: 15\nGot: I don't know",
+                "metrics": {
+                    "accuracy": 0.0,
+                    "reason": "Model refused to answer"
+                },
+                "ts": 1234567890
+            }
+        ]
+        
+        context = {"user_message": "test"}
+        fb_cfg = {"use": "collect_feedback"}
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        # Has both performance and context via content field
+        assert "accuracy" in result or "0.0" in result
+        assert "Expected" in result or "Task:" in result or "Got:" in result
+        # Quality: GOOD - optimizer can understand what went wrong
+    
+    def test_assess_excellent_feedback(self, dynamic_manager):
+        """Quality: EXCELLENT - has metrics + context + improvement hints"""
+        dynamic_manager._records = [
+            {
+                "type": "auto_eval",
+                "content": "Task: 120924 × 9321 = 1127253804\nGot: 'I don't know'\nProblem: Model doesn't attempt calculation\nSuggestion: Add instruction to show step-by-step work",
+                "metrics": {
+                    "accuracy": 0.0,
+                    "confidence": 0.1
+                },
+                "ts": 1234567890
+            }
+        ]
+        
+        context = {"user_message": "test"}
+        fb_cfg = {"use": "collect_feedback"}
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        # Has everything: performance + context + actionable suggestion
+        assert "accuracy" in result or "0.0" in result
+        assert "Suggestion" in result or "step-by-step" in result
+        # Quality: EXCELLENT - optimizer can take specific action
+
+
+class TestFeedbackConfigurationStrategies:
+    """Test different feedback configuration strategies and their effectiveness"""
+    
+    @pytest.fixture
+    def usage_tracker(self):
+        return HelpUsageTracker()
+    
+    @pytest.fixture
+    def dynamic_manager(self, usage_tracker):
+        manager = DynamicConfigManager({}, usage_tracker, {})
+        manager._records = []
+        return manager
+    
+    def test_strategy_default_collect_feedback(self, dynamic_manager):
+        """Strategy 1: Default - collect_feedback with no config"""
+        # Pros: Simple, works with record_outcome
+        # Cons: Requires type field, delayed feedback
+        
+        dynamic_manager._records = [
+            {
+                "type": "auto_eval",
+                "metrics": {"score": 0.7},
+                "ts": 1234567890
+            }
+        ]
+        
+        fb_cfg = {"use": "collect_feedback"}
+        result = dynamic_manager._render_feedback_text({}, fb_cfg)
+        
+        assert "score" in result or "0.7" in result
+        # Works if records have type field
+    
+    def test_strategy_custom_prompt_with_fewshots(self, dynamic_manager):
+        """Strategy 2: Custom prompt with few-shot examples"""
+        # Pros: Can provide rich context, uses historical data
+        # Cons: Requires vector DB, may not have recent metrics
+        
+        fb_cfg = {
+            "use": "collect_feedback",
+            "prompt": "Based on these examples, improve the prompt:\n\nExamples here..."
+        }
+        
+        result = dynamic_manager._render_feedback_text({}, fb_cfg)
+        
+        assert "examples" in result.lower()
+        # Useful for leveraging historical patterns
+    
+    def test_strategy_custom_fn_immediate_eval(self, dynamic_manager):
+        """Strategy 3: Custom function for immediate evaluation"""
+        # Pros: Can evaluate during invoke(), most flexible
+        # Cons: Requires custom code, more complex
+        
+        def immediate_evaluator(ctx_data):
+            return f"Evaluated: {ctx_data}"
+        
+        import sys
+        sys.modules[__name__].immediate_evaluator = immediate_evaluator
+        
+        context = {"result": "test_output"}
+        fb_cfg = {
+            "use": "custom_fn",
+            "fn": f"{__name__}:immediate_evaluator",
+            "args": {"ctx_data": "${context.result}"}
+        }
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        assert "Evaluated: test_output" in result
+        # Best for real-time feedback during POST-phase
+    
+    def test_strategy_hybrid_historical_plus_current(self, dynamic_manager):
+        """Strategy 4: Combine historical records + current metrics"""
+        # Pros: Best of both worlds
+        # Cons: May be verbose
+        
+        dynamic_manager._records = [
+            {
+                "type": "auto_eval",
+                "metrics": {"accuracy": 0.6},
+                "ts": 1234567890
+            }
+        ]
+        
+        context = {
+            "inference_time": 2.0,
+            "quality_score": 0.8
+        }
+        
+        fb_cfg = {"use": "collect_feedback", "include_metrics": True}
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        # Should have both historical and current
+        assert ("accuracy" in result or "0.6" in result) and "quality_score" in result
+        # Most comprehensive feedback
+    
+    def test_strategy_limits_no_type_field(self, dynamic_manager):
+        """Limit 1: Records without type field are ignored"""
+        dynamic_manager._records = [
+            {
+                # Missing type field!
+                "metrics": {"accuracy": 0.9},
+                "ts": 1234567890
+            }
+        ]
+        
+        fb_cfg = {"use": "collect_feedback"}
+        result = dynamic_manager._render_feedback_text({}, fb_cfg)
+        
+        # Bug: Record ignored
+        assert result == "No feedback"
+    
+    def test_strategy_limits_timing_constraint(self, dynamic_manager):
+        """Limit 2: POST-phase timing - metrics not yet available"""
+        # During invoke(), task metrics aren't computed yet
+        # Only inference_time available
+        
+        context_during_post = {
+            "user_message": "Calculate: 5 × 3",
+            "inference_time": 1.5
+            # accuracy, correctness NOT YET available
+        }
+        
+        fb_cfg = {"use": "collect_feedback"}
+        result = dynamic_manager._render_feedback_text(context_during_post, fb_cfg)
+        
+        # Limited feedback during POST-phase
+        assert "inference_time" in result
+        assert "accuracy" not in result  # Not computed yet
+    
+    def test_strategy_workaround_custom_fn(self, dynamic_manager):
+        """Workaround 1: Use custom_fn to compute metrics in real-time"""
+        
+        def compute_metrics_now(user_msg, response):
+            # Evaluate immediately during POST-phase
+            if "5 × 3" in user_msg and "15" in response:
+                return "Correct! Accuracy: 1.0"
+            return "Incorrect. Accuracy: 0.0"
+        
+        import sys
+        sys.modules[__name__].compute_metrics_now = compute_metrics_now
+        
+        context = {
+            "user_message": "Calculate: 5 × 3",
+            "response": "15"
+        }
+        
+        fb_cfg = {
+            "use": "custom_fn",
+            "fn": f"{__name__}:compute_metrics_now",
+            "args": {
+                "user_msg": "${context.user_message}",
+                "response": "${context.response}"
+            }
+        }
+        
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        assert "Accuracy: 1.0" in result
+        # Overcomes timing constraint!
+    
+    def test_strategy_workaround_two_pass(self, dynamic_manager):
+        """Workaround 2: Two-pass approach - collect then optimize"""
+        # Pass 1: Run tasks, record outcomes
+        for i in range(3):
+            dynamic_manager._records.append({
+                "type": "auto_eval",
+                "metrics": {"accuracy": i * 0.3},
+                "ts": 1234567890 + i
+            })
+        
+        # Pass 2: Aggregate feedback
+        context = {}
+        fb_cfg = {"use": "collect_feedback"}
+        result = dynamic_manager._render_feedback_text(context, fb_cfg)
+        
+        # Has accumulated feedback
+        assert len(result) > 20
+        # Can now optimize with full information
+
+
+# ------------------------------------------------------------------------------
 # Integration Tests with Real Few-Shot Functionality
 # ------------------------------------------------------------------------------
 

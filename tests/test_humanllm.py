@@ -16,10 +16,11 @@ class MarseillaisAgent:
 
         self.agent_name = agent_name
         if llmORchains_list is None:
-            llmORchains_list = ["gpt-3.5-turbo"]  # Exemple de modèle par défaut
+            llmORchains_list = ["gpt-5-nano"]  # Exemple de modèle par défaut
         self.human_llm_monitor = HumanLLM(
             agent_name=self.agent_name,
-            llmORchains_list=llmORchains_list
+            llmORchains_list=llmORchains_list,
+            automation=True,
         )
         self.human_llm_monitor.agent_name = self.agent_name  # Fix explicite
 
@@ -44,10 +45,11 @@ class ParisienAgent:
 
         self.agent_name = agent_name
         if llmORchains_list is None:
-            llmORchains_list = ["gpt-3.5-turbo"]  # Exemple de modèle par défaut
+            llmORchains_list = ["gpt-5-nano"]  # Exemple de modèle par défaut
         self.human_llm_monitor = HumanLLM(
             agent_name=self.agent_name,
-            llmORchains_list=llmORchains_list
+            llmORchains_list=llmORchains_list,
+            automation=True,
         )
         self.human_llm_monitor.agent_name = self.agent_name  # Fix explicite
 

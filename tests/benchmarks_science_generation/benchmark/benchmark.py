@@ -840,7 +840,7 @@ def costorm_patch(
     custom_llm_list=None,
     max_steps: int = -1,
     intermediate_evaluate: bool = True,
-    generate_ever_n: int = 2,
+    generate_every_n: int = 2,
     dataset_for_metrics: str = "Wikipedia",
     custom_dataset_path: str | Path = None,
 ):
@@ -853,7 +853,7 @@ def costorm_patch(
     obj = {"step": 0}  # Use a mutable object to keep track of the step
     def patched_add_turn(self, *args, **kwargs):
 
-        article_change = intermediate_evaluate and obj["step"] > 0 and (obj["step"] % generate_ever_n == 0)
+        article_change = intermediate_evaluate and obj["step"] > 0 and (obj["step"] % generate_every_n == 0)
         article = None
         metrics = None
         if article_change:
@@ -1211,7 +1211,7 @@ def run_costorm(
     max_steps: int = -1,
     custom_llm_list: list=[],
     intermediate_evaluate: bool = True,
-    generate_ever_n: int = 2,
+    generate_every_n: int = 2,
     dataset_for_metrics: str = "Wikipedia",
     custom_dataset_path: str | Path = None,
     **kwargs,
@@ -1237,7 +1237,7 @@ def run_costorm(
     _original_method = costorm_patch(outp_dir,topic, CoStormRunner,callback=callback,
                                      custom_llm_list=custom_llm_list, max_steps=max_steps,
                                      intermediate_evaluate=intermediate_evaluate,
-                                     generate_ever_n=generate_ever_n,
+                                     generate_every_n=generate_every_n,
                                      dataset_for_metrics=dataset_for_metrics,
                                      custom_dataset_path=custom_dataset_path)
 
@@ -1305,7 +1305,7 @@ def run_costorm_human_llm(
     callback = None,
     max_steps: int = -1,
     intermediate_evaluate: bool = True,
-    generate_ever_n: int = 2,
+    generate_every_n: int = 2,
     dataset_for_metrics: str = "Wikipedia",
     custom_dataset_path: str | Path = None,
     **kwargs,
@@ -1409,7 +1409,7 @@ def run_costorm_human_llm(
         custom_llm_list=llm_list,
         max_steps=max_steps,
         intermediate_evaluate  = intermediate_evaluate,
-        generate_ever_n = generate_ever_n,
+        generate_every_n = generate_every_n,
         dataset_for_metrics=dataset_for_metrics,
         custom_dataset_path=custom_dataset_path,
     )
@@ -1492,7 +1492,7 @@ def run_costorm_graph_human_llm(
     callback = None,
     max_steps: int = -1,
     intermediate_evaluate: bool = True,
-    generate_ever_n: int = 2,
+    generate_every_n: int = 2,
     dataset_for_metrics: str = "Wikipedia",
     custom_dataset_path: str | Path = None,
     **kwargs,
