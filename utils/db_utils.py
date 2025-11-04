@@ -52,6 +52,19 @@ class DummyEmbeddingNonZero:
     def embed_query(self, text: str): return [1.0] * self.dim
     def embed_documents(self, texts): return [[1.0] * self.dim for _ in texts]
 
+DISABLED_EMBEDDING_STRINGS = {"disabled", "none", "off", "0"}
+
+
+def _embedding_is_disabled(value: Any) -> bool:
+    if value is None or value is False:
+        return True
+    if isinstance(value, (int, float)):
+        return value == 0
+    if isinstance(value, str):
+        return value.strip().lower() in DISABLED_EMBEDDING_STRINGS
+    return False
+
+
 class UnifiedVectorDBConfig:
     """Configuration for the vector database."""
     common_vectordb_embedding_function = None
@@ -65,6 +78,7 @@ class UnifiedVectorDBConfig:
         unique_collection_id: Optional[str] = None
     ):
         """Initialize VectorDBConfig."""
+        self._requested_embedding_function = embedding_function
         self.embedding_function = embedding_function or DummyEmbeddingNonZero(dim=1)
         self.collection_name = collection_name.lower()
         self.persist_directory = persist_directory
@@ -86,14 +100,26 @@ class UnifiedVectorDBConfig:
         """Set the embedding function for the vector database."""
         if self.__class__.common_vectordb_embedding_function is not None:
             return
+
+        disable_env = str(os.getenv("HUMANLLM_DISABLE_EMBEDDINGS", "")).lower() in ("1", "true", "yes", "on")
+        requested = getattr(self, "_requested_embedding_function", None)
+
+        if disable_env or _embedding_is_disabled(requested) or _embedding_is_disabled(self.embedding_function):
+            self.__class__.common_vectordb_embedding_function = DummyEmbeddingNonZero(dim=1)
+            print("\033[91m[Embeddings] Disabled — using DummyEmbeddingNonZero.\033[0m")
+            return
+
         if isinstance(self.embedding_function, str):
             if self.embedding_function in ["OpenAIEmbeddings", "text-embedding-ada-002"]:
+                if not os.getenv("OPENAI_API_KEY"):
+                    self.__class__.common_vectordb_embedding_function = DummyEmbeddingNonZero(dim=1)
+                    return
                 self.__class__.common_vectordb_embedding_function = OpenAIEmbeddings(
                     model=self.embedding_function,
                     deployment=self.openai_embedding_function_name
                 )
-            elif self.__class__.common_vectordb_embedding_function == "HuggingFaceEmbeddings":
-                self.common_vectordb_embedding_function = HuggingFaceEmbeddings(
+            elif self.embedding_function == "HuggingFaceEmbeddings":
+                self.__class__.common_vectordb_embedding_function = HuggingFaceEmbeddings(
                     model_name="intfloat/e5-base-v2",
                     encode_kwargs={"normalize_embeddings": True}
                 )

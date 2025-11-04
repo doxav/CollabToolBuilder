@@ -82,8 +82,7 @@ class HumanLLMConfig:
             self.ws_server = WebsocketServer(self.ws_server_config)
 
     def configure_vector_store(self):
-        if self.common_vectordb_config.embedding_function:
-            self.common_vectordb_config.set_common_vectordb_embedding_function()
+        self.common_vectordb_config.set_common_vectordb_embedding_function()
 
     def get_llmORchains_list(self):
         if MODELS_CONFIG_LIST is not None:

@@ -843,11 +843,10 @@ def prepare_configs(args):
     if 'discord_webhook' in globals():
         config.discord_webhook = globals()['discord_webhook']
 
-    if 'embedding_function' in globals():
-        embedding_function = globals()['embedding_function']
-    if embedding_function is None:
-        embedding_function = "text-embedding-ada-002"
-    config.common_vectordb_config.embedding_function = embedding_function
+    embedding_fn_cfg = globals().get('embedding_function', None)
+    if getattr(args, "disable_embeddings", False):
+        embedding_fn_cfg = "disabled"
+    config.common_vectordb_config.embedding_function = embedding_fn_cfg
 
     if not 'reset_db_indices' in locals():
         config.common_vectordb_config.reset_indices = False
@@ -939,6 +938,7 @@ if __name__ == "__main__":
     parser.add_argument("--secret", action='store_true', help="Optional secret for WebSocket URL")
     parser.add_argument("--proxy", action='store_true', help="Start a proxy via localtunnel if available")
     parser.add_argument("--pickle_name", type=str, help="Optional pickle file name")
+    parser.add_argument("--disable-embeddings", action="store_true", help="Disable vector embeddings (use dummy constant vectors).")
     args = parser.parse_args()
 
     

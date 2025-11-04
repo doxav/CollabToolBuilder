@@ -532,7 +532,7 @@ if __name__ == "__main__":
     openai.api_key = os.environ['OPENAI_API_KEY']
     if 'OPENAI_BASE_URL' in os.environ: openai.base_url = os.environ['OPENAI_BASE_URL']
 
-    embedding_function = embedding_function or "text-embedding-ada-002"  #"Alibaba-NLP/gte-base-en-v1.5" UnifiedVectorDB.OpenAI_embedding_function_name # e.g. "text-embedding-ada-002" for OpenAI or "intfloat/e5-base-v2" or other huggingface models - WARINING: if you change it, set reset_db_indices to True
+    embedding_function = globals().get('embedding_function', None)
     # test if reset_db_indices exists
     if not 'reset_db_indices' in locals():
         reset_db_indices = False  # Set it in your config.py to True if you want to reset "after changing embeddings"
