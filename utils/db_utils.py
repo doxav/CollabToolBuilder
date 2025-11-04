@@ -104,7 +104,7 @@ class UnifiedVectorDBConfig:
         disable_env = str(os.getenv("HUMANLLM_DISABLE_EMBEDDINGS", "")).lower() in ("1", "true", "yes", "on")
         requested = getattr(self, "_requested_embedding_function", None)
 
-        if disable_env or _embedding_is_disabled(requested) or _embedding_is_disabled(self.embedding_function):
+        if disable_env or _embedding_is_disabled(requested):
             self.__class__.common_vectordb_embedding_function = DummyEmbeddingNonZero(dim=1)
             print("\033[91m[Embeddings] Disabled — using DummyEmbeddingNonZero.\033[0m")
             return
