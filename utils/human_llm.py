@@ -4491,7 +4491,7 @@ class HumanLLM:
 
         # validation summaries (generic, safe)
         try:
-            vals["validation_response_um"] = "\n".join(cfg.get_validation_results()) or ""
+            vals["validation_response_um"] = "\n".join(sorted(map(str, cfg.get_validation_results()))) or ""
         except Exception:
             vals["validation_response_um"] = ""
 
@@ -4541,8 +4541,8 @@ class HumanLLM:
                 else:
                     outs.append(str(x or ""))
             return "\n".join(outs)
-        vals["llm_suggestions"]  = _join_field(sugg, "llm_suggestions")
-        vals["llm_annotations"]  = _join_field(ann, "annotations")
+        vals["llm_suggestions"] = _join_field(sugg, "llm_suggestions")
+        vals["llm_annotations"] = _join_field(ann, "annotations")
         vals["llm_feedback_block"] = self._format_llm_feedback(sugg, ann)
 
         # code-specific (only used if placeholders are present in the prompt)
@@ -4557,8 +4557,8 @@ class HumanLLM:
                         errs = [errs] * len(scos)
                     for e, s, c in zip(errs, scos, cods):
                         vals["previous_attempts"] += f"\n<<ATTEMPT FEEDBACK: {e}\nSCORE: {s}\nCODE: {c}>>\n"
-        except Exception:
-            pass
+        except Exception as e:
+            logging.exception("Failed to fetch previous attempts")
 
         vals["error_patches_str"] = ""
         try:
@@ -4566,13 +4566,16 @@ class HumanLLM:
             if patches:
                 for p in patches:
                     try:
-                        msg, diff = p if isinstance(p, (list, tuple)) and len(p) == 2 else (p.get("msg"), p.get("diff"))
-                    except Exception:
-                        msg, diff = None, None
+                        if isinstance(p, (list, tuple)) and len(p) == 2:
+                            msg, diff = p
+                        elif isinstance(p, dict):
+                            msg, diff = p.get("msg"), p.get("diff")
+                        else:
+                            msg, diff = None, None
                     if msg or diff:
                         vals["error_patches_str"] += f"\n<<ERROR MESSAGE: {msg}\nFIX APPLIED (diff):\n{diff}>>\n"
         except Exception:
-            pass
+            logging.exception("Failed to retrieve error_patches for agent %s", self.agent_name)
         return vals
 
     def _fill_placeholders(self, text: str, values: Dict[str, str]) -> Tuple[str, bool]:
@@ -4611,7 +4614,7 @@ class HumanLLM:
         vals = self._collect_compose_values()
         sys_txt2, sys_used = self._fill_placeholders(sys_txt, vals)
         usr_txt2, usr_used = self._fill_placeholders(usr_txt, vals)
-        if (compose_mode or "auto").lower() == "auto" and not (sys_used or usr_used):
+        if (compose_mode if compose_mode is not None else "auto").lower() == "auto" and not (sys_used or usr_used):
             usr_txt2 = self._append_auto_context(usr_txt2, vals)
         return sys_txt2, usr_txt2
 
