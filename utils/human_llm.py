@@ -9,7 +9,7 @@ import logging
 import concurrent.futures
 from jinja2 import Template
 from datetime import datetime
-from collections import defaultdict
+from collections import Counter, defaultdict
 import copy
 import importlib
 from matplotlib import rc
@@ -1558,6 +1558,12 @@ class HumanLLM:
 
         # Initialize dynamic configuration system
         self.dynamic_llm_config = dynamic_llm_config or {}
+        # Common draft→patch wrapper controls (can be toggled via kwargs/dynamic config)
+        self.draft_patch_mode = bool(kwargs.get("draft_patch_mode", False))
+        self.patch_validate = bool(kwargs.get("patch_validate", True))
+        self.patch_output_format = str(kwargs.get("patch_output_format", "unified_diff")).lower()
+        patch_k = kwargs.get("patch_k")
+        self.patch_k = int(patch_k) if patch_k is not None else None
         self.usage_tracker = HelpUsageTracker()
         
         # Set up quotas if provided
@@ -1848,6 +1854,17 @@ class HumanLLM:
                 self.temperature_max = float(ivk["temperature_max"])
             if "generation_technique" in ivk:
                 self.generation_technique = str(ivk["generation_technique"])
+            if "selection_technique" in ivk:
+                self.selection_technique = str(ivk["selection_technique"])
+            if "draft_patch_mode" in ivk:
+                self.draft_patch_mode = bool(ivk["draft_patch_mode"])
+            if "patch_validate" in ivk:
+                self.patch_validate = bool(ivk["patch_validate"])
+            if "patch_output_format" in ivk:
+                self.patch_output_format = str(ivk["patch_output_format"]).lower()
+            if "patch_k" in ivk:
+                value = ivk["patch_k"]
+                self.patch_k = int(value) if value is not None else None
 
         dlc = mods.get("dynamic_llm_config_patch") or {}
         if dlc:
@@ -4678,10 +4695,71 @@ class HumanLLM:
             return AIMessage(content=value.content if hasattr(value, 'content') else str(value))
         
         candidates = []
-        
+
         if num_responses < 1:
             num_responses = 1
-            
+
+        if self.draft_patch_mode:
+            baseline_text = self._draft_patch_baseline(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                use_premium_llm=use_premium_llm,
+                function_calling=function_calling,
+            )
+            rewrite_technique = generation_technique or self.generation_technique or "temperature_variation"
+            k_value = self.patch_k if self.patch_k is not None else num_responses or self.num_parallel_inferences or 1
+            try:
+                k_value = max(1, int(k_value))
+            except (TypeError, ValueError):
+                k_value = 1
+
+            rewrites = self._draft_patch_rewrites(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                generation_technique=rewrite_technique,
+                k=k_value,
+                use_premium_llm=use_premium_llm,
+                function_calling=function_calling,
+                temp_min=temp_min,
+                temp_max=temp_max,
+                stream_output=stream_output,
+                experts_list=experts_list,
+                multi_llm=multi_llm,
+            )
+
+            base = baseline_text or ""
+            draft_msg = AIMessage(content=f"DR AFT\n{base}")
+            seen_diffs = set()
+            patches: List[AIMessage] = []
+
+            for rewrite in rewrites or []:
+                candidate_text = getattr(rewrite, "content", "") or ""
+                if not candidate_text:
+                    continue
+                if candidate_text.strip() == base.strip():
+                    continue
+                diff_iter = difflib.unified_diff(
+                    base.splitlines(keepends=True),
+                    candidate_text.splitlines(keepends=True),
+                    fromfile="a/answer.md",
+                    tofile="b/answer.md",
+                    lineterm="",
+                )
+                diff_str = "\n".join(diff_iter)
+                if diff_str and not diff_str.endswith("\n"):
+                    diff_str += "\n"
+                if not diff_str or diff_str in seen_diffs:
+                    continue
+                if self.patch_validate:
+                    try:
+                        self._apply_unified_diff_to_text(base, diff_str)
+                    except Exception:
+                        continue
+                seen_diffs.add(diff_str)
+                patches.append(AIMessage(content=diff_str))
+
+            return [draft_msg] + patches if patches else [draft_msg]
+
         if generation_technique == "temperature_variation":
             if temp_min is None: temp_min = 0.
             if temp_max is None: temp_max = 1.0
@@ -4737,7 +4815,8 @@ class HumanLLM:
 
     def select_candidate(self, output_messages, selection_technique=None):
         """
-        Merges multiple LLM outputs/candidates into a single according to selection_technique (concat, best_of_n, last)
+        Merges multiple LLM outputs/candidates into a single according to selection_technique
+        (concat, best_of_n, patch_hunk_vote, patch_best_of_n, last)
         """
         if selection_technique is None:
             selection_technique = self.selection_technique
@@ -4809,6 +4888,29 @@ class HumanLLM:
             except Exception as e:
                 return [output_messages[-1]]
 
+        elif selection_technique == "patch_hunk_vote":
+            baseline_text, full_texts, patch_finals = self._collect_patch_final_texts(output_messages)
+            if patch_finals:
+                merged = self._merge_union_from_finals(baseline_text or "", patch_finals)
+                return [AIMessage(content=merged)]
+            if full_texts:
+                return [AIMessage(content=full_texts[0])]
+            if baseline_text is not None:
+                return [AIMessage(content=baseline_text)]
+            return [output_messages[-1]]
+
+        elif selection_technique == "patch_best_of_n":
+            baseline_text, full_texts, patch_finals = self._collect_patch_final_texts(output_messages)
+            candidates = []
+            candidates.extend(patch_finals)
+            candidates.extend(full_texts)
+            if candidates:
+                best = self._best_of_n_final(baseline_text or "", candidates)
+                return [AIMessage(content=best)]
+            if baseline_text is not None:
+                return [AIMessage(content=baseline_text)]
+            return [output_messages[-1]]
+
         elif selection_technique == "last":
             # Return the last output
             return [output_messages[-1]]
@@ -4832,9 +4934,329 @@ class HumanLLM:
                 return [AIMessage(content=response.content)]
             except Exception as e:
                 smart_print(f"Best_of_n selection failed: {e}. Falling back to last.", self.agent_name, "select_candidate", optional=True)
-                return [output_messages[-1]]            
+                return [output_messages[-1]]
         else:
-            raise ValueError(f"Invalid selection_technique: {selection_technique}. Supported options: 'concat', 'best_of_n', 'last'.")
+            raise ValueError(
+                f"Invalid selection_technique: {selection_technique}. Supported options: "
+                "'concat', 'best_of_n', 'patch_hunk_vote', 'patch_best_of_n', 'last'."
+            )
+
+    # ------------------------------------------------------------------
+    # Draft→patch generation helpers
+    # ------------------------------------------------------------------
+    def _resolve_generation_llm(self, use_premium_llm):
+        if isinstance(use_premium_llm, str):
+            if use_premium_llm in (self.llmORchains_list or {}):
+                return self.llmORchains_list[use_premium_llm]
+            raise ValueError(f"LLM '{use_premium_llm}' not found in llmORchains_list.")
+        if use_premium_llm or self.use_premium_llm:
+            return self.premium_llm
+        return self.default_llm
+
+    def _draft_patch_baseline(self, system_prompt, user_prompt, use_premium_llm, function_calling):
+        messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+        func = self._resolve_generation_llm(use_premium_llm)
+        try:
+            func = func.with_config(configurable={"llm_temperature": 0.0})
+        except Exception:
+            pass
+        try:
+            response = func.invoke(messages)
+        except BadRequestError as exc:
+            if getattr(exc, "param", None) == "temperature":
+                try:
+                    func = func.with_config(configurable={"llm_temperature": None})
+                except Exception:
+                    pass
+                response = func.invoke(messages)
+            else:
+                raise
+        content = getattr(response, "content", None)
+        if content is None:
+            content = str(response)
+        return content or ""
+
+    def _draft_patch_rewrites(
+        self,
+        system_prompt,
+        user_prompt,
+        generation_technique,
+        k,
+        use_premium_llm,
+        function_calling,
+        temp_min,
+        temp_max,
+        stream_output,
+        experts_list=None,
+        multi_llm=None,
+    ):
+        technique = generation_technique or self.generation_technique or "temperature_variation"
+        previous_mode = self.draft_patch_mode
+        try:
+            self.draft_patch_mode = False
+            return self.generate_candidates(
+                generation_technique=technique,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                num_responses=k,
+                use_premium_llm=use_premium_llm,
+                function_calling=function_calling,
+                temp_min=temp_min,
+                temp_max=temp_max,
+                stream_output=stream_output,
+                experts_list=experts_list,
+                multi_llm=multi_llm,
+            )
+        finally:
+            self.draft_patch_mode = previous_mode
+
+    # ------------------------------------------------------------------
+    # Patch-to-refine selection helpers
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _extract_prefixed_payload(text: Optional[str], prefix: str) -> Optional[str]:
+        """Return the payload of a message whose first line matches the prefix."""
+        if text is None:
+            return None
+        if isinstance(text, list):
+            text = "".join(str(t) for t in text)
+        if not isinstance(text, str):
+            return None
+        head, sep, tail = text.partition("\n")
+        normalized = head.replace(" ", "").strip().upper()
+        if normalized == prefix.upper():
+            return tail if sep else ""
+        return None
+
+    @staticmethod
+    def _has_prefix(text: str, prefix: str) -> bool:
+        if not isinstance(text, str):
+            return False
+        head = text.split("\n", 1)[0]
+        return head.replace(" ", "").strip().upper() == prefix.upper()
+
+    def _collect_patch_final_texts(self, output_messages):
+        """
+        Parse output messages and return (baseline, full_texts, patch_applied_texts).
+        Invalid patches are ignored.
+        """
+        baseline_text: Optional[str] = None
+        full_texts: List[str] = []
+        patch_finals: List[str] = []
+
+        # Identify baseline draft
+        for msg in output_messages or []:
+            text = getattr(msg, "content", None)
+            payload = self._extract_prefixed_payload(text, "DRAFT")
+            if payload is not None:
+                baseline_text = payload
+                break
+
+        for msg in output_messages or []:
+            text = getattr(msg, "content", None)
+            if not text:
+                continue
+
+            payload = self._extract_prefixed_payload(text, "DRAFT")
+            if payload is not None:
+                # Already recorded baseline above
+                continue
+
+            payload = self._extract_prefixed_payload(text, "FULL")
+            if payload is not None:
+                full_texts.append(payload)
+                continue
+
+            if self._has_prefix(text, "JSON_PATCH"):
+                if baseline_text is None:
+                    continue
+                try:
+                    json_payload = text.split("\n", 1)[1] if "\n" in text else "[]"
+                    ops = json.loads(json_payload or "[]")
+                    new_text = self._apply_json_ops_to_text(baseline_text, ops)
+                    if isinstance(new_text, str) and new_text:
+                        patch_finals.append(new_text)
+                except Exception:
+                    continue
+                continue
+
+            if self._looks_like_unified_diff(text):
+                if baseline_text is None:
+                    continue
+                try:
+                    new_text = self._apply_unified_diff_to_text(baseline_text, text)
+                    if isinstance(new_text, str) and new_text:
+                        patch_finals.append(new_text)
+                except Exception:
+                    continue
+
+        return baseline_text, full_texts, patch_finals
+
+    @staticmethod
+    def _looks_like_unified_diff(text: str) -> bool:
+        if not isinstance(text, str):
+            return False
+        return text.startswith("--- ") or ("@@" in text and text.count("---") >= 1)
+
+    def _merge_union_from_finals(self, baseline_text: str, final_texts: List[str]) -> str:
+        base_lines = (baseline_text or "").splitlines(keepends=True)
+        candidates: List[List[str]] = []
+        for text in final_texts or []:
+            lines = (text or "").splitlines(keepends=True)
+            if len(lines) == len(base_lines):
+                candidates.append(lines)
+        if not candidates:
+            return baseline_text
+
+        merged = base_lines[:]
+        for idx, base_line in enumerate(base_lines):
+            suggestions = [cand[idx] for cand in candidates if cand[idx] != base_line]
+            if not suggestions:
+                continue
+            counts = Counter(suggestions)
+            if len(counts) == 1:
+                merged[idx] = suggestions[0]
+            else:
+                top_count = max(counts.values())
+                top_suggestions = [val for val, count in counts.items() if count == top_count]
+                if len(top_suggestions) == 1:
+                    merged[idx] = top_suggestions[0]
+                else:
+                    merged[idx] = max(
+                        (
+                            (difflib.SequenceMatcher(None, base_line, suggestion).ratio(), suggestion)
+                            for suggestion in top_suggestions
+                        ),
+                        key=lambda item: item[0],
+                    )[1]
+        return "".join(merged)
+
+    def _best_of_n_final(self, baseline_text: str, finals: List[str]) -> str:
+        if not finals:
+            return baseline_text
+        counts = Counter(finals)
+        max_count = max(counts.values())
+        winners = [text for text, count in counts.items() if count == max_count]
+        if len(winners) == 1:
+            return winners[0]
+        winners.sort(key=lambda text: self._delta_size_vs_baseline(baseline_text, text))
+        return winners[0]
+
+    @staticmethod
+    def _delta_size_vs_baseline(a_text: str, b_text: str) -> int:
+        a_lines = (a_text or "").splitlines()
+        b_lines = (b_text or "").splitlines()
+        diff = difflib.unified_diff(a_lines, b_lines, fromfile="a/answer.md", tofile="b/answer.md", lineterm="")
+        delta = 0
+        for line in diff:
+            if line.startswith("+") or line.startswith("-"):
+                if not line.startswith("+++") and not line.startswith("---"):
+                    delta += 1
+        return delta
+
+    @staticmethod
+    def _apply_unified_diff_to_text(a_text: str, diff_text: str) -> str:
+        base_lines = (a_text or "").splitlines(keepends=True)
+        diff_lines = (diff_text or "").splitlines()
+        output: List[str] = []
+        base_index = 0
+        hunk_pattern = re.compile(r"^@@ -(?P<a_start>\d+)(?:,(?P<a_len>\d+))? \+(?P<b_start>\d+)(?:,(?P<b_len>\d+))? @@")
+        i = 0
+        while i < len(diff_lines):
+            line = diff_lines[i]
+            if line.startswith("---") or line.startswith("+++") or not line:
+                i += 1
+                continue
+            match = hunk_pattern.match(line)
+            if not match:
+                i += 1
+                continue
+            a_start = int(match.group("a_start")) - 1
+            copy_until = max(0, a_start - base_index)
+            if copy_until:
+                output.extend(base_lines[base_index: base_index + copy_until])
+                base_index += copy_until
+            i += 1
+            while i < len(diff_lines):
+                current = diff_lines[i]
+                if current.startswith("@@") or current.startswith("---") or current.startswith("+++"):
+                    break
+                if current.startswith(" "):
+                    if base_index < len(base_lines):
+                        output.append(base_lines[base_index])
+                        base_index += 1
+                elif current.startswith("-"):
+                    base_index = min(base_index + 1, len(base_lines))
+                elif current.startswith("+"):
+                    addition = current[1:]
+                    if not addition.endswith("\n"):
+                        addition += "\n"
+                    output.append(addition)
+                i += 1
+        if base_index < len(base_lines):
+            output.extend(base_lines[base_index:])
+        return "".join(output)
+
+    @staticmethod
+    def _apply_json_ops_to_text(base_text: str, ops: List[Dict[str, Any]]) -> str:
+        lines = (base_text or "").splitlines(keepends=True)
+
+        def section_bounds(title: str):
+            header_pattern = re.compile(r"^(#{1,6})\s+(.*)\s*$")
+            start = None
+            level = None
+            for idx, line in enumerate(lines):
+                match = header_pattern.match(line.rstrip("\n"))
+                if match:
+                    current_level = len(match.group(1))
+                    current_title = match.group(2).strip()
+                    if current_title == title:
+                        start = idx
+                        level = current_level
+                        break
+            if start is None:
+                return None, None, None
+            end = len(lines)
+            header_pattern_same = re.compile(r"^(#{1,6})\s+.*")
+            for idx in range(start + 1, len(lines)):
+                match = header_pattern_same.match(lines[idx].rstrip("\n"))
+                if match and len(match.group(1)) <= level:
+                    end = idx
+                    break
+            return start, end, level
+
+        def to_lines(text_value: Optional[str]) -> List[str]:
+            value = text_value or ""
+            if not value.endswith("\n"):
+                value += "\n"
+            return value.splitlines(keepends=True)
+
+        for op in ops or []:
+            if not isinstance(op, dict):
+                continue
+            operation = op.get("op")
+            loc = op.get("loc", {}) or {}
+            if loc.get("type") != "section":
+                continue
+            title = loc.get("title")
+            if not title:
+                continue
+            start, end, level = section_bounds(title)
+            if start is None:
+                if operation == "insert":
+                    header = f"## {title}\n"
+                    lines = lines + [header] + to_lines(op.get("text"))
+                continue
+            if operation == "replace":
+                body_lines = to_lines(op.get("text"))
+                lines = lines[: start + 1] + body_lines + lines[end:]
+            elif operation == "insert":
+                body_lines = to_lines(op.get("text"))
+                lines = lines[: start + 1] + body_lines + lines[start + 1 :]
+            elif operation == "delete":
+                lines = lines[:start] + lines[end:]
+
+        return "".join(lines)
 
     def generate_annotations_feedback_fn(
         self,

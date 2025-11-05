@@ -787,6 +787,49 @@ class HumanLLM:
 }
 ```
 
+### Generation Techniques
+
+HumanLLM surfaces multiple strategies for proposing candidates during an inference round. Set the behaviour via `generation_technique` (and related arguments such as temperatures or expert lists).
+
+- `temperature_variation` – sweep between `temp_min` and `temp_max` to sample diverse candidates.
+- `iterative_alternatives` – iteratively request alternative answers using previous drafts as counter-examples.
+- `mixture_of_agents_generation` (aliases: `moa`, `multi_llm`) – delegate generation to different models or personas for broader coverage.
+- Other project-specific techniques may exist; the value is passed straight through, so custom strategies can plug in without modification.
+
+#### Common option: `draft_patch_mode`
+
+`draft_patch_mode` is a wrapper, not a new `generation_technique`. When enabled (via constructor kwargs or `invoke_kwargs`), HumanLLM will:
+
+1. Produce a deterministic baseline draft at temperature `0.0`.
+2. Generate `K` full rewrites using the currently selected `generation_technique` and parameters.
+3. Convert each rewrite into a unified diff against the baseline.
+4. Return a list shaped like `["DR AFT\n<full text>", "--- a/answer.md...", ...]` which feeds directly into patch-based selectors.
+
+You can toggle the behaviour through dynamic config:
+
+```json
+{
+  "modifications": {
+    "invoke_kwargs": {
+      "draft_patch_mode": true,
+      "patch_k": 4,
+      "patch_validate": true
+    }
+  }
+}
+```
+
+### Selection Techniques
+
+Candidate aggregation is controlled by `selection_technique`:
+
+- `concat` – append all candidates sequentially.
+- `best_of_n` – ask an LLM judge to pick the best draft.
+- `patch_hunk_vote` – merge unified diffs/JSON patches by hunk, using majority votes for conflicts and returning the final full text.
+- `patch_best_of_n` – apply each patch independently, cluster identical finals, and choose the largest (breaking ties with minimal diff size).
+- `moa` / `mixture_of_agents` – synthesis selector for multi-agent pipelines.
+- `last` – fall back to the most recent candidate.
+
 ### Advanced Features
 
 #### Trace Optimization
