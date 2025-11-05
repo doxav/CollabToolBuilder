@@ -4959,6 +4959,7 @@ class HumanLLM:
         try:
             func = func.with_config(configurable={"llm_temperature": 0.0})
         except Exception:
+            # Safely ignore errors when setting LLM temperature config; fallback to default behavior.
             pass
         try:
             response = func.invoke(messages)
