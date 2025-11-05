@@ -4515,8 +4515,7 @@ class HumanLLM:
                                 )
                             if self._consecutive_inference_failures >= getattr(self, "max_consecutive_inference_failures", 3):
                                 raise RuntimeError(
-                                    "HumanLLM failed to produce an inference result after"
-                                    f" {self._consecutive_inference_failures} attempts."
+                                    f"HumanLLM failed to produce an inference result after {self._consecutive_inference_failures} attempts."
                                 )
                             llm_outputs = None
                         elif len(outputs) == 1:

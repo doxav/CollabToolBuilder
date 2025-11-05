@@ -38,7 +38,6 @@ from utils.human_llm import HumanLLM, HumanLLMConfig
 try:  # Some environments ship a non-Python config shim; ignore failures importing it.
     import config as collab_cfg  # noqa: F401  # ensure repo config is imported for side effects
 except Exception:  # pragma: no cover - best effort only
-    collab_cfg = None
 
 _HUMANLLM_SINGLETON: Optional[HumanLLM] = None
 _VDB_PATCHED = False
