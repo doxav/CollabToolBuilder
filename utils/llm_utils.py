@@ -21,9 +21,14 @@ from langchain_core.prompts import ChatPromptTemplate
 import tkinter as tk
 from tkinter import scrolledtext
 from utils.file_utils import dump_text, f_exists, f_move
-# from config import MODELS_CONFIG_LIST, vector_store_type
-from config import MODELS_CONFIG_LIST
-import config
+import types
+try:
+    import config as _collab_config  # type: ignore
+except Exception:  # pragma: no cover - fallback when config.py invalid
+    _collab_config = types.SimpleNamespace(MODELS_CONFIG_LIST=None, vector_store_type="chroma")
+
+MODELS_CONFIG_LIST = getattr(_collab_config, "MODELS_CONFIG_LIST", None)
+config = _collab_config
 from requests.auth import HTTPBasicAuth
 
 import regex as regex 

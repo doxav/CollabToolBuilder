@@ -19,7 +19,10 @@ import tempfile
 from datetime import datetime
 from socket import gethostname
 import logging
-from config import PickleCacheActivated
+try:
+    from config import PickleCacheActivated
+except Exception:  # pragma: no cover - fallback when config.py is not valid python
+    PickleCacheActivated = False
 
 
 f_ext = os.path.splitext

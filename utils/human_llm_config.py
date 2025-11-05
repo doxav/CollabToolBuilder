@@ -1,7 +1,13 @@
 import logging, json, uuid, os, subprocess, time, pickle, requests, re
 from datetime import datetime
-# from config import MODELS_CONFIG_LIST, vector_store_type
-from config import MODELS_CONFIG_LIST
+import types
+
+try:
+    import config as _config_module  # type: ignore
+except Exception:  # pragma: no cover - fallback when config.py invalid
+    _config_module = types.SimpleNamespace(MODELS_CONFIG_LIST=None, vector_store_type="chroma")
+
+MODELS_CONFIG_LIST = getattr(_config_module, "MODELS_CONFIG_LIST", None)
 from utils.websocket_server import WebsocketServer, WebSocketServerConfig
 from utils.llm_utils import (
     create_Nmajority_chain,

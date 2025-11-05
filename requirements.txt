@@ -65,10 +65,13 @@ nbformat
 
 #config
 Jinja2 
-fastapi 
-aiohttp 
-starlette 
-nest-asyncio 
+fastapi
+aiohttp
+starlette
+nest-asyncio
+litellm>=1.65.7
+matplotlib
+opentelemetry-api
 
 
 datasets

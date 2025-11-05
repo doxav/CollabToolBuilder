@@ -9,7 +9,10 @@ import uuid
 
  # Dependency to be removed later
 from langchain_community.embeddings import OpenAIEmbeddings, HuggingFaceEmbeddings  # or langchain.embeddings if that’s what you use
-from langchain.schema import Document
+try:
+    from langchain.schema import Document
+except ImportError:  # pragma: no cover - compatibility with langchain>=1.0
+    from langchain_core.documents import Document  # type: ignore
 #from langchain_community.vectorstores import Chroma
 
 try:

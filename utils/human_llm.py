@@ -12,7 +12,11 @@ from datetime import datetime
 from collections import defaultdict
 import copy
 import importlib
-from matplotlib import rc
+
+try:
+    from matplotlib import rc
+except ImportError:  # pragma: no cover - plotting optional in tests
+    rc = None
 from openai import BadRequestError
 from utils.llm_utils import (
     InferenceCheck,
@@ -34,13 +38,35 @@ except Exception as e:
 from utils.human_llm_config import HumanLLMConfig
 from typing import List, Dict, Any, Optional, Union, Tuple, Callable
 
-# OTEL tracing support
-from opentelemetry import trace as _oteltrace
-from utils.otel_helpers import get_tracer, safe_set, set_inputs, current_thread_id
+# OTEL tracing support (optional in minimal test environments)
+try:
+    from opentelemetry import trace as _oteltrace
+    from utils.otel_helpers import get_tracer, safe_set, set_inputs, current_thread_id
+except ImportError:  # pragma: no cover - tracing disabled when deps unavailable
+    _oteltrace = None
 
-from langchain.llms import OpenAI
+    def get_tracer(*args: Any, **kwargs: Any):  # type: ignore[override]
+        return None
+
+    def safe_set(*args: Any, **kwargs: Any) -> None:  # type: ignore[override]
+        return None
+
+    def set_inputs(*args: Any, **kwargs: Any) -> None:  # type: ignore[override]
+        return None
+
+    def current_thread_id() -> str:  # type: ignore[override]
+        return "noop"
+
+try:
+    from langchain.llms import OpenAI
+except ImportError:  # pragma: no cover - langchain>=1.0 moved providers
+    from langchain_openai import OpenAI  # type: ignore
 from langchain.chains import LLMChain
-from PyPDF2.generic import IndirectObject
+
+try:
+    from PyPDF2.generic import IndirectObject
+except ImportError:  # pragma: no cover - PDF support optional
+    IndirectObject = None
 from langchain.prompts import PromptTemplate
 from langchain_core.messages.ai import AIMessage
 from langchain_core.messages.human import HumanMessage
@@ -1559,6 +1585,10 @@ class HumanLLM:
         # Initialize dynamic configuration system
         self.dynamic_llm_config = dynamic_llm_config or {}
         self.usage_tracker = HelpUsageTracker()
+
+        # Guard against runaway inference retries when providers fail
+        self.max_consecutive_inference_failures = max(1, int(os.getenv("HUMANLLM_MAX_FAILURES", "3")))
+        self._consecutive_inference_failures = 0
         
         # Set up quotas if provided
         for help_type, config in self.dynamic_llm_config.items():
@@ -2071,7 +2101,7 @@ class HumanLLM:
     def serialize_metadata(metadata):
         new_metadata = {}
         for key, value in metadata.items():
-            if isinstance(value, IndirectObject):
+            if IndirectObject is not None and isinstance(value, IndirectObject):
                 new_metadata[key] = str(value)
             else:
                 new_metadata[key] = value
@@ -4474,12 +4504,27 @@ class HumanLLM:
 
                         # Check how many we got
                         if len(outputs) == 0:
-                            smart_print( '**** No inference result received, set output to None', self.agent_name, "NO inference received")
+                            smart_print('**** No inference result received, set output to None', self.agent_name, "NO inference received")
+                            self._consecutive_inference_failures = getattr(self, "_consecutive_inference_failures", 0) + 1
+                            log = getattr(self, "logger", None)
+                            if log and log.isEnabledFor(logging.WARNING):
+                                log.warning(
+                                    "No inference result received (attempt %s/%s)",
+                                    self._consecutive_inference_failures,
+                                    getattr(self, "max_consecutive_inference_failures", 3),
+                                )
+                            if self._consecutive_inference_failures >= getattr(self, "max_consecutive_inference_failures", 3):
+                                raise RuntimeError(
+                                    "HumanLLM failed to produce an inference result after"
+                                    f" {self._consecutive_inference_failures} attempts."
+                                )
                             llm_outputs = None
                         elif len(outputs) == 1:
+                            self._consecutive_inference_failures = 0
                             llm_outputs = outputs
                         else:
                             # Possibly synthesize
+                            self._consecutive_inference_failures = 0
                             if self.synthesize_mode and len(outputs) > 1:
                                 synthesized_response = self.synthesize_responses( [output.content for output in outputs], use_default_llm)
                                 llm_outputs = [AIMessage(content=synthesized_response.content)]
@@ -4512,6 +4557,7 @@ class HumanLLM:
                 else:
                     # Skip LLM inference
                     skip_inference_str = str(skip_inference) if not isinstance(skip_inference, str) else skip_inference
+                    self._consecutive_inference_failures = 0
                     llm_outputs = [AIMessage(content=skip_inference_str)]
 
             end_time = datetime.now()
