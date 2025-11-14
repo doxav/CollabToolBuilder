@@ -1,4 +1,5 @@
-# HumanLLM: Progressive Guide to Human-AI Collaborative Systems
+# CollabToolBuilder & HumanLLM
+## Progressive Guide to Human-AI Collaborative Systems
 
 ## Table of Contents
 
