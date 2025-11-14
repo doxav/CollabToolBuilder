@@ -1,0 +1,17 @@
+{
+    "agent_list": ["literature_review"],
+    "method_config_distribution":"all",
+    "dynamic_config": [
+        {
+            "instruction_help_majority_PRE": {
+                "phase": "pre_inference",
+                "quota": {
+                    "max_count": 30
+                },
+                "modifications": {
+                    "num_parallel_inferences":2
+                }
+            }
+        }
+    ]
+}

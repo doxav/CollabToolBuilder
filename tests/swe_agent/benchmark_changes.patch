@@ -1,0 +1,65 @@
+diff --git a/python/swe/agent/benchmark.py b/python/swe/agent/benchmark.py
+index cd35a985..5f643762 100644
+--- a/python/swe/agent/benchmark.py
++++ b/python/swe/agent/benchmark.py
+@@ -1,5 +1,9 @@
+-import argparse
++import sys
+ import os
++# This adds the root directory of your project to the Python path
++sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), '../../../')))
++
++import argparse
+ import random
+ import re
+ import time
+@@ -19,12 +23,14 @@ from swekit.config.store import IssueConfig
+ 
+ from agent import get_agent_graph
+ 
+-
++from utils.human_llm import HumanLLM
++from utils.human_llm_config import HumanLLMConfig
+ max_retries = 5
+ base_delay = 1  # in seconds
+ 
+ 
+-MODEL = "openai"
++# MODEL = "openai"
++MODEL = "humanllm"
+ 
+ 
+ def retry_with_exponential_backoff(func, *args, **kwargs):
+@@ -50,6 +56,23 @@ def get_llm_response(system_prompt: str, human_prompt: str) -> str:
+             response = retry_with_exponential_backoff(
+                 client.invoke, [("system", system_prompt), ("human", human_prompt)]
+             )
++            return response.content
++        elif MODEL == "humanllm":
++            config = HumanLLMConfig()
++            config.common_vectordb_config.embedding_function = "text-embedding-ada-002"
++            config.initialize()
++            client = HumanLLM(
++                agent_name="agent",
++                automation=True,
++                llmORchains_list=config.get_llmORchains_list()
++            )
++
++            answers = client.invoke(
++                system_prompt_template=system_prompt,
++                user_message=human_prompt,
++                prompt_directory=None)
++            print(answers[0])
++            return answers[0]
+         else:
+             client = ChatOpenAI(
+                 model="o1-mini",
+@@ -60,7 +83,7 @@ def get_llm_response(system_prompt: str, human_prompt: str) -> str:
+             response = retry_with_exponential_backoff(
+                 client.invoke, [("human", human_prompt)]
+             )
+-        return response.content
++            return response.content
+     except Exception:
+         return f"Error while calling llm {MODEL}: \n{traceback.format_exc()}\n"
+ 

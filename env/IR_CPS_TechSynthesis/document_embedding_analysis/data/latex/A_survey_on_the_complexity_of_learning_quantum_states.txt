@@ -1,0 +1,1080 @@
+\bibitem[AAG22]{AAG22}
+Anurag Anshu, Itai Arad, and David Gosset.
+\newblock An area law for 2d frustration-free spin systems.
+\newblock In {\em Proceedings of the 54th Annual ACM SIGACT Symposium on Theory
+  of Computing}, STOC 2022, page 12–18, New York, NY, USA, 2022. Association
+  for Computing Machinery.
+
+\bibitem[AAKS21a]{AAKScomm21}
+Anurag Anshu, Srinivasan Arunachalam, Tomotaka Kuwahara, and Mehdi
+  Soleimanifar.
+\newblock Efficient learning of commuting hamiltonians on lattices, 2021.
+\newblock https://anuraganshu.seas.harvard.edu/links.
+
+\bibitem[AAKS21b]{anshu2021sample}
+Anurag Anshu, Srinivasan Arunachalam, Tomotaka Kuwahara, and Mehdi
+  Soleimanifar.
+\newblock Sample-efficient learning of interacting quantum systems.
+\newblock {\em Nature Physics}, 17(8):931--935, 2021.
+
+\bibitem[Aar07]{aaronson2007learnability}
+Scott Aaronson.
+\newblock The learnability of quantum states.
+\newblock {\em Proceedings of the Royal Society A: Mathematical, Physical and
+  Engineering Sciences}, 463(2088):3089–3114, Sep 2007.
+
+\bibitem[Aar15]{aaronson2015read}
+Scott Aaronson.
+\newblock Read the fine print.
+\newblock {\em Nature Physics}, 11(4):291--293, Apr 2015.
+
+\bibitem[Aar16]{aaronson2016complexity}
+Scott Aaronson.
+\newblock The complexity of quantum states and transformations: from quantum
+  money to black holes.
+\newblock {\em arXiv:1607.05256}, 2016.
+
+\bibitem[Aar18]{aaronson:shadow}
+Scott Aaronson.
+\newblock Shadow tomography of quantum states.
+\newblock In {\em Proceedings of the 50th Annual {ACM} {SIGACT} Symposium on
+  Theory of Computing, {STOC}}, pages 325--338. {ACM}, 2018.
+
+\bibitem[ABDY22]{DBLP:journals/corr/abs-2208-07851}
+Srinivasan Arunachalam, Sergey Bravyi, Arkopal Dutt, and Theodore~J. Yoder.
+\newblock Optimal algorithms for learning quantum phase states, 2022.
+\newblock arXiv:2208.07851v1.
+
+\bibitem[ACH{\etalchar{+}}18]{aaronson2018online}
+Scott Aaronson, Xinyi Chen, Elad Hazan, Satyen Kale, and Ashwin Nayak.
+\newblock Online learning of quantum states.
+\newblock In {\em Advances in Neural Information Processing Systems}, pages
+  8962--8972, 2018.
+
+\bibitem[ACL{\etalchar{+}}21]{arunachalam2021two}
+Srinivasan Arunachalam, Sourav Chakraborty, Troy Lee, Manaswi Paraashar, and
+  Ronald De~Wolf.
+\newblock Two new results about quantum exact learning.
+\newblock {\em Quantum}, 5:587, 2021.
+
+\bibitem[AdW17]{DBLP:journals/sigact/ArunachalamW17}
+Srinivasan Arunachalam and Ronald de~Wolf.
+\newblock Guest column: {A} survey of quantum learning theory.
+\newblock {\em {SIGACT} News}, 48(2):41--67, 2017.
+
+\bibitem[AdW18a]{arunachalam2018optimal}
+Srinivasan Arunachalam and Ronald de~Wolf.
+\newblock Optimal quantum sample complexity of learning algorithms.
+\newblock {\em Journal of Machine Learning Research}, 19(71):1--36, 2018.
+
+\bibitem[AdW18b]{DBLP:journals/jmlr/ArunachalamW18}
+Srinivasan Arunachalam and Ronald de~Wolf.
+\newblock Optimal quantum sample complexity of learning algorithms.
+\newblock {\em Journal of Machine Learning Research}, 19:71:1--71:36, 2018.
+
+\bibitem[AG04]{aaronson2004improved}
+Scott Aaronson and Daniel Gottesman.
+\newblock Improved simulation of stabilizer circuits.
+\newblock {\em Physical Review A}, 70(5):052328, 2004.
+
+\bibitem[AG08]{aaronsongottesmantalk}
+S.~Aaronson and D.~Gottesman.
+\newblock Identifying stabilizer states, 2008.
+\newblock http://pirsa.org/08080052.
+
+\bibitem[AGG{\etalchar{+}}22]{arunachalam2022quantum}
+Srinivasan Arunachalam, Alex~B Grilo, Tom Gur, Igor~C Oliveira, and Aarthi
+  Sundaram.
+\newblock Quantum learning algorithms imply circuit lower bounds.
+\newblock In {\em 2021 IEEE 62nd Annual Symposium on Foundations of Computer
+  Science (FOCS)}, pages 562--573. IEEE, 2022.
+
+\bibitem[AGY20]{arunachalam2020quantum}
+Srinivasan Arunachalam, Alex~B Grilo, and Henry Yuen.
+\newblock Quantum statistical query learning.
+\newblock {\em arXiv:2002.08240}, 2020.
+
+\bibitem[ALL22]{ALL22}
+Anurag Anshu, Zeph Landau, and Yunchao Liu.
+\newblock Distributed quantum inner product estimation.
+\newblock In {\em Proceedings of the 54th Annual ACM SIGACT Symposium on Theory
+  of Computing}, STOC 2022, page 44–51. Association for Computing Machinery,
+  2022.
+
+\bibitem[ALVV17]{AradLVV17}
+Itai Arad, Zeph Landau, Umesh Vazirani, and Thomas Vidick.
+\newblock Rigorous rg algorithms and area laws for low energy eigenstates in
+  1d.
+\newblock {\em Communications in Mathematical Physics}, 356(1):65--105, Nov
+  2017.
+
+\bibitem[AN22]{AN22}
+Anurag Anshu and Chinmay Nirkhe.
+\newblock {Circuit Lower Bounds for Low-Energy States of Quantum Code
+  Hamiltonians}.
+\newblock In Mark Braverman, editor, {\em 13th Innovations in Theoretical
+  Computer Science Conference (ITCS 2022)}, volume 215 of {\em Leibniz
+  International Proceedings in Informatics (LIPIcs)}, pages 6:1--6:22,
+  Dagstuhl, Germany, 2022. Schloss Dagstuhl -- Leibniz-Zentrum f{\"u}r
+  Informatik.
+
+\bibitem[AQS21]{DBLP:conf/nips/QuekAS21}
+Srinivasan Arunachalam, Yihui Quek, and John~A. Smolin.
+\newblock Private learning implies quantum stability.
+\newblock In {\em Advances in Neural Information Processing Systems 34: Annual
+  Conference on Neural Information Processing Systems 2021, NeurIPS 2021,
+  December 6-14, 2021, virtual}, pages 20503--20515, 2021.
+
+\bibitem[AQY21]{ananth2021cryptography}
+Prabhanjan Ananth, Luowen Qian, and Henry Yuen.
+\newblock Cryptography from pseudorandom quantum states.
+\newblock {\em arXiv:2112.10020}, 2021.
+
+\bibitem[AR19]{aaronson2019gentle}
+Scott Aaronson and Guy~N Rothblum.
+\newblock Gentle measurement of quantum states and differential privacy.
+\newblock In {\em Proceedings of the 51st Annual ACM SIGACT Symposium on Theory
+  of Computing}, pages 322--333, 2019.
+
+\bibitem[AS07]{atici2007quantum}
+Alp At{\i}c{\i} and Rocco~A Servedio.
+\newblock Quantum algorithms for learning and testing juntas.
+\newblock {\em Quantum Information Processing}, 6(5):323--348, 2007.
+
+\bibitem[AS14]{Albert201499}
+Joseph Albert and Robert~H. Swendsen.
+\newblock The inverse {I}sing problem.
+\newblock {\em Physics Procedia}, 57:99--103, 2014.
+\newblock Proceedings of the 27th Workshop on Computer Simulation Studies in
+  Condensed Matter Physics (CSP2014).
+
+\bibitem[ASZ{\etalchar{+}}21]{abbas2021power}
+Amira Abbas, David Sutter, Christa Zoufal, Aur{\'e}lien Lucchi, Alessio
+  Figalli, and Stefan Woerner.
+\newblock The power of quantum neural networks.
+\newblock {\em Nature Computational Science}, 1(6):403--409, 2021.
+
+\bibitem[BAL19]{Aradlearning}
+Eyal Bairey, Itai Arad, and Netanel~H Lindner.
+\newblock Learning a local hamiltonian from local measurements.
+\newblock {\em Physical Review Letters}, 122(2):020504, 2019.
+
+\bibitem[BBC{\etalchar{+}}19]{bravyi2019simulation}
+Sergey Bravyi, Dan Browne, Padraic Calpin, Earl Campbell, David Gosset, and
+  Mark Howard.
+\newblock Simulation of quantum circuits by low-rank stabilizer decompositions.
+\newblock {\em Quantum}, 3:181, 2019.
+
+\bibitem[BBF{\etalchar{+}}20]{beer2020training}
+Kerstin Beer, Dmytro Bondarenko, Terry Farrelly, Tobias~J Osborne, Robert
+  Salzmann, Daniel Scheiermann, and Ramona Wolf.
+\newblock Training deep quantum neural networks.
+\newblock {\em Nature communications}, 11(1):808, 2020.
+
+\bibitem[BCvD06]{DBLP:journals/cjtcs/BaconCD06}
+Dave Bacon, Andrew~M. Childs, and Wim van Dam.
+\newblock Optimal measurements for the dihedral hidden subgroup problem.
+\newblock {\em Chic. J. Theor. Comput. Sci.}, 2006, 2006.
+
+\bibitem[BG16a]{BG16}
+Sergey Bravyi and David Gosset.
+\newblock Improved classical simulation of quantum circuits dominated by
+  {C}lifford gates.
+\newblock {\em Physical Review Letters}, 116:250501, Jun 2016.
+
+\bibitem[BG16b]{bravyi2016improved}
+Sergey Bravyi and David Gosset.
+\newblock Improved classical simulation of quantum circuits dominated by
+  {C}lifford gates.
+\newblock {\em Physical Review Letters}, 116(25):250501, 2016.
+
+\bibitem[BJ95]{DBLP:conf/colt/BshoutyJ95}
+Nader~H. Bshouty and Jeffrey~C. Jackson.
+\newblock Learning {DNF} over the uniform distribution using a quantum example
+  oracle.
+\newblock In Wolfgang Maass, editor, {\em Proceedings of the Eigth Annual
+  Conference on Computational Learning Theory, {COLT}}, pages 118--127. {ACM},
+  1995.
+
+\bibitem[BJS11]{bremner2011classical}
+Michael~J Bremner, Richard Jozsa, and Dan~J Shepherd.
+\newblock Classical simulation of commuting quantum computations implies
+  collapse of the polynomial hierarchy.
+\newblock {\em Proceedings of the Royal Society A: Mathematical, Physical and
+  Engineering Sciences}, 467(2126):459--472, 2011.
+
+\bibitem[BKL{\etalchar{+}}19]{Brandao2019sdp}
+Fernando G. S.~L. Brand{\~a}o, Amir Kalev, Tongyang Li, Cedric Yen-Yu Lin,
+  Krysta~M. Svore, and Xiaodi Wu.
+\newblock {Quantum SDP Solvers: Large Speed-Ups, Optimality, and Applications
+  to Quantum Learning}.
+\newblock In {\em 46th International Colloquium on Automata, Languages, and
+  Programming (ICALP 2019)}, volume 132 of {\em Leibniz International
+  Proceedings in Informatics (LIPIcs)}, pages 27:1--27:14, 2019.
+
+\bibitem[BKW03]{blum2003noise}
+Avrim Blum, Adam Kalai, and Hal Wasserman.
+\newblock Noise-tolerant learning, the parity problem, and the statistical
+  query model.
+\newblock {\em Journal of the ACM (JACM)}, 50(4):506--519, 2003.
+
+\bibitem[BLM20]{DBLP:conf/focs/BunLM20}
+Mark Bun, Roi Livni, and Shay Moran.
+\newblock An equivalence between private classification and online prediction.
+\newblock In {\em 61st {IEEE} Annual Symposium on Foundations of Computer
+  Science, {FOCS}}, pages 389--402. {IEEE}, 2020.
+
+\bibitem[BO21]{DBLP:conf/stoc/BadescuO21}
+Costin Badescu and Ryan O'Donnell.
+\newblock Improved quantum data analysis.
+\newblock In {\em {STOC} '21: 53rd Annual {ACM} {SIGACT} Symposium on Theory of
+  Computing}, pages 1398--1411. {ACM}, 2021.
+
+\bibitem[Bre15]{Bresler_learning}
+Guy Bresler.
+\newblock Efficiently learning {I}sing models on arbitrary graphs.
+\newblock In {\em S{TOC}'15---{P}roceedings of the 2015 {ACM} {S}ymposium on
+  {T}heory of {C}omputing}, pages 771--782, 2015.
+
+\bibitem[BS19]{brakerski2019pseudo}
+Zvika Brakerski and Omri Shmueli.
+\newblock {(Pseudo)} {R}andom {Q}uantum {S}tates with {B}inary {P}hase.
+\newblock In {\em Theory of Cryptography Conference}, pages 229--250. Springer,
+  2019.
+
+\bibitem[BSS16]{BSS16}
+Sergey Bravyi, Graeme Smith, and John~A. Smolin.
+\newblock Trading classical and quantum computational resources.
+\newblock {\em Phys. Rev. X}, 6:021043, Jun 2016.
+
+\bibitem[BV97]{bernstein1997quantum}
+Ethan Bernstein and Umesh Vazirani.
+\newblock Quantum complexity theory.
+\newblock {\em SIAM Journal on Computing}, 26(5):1411--1473, 1997.
+
+\bibitem[BW02]{buhrman2002complexity}
+Harry Buhrman and {Ronald de} Wolf.
+\newblock Complexity measures and decision tree complexity: a survey.
+\newblock {\em Theoretical Computer Science}, 288(1):21--43, 2002.
+
+\bibitem[Car20]{caro2020quantum}
+Matthias~C Caro.
+\newblock Quantum learning boolean linear functions wrt product distributions.
+\newblock {\em Quantum Information Processing}, 19(6):172, 2020.
+
+\bibitem[Car21]{caro2021binary}
+Matthias~C Caro.
+\newblock Binary classification with classical instances and quantum labels.
+\newblock {\em Quantum Machine Intelligence}, 3(1):18, 2021.
+
+\bibitem[Car22]{caro2022learning}
+Matthias~C Caro.
+\newblock Learning quantum processes and {H}amiltonians via the {P}auli
+  transfer matrix.
+\newblock {\em arXiv:2212.04471}, 2022.
+
+\bibitem[CCHL21]{DBLP:conf/focs/ChenCH021}
+Sitan Chen, Jordan Cotler, Hsin{-}Yuan Huang, and Jerry Li.
+\newblock Exponential separations between learning with and without quantum
+  memory.
+\newblock In {\em 62nd {IEEE} Annual Symposium on Foundations of Computer
+  Science, {FOCS}}, pages 574--585. {IEEE}, 2021.
+
+\bibitem[CD16]{Cong_2016}
+Iris Cong and Luming Duan.
+\newblock Quantum discriminant analysis for dimensionality reduction and
+  classification.
+\newblock {\em New Journal of Physics}, 18(7):073011, jul 2016.
+
+\bibitem[CD20]{caro2020pseudo}
+Matthias~C Caro and Ishaun Datta.
+\newblock Pseudo-dimension of quantum circuits.
+\newblock {\em Quantum Machine Intelligence}, 2(2):14, 2020.
+
+\bibitem[CGFM{\etalchar{+}}21]{caro2021encoding}
+Matthias~C Caro, Elies Gil-Fuster, Johannes~Jakob Meyer, Jens Eisert, and Ryan
+  Sweke.
+\newblock Encoding-dependent generalization bounds for parametrized quantum
+  circuits.
+\newblock {\em Quantum}, 5:582, 2021.
+
+\bibitem[CGK17]{cui2017diagonal}
+Shawn~X Cui, Daniel Gottesman, and Anirudh Krishna.
+\newblock Diagonal gates in the {C}lifford hierarchy.
+\newblock {\em Physical Review A}, 95(1):012329, 2017.
+
+\bibitem[CGL{\etalchar{+}}20]{Chia2020samplingbased}
+Nai-Hui Chia, Andr\'{a}s Gily\'{e}n, Tongyang Li, Han-Hsuan Lin, Ewin Tang, and
+  Chunhao Wang.
+\newblock Sampling-based sublinear low-rank matrix arithmetic framework for
+  dequantizing quantum machine learning.
+\newblock In {\em Proceedings of the 52nd Annual ACM SIGACT Symposium on Theory
+  of Computing}, STOC, page 387–400, 2020.
+
+\bibitem[CHC{\etalchar{+}}22]{caro2022generalization}
+Matthias~C Caro, Hsin-Yuan Huang, Marco Cerezo, Kunal Sharma, Andrew
+  Sornborger, Lukasz Cincio, and Patrick~J Coles.
+\newblock Generalization in quantum machine learning from few training data.
+\newblock {\em Nature communications}, 13(1):4919, 2022.
+
+\bibitem[CHE{\etalchar{+}}22]{caro2022out}
+Matthias~C Caro, Hsin-Yuan Huang, Nicholas Ezzell, Joe Gibbs, Andrew~T
+  Sornborger, Lukasz Cincio, Patrick~J Coles, and Zo{\"e} Holmes.
+\newblock Out-of-distribution generalization for learning quantum dynamics.
+\newblock {\em arXiv:2204.10268}, 2022.
+
+\bibitem[CHL{\etalchar{+}}22a]{chen2022tight}
+Sitan Chen, Brice Huang, Jerry Li, Allen Liu, and Mark Sellke.
+\newblock Tight bounds for state tomography with incoherent measurements.
+\newblock {\em arXiv:2206.05265}, 2022.
+
+\bibitem[CHL{\etalchar{+}}22b]{chen2022adaptive}
+Xinyi Chen, Elad Hazan, Tongyang Li, Zhou Lu, Xinzhao Wang, and Rui Yang.
+\newblock Adaptive online learning of quantum states.
+\newblock {\em arXiv:2206.00220}, 2022.
+
+\bibitem[CHY16]{cheng2015learnability}
+Hao{-}Chung Cheng, Min{-}Hsiu Hsieh, and Ping{-}Cheng Yeh.
+\newblock The learnability of unknown quantum measurements.
+\newblock {\em Quantum Inf. Comput.}, 16(7{\&}8):615--656, 2016.
+
+\bibitem[CL68]{ChowLiu1968}
+C.~{Chow} and C.~{Liu}.
+\newblock Approximating discrete probability distributions with dependence
+  trees.
+\newblock {\em IEEE Transactions on Information Theory}, 14(3):462--467, 1968.
+
+\bibitem[CL21]{chung2018sample}
+Kai{-}Min Chung and Han{-}Hsuan Lin.
+\newblock Sample efficient algorithms for learning quantum channels in {PAC}
+  model and the approximate state discrimination problem.
+\newblock In Min{-}Hsiu Hsieh, editor, {\em 16th Conference on the Theory of
+  Quantum Computation, Communication and Cryptography, {TQC} 2021, July 5-8,
+  2021, Virtual Conference}, volume 197 of {\em LIPIcs}, pages 3:1--3:22.
+  Schloss Dagstuhl - Leibniz-Zentrum f{\"{u}}r Informatik, 2021.
+
+\bibitem[CLW18]{chia2018quantuminspired}
+Nai-Hui Chia, Han-Hsuan Lin, and Chunhao Wang.
+\newblock Quantum-inspired sublinear classical algorithms for solving low-rank
+  linear systems, 2018.
+
+\bibitem[CMDK20]{CMDK20}
+Brian Coyle, Daniel Mills, Vincent Danos, and Elham Kashefi.
+\newblock The born supremacy: quantum advantage and training of an {I}sing born
+  machine.
+\newblock {\em NPJ Quantum Information}, 6(1):60, Jul 2020.
+
+\bibitem[CPF{\etalchar{+}}10a]{cramer2010efficient}
+Marcus Cramer, Martin~B Plenio, Steven~T Flammia, Rolando Somma, David Gross,
+  Stephen~D Bartlett, Olivier Landon-Cardinal, David Poulin, and Yi-Kai Liu.
+\newblock Efficient quantum state tomography.
+\newblock {\em Nature Communications}, 1(1):1--7, 2010.
+
+\bibitem[CPF{\etalchar{+}}10b]{CPFSGBLPL10}
+Marcus Cramer, Martin~B. Plenio, Steven~T. Flammia, Rolando Somma, David Gross,
+  Stephen~D. Bartlett, Olivier Landon-Cardinal, David Poulin, and Yi-Kai Liu.
+\newblock Efficient quantum state tomography.
+\newblock {\em Nature Communications}, 1(1):149, Dec 2010.
+
+\bibitem[DBH19]{ding2019quantuminspired}
+Chen Ding, Tian-Yi Bao, and He-Liang Huang.
+\newblock Quantum-inspired support vector machine, 2019.
+
+\bibitem[DDM03]{dehaene2003clifford}
+Jeroen Dehaene and Bart De~Moor.
+\newblock Clifford group, stabilizer states, and linear and quadratic
+  operations over gf (2).
+\newblock {\em Physical Review A}, 68(4):042318, 2003.
+
+\bibitem[DHL{\etalchar{+}}21]{du2021learnability}
+Yuxuan Du, Min-Hsiu Hsieh, Tongliang Liu, Shan You, and Dacheng Tao.
+\newblock Learnability of quantum neural networks.
+\newblock {\em PRX Quantum}, 2(4):040337, 2021.
+
+\bibitem[DPW{\etalchar{+}}21]{dutt2021active}
+Arkopal Dutt, Edwin Pednault, Chai~Wah Wu, Sarah Sheldon, John Smolin, Lev
+  Bishop, and Isaac~L Chuang.
+\newblock Active learning of quantum system hamiltonians yields query
+  advantage.
+\newblock {\em arXiv:2112.14553}, 2021.
+
+\bibitem[DR{\etalchar{+}}14]{dwork2014algorithmic}
+Cynthia Dwork, Aaron Roth, et~al.
+\newblock The algorithmic foundations of differential privacy.
+\newblock {\em Foundations and Trends in Theoretical Computer Science},
+  9(3--4):211--407, 2014.
+
+\bibitem[Dwo06]{dwork2006differential}
+Cynthia Dwork.
+\newblock Differential privacy.
+\newblock In {\em Automata, Languages and Programming: 33rd International
+  Colloquium, ICALP 2006, Venice, Italy, July 10-14, 2006, Proceedings, Part II
+  33}, pages 1--12. Springer, 2006.
+
+\bibitem[ECP10]{EisertP10}
+J.~Eisert, M.~Cramer, and M.~B. Plenio.
+\newblock Colloquium: Area laws for the entanglement entropy.
+\newblock {\em Rev. Mod. Phys.}, 82:277--306, Feb 2010.
+
+\bibitem[EF01]{eldar2001quantum}
+Yonina~C Eldar and G~David Forney.
+\newblock On quantum detection and the square-root measurement.
+\newblock {\em IEEE Transactions on Information Theory}, 47(3):858--872, 2001.
+
+\bibitem[EHK04]{DBLP:journals/ipl/EttingerHK04}
+Mark Ettinger, Peter H{\o}yer, and Emanuel Knill.
+\newblock The quantum query complexity of the hidden subgroup problem is
+  polynomial.
+\newblock {\em Inf. Process. Lett.}, 91(1):43--48, 2004.
+
+\bibitem[FBaK21]{FBK21}
+Daniel~Stilck Fran\c{c}a, Fernando G.S~L. Brand\~{a}o, and Richard Kueng.
+\newblock {Fast and Robust Quantum State Tomography from Few Basis
+  Measurements}.
+\newblock In Min-Hsiu Hsieh, editor, {\em 16th Conference on the Theory of
+  Quantum Computation, Communication and Cryptography (TQC 2021)}, volume 197
+  of {\em Leibniz International Proceedings in Informatics (LIPIcs)}, pages
+  7:1--7:13. Schloss Dagstuhl -- Leibniz-Zentrum f{\"u}r Informatik, 2021.
+
+\bibitem[Fel09]{feldman2009distribution}
+Vitaly Feldman.
+\newblock Distribution-specific agnostic boosting.
+\newblock {\em arXiv:0909.2927}, 2009.
+
+\bibitem[FGLE12]{flammia2012quantum}
+Steven~T Flammia, David Gross, Yi-Kai Liu, and Jens Eisert.
+\newblock Quantum tomography via compressed sensing: error bounds, sample
+  complexity and efficient estimators.
+\newblock {\em New Journal of Physics}, 14(9):095022, 2012.
+
+\bibitem[FGR{\etalchar{+}}17]{feldman2017statistical}
+Vitaly Feldman, Elena Grigorescu, Lev Reyzin, Santosh~S Vempala, and Ying Xiao.
+\newblock Statistical algorithms and a lower bound for detecting planted
+  cliques.
+\newblock {\em Journal of the ACM (JACM)}, 64(2):1--37, 2017.
+
+\bibitem[FIM{\etalchar{+}}14]{Friedl2014hidden}
+Katalin Friedl, Gábor Ivanyos, Frédéric Magniez, Miklos Santha, and Pranab
+  Sen.
+\newblock Hidden translation and translating coset in quantum computing.
+\newblock {\em SIAM Journal on Computing}, 43(1):1–24, Jan 2014.
+
+\bibitem[FMMC12]{FMM+12}
+Austin~G. Fowler, Matteo Mariantoni, John~M. Martinis, and Andrew~N. Cleland.
+\newblock Surface codes: Towards practical large-scale quantum computation.
+\newblock {\em Physical Review A}, 86(3), sep 2012.
+
+\bibitem[FO23]{flammiaodonnell}
+Steve Flammia and Ryan {O'Donnell}.
+\newblock Quantum chi-squared tomography and mutual information testing.
+\newblock {\em arXiv:2305.18519v1}, 2023.
+
+\bibitem[FQR22]{fanizza2022learning}
+Marco Fanizza, Yihui Quek, and Matteo Rosati.
+\newblock Learning quantum processes without input control.
+\newblock {\em arXiv:2211.05005}, 2022.
+
+\bibitem[GA22]{gong2022learning}
+Weiyuan Gong and Scott Aaronson.
+\newblock Learning distributions over quantum measurement outcomes.
+\newblock {\em arXiv:2209.03007}, 2022.
+
+\bibitem[GC99]{gottesman1999demonstrating}
+Daniel Gottesman and Isaac~L Chuang.
+\newblock Demonstrating the viability of universal quantum computation using
+  teleportation and single-qubit operations.
+\newblock {\em Nature}, 402(6760):390--393, 1999.
+
+\bibitem[GGC{\etalchar{+}}21]{glick2021covariant}
+Jennifer~R. Glick, Tanvi~P. Gujarati, Antonio~D. Corcoles, Youngseok Kim,
+  Abhinav Kandala, Jay~M. Gambetta, and Kristan Temme.
+\newblock Covariant quantum kernels for data with group structure, 2021.
+
+\bibitem[GHC{\etalchar{+}}22]{gibbs2022dynamical}
+Joe Gibbs, Zo{\"e} Holmes, Matthias~C Caro, Nicholas Ezzell, Hsin-Yuan Huang,
+  Lukasz Cincio, Andrew~T Sornborger, and Patrick~J Coles.
+\newblock Dynamical simulation via quantum machine learning with provable
+  generalization.
+\newblock {\em arXiv:2204.10269}, 2022.
+
+\bibitem[GIKL23a]{grewal2023improvedlatest}
+Sabee Grewal, Vishnu Iyer, William Kretschmer, and Daniel Liang.
+\newblock Efficient learning of quantum states prepared with few non-clifford
+  gates.
+\newblock 2023.
+
+\bibitem[GIKL23b]{grewal2023improved}
+Sabee Grewal, Vishnu Iyer, William Kretschmer, and Daniel Liang.
+\newblock Improved stabilizer estimation via bell difference sampling.
+\newblock {\em arXiv:2304.13915}, 2023.
+
+\bibitem[GIKL23c]{grewal2022low}
+Sabee Grewal, Vishnu Iyer, William Kretschmer, and Daniel Liang.
+\newblock Low-stabilizer-complexity quantum states are not pseudorandom.
+\newblock In Yael~Tauman Kalai, editor, {\em 14th Innovations in Theoretical
+  Computer Science Conference, {ITCS} 2023, January 10-13, 2023, MIT,
+  Cambridge, Massachusetts, {USA}}, volume 251 of {\em LIPIcs}, pages
+  64:1--64:20. Schloss Dagstuhl - Leibniz-Zentrum f{\"{u}}r Informatik, 2023.
+
+\bibitem[GKK08]{DBLP:conf/stoc/GopalanKK08}
+Parikshit Gopalan, Adam~Tauman Kalai, and Adam~R. Klivans.
+\newblock Agnostically learning decision trees.
+\newblock In {\em Proceedings of the 40th Annual {ACM} Symposium on Theory of
+  Computing}, pages 527--536. {ACM}, 2008.
+
+\bibitem[GKZ19]{Grilo2019learning}
+Alex~B. Grilo, Iordanis Kerenidis, and Timo Zijlstra.
+\newblock Learning-with-errors problem is easy with quantum samples.
+\newblock {\em Phys. Rev. A}, 99:032314, Mar 2019.
+
+\bibitem[GL22]{gollakota2022hardness}
+Aravind Gollakota and Daniel Liang.
+\newblock On the hardness of {PAC}-learning stabilizer states with noise.
+\newblock {\em Quantum}, 6:640, 2022.
+
+\bibitem[GLT18]{gilyn2018quantuminspired}
+András Gilyén, Seth Lloyd, and Ewin Tang.
+\newblock Quantum-inspired low-rank stochastic regression with logarithmic
+  dependence on the dimension, 2018.
+
+\bibitem[GSG{\etalchar{+}}23]{GSG2023}
+Valentin Gebhart, Raffaele Santagati, Antonio~Andrea Gentile, Erik~M. Gauger,
+  David Craig, Natalia Ares, Leonardo Banchi, Florian Marquardt, Luca
+  Pezz{\`e}, and Cristian Bonato.
+\newblock Learning quantum systems.
+\newblock {\em Nature Reviews Physics}, Feb 2023.
+
+\bibitem[GYN22]{GYN22}
+Abigail~McClain Gomez, Susanne~F. Yelin, and Khadijeh Najafi.
+\newblock Reconstructing quantum states using basis-enhanced born machines,
+  2022.
+
+\bibitem[HCP22]{huang2022learning}
+Hsin-Yuan Huang, Sitan Chen, and John Preskill.
+\newblock Learning to predict arbitrary quantum processes.
+\newblock {\em arXiv:2210.14894}, 2022.
+
+\bibitem[HCT{\etalchar{+}}19]{Havlicek2019}
+Vojt{\v{e}}ch Havl{\'i}{\v{c}}ek, Antonio~D. C{\'o}rcoles, Kristan Temme,
+  Aram~W. Harrow, Abhinav Kandala, Jerry~M. Chow, and Jay~M. Gambetta.
+\newblock Supervised learning with quantum-enhanced feature spaces.
+\newblock {\em Nature}, 567(7747):209--212, Mar 2019.
+
+\bibitem[HHJ{\etalchar{+}}17]{haah2017sample}
+Jeongwan Haah, Aram~W Harrow, Zhengfeng Ji, Xiaodi Wu, and Nengkun Yu.
+\newblock Sample-optimal tomography of quantum states.
+\newblock {\em IEEE Transactions on Information Theory}, 63(9):5628--5641,
+  2017.
+
+\bibitem[HHL09]{Harrow2009quantum}
+Aram~W. Harrow, Avinatan Hassidim, and Seth Lloyd.
+\newblock Quantum algorithm for linear systems of equations.
+\newblock {\em Phys. Rev. Lett.}, 103:150502, Oct 2009.
+
+\bibitem[HIN{\etalchar{+}}21]{hinsche2021learnability}
+Marcel Hinsche, Marios Ioannou, Alexander Nietner, Jonas Haferkamp, Yihui Quek,
+  Dominik Hangleiter, Jean-Pierre Seifert, Jens Eisert, and Ryan Sweke.
+\newblock Learnability of the output distributions of local quantum circuits.
+\newblock {\em arXiv:2110.05517}, 2021.
+
+\bibitem[HIN{\etalchar{+}}22]{hinsche2022single}
+Marcel Hinsche, Marios Ioannou, Alexander Nietner, Jonas Haferkamp, Yihui Quek,
+  Dominik Hangleiter, Jean-Pierre Seifert, Jens Eisert, and Ryan Sweke.
+\newblock A single {$ T $}-gate makes distribution learning hard.
+\newblock {\em arXiv:2207.03140}, 2022.
+
+\bibitem[HKOT23]{haah2023query}
+Jeongwan Haah, Robin Kothari, Ryan O'Donnell, and Ewin Tang.
+\newblock Query-optimal estimation of unitary channels in diamond distance.
+\newblock {\em arXiv:2302.14066}, 2023.
+
+\bibitem[HKP20]{huangpreskill}
+Hsin-Yuan Huang, Richard Kueng, and John Preskil.
+\newblock Predicting many properties of a quantum system from very few
+  measurements.
+\newblock {\em Nature Physics}, 16:1050--1057, 2020.
+
+\bibitem[HKT22a]{haah2021optimal}
+Jeongwan Haah, Robin Kothari, and Ewin Tang.
+\newblock Optimal learning of quantum hamiltonians from high-temperature gibbs
+  states.
+\newblock In {\em 63rd {IEEE} Annual Symposium on Foundations of Computer
+  Science, {FOCS} 2022, Denver, CO, USA, October 31 - November 3, 2022}, pages
+  135--146. {IEEE}, 2022.
+
+\bibitem[HKT{\etalchar{+}}22b]{huang2022provably}
+Hsin-Yuan Huang, Richard Kueng, Giacomo Torlai, Victor~V Albert, and John
+  Preskill.
+\newblock Provably efficient machine learning for quantum many-body problems.
+\newblock {\em Science}, 377(6613):eabk3333, 2022.
+
+\bibitem[HLM17]{DBLP:conf/soda/HarrowLM17}
+Aram~W. Harrow, Cedric~Yen{-}Yu Lin, and Ashley Montanaro.
+\newblock Sequential measurements, disturbance and property testing.
+\newblock In {\em Proceedings of the Twenty-Eighth Annual {ACM-SIAM} Symposium
+  on Discrete Algorithms, {SODA}}, pages 1598--1611. {SIAM}, 2017.
+
+\bibitem[HRS10]{DBLP:journals/jacm/HallgrenMRRS10}
+Sean Hallgren, Martin R{\"{o}}tteler, and Pranab Sen.
+\newblock Limitations of quantum coset states for graph isomorphism.
+\newblock {\em Journal of the {ACM}}, 57(6):34:1--34:33, 2010.
+
+\bibitem[HRTS00]{hallgren2000normal}
+Sean Hallgren, Alexander Russell, and Amnon Ta-Shma.
+\newblock Normal subgroup reconstruction and quantum computation using group
+  representations.
+\newblock In {\em Proceedings of the thirty-second annual ACM symposium on
+  Theory of computing}, pages 627--635, 2000.
+
+\bibitem[HS{\etalchar{+}}86]{hinton1986learning}
+Geoffrey~E Hinton, Terrence~J Sejnowski, et~al.
+\newblock Learning and relearning in {B}oltzmann machines.
+\newblock {\em Parallel distributed processing: Explorations in the
+  microstructure of cognition}, 1(282-317):2, 1986.
+
+\bibitem[HTFS23]{HTFS22}
+Hsin-Yuan Huang, Yu~Tong, Di~Fang, and Yuan Su.
+\newblock Learning many-body hamiltonians with heisenberg-limited scaling.
+\newblock {\em Physical Review Letters}, 130(20):200403, 2023.
+
+\bibitem[INN{\etalchar{+}}22]{irani2021quantum}
+Sandy Irani, Anand Natarajan, Chinmay Nirkhe, Sujit Rao, and Henry Yuen.
+\newblock Quantum search-to-decision reductions and the state synthesis
+  problem.
+\newblock In {\em 37th Computational Complexity Conference, {CCC}}, volume 234
+  of {\em LIPIcs}, pages 5:1--5:19. Schloss Dagstuhl - Leibniz-Zentrum
+  f{\"{u}}r Informatik, 2022.
+
+\bibitem[JEP{\etalchar{+}}21]{jumper2021highly}
+John Jumper, Richard Evans, Alexander Pritzel, Tim Green, Michael Figurnov,
+  Olaf Ronneberger, Kathryn Tunyasuvunakool, Russ Bates, Augustin
+  {\v{Z}}{\'\i}dek, Anna Potapenko, et~al.
+\newblock Highly accurate protein structure prediction with alphafold.
+\newblock {\em Nature}, 596(7873):583--589, 2021.
+
+\bibitem[JLS18]{ji2018pseudorandom}
+Zhengfeng Ji, Yi-Kai Liu, and Fang Song.
+\newblock Pseudorandom quantum states.
+\newblock In {\em Annual International Cryptology Conference}, pages 126--152.
+  Springer, 2018.
+
+\bibitem[JYD{\etalchar{+}}21]{Jiang21}
+Yu-Xiao Jiang, Jia-Xin Yin, M.~Michael Denner, Nana Shumiya, Brenden~R. Ortiz,
+  Gang Xu, Zurab Guguchia, Junyi He, Md~Shafayat Hossain, Xiaoxiong Liu, Jacob
+  Ruff, Linus Kautzsch, Songtian~S. Zhang, Guoqing Chang, Ilya Belopolski,
+  Qi~Zhang, Tyler~A. Cochran, Daniel Multer, Maksim Litskevich, Zi-Jia Cheng,
+  Xian~P. Yang, Ziqiang Wang, Ronny Thomale, Titus Neupert, Stephen~D. Wilson,
+  and M.~Zahid Hasan.
+\newblock Unconventional chiral charge order in kagome superconductor kv3sb5.
+\newblock {\em Nature Materials}, 20(10):1353--1357, Oct 2021.
+
+\bibitem[KB19]{KatoB2019}
+Kohtaro Kato and Fernando G. S.~L. Brand{\~a}o.
+\newblock Quantum approximate markov chains are thermal.
+\newblock {\em Communications in Mathematical Physics}, 370(1):117--149, Aug
+  2019.
+
+\bibitem[Kea98]{kearns:statistical}
+M.~J. Kearns.
+\newblock Efficient noise-tolerant learning from statistical queries.
+\newblock {\em Journal of the {ACM}}, 45(6):983--1006, 1998.
+\newblock Earlier version in STOC'03.
+
+\bibitem[Kit96]{DBLP:journals/eccc/ECCC-TR96-003}
+Alexei~Y. Kitaev.
+\newblock Quantum measurements and the abelian stabilizer problem.
+\newblock {\em Electron. Colloquium Comput. Complex.}, 1996.
+
+\bibitem[KKBa20]{KKB20}
+Tomotaka Kuwahara, Kohtaro Kato, and Fernando G. S.~L. Brand\~ao.
+\newblock Clustering of conditional mutual information for quantum {G}ibbs
+  states above a threshold temperature.
+\newblock {\em Phys. Rev. Lett.}, 124:220601, Jun 2020.
+
+\bibitem[KLL{\etalchar{+}}17]{kimmel2017hamiltonian}
+Shelby Kimmel, Cedric Yen-Yu Lin, Guang~Hao Low, Maris Ozols, and Theodore~J
+  Yoder.
+\newblock Hamiltonian simulation with optimal sample complexity.
+\newblock {\em NPJ Quantum Information}, 3(1):1--7, 2017.
+
+\bibitem[KLN{\etalchar{+}}11]{DBLP:journals/siamcomp/KasiviswanathanLNRS11}
+Shiva~Prasad Kasiviswanathan, Homin~K. Lee, Kobbi Nissim, Sofya Raskhodnikova,
+  and Adam~D. Smith.
+\newblock What can we learn privately?
+\newblock {\em {SIAM} Journal on Computing}, 40(3):793--826, 2011.
+
+\bibitem[KM17]{Klivans_learning}
+Adam~R. Klivans and Raghu Meka.
+\newblock Learning graphical models using multiplicative weights.
+\newblock In Chris Umans, editor, {\em 58th {IEEE} Annual Symposium on
+  Foundations of Computer Science, {FOCS}}, pages 343--354. {IEEE} Computer
+  Society, 2017.
+
+\bibitem[KMM13]{KMM13}
+Vadym Kliuchnikov, Dmitri Maslov, and Michele Mosca.
+\newblock Fast and efficient exact synthesis of single qubit unitaries
+  generated by {C}lifford and $t$ gates.
+\newblock {\em Quantum Information and Computation}, 13(7--8):607--630, 2013.
+
+\bibitem[KP17]{kerenidis2016quantum}
+Iordanis Kerenidis and Anupam Prakash.
+\newblock Quantum recommendation systems.
+\newblock In {\em 8th Innovations in Theoretical Computer Science Conference,
+  {ITCS}}, volume~67 of {\em LIPIcs}, pages 49:1--49:21. Schloss Dagstuhl -
+  Leibniz-Zentrum f{\"{u}}r Informatik, 2017.
+
+\bibitem[KR21]{khavari2021lower}
+Behnoush Khavari and Guillaume Rabusseau.
+\newblock Lower and upper bounds on the pseudo-dimension of tensor network
+  models.
+\newblock {\em Advances in Neural Information Processing Systems},
+  34:10931--10943, 2021.
+
+\bibitem[KRS18]{kanade2018learning}
+Varun Kanade, Andrea Rocchetto, and Simone Severini.
+\newblock Learning {DNF}s under product distributions via $\mu$-biased quantum
+  {F}ourier sampling.
+\newblock {\em arXiv:1802.05690}, 2018.
+
+\bibitem[KRT17]{kueng2017low}
+Richard Kueng, Holger Rauhut, and Ulrich Terstiege.
+\newblock Low rank matrix recovery from rank one measurements.
+\newblock {\em Applied and Computational Harmonic Analysis}, 42(1):88--116,
+  2017.
+
+\bibitem[KS20]{KS20}
+Tomotaka Kuwahara and Keiji Saito.
+\newblock Gaussian concentration bound and ensemble equivalence in generic
+  quantum many-body systems including long-range interactions.
+\newblock {\em Annals of Physics}, 421:168278, 2020.
+
+\bibitem[KvBE{\etalchar{+}}21]{Kokail2021}
+Christian Kokail, Rick van Bijnen, Andreas Elben, Beno{\^i}t Vermersch, and
+  Peter Zoller.
+\newblock Entanglement hamiltonian tomography in quantum simulation.
+\newblock {\em Nature Physics}, 17(8):936--942, Aug 2021.
+
+\bibitem[LAT21]{liu2021rigorous}
+Yunchao Liu, Srinivasan Arunachalam, and Kristan Temme.
+\newblock A rigorous and robust quantum speed-up in supervised machine
+  learning.
+\newblock {\em Nature Physics}, 17(9):1013--1017, 2021.
+
+\bibitem[LC22]{lai2022learning}
+Ching-Yi Lai and Hao-Chung Cheng.
+\newblock Learning quantum circuits of some {T} gates.
+\newblock {\em IEEE Transactions on Information Theory}, 68(6):3951--3964,
+  2022.
+
+\bibitem[LCLP10]{LLP10}
+Olivier Landon-Cardinal, Yi-Kai Liu, and David Poulin.
+\newblock Efficient direct tomography for matrix product states, 2010.
+
+\bibitem[LGZ16]{lloyd2014quantumtda}
+Seth Lloyd, Silvano Garnerone, and Paolo Zanardi.
+\newblock Quantum algorithms for topological and geometric analysis of data.
+\newblock {\em Nature communications}, 7(1):1--7, 2016.
+
+\bibitem[LHT{\etalchar{+}}23]{lewis2023improved}
+Laura Lewis, Hsin-Yuan Huang, Viet~T Tran, Sebastian Lehner, Richard Kueng, and
+  John Preskill.
+\newblock Improved machine learning algorithm for predicting ground state
+  properties.
+\newblock {\em arXiv:2301.13169}, 2023.
+
+\bibitem[Lia22]{liang2022clifford}
+Daniel Liang.
+\newblock Clifford {C}ircuits can be {P}roperly {PAC} {L}earned if and only if
+  $\textsf{RP}=\textsf{NP}$.
+\newblock {\em arXiv:2204.06638}, 2022.
+
+\bibitem[LMN93]{DBLP:journals/jacm/LinialMN93}
+Nathan Linial, Yishay Mansour, and Noam Nisan.
+\newblock Constant depth circuits, fourier transform, and learnability.
+\newblock {\em Journal of the {ACM}}, 40(3):607--620, 1993.
+
+\bibitem[LMR13]{lloyd2013quantum}
+Seth Lloyd, Masoud Mohseni, and Patrick Rebentrost.
+\newblock Quantum algorithms for supervised and unsupervised machine learning.
+\newblock {\em arXiv:1307.0411}, 2013.
+
+\bibitem[LMR14]{Lloyd2014}
+Seth Lloyd, Masoud Mohseni, and Patrick Rebentrost.
+\newblock Quantum principal component analysis.
+\newblock {\em Nature Physics}, 10(9):631--633, Sep 2014.
+
+\bibitem[LN22]{lowe2022lower}
+Angus Lowe and Ashwin Nayak.
+\newblock Lower bounds for learning quantum states with single-copy
+  measurements.
+\newblock {\em arXiv:2207.14438}, 2022.
+
+\bibitem[Low09]{low2009learning}
+Richard~A Low.
+\newblock Learning and testing algorithms for the {C}lifford group.
+\newblock {\em Physical Review A}, 80(5):052314, 2009.
+
+\bibitem[LRZ23]{liumemory}
+Qipeng Liu, Ran Raz, and Wei Zhan.
+\newblock Memory-sample lower bounds for learning with classical-quantum hybrid
+  memory.
+\newblock In Barna Saha and Rocco~A. Servedio, editors, {\em Proceedings of the
+  55th Annual {ACM} Symposium on Theory of Computing, {STOC} 2023, Orlando, FL,
+  USA, June 20-23, 2023}, pages 1097--1110. {ACM}, 2023.
+
+\bibitem[LVV15]{LandauVV15}
+Zeph Landau, Umesh Vazirani, and Thomas Vidick.
+\newblock A polynomial time algorithm for the ground state of one-dimensional
+  gapped local hamiltonians.
+\newblock {\em Nature Physics}, 11(7):566--569, Jul 2015.
+
+\bibitem[Mon17a]{montanaro2017learning}
+Ashley Montanaro.
+\newblock Learning stabilizer states by {B}ell sampling.
+\newblock {\em arXiv:1707.04012}, 2017.
+
+\bibitem[Mon17b]{montanaro2017circuits}
+Ashley Montanaro.
+\newblock Quantum circuits and low-degree polynomials over
+  {${\mathbb{F}}_{2}$}.
+\newblock {\em Journal of Physics A: Mathematical and Theoretical},
+  50(8):084002, Jan 2017.
+
+\bibitem[MW05]{MW05}
+Chris Marriott and John Watrous.
+\newblock Quantum {A}rthur---{M}erlin games.
+\newblock {\em Comput. Complex.}, 14(2):122–152, jun 2005.
+
+\bibitem[Nes08]{nest2008classical}
+M~Nest.
+\newblock Classical simulation of quantum computation, the {G}ottesman-{K}nill
+  theorem, and slightly beyond.
+\newblock {\em arXiv:0811.0898}, 2008.
+
+\bibitem[NIS{\etalchar{+}}23]{sweke23}
+Alexander Nietner, Marios Ioannou, Ryan Sweke, Richard Keung, Jens Eisert,
+  Marcel Hinsche, and Jonas Haferkamp.
+\newblock On the average-case complexity of learning output distributions of
+  quantum circuits, 2023.
+\newblock arXiv:2305.05765.
+
+\bibitem[ORFW23]{onorati2023efficient}
+Emilio Onorati, Cambyse Rouz{\'e}, Daniel~Stilck Fran{\c{c}}a, and James~D
+  Watson.
+\newblock Efficient learning of ground \& thermal states within phases of
+  matter.
+\newblock {\em arXiv:2301.12946}, 2023.
+
+\bibitem[OW15]{o2015quantum}
+Ryan O'Donnell and John Wright.
+\newblock Quantum spectrum testing.
+\newblock In {\em Proceedings of the forty-seventh annual ACM symposium on
+  Theory of computing}, pages 529--538, 2015.
+
+\bibitem[OW16]{o2016efficient}
+Ryan O'Donnell and John Wright.
+\newblock Efficient quantum tomography.
+\newblock In {\em Proceedings of the forty-eighth annual ACM symposium on
+  Theory of Computing}, pages 899--912, 2016.
+
+\bibitem[OW17]{o2017efficient}
+Ryan O'Donnell and John Wright.
+\newblock Efficient quantum tomography ii.
+\newblock In {\em Proceedings of the 49th Annual ACM SIGACT Symposium on Theory
+  of Computing}, pages 962--974, 2017.
+
+\bibitem[OW18]{oprimer}
+Ryan O’Donnell and John Wright.
+\newblock A primer on the statistics of longest increasing subsequences and
+  quantum states.
+\newblock {\em SIGACT News}, 2018.
+
+\bibitem[QR19]{Qi2019learningFromGroundState}
+Xiao-Liang Qi and Daniel Ranard.
+\newblock Determining a local {H}amiltonian from a single eigenstate.
+\newblock {\em {Quantum}}, 3:159, 2019.
+
+\bibitem[Raz19]{DBLP:journals/jacm/Raz19}
+Ran Raz.
+\newblock Fast learning requires good memory: {A} time-space lower bound for
+  parity learning.
+\newblock {\em Journal of the {ACM}}, 66(1):3:1--3:18, 2019.
+
+\bibitem[RB98]{roetteler1998polynomial}
+Martin Roetteler and Thomas Beth.
+\newblock Polynomial-time solution to the hidden subgroup problem for a class
+  of non-abelian groups.
+\newblock {\em quant-ph/9812070}, 1998.
+
+\bibitem[Rey20]{reyzin2020statistical}
+Lev Reyzin.
+\newblock Statistical queries and statistical algorithms: Foundations and
+  applications.
+\newblock {\em arXiv:2004.00557}, 2020.
+
+\bibitem[RF21]{rouze2021learning}
+Cambyse Rouz{\'e} and Daniel~Stilck Fran{\c{c}}a.
+\newblock Learning quantum many-body systems from a few copies.
+\newblock {\em arXiv:2107.03333}, 2021.
+
+\bibitem[RHBM13]{rossi2013quantum}
+Matteo Rossi, Marcus Huber, Dagmar Bru{\ss}, and Chiara Macchiavello.
+\newblock Quantum hypergraph states.
+\newblock {\em New Journal of Physics}, 15(11):113022, 2013.
+
+\bibitem[RML14]{Rebentrost2014quantum}
+Patrick Rebentrost, Masoud Mohseni, and Seth Lloyd.
+\newblock Quantum support vector machine for big data classification.
+\newblock {\em Phys. Rev. Lett.}, 113:130503, Sep 2014.
+
+\bibitem[Roc17]{rocchetto2017stabiliser}
+Andrea Rocchetto.
+\newblock Stabiliser states are efficiently {PAC}-learnable.
+\newblock {\em arXiv:1705.00345}, 2017.
+
+\bibitem[R{\"o}t09]{rotteler2009quantum}
+Martin R{\"o}tteler.
+\newblock Quantum algorithms to solve the hidden shift problem for quadratics
+  and for functions of large {G}owers norm.
+\newblock In {\em International Symposium on Mathematical Foundations of
+  Computer Science}, pages 663--674. Springer, 2009.
+
+\bibitem[RS16]{RS16}
+Neil~J. Ross and Peter Selinger.
+\newblock Optimal ancilla-free {Clifford$+T$} approximation of $z$-rotations.
+\newblock {\em Quantum Information and Computation}, 16(11--12):901--953, 2016.
+
+\bibitem[RSML18]{Rebentrost2018svd}
+Patrick Rebentrost, Adrian Steffens, Iman Marvian, and Seth Lloyd.
+\newblock Quantum singular-value decomposition of nonsparse low-rank matrices.
+\newblock {\em Phys. Rev. A}, 97:012327, Jan 2018.
+
+\bibitem[RST15]{rakhlin2015online}
+Alexander Rakhlin, Karthik Sridharan, and Ambuj Tewari.
+\newblock Online learning via sequential complexities.
+\newblock {\em Journal of Machine Learning Research}, 16(1):155--186, 2015.
+
+\bibitem[SBB98]{BK98}
+A.~Yu.~Kitaev S.~B.~Bravyi.
+\newblock {\em Quantum codes on a lattice with boundary}, 1998.
+
+\bibitem[Sel15]{Sel15}
+Peter Selinger.
+\newblock Efficient {Clifford$+T$} approximation of single-qubit operators.
+\newblock {\em Quantum Information and Computation}, 15(1--2):159--180, 2015.
+
+\bibitem[SHB{\etalchar{+}}22]{SHBSGB22}
+Henning Schlomer, Timon Hilker, Immanuel Bloch, Ulrich Schollwock, Fabian
+  Grusdt, and Annabelle Bohrdt.
+\newblock Quantifying hole-motion-induced frustration in doped antiferromagnets
+  by hamiltonian reconstruction, 2022.
+
+\bibitem[SK19]{Schuld2019quantum}
+Maria Schuld and Nathan Killoran.
+\newblock Quantum machine learning in feature {H}ilbert spaces.
+\newblock {\em Phys. Rev. Lett.}, 122:040504, Feb 2019.
+
+\bibitem[SSS{\etalchar{+}}17]{silver2017mastering}
+David Silver, Julian Schrittwieser, Karen Simonyan, Ioannis Antonoglou, Aja
+  Huang, Arthur Guez, Thomas Hubert, Lucas Baker, Matthew Lai, Adrian Bolton,
+  et~al.
+\newblock Mastering the game of go without human knowledge.
+\newblock {\em nature}, 550(7676):354--359, 2017.
+
+\bibitem[Tan98]{Tanaka1998}
+Toshiyuki Tanaka.
+\newblock Mean-field theory of {B}oltzmann machine learning.
+\newblock {\em Phys. Rev. E}, 58:2302--2310, 1998.
+
+\bibitem[Tan19]{Tang2019quantuminspired}
+Ewin Tang.
+\newblock A quantum-inspired classical algorithm for recommendation systems.
+\newblock In {\em Proceedings of the 51st Annual ACM SIGACT Symposium on Theory
+  of Computing}, STOC, page 217–228, 2019.
+
+\bibitem[Tan21]{tang2018quantuminspired}
+Ewin Tang.
+\newblock Quantum principal component analysis only achieves an exponential
+  speedup because of its state preparation assumptions.
+\newblock {\em Physical Review Letters}, 127(6):060503, 2021.
+
+\bibitem[TMH19]{takeuchi2019quantum}
+Yuki Takeuchi, Tomoyuki Morimae, and Masahito Hayashi.
+\newblock Quantum computational universality of hypergraph states with
+  {P}auli-{X} and {Z} basis measurements.
+\newblock {\em Scientific Reports}, 9(1):1--14, 2019.
+
+\bibitem[Val84]{DBLP:journals/cacm/Valiant84}
+Leslie~G. Valiant.
+\newblock A theory of the learnable.
+\newblock {\em Communications of the {ACM}}, 27(11):1134--1142, 1984.
+
+\bibitem[Vap13]{vapnik2013nature}
+Vladimir Vapnik.
+\newblock {\em The nature of statistical learning theory}.
+\newblock Springer science \& business media, 2013.
+
+\bibitem[VMLC16]{Interaction_screening}
+Marc Vuffray, Sidhant Misra, Andrey Lokhov, and Michael Chertkov.
+\newblock Interaction screening: Efficient and sample-optimal learning of
+  {I}sing models.
+\newblock In {\em Advances in Neural Information Processing Systems}, pages
+  2595--2603, 2016.
+
+\bibitem[VMN{\etalchar{+}}19]{verdon2019quantum}
+Guillaume Verdon, Jacob Marks, Sasha Nanda, Stefan Leichenauer, and Jack
+  Hidary.
+\newblock Quantum hamiltonian-based models and the variational quantum
+  thermalizer algorithm.
+\newblock {\em arXiv:1910.02071}, 2019.
+
+\bibitem[VSP{\etalchar{+}}17]{vaswani2017attention}
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+  Aidan~N Gomez, {\L}ukasz Kaiser, and Illia Polosukhin.
+\newblock Attention is all you need.
+\newblock {\em Advances in neural information processing systems}, 30, 2017.
+
+\bibitem[WA22]{WildA22}
+Dominik~S. Wild and Alvaro~M. Alhambra.
+\newblock Classical simulation of short-time quantum dynamics, 2022.
+
+\bibitem[WBL12]{wiebe2012quantum}
+Nathan Wiebe, Daniel Braun, and Seth Lloyd.
+\newblock Quantum algorithm for data fitting.
+\newblock {\em Phys. Rev. Lett.}, 109:050505, Aug 2012.
+
+\bibitem[WGFC14a]{wiebe2014hamiltonian}
+Nathan Wiebe, Christopher Granade, Christopher Ferrie, and David~G Cory.
+\newblock Hamiltonian learning and certification using quantum resources.
+\newblock {\em Physical review letters}, 112(19):190501, 2014.
+
+\bibitem[WGFC14b]{WiebeGFC14}
+Nathan Wiebe, Christopher Granade, Christopher Ferrie, and David~G Cory.
+\newblock Hamiltonian learning and certification using quantum resources.
+\newblock {\em Physical Review Letters}, 112(19):190501, 2014.
+
+\bibitem[Wri16]{wright2016learn}
+John Wright.
+\newblock {\em How to learn a quantum state}.
+\newblock PhD thesis, Carnegie Mellon University, 2016.
+
+\bibitem[Yat85]{yatracos1985rates}
+Yannis~G Yatracos.
+\newblock Rates of convergence of minimum distance estimators and kolmogorov's
+  entropy.
+\newblock {\em The Annals of Statistics}, 13(2):768--774, 1985.
+
+\bibitem[Yue22]{yuen2022improved}
+Henry Yuen.
+\newblock An improved sample complexity lower bound for quantum state
+  tomography.
+\newblock {\em arXiv:2206.11185}, 2022.
+
+\bibitem[ZFF19]{Zhao2019quantum}
+Zhikuan Zhao, Jack~K. Fitzsimons, and Joseph~F. Fitzsimons.
+\newblock Quantum-assisted gaussian process regression.
+\newblock {\em Phys. Rev. A}, 99:052331, May 2019.
+
+\bibitem[ZGYN22]{ZGYN22}
+Weishun Zhong, Xun Gao, Susanne~F. Yelin, and Khadijeh Najafi.
+\newblock Many-body localized hidden born machine, 2022.

@@ -1,0 +1,98 @@
+accelerate
+torchao
+
+# OpenAI and tokenization
+openai>=1.68.0
+tiktoken
+
+# Core utilities
+requests
+psutil
+httpx
+PyPDF2
+pydantic
+watchdog
+PyYAML
+python-dotenv
+scipy
+
+# Transformers and ML-related libraries
+transformers
+torch
+sentence-transformers
+scikit-learn
+numpy
+optuna
+einops
+pandas
+seaborn
+
+# Web scraping and APIs
+wikipedia-api
+wikipedia
+arxiv
+bs4
+beautifulsoup4
+
+# Parsing and NLP
+pyparsing
+spacy
+nltk
+feedparser
+bibtexparser
+TexSoup
+
+# Web development
+flask
+flask_cors
+websockets
+
+# Elasticsearch
+elasticsearch~=8.10.1
+
+# Chroma
+chromadb
+
+# Neo4j for graph database
+#neo4j~=5.24.0
+
+# Jupyter and IPython tools
+ipywidgets 
+IPython
+ipykernel
+jupyter_client
+nbformat 
+
+#config
+Jinja2 
+fastapi
+aiohttp
+starlette
+nest-asyncio
+litellm>=1.65.7
+matplotlib
+opentelemetry-api
+
+
+datasets
+python-git
+
+tabulate
+
+gitpython
+
+# install OpenTrace from the experimental branch
+trace-opt @ git+https://github.com/AgentOpt/OpenTrace.git@experimental
+
+langchain~=0.3.3
+langchain-community~=0.3.2
+langchain-core~=0.3.10
+langchain-experimental~=0.3.2
+langchain-groq~=0.2.0
+langchain-openai~=0.2.2
+langchain-text-splitters~=0.3.0
+langgraph~=0.3
+langgraph-checkpoint
+langchain-chroma
+langsmith
+regex==2024.11.6
