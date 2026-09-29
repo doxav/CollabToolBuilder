@@ -54,7 +54,7 @@ def run_4agents_learning_loop(
     automation=None,
     allow_custom_score_state_functions=False,
     params_user_message=None,
-    max_execution_time=900,
+    max_execution_time=3600,
     special_criteria=None,
     temperature_max=1,
     agcoach_num_parallel_inferences=2,
