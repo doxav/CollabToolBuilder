@@ -111,33 +111,81 @@ def search_arxiv_sync(query, output_format='json', max_results=10, fetch_full_pa
     import asyncio
     return asyncio.run(search_arxiv(query, output_format=output_format, max_results=max_results, fetch_full_paper=fetch_full_paper))
 
-def search_openalex(query: str, max_results: int = 10):
-    """Retrieve academic papers from OpenAlex based on a query."""
+def search_openalex(query: str, max_results: int = 10, year_from: int = None, year_to: int = None,
+                    language: str = None, open_access_only: bool = False, mailto: str = None):
+    """Retrieve academic papers from OpenAlex (250M+ works, incl. HAL, arXiv, publishers) for a query.
+
+    Args:
+        query: free-text query searched in titles, abstracts and full texts, e.g. "social media violence".
+        max_results: maximum number of works to return (1 to 200).
+        year_from: keep works published from this year (e.g. 2022), inclusive.
+        year_to: keep works published up to this year, inclusive.
+        language: ISO 639-1 code of the work language, e.g. "fr" or "en".
+        open_access_only: if True, keep only open-access works.
+        mailto: optional contact e-mail, gives access to OpenAlex's faster "polite pool".
+
+    Returns:
+        A list of dicts with keys: title, authors, year, abstract, doi, url, oa_url,
+        source, type, language, cited_by_count, openalex_id.
+    """
     import requests
-    OPENALEX_API_URL = "https://api.openalex.org/works"
-    
+
+    filters = ["is_paratext:false"]  # Exclude non-research content
+    if year_from:
+        filters.append(f"from_publication_date:{int(year_from)}-01-01")
+    if year_to:
+        filters.append(f"to_publication_date:{int(year_to)}-12-31")
+    if language:
+        filters.append(f"language:{language}")
+    if open_access_only:
+        filters.append("is_oa:true")
+
     params = {
         "search": query,
-        "filter": "is_paratext:false",  # Exclude non-research content
+        "filter": ",".join(filters),
         "sort": "relevance_score:desc",
-        "per_page": max_results
+        "per_page": max(1, min(int(max_results), 200)),
     }
-    
-    response = requests.get(OPENALEX_API_URL, params=params)
+    if mailto:
+        params["mailto"] = mailto
+
+    def rebuild_abstract(inverted_index):
+        # OpenAlex ships abstracts as {word: [positions]}; rebuild the plain text.
+        if not inverted_index:
+            return "No abstract available"
+        positions = [(pos, word) for word, pos_list in inverted_index.items() for pos in pos_list]
+        return " ".join(word for _, word in sorted(positions))
+
+    try:
+        response = requests.get("https://api.openalex.org/works", params=params, timeout=30)
+        response.raise_for_status()
+    except Exception as e:
+        print(f"Error retrieving data from OpenAlex: {e}")
+        return []
+
     search_docs = []
-    
-    if response.status_code == 200:
-        data = response.json()
-        for result in data.get("results", []):
-            search_docs.append({
-                "title": result.get("title", "Unknown Title"),
-                "authors": ", ".join([auth["author"]["display_name"] for auth in result.get("authorships", [])]),
-                "abstract": result.get("abstract", "No abstract available"),
-                "url": result.get("id", "Unknown URL")
-            })
-    else:
-        print(f"Error retrieving data from OpenAlex: {response.status_code}")
-    
+    for result in response.json().get("results", []):
+        primary = result.get("primary_location") or {}
+        source = primary.get("source") or {}
+        open_access = result.get("open_access") or {}
+        search_docs.append({
+            "title": result.get("title") or "Unknown Title",
+            "authors": ", ".join(
+                (auth.get("author") or {}).get("display_name", "")
+                for auth in result.get("authorships", [])
+            ),
+            "year": result.get("publication_year"),
+            "abstract": rebuild_abstract(result.get("abstract_inverted_index")),
+            "doi": result.get("doi") or "",
+            "url": primary.get("landing_page_url") or result.get("doi") or result.get("id", ""),
+            "oa_url": open_access.get("oa_url") or "",
+            "source": source.get("display_name") or "",
+            "type": result.get("type") or "",
+            "language": result.get("language") or "",
+            "cited_by_count": result.get("cited_by_count", 0),
+            "openalex_id": result.get("id", ""),
+        })
+
     return search_docs
 
 def search_wikipedia(query: str, max_results: int = 10):
