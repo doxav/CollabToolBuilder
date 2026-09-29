@@ -54,6 +54,8 @@ def test_search_openalex_builds_filters_and_rebuilds_abstract():
     assert doc["doi"] == "https://doi.org/10.1234/abc"
     assert doc["source"].startswith("HAL")
     assert doc["openalex_id"] == "https://openalex.org/W123"
+    assert doc["link"] == doc["url"]
+    assert doc["description"] == doc["abstract"]
 
 
 def test_search_openalex_handles_missing_fields():

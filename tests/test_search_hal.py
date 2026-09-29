@@ -53,6 +53,8 @@ def test_search_hal_builds_filters_and_parses_docs():
         "keywords": ["réseaux sociaux", "violence"],
         "url": "https://hal.science/hal-01234567",
         "pdf_url": "https://hal.science/hal-01234567/document",
+        "link": "https://hal.science/hal-01234567",
+        "description": "Résumé de test.",
     }]
 
 

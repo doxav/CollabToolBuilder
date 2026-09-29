@@ -126,7 +126,9 @@ def search_openalex(query: str, max_results: int = 10, year_from: int = None, ye
 
     Returns:
         A list of dicts with keys: title, authors, year, abstract, doi, url, oa_url,
-        source, type, language, cited_by_count, openalex_id.
+        source, type, language, cited_by_count, openalex_id, plus link (= url) and
+        description (= abstract) so the list can be passed directly to
+        bot.add_or_update_results_in_resources(results).
     """
     import requests
 
@@ -185,6 +187,9 @@ def search_openalex(query: str, max_results: int = 10, year_from: int = None, ye
             "cited_by_count": result.get("cited_by_count", 0),
             "openalex_id": result.get("id", ""),
         })
+        # Aliases expected by bot.add_or_update_results_in_resources(results)
+        search_docs[-1]["link"] = search_docs[-1]["url"]
+        search_docs[-1]["description"] = search_docs[-1]["abstract"]
 
     return search_docs
 

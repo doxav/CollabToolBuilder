@@ -1519,15 +1519,25 @@ class SynthesisManager:
         Returns:
         If chaining is True, returns the current object. Otherwise, returns the IDs of the stored documents.
         """
-        from langchain.document_loaders import WebBaseLoader
+        try:
+            from langchain_community.document_loaders import WebBaseLoader
+        except ImportError:  # pragma: no cover - older langchain
+            from langchain.document_loaders import WebBaseLoader
 
-        if link is None:
-            raise ValueError("Please provide a link to download the document from")
-        loader = WebBaseLoader(link)
-        data = loader.load()
+        if not link:
+            if chaining:
+                return self
+            return []
+        try:
+            loader = WebBaseLoader(link)
+            data = loader.load()
+        except Exception as e:
+            # A single unreachable page must not abort the whole resource import
+            print(f"Could not download linked document {link}: {e}")
+            return self if chaining else []
         if parent_id is not None:
             for doc in data:
-                doc.metadata.extend([{"parent_id": parent_id}])
+                doc.metadata["parent_id"] = parent_id
         from langchain.text_splitter import RecursiveCharacterTextSplitter
 
         splitter = RecursiveCharacterTextSplitter()

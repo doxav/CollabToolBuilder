@@ -13,7 +13,8 @@ def search_hal(query: str, max_results: int = 20, year_from: int = None, year_to
 
     Returns:
         A list of dicts with keys: hal_id, title, authors, year, doc_type, language,
-        abstract, keywords, url, pdf_url.
+        abstract, keywords, url, pdf_url, plus link (= url) and description (= abstract)
+        so the list can be passed directly to bot.add_or_update_results_in_resources(results).
     """
     import requests
 
@@ -65,4 +66,7 @@ def search_hal(query: str, max_results: int = 20, year_from: int = None, year_to
             "url": doc.get("uri_s", ""),
             "pdf_url": doc.get("fileMain_s", ""),
         })
+        # Aliases expected by bot.add_or_update_results_in_resources(results)
+        results[-1]["link"] = results[-1]["url"]
+        results[-1]["description"] = results[-1]["abstract"]
     return results
