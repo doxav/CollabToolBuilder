@@ -6276,15 +6276,15 @@ List your annotations below:
             # ask the user to select the code to keep
             if current_skip_rounds <= 0:
                 if self.automation:
-                    selected_code = f"{top_indice}"
+                    selected_code = [f"{top_indice}"]
                 else:
                     selected_code = smart_input(
                         f"{{{''.join(results_list)}}} CODE SELECTION Please select the code to keep (separated by comma, none/n for none of these, or just hit enter to keep ALL): ",
-                        self.name, "Scores").strip().replace(" ", "").lower().split(",")
+                        self.agent_name, "Scores").strip().replace(" ", "").lower().split(",")
             else:
                 selected_code = [""]  # keep all if skip_rounds is not 0
             id = 0
-            if selected_code in ["none", "n"]:
+            if selected_code in (["none"], ["n"]):
                 results = []
             else:
                 # keep only the selected code
